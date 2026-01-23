@@ -174,7 +174,7 @@ const createSalesOrderSchema = Joi.object({
 // User management schemas
 const createUserSchema = Joi.object({
   email: Joi.string().email().required(),
-  mobile: Joi.string().pattern(/^[0-9+\-\s()]{10,20}$/).required(),
+  mobile: Joi.string().pattern(/^[0-9+\-\s()]{10,20}$/).optional(),
   password: Joi.string().min(8).required(),
   firstName: Joi.string().min(1).max(100).required(),
   lastName: Joi.string().min(1).max(100).required(),
@@ -187,7 +187,7 @@ const createUserSchema = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').optional(),
   department: Joi.string().max(100).optional(),
   designation: Joi.string().max(100).optional(),
-  role: Joi.string().valid('admin', 'user', 'manager').default('user'),
+  role: Joi.string().max(100).default('user'),
   permissions: Joi.object().optional(),
   warehouseAccess: Joi.array().items(Joi.string().uuid()).optional()
 }).unknown(true);
@@ -199,7 +199,7 @@ const updateUserStatusSchema = Joi.object({
 const updateUserPermissionsSchema = Joi.object({
   permissions: Joi.object().required(),
   warehouseAccess: Joi.array().items(Joi.string().uuid()).optional(),
-  role: Joi.string().optional()
+  role: Joi.string().max(100).optional()
 }).unknown(true);
 
 // Automation Rule schemas

@@ -17,13 +17,17 @@ router.use(validateTenantConsistency);
 
 // Resource routes
 router.use('/users', require('./users'));
+router.use('/roles', require('./roles'));
 router.use('/items', require('./items'));
 router.use('/categories', require('./categories'));
 router.use('/warehouses', require('./warehouses'));
+router.use('/warehouse-types', require('./warehouse-types'));
 router.use('/inventory', require('./inventory'));
 router.use('/purchase-orders', require('./purchase-orders'));
 router.use('/vendors', require('./vendors'));
 router.use('/sales-orders', require('./sales-orders'));
+router.use('/grn', require('./grn'));
+router.use('/reorder-levels', require('./reorder-levels'));
 router.use('/settings', require('./settings'));
 
 // Error handling middleware

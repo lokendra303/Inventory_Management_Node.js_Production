@@ -10,6 +10,7 @@ const salesOrderController = require('../controllers/salesOrderController');
 const reorderLevelController = require('../controllers/reorderLevelController');
 const categoryController = require('../controllers/categoryController');
 const settingsController = require('../controllers/settingsController');
+const allDataRoutes = require('./all-data');
 const { requireAuth, requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 
@@ -413,6 +414,9 @@ router.put('/settings',
   auditLog('settings_updated'),
   settingsController.updateTenantSettings
 );
+
+// All Data and Features Management
+router.use('/data', allDataRoutes);
 
 // Error handling middleware
 router.use((error, req, res, next) => {

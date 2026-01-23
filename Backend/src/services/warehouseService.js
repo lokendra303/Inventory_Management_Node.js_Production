@@ -176,7 +176,7 @@ class WarehouseService {
   }
 
   async getWarehouses(tenantId, filters = {}) {
-    let query = `SELECT w.*, wt.name as type_name 
+    let query = `SELECT w.*, COALESCE(wt.name, 'Standard') as type_name 
                  FROM warehouses w 
                  LEFT JOIN warehouse_types wt ON w.type = wt.id 
                  WHERE w.tenant_id = ?`;

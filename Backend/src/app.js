@@ -101,19 +101,8 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-app.use('/api/users', require('./routes/users'));
-app.use('/api/roles', require('./routes/roles'));
-app.use('/api/items', require('./routes/items'));
-app.use('/api/categories', require('./routes/categories'));
-app.use('/api/warehouses', require('./routes/warehouses'));
-app.use('/api/warehouse-types', require('./routes/warehouse-types'));
-app.use('/api/inventory', require('./routes/inventory'));
-app.use('/api/purchase-orders', require('./routes/purchase-orders'));
-app.use('/api/vendors', require('./routes/vendors'));
-app.use('/api/sales-orders', require('./routes/sales-orders'));
-app.use('/api/grn', require('./routes/grn'));
-app.use('/api/reorder-levels', require('./routes/reorder-levels'));
-app.use('/api/settings', require('./routes/settings'));
+// Use the centralized API router
+app.use('/api', require('./routes/api'));
 
 // Error handling
 app.use((error, req, res, next) => {

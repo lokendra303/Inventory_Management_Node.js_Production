@@ -1,0 +1,14 @@
+console.log('🔧 ROUTE CONFIGURATION FIXED!');
+console.log('');
+console.log('✅ Added missing routes to api.js:');
+console.log('   • /api/roles - Role management');
+console.log('   • /api/warehouse-types - Warehouse types');
+console.log('   • /api/grn - Goods receipt notes');
+console.log('   • /api/reorder-levels - Reorder management');
+console.log('');
+console.log('🚀 RESTART REQUIRED:');
+console.log('   1. Stop backend server (Ctrl+C)');
+console.log('   2. Run: npm start');
+console.log('   3. Refresh frontend');
+console.log('');
+console.log('✅ This should fix the "Route not found" error!');
