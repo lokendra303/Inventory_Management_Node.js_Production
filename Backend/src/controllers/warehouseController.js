@@ -95,6 +95,14 @@ class WarehouseController {
   async getWarehouseDetails(req, res) {
     try {
       const { warehouseId } = req.params;
+      
+      if (!warehouseId || warehouseId === 'undefined' || warehouseId === 'null') {
+        return res.status(400).json({
+          success: false,
+          error: 'Warehouse ID is required'
+        });
+      }
+      
       const details = await warehouseService.getWarehouseDetails(req.tenantId, warehouseId);
       
       res.json({
@@ -125,6 +133,29 @@ class WarehouseController {
       });
     } catch (error) {
       logger.error('Warehouse update failed', { 
+        error: error.message, 
+        tenantId: req.tenantId,
+        warehouseId: req.params.warehouseId,
+        userId: req.user.userId 
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async deleteWarehouse(req, res) {
+    try {
+      const { warehouseId } = req.params;
+      await warehouseService.deleteWarehouse(req.tenantId, warehouseId, req.user.userId);
+      
+      res.json({
+        success: true,
+        message: 'Warehouse deleted successfully'
+      });
+    } catch (error) {
+      logger.error('Warehouse deletion failed', { 
         error: error.message, 
         tenantId: req.tenantId,
         warehouseId: req.params.warehouseId,

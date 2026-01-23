@@ -17,21 +17,28 @@ router.post('/',
   warehouseController.createWarehouse
 );
 
-// GET /api/warehouses/:id
-router.get('/:id',
+// GET /api/warehouses/:warehouseId
+router.get('/:warehouseId',
   requirePermission('warehouse_view'),
   warehouseController.getWarehouse
 );
 
-// PUT /api/warehouses/:id
-router.put('/:id',
+// PUT /api/warehouses/:warehouseId
+router.put('/:warehouseId',
   requirePermission('warehouse_management'),
   auditLog('warehouse_updated'),
   warehouseController.updateWarehouse
 );
 
-// GET /api/warehouses/:id/details
-router.get('/:id/details',
+// DELETE /api/warehouses/:warehouseId
+router.delete('/:warehouseId',
+  requirePermission('warehouse_management'),
+  auditLog('warehouse_deleted'),
+  warehouseController.deleteWarehouse
+);
+
+// GET /api/warehouses/:warehouseId/details
+router.get('/:warehouseId/details',
   requirePermission('warehouse_view'),
   warehouseController.getWarehouseDetails
 );

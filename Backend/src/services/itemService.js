@@ -53,12 +53,12 @@ class ItemService {
         shelf_life_days, storage_conditions, item_group, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [itemId, tenantId, sku, name, description, type, category, unit, barcode, hsnCode,
+      [itemId, tenantId, sku, name, description || null, type, category || null, unit, barcode || null, hsnCode || null,
        JSON.stringify(customFields), valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
-       taxRate, taxType, weight, weightUnit, dimensions, brand, manufacturer, supplierCode,
+       taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
-       shelfLifeDays, storageConditions, itemGroup, purchaseAccount, salesAccount,
-       openingStock, openingValue, asOfDate]
+       shelfLifeDays || null, storageConditions || null, itemGroup || null, purchaseAccount || null, salesAccount || null,
+       openingStock, openingValue, asOfDate || null]
     );
 
     logger.info('Item created', { itemId, tenantId, sku, userId });

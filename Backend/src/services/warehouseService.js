@@ -87,6 +87,10 @@ class WarehouseService {
   }
 
   async getWarehouse(tenantId, warehouseId) {
+    if (!warehouseId) {
+      return null;
+    }
+    
     const warehouses = await db.query(
       'SELECT * FROM warehouses WHERE tenant_id = ? AND id = ?',
       [tenantId, warehouseId]
@@ -105,6 +109,10 @@ class WarehouseService {
 
   async getWarehouseDetails(tenantId, warehouseId) {
     try {
+      if (!warehouseId) {
+        throw new Error('Warehouse ID is required');
+      }
+      
       // Get warehouse basic info
       const warehouses = await db.query(
         'SELECT * FROM warehouses WHERE tenant_id = ? AND id = ?',

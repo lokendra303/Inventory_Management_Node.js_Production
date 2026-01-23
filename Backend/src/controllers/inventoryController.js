@@ -4,20 +4,11 @@ const logger = require('../utils/logger');
 class InventoryController {
   async receiveStock(req, res) {
     try {
-      // Check warehouse access
-      const { warehouseId } = req.body;
-      if (!this.hasWarehouseAccess(req.user, warehouseId)) {
-        return res.status(403).json({
-          success: false,
-          error: 'Access denied to this warehouse'
-        });
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'User not authenticated' });
       }
 
-      const eventId = await inventoryService.receiveStock(
-        req.tenantId,
-        req.body,
-        req.user.userId
-      );
+      const eventId = await inventoryService.receiveStock(req.tenantId, req.body, req.user.userId);
       
       res.status(201).json({
         success: true,
@@ -28,13 +19,10 @@ class InventoryController {
       logger.error('Stock receipt failed', { 
         error: error.message, 
         tenantId: req.tenantId,
-        userId: req.user.userId,
+        userId: req.user?.userId,
         data: req.body 
       });
-      res.status(400).json({
-        success: false,
-        error: error.message
-      });
+      res.status(400).json({ success: false, error: error.message });
     }
   }
 
@@ -106,12 +94,11 @@ class InventoryController {
 
   async adjustStock(req, res) {
     try {
-      // Check warehouse access
-      const { warehouseId } = req.body;
-      if (!this.hasWarehouseAccess(req.user, warehouseId)) {
-        return res.status(403).json({
+      // Check if user exists
+      if (!req.user) {
+        return res.status(401).json({
           success: false,
-          error: 'Access denied to this warehouse'
+          error: 'User not authenticated'
         });
       }
 
@@ -130,7 +117,7 @@ class InventoryController {
       logger.error('Stock adjustment failed', { 
         error: error.message, 
         tenantId: req.tenantId,
-        userId: req.user.userId,
+        userId: req.user?.userId,
         data: req.body 
       });
       res.status(400).json({
@@ -142,13 +129,11 @@ class InventoryController {
 
   async transferStock(req, res) {
     try {
-      // Check warehouse access for both source and destination
-      const { fromWarehouseId, toWarehouseId } = req.body;
-      if (!this.hasWarehouseAccess(req.user, fromWarehouseId) || 
-          !this.hasWarehouseAccess(req.user, toWarehouseId)) {
-        return res.status(403).json({
+      // Check if user exists
+      if (!req.user) {
+        return res.status(401).json({
           success: false,
-          error: 'Access denied to one or both warehouses'
+          error: 'User not authenticated'
         });
       }
 
@@ -167,7 +152,7 @@ class InventoryController {
       logger.error('Stock transfer failed', { 
         error: error.message, 
         tenantId: req.tenantId,
-        userId: req.user.userId,
+        userId: req.user?.userId,
         data: req.body 
       });
       res.status(400).json({
