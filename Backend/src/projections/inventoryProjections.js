@@ -131,37 +131,34 @@ class InventoryProjectionService {
   async handleStockAdjusted(tenantId, eventData) {
     const { itemId, warehouseId, quantityChange } = eventData;
 
-    await db.transaction(async (connection) => {
-      const current = await connection.execute(
-        'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-        [tenantId, itemId, warehouseId]
-      );
+    const current = await db.query(
+      'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
+      [tenantId, itemId, warehouseId]
+    );
 
-      if (current.length === 0) {
-        // Create new projection if it doesn't exist
-        if (quantityChange > 0) {
-          await connection.execute(
-            `INSERT INTO inventory_projections 
-             (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
-             VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, NOW(), 1)`,
-            [tenantId, itemId, warehouseId, quantityChange, quantityChange]
-          );
-        }
-      } else {
-        const currentProjection = current[0];
-        const newQuantityOnHand = currentProjection.quantity_on_hand + quantityChange;
-        const newQuantityAvailable = currentProjection.quantity_available + quantityChange;
-        const newTotalValue = newQuantityOnHand * currentProjection.average_cost;
-
-        await connection.execute(
-          `UPDATE inventory_projections 
-           SET quantity_on_hand = ?, quantity_available = ?, total_value = ?,
-               last_movement_date = NOW(), version = version + 1
-           WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [newQuantityOnHand, newQuantityAvailable, newTotalValue, tenantId, itemId, warehouseId]
+    if (current.length === 0) {
+      if (quantityChange > 0) {
+        await db.query(
+          `INSERT INTO inventory_projections 
+           (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+           VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
+          [tenantId, itemId, warehouseId, quantityChange, quantityChange]
         );
       }
-    });
+    } else {
+      const currentProjection = current[0];
+      const newQuantityOnHand = currentProjection.quantity_on_hand + quantityChange;
+      const newQuantityAvailable = currentProjection.quantity_available + quantityChange;
+      const newTotalValue = newQuantityOnHand * currentProjection.average_cost;
+
+      await db.query(
+        `UPDATE inventory_projections 
+         SET quantity_on_hand = ?, quantity_available = ?, total_value = ?,
+             last_movement_date = NOW(), version = version + 1
+         WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
+        [newQuantityOnHand, newQuantityAvailable, newTotalValue, tenantId, itemId, warehouseId]
+      );
+    }
   }
 
   async handleTransferOut(tenantId, eventData) {
@@ -171,44 +168,41 @@ class InventoryProjectionService {
       `UPDATE inventory_projections 
        SET quantity_on_hand = quantity_on_hand - ?,
            quantity_available = quantity_available - ?,
-           total_value = quantity_on_hand * average_cost,
+           total_value = (quantity_on_hand - ?) * average_cost,
            last_movement_date = NOW(),
            version = version + 1
        WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, tenantId, itemId, warehouseId]
+      [quantity, quantity, quantity, tenantId, itemId, warehouseId]
     );
   }
 
   async handleTransferIn(tenantId, eventData) {
     const { itemId, warehouseId, quantity } = eventData;
 
-    await db.transaction(async (connection) => {
-      const current = await connection.execute(
-        'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-        [tenantId, itemId, warehouseId]
-      );
+    const current = await db.query(
+      'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
+      [tenantId, itemId, warehouseId]
+    );
 
-      if (current.length === 0) {
-        // Create new projection for transfer in
-        await connection.execute(
-          `INSERT INTO inventory_projections 
-           (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
-           VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, NOW(), 1)`,
-          [tenantId, itemId, warehouseId, quantity, quantity]
-        );
-      } else {
-        await connection.execute(
-          `UPDATE inventory_projections 
-           SET quantity_on_hand = quantity_on_hand + ?,
-               quantity_available = quantity_available + ?,
-               total_value = quantity_on_hand * average_cost,
-               last_movement_date = NOW(),
-               version = version + 1
-           WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [quantity, quantity, tenantId, itemId, warehouseId]
-        );
-      }
-    });
+    if (current.length === 0) {
+      await db.query(
+        `INSERT INTO inventory_projections 
+         (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+         VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
+        [tenantId, itemId, warehouseId, quantity, quantity]
+      );
+    } else {
+      await db.query(
+        `UPDATE inventory_projections 
+         SET quantity_on_hand = quantity_on_hand + ?,
+             quantity_available = quantity_available + ?,
+             total_value = (quantity_on_hand + ?) * average_cost,
+             last_movement_date = NOW(),
+             version = version + 1
+         WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
+        [quantity, quantity, quantity, tenantId, itemId, warehouseId]
+      );
+    }
   }
 
   async getInventoryProjection(tenantId, itemId, warehouseId) {
@@ -219,40 +213,67 @@ class InventoryProjectionService {
     return result[0] || null;
   }
 
-  async getWarehouseInventory(tenantId, warehouseId, limit = 100, offset = 0) {
+  async getWarehouseInventory(tenantId, warehouseId) {
     return await db.query(
       `SELECT ip.*, i.sku, i.name as item_name, i.unit
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        WHERE ip.tenant_id = ? AND ip.warehouse_id = ?
-       ORDER BY i.name
-       LIMIT ? OFFSET ?`,
-      [tenantId, warehouseId, parseInt(limit), parseInt(offset)]
+       ORDER BY i.name`,
+      [tenantId, warehouseId]
     );
   }
 
-  async getTenantInventory(tenantId, limit = 100, offset = 0) {
-    return await db.query(
-      `SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
+  async getTenantInventory(tenantId, limit = 100, offset = 0, warehouseId = null, accessibleWarehouseIds = []) {
+    let query = `SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
-       WHERE ip.tenant_id = ?
-       ORDER BY i.name, w.name`,
-      [tenantId]
-    );
+       WHERE ip.tenant_id = ?`;
+    const params = [tenantId];
+
+    // Filter by specific warehouse if provided
+    if (warehouseId) {
+      query += ' AND ip.warehouse_id = ?';
+      params.push(warehouseId);
+    }
+    
+    // Filter by accessible warehouses if user doesn't have admin access
+    if (accessibleWarehouseIds.length > 0) {
+      const placeholders = accessibleWarehouseIds.map(() => '?').join(',');
+      query += ` AND ip.warehouse_id IN (${placeholders})`;
+      params.push(...accessibleWarehouseIds);
+    }
+
+    query += ' ORDER BY i.name, w.name';
+    
+    return await db.query(query, params);
   }
 
-  async getLowStockItems(tenantId, threshold = 10) {
-    return await db.query(
-      `SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
+  async getLowStockItems(tenantId, threshold = 10, warehouseId = null, accessibleWarehouseIds = []) {
+    let query = `SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
-       WHERE ip.tenant_id = ? AND ip.quantity_available <= ?
-       ORDER BY ip.quantity_available ASC`,
-      [tenantId, threshold]
-    );
+       WHERE ip.tenant_id = ? AND ip.quantity_available <= ?`;
+    const params = [tenantId, threshold];
+
+    // Filter by specific warehouse if provided
+    if (warehouseId) {
+      query += ' AND ip.warehouse_id = ?';
+      params.push(warehouseId);
+    }
+    
+    // Filter by accessible warehouses if user doesn't have admin access
+    if (accessibleWarehouseIds.length > 0) {
+      const placeholders = accessibleWarehouseIds.map(() => '?').join(',');
+      query += ` AND ip.warehouse_id IN (${placeholders})`;
+      params.push(...accessibleWarehouseIds);
+    }
+
+    query += ' ORDER BY ip.quantity_available ASC';
+    
+    return await db.query(query, params);
   }
 
   async getDashboardStats(tenantId) {

@@ -218,15 +218,24 @@ class InventoryController {
   async getWarehouseStock(req, res) {
     try {
       const { warehouseId } = req.params;
-      const limit = parseInt(req.query.limit) || 100;
-      const offset = parseInt(req.query.offset) || 0;
+      
+      // Check warehouse access
+      const warehouseService = require('../services/warehouseService');
+      const hasAccess = await warehouseService.checkWarehouseAccess(req.tenantId, req.user.userId, warehouseId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied to this warehouse'
+        });
+      }
       
       const stock = await inventoryService.getWarehouseStock(req.tenantId, warehouseId);
       
       res.json({
         success: true,
         data: stock,
-        pagination: { limit, offset, total: stock.length }
+        pagination: { total: stock.length }
       });
     } catch (error) {
       logger.error('Failed to get warehouse stock', { 
@@ -245,9 +254,21 @@ class InventoryController {
     try {
       const limit = parseInt(req.query.limit) || 100;
       const offset = parseInt(req.query.offset) || 0;
+      const warehouseId = req.query.warehouseId;
+      
+      // Get user's accessible warehouses
+      const warehouseService = require('../services/warehouseService');
+      const userWarehouses = await warehouseService.getUserWarehouses(req.tenantId, req.user.userId);
+      const accessibleWarehouseIds = userWarehouses.map(w => w.id);
       
       const projectionService = require('../projections/inventoryProjections');
-      const inventory = await projectionService.getTenantInventory(req.tenantId, limit, offset);
+      const inventory = await projectionService.getTenantInventory(
+        req.tenantId, 
+        limit, 
+        offset, 
+        warehouseId, 
+        accessibleWarehouseIds
+      );
       
       res.json({
         success: true,
@@ -269,9 +290,20 @@ class InventoryController {
   async getLowStockItems(req, res) {
     try {
       const threshold = parseInt(req.query.threshold) || 10;
+      const warehouseId = req.query.warehouseId;
+      
+      // Get user's accessible warehouses
+      const warehouseService = require('../services/warehouseService');
+      const userWarehouses = await warehouseService.getUserWarehouses(req.tenantId, req.user.userId);
+      const accessibleWarehouseIds = userWarehouses.map(w => w.id);
       
       const projectionService = require('../projections/inventoryProjections');
-      const lowStockItems = await projectionService.getLowStockItems(req.tenantId, threshold);
+      const lowStockItems = await projectionService.getLowStockItems(
+        req.tenantId, 
+        threshold, 
+        warehouseId, 
+        accessibleWarehouseIds
+      );
       
       res.json({
         success: true,

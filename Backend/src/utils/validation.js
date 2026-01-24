@@ -121,8 +121,11 @@ const shipStockSchema = Joi.object({
 const adjustStockSchema = Joi.object({
   itemId,
   warehouseId,
-  quantityChange: Joi.number().required(),
-  reason: Joi.string().max(255).required(),
+  quantityChange: Joi.number().not(0).required().messages({
+    'number.base': 'Quantity change must be a number',
+    'any.invalid': 'Quantity change cannot be zero'
+  }),
+  reason: Joi.string().min(1).max(255).required(),
   adjustmentType: Joi.string().valid('increase', 'decrease').required()
 }).unknown(true);
 

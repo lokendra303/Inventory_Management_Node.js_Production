@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const db = require('../database/connection');
 const eventStore = require('../events/eventStore');
 const { INVENTORY_EVENTS, validateEventData, createAggregateId } = require('../events/inventoryEvents');
 const projectionService = require('../projections/inventoryProjections');
@@ -177,52 +178,34 @@ class InventoryService {
   async adjustStock(tenantId, data, userId) {
     const { itemId, warehouseId, quantityChange, reason, adjustmentType } = data;
     
-    validateEventData(INVENTORY_EVENTS.STOCK_ADJUSTED, {
-      itemId,
-      warehouseId,
-      quantityChange,
-      reason,
-      adjustmentType,
-      adjustedDate: new Date().toISOString()
-    });
-
-    const aggregateId = createAggregateId(itemId, warehouseId);
-    const idempotencyKey = `adjust-${itemId}-${warehouseId}-${Date.now()}`;
-
+    const normalizedQuantityChange = adjustmentType === 'decrease' ? -Math.abs(quantityChange) : Math.abs(quantityChange);
+    
     try {
-      // For negative adjustments, check if we have enough stock
-      if (adjustmentType === 'decrease') {
-        const currentStock = await projectionService.getInventoryProjection(tenantId, itemId, warehouseId);
-        if (!currentStock || currentStock.quantity_on_hand < Math.abs(quantityChange)) {
-          throw new Error(`Insufficient stock for adjustment: available ${currentStock?.quantity_on_hand || 0}, adjustment ${Math.abs(quantityChange)}`);
-        }
-      }
-
-      const eventId = await eventStore.appendEvent(
-        tenantId,
-        'inventory',
-        aggregateId,
-        INVENTORY_EVENTS.STOCK_ADJUSTED,
-        {
-          itemId,
-          warehouseId,
-          quantityChange,
-          reason,
-          adjustmentType,
-          adjustedDate: new Date().toISOString()
-        },
-        { userId },
-        idempotencyKey
+      // Direct database update
+      const current = await db.query(
+        'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
+        [tenantId, itemId, warehouseId]
       );
 
-      // Update projection
-      await projectionService.handleInventoryEvent(tenantId, INVENTORY_EVENTS.STOCK_ADJUSTED, {
-        itemId,
-        warehouseId,
-        quantityChange: adjustmentType === 'decrease' ? -Math.abs(quantityChange) : Math.abs(quantityChange)
-      });
+      if (current.length === 0 && normalizedQuantityChange > 0) {
+        await db.query(
+          `INSERT INTO inventory_projections 
+           (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+           VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
+          [tenantId, itemId, warehouseId, normalizedQuantityChange, normalizedQuantityChange]
+        );
+      } else if (current.length > 0) {
+        await db.query(
+          `UPDATE inventory_projections 
+           SET quantity_on_hand = quantity_on_hand + ?,
+               quantity_available = quantity_available + ?,
+               last_movement_date = NOW()
+           WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
+          [normalizedQuantityChange, normalizedQuantityChange, tenantId, itemId, warehouseId]
+        );
+      }
 
-      return eventId;
+      return 'success';
     } catch (error) {
       logger.error('Failed to adjust stock', { tenantId, itemId, warehouseId, error: error.message });
       throw error;
@@ -230,86 +213,45 @@ class InventoryService {
   }
 
   async transferStock(tenantId, data, userId) {
-    const { 
-      itemId, 
-      fromWarehouseId, 
-      toWarehouseId, 
-      quantity, 
-      transferId = uuidv4() 
-    } = data;
+    const { itemId, fromWarehouseId, toWarehouseId, quantity, transferId = uuidv4() } = data;
     
-    const transferDate = new Date().toISOString();
+    if (fromWarehouseId === toWarehouseId) {
+      throw new Error('Source and destination warehouses cannot be the same');
+    }
     
-    // Validate both events
-    validateEventData(INVENTORY_EVENTS.TRANSFER_OUT, {
-      itemId,
-      fromWarehouseId,
-      toWarehouseId,
-      quantity,
-      transferId,
-      transferDate
-    });
-
     try {
-      // Check available stock in source warehouse
-      const currentStock = await projectionService.getInventoryProjection(tenantId, itemId, fromWarehouseId);
-      if (!currentStock || currentStock.quantity_available < quantity) {
-        throw new Error(`Insufficient stock for transfer: available ${currentStock?.quantity_available || 0}, requested ${quantity}`);
+      // Direct database updates
+      await db.query(
+        `UPDATE inventory_projections 
+         SET quantity_on_hand = quantity_on_hand - ?,
+             quantity_available = quantity_available - ?,
+             last_movement_date = NOW()
+         WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
+        [quantity, quantity, tenantId, itemId, fromWarehouseId]
+      );
+
+      const destExists = await db.query(
+        'SELECT id FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
+        [tenantId, itemId, toWarehouseId]
+      );
+
+      if (destExists.length === 0) {
+        await db.query(
+          `INSERT INTO inventory_projections 
+           (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+           VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
+          [tenantId, itemId, toWarehouseId, quantity, quantity]
+        );
+      } else {
+        await db.query(
+          `UPDATE inventory_projections 
+           SET quantity_on_hand = quantity_on_hand + ?,
+               quantity_available = quantity_available + ?,
+               last_movement_date = NOW()
+           WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
+          [quantity, quantity, tenantId, itemId, toWarehouseId]
+        );
       }
-
-      const idempotencyKeyOut = `transfer-out-${transferId}`;
-      const idempotencyKeyIn = `transfer-in-${transferId}`;
-
-      // Create transfer out event
-      const outAggregateId = createAggregateId(itemId, fromWarehouseId);
-      await eventStore.appendEvent(
-        tenantId,
-        'inventory',
-        outAggregateId,
-        INVENTORY_EVENTS.TRANSFER_OUT,
-        {
-          itemId,
-          fromWarehouseId,
-          toWarehouseId,
-          quantity,
-          transferId,
-          transferDate
-        },
-        { userId },
-        idempotencyKeyOut
-      );
-
-      // Create transfer in event
-      const inAggregateId = createAggregateId(itemId, toWarehouseId);
-      await eventStore.appendEvent(
-        tenantId,
-        'inventory',
-        inAggregateId,
-        INVENTORY_EVENTS.TRANSFER_IN,
-        {
-          itemId,
-          fromWarehouseId,
-          toWarehouseId,
-          quantity,
-          transferId,
-          transferDate
-        },
-        { userId },
-        idempotencyKeyIn
-      );
-
-      // Update projections
-      await projectionService.handleInventoryEvent(tenantId, INVENTORY_EVENTS.TRANSFER_OUT, {
-        itemId,
-        warehouseId: fromWarehouseId,
-        quantity
-      });
-
-      await projectionService.handleInventoryEvent(tenantId, INVENTORY_EVENTS.TRANSFER_IN, {
-        itemId,
-        warehouseId: toWarehouseId,
-        quantity
-      });
 
       return transferId;
     } catch (error) {
@@ -502,7 +444,13 @@ class InventoryService {
   }
 
   async getWarehouseStock(tenantId, warehouseId) {
+    const projectionService = require('../projections/inventoryProjections');
     return await projectionService.getWarehouseInventory(tenantId, warehouseId);
+  }
+
+  async validateWarehouseAccess(tenantId, userId, warehouseId) {
+    const warehouseService = require('./warehouseService');
+    return await warehouseService.checkWarehouseAccess(tenantId, userId, warehouseId);
   }
 }
 
