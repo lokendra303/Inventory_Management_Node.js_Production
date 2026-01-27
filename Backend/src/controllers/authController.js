@@ -263,21 +263,27 @@ class AuthController {
 
   async refreshToken(req, res) {
     try {
-      // Token refresh logic would go here
-      // For now, just return the current user info
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+          success: false,
+          error: 'Token required for refresh'
+        });
+      }
+
+      const token = authHeader.substring(7);
+      const result = await authService.refreshToken(token);
+      
       res.json({
         success: true,
-        message: 'Token is still valid',
-        data: {
-          userId: req.user.userId,
-          tenantId: req.user.tenantId
-        }
+        message: 'Token refreshed successfully',
+        data: result
       });
     } catch (error) {
       logger.error('Token refresh failed', { error: error.message });
       res.status(401).json({
         success: false,
-        error: 'Token refresh failed'
+        error: error.message
       });
     }
   }

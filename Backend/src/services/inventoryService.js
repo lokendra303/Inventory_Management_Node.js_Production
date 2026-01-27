@@ -29,7 +29,7 @@ class InventoryService {
     });
 
     const aggregateId = createAggregateId(itemId, warehouseId);
-    const idempotencyKey = `receive-${poLineId}-${grnNumber}`;
+    const idempotencyKey = `receive-${poLineId}-${itemId}-${Date.now()}`;
 
     try {
       const eventId = await eventStore.appendEvent(
@@ -52,14 +52,12 @@ class InventoryService {
       );
 
       // Update projection
-      console.log('Updating projection for:', { tenantId, itemId, warehouseId, quantity, unitCost });
       await projectionService.handleInventoryEvent(tenantId, INVENTORY_EVENTS.PURCHASE_RECEIVED, {
         itemId,
         warehouseId,
         quantity,
         unitCost
       });
-      console.log('Projection updated successfully');
 
       return eventId;
     } catch (error) {

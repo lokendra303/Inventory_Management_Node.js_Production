@@ -10,33 +10,46 @@ class EventStore {
 
     const eventId = uuidv4();
     
-    // Insert event directly without complex transaction
-    await db.query(
-      `INSERT INTO event_store 
-       (id, tenant_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_data, metadata, idempotency_key, created_by) 
-       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
-      [
-        eventId,
+    try {
+      // Get current version and increment
+      const currentVersion = await this.getCurrentVersion(tenantId, aggregateType, aggregateId);
+      const nextVersion = currentVersion + 1;
+      
+      await db.query(
+        `INSERT INTO event_store 
+         (id, tenant_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_data, metadata, idempotency_key, created_by) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          eventId,
+          tenantId,
+          aggregateType,
+          aggregateId,
+          nextVersion,
+          eventType,
+          JSON.stringify(eventData),
+          JSON.stringify(metadata),
+          idempotencyKey,
+          metadata.userId || null
+        ]
+      );
+
+      logger.info('Event appended', {
         tenantId,
+        eventId,
         aggregateType,
         aggregateId,
         eventType,
-        JSON.stringify(eventData),
-        JSON.stringify(metadata),
-        idempotencyKey,
-        metadata.userId || null
-      ]
-    );
+        version: nextVersion
+      });
 
-    logger.info('Event appended', {
-      tenantId,
-      eventId,
-      aggregateType,
-      aggregateId,
-      eventType
-    });
-
-    return eventId;
+      return eventId;
+    } catch (error) {
+      if (error.code === 'ER_DUP_ENTRY') {
+        logger.warn('Duplicate event ignored', { tenantId, aggregateId, eventType, idempotencyKey });
+        return null;
+      }
+      throw error;
+    }
   }
 
   async getEvents(tenantId, aggregateType, aggregateId, fromVersion = 0) {
@@ -73,11 +86,11 @@ class EventStore {
   }
 
   async getCurrentVersion(tenantId, aggregateType, aggregateId) {
-    const [result] = await db.query(
+    const result = await db.query(
       'SELECT COALESCE(MAX(aggregate_version), 0) as version FROM event_store WHERE tenant_id = ? AND aggregate_type = ? AND aggregate_id = ?',
       [tenantId, aggregateType, aggregateId]
     );
-    return result[0].version;
+    return result[0]?.version || 0;
   }
 
   async transaction(callback) {

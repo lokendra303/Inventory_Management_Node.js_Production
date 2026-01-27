@@ -31,8 +31,8 @@ class SalesOrderService {
            (id, tenant_id, so_number, customer_id, customer_name, warehouse_id, channel, currency, 
             order_date, expected_ship_date, notes, created_by, status, is_preorder) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
-          [soId, tenantId, soNumber, customerId, customerName, warehouseId, channel, currency, 
-           orderDate, expectedShipDate, notes, userId, isPreorder]
+          [soId, tenantId, soNumber, customerId || null, customerName, warehouseId, channel, currency, 
+           orderDate || null, expectedShipDate || null, notes || null, userId, isPreorder]
         );
 
         // Create SO lines
@@ -95,7 +95,7 @@ class SalesOrderService {
 
   async getSalesOrder(tenantId, soId) {
     const sos = await db.query(
-      `SELECT so.*, c.name as customer_name, w.name as warehouse_name
+      `SELECT so.*, COALESCE(c.name, so.customer_name) as customer_name, w.name as warehouse_name
        FROM sales_orders so
        LEFT JOIN customers c ON so.customer_id = c.id
        LEFT JOIN warehouses w ON so.warehouse_id = w.id
@@ -118,6 +118,115 @@ class SalesOrderService {
     );
 
     return { ...so, lines };
+  }
+  async reserveStock(tenantId, soData, userId) {
+    const { soId, warehouseId, lines } = soData;
+
+    try {
+      await db.transaction(async (connection) => {
+        for (const line of lines) {
+          // Reserve inventory for each line
+          await inventoryService.reserveStock(tenantId, {
+            itemId: line.itemId,
+            warehouseId,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            soId,
+            soLineId: line.id
+          }, userId);
+
+          // Update SO line status
+          await connection.execute(
+            'UPDATE sales_order_lines SET status = "reserved" WHERE id = ?',
+            [line.id]
+          );
+        }
+      });
+
+      logger.info('Stock reserved for SO', { soId, tenantId, userId });
+    } catch (error) {
+      logger.error('Failed to reserve stock for SO', { soId, tenantId, error: error.message });
+      throw error;
+    }
+  }
+
+  async shipStock(tenantId, soData, userId) {
+    const { soId, warehouseId, lines, shipmentNumber } = soData;
+
+    try {
+      await db.transaction(async (connection) => {
+        for (const line of lines) {
+          // Ship inventory for each line
+          await inventoryService.shipStock(tenantId, {
+            itemId: line.itemId,
+            warehouseId,
+            quantity: line.quantityShipped,
+            unitPrice: line.unitPrice,
+            soId,
+            soLineId: line.id,
+            shipmentNumber
+          }, userId);
+
+          // Update SO line quantities
+          await connection.execute(
+            'UPDATE sales_order_lines SET quantity_shipped = quantity_shipped + ?, status = "shipped" WHERE id = ?',
+            [line.quantityShipped, line.id]
+          );
+        }
+      });
+
+      logger.info('Stock shipped for SO', { soId, tenantId, userId });
+    } catch (error) {
+      logger.error('Failed to ship stock for SO', { soId, tenantId, error: error.message });
+      throw error;
+    }
+  }
+  async updateSOStatus(tenantId, soId, status, userId) {
+    try {
+      // Get SO details for inventory operations
+      const so = await this.getSalesOrder(tenantId, soId);
+      if (!so) throw new Error('Sales order not found');
+
+      // Handle inventory based on status
+      if (status === 'confirmed') {
+        await this.reserveStock(tenantId, {
+          soId,
+          warehouseId: so.warehouse_id,
+          lines: so.lines.map(line => ({
+            id: line.id,
+            itemId: line.item_id,
+            quantity: line.quantity_ordered,
+            unitPrice: line.unit_price
+          }))
+        }, userId);
+      } else if (status === 'shipped') {
+        await this.shipStock(tenantId, {
+          soId,
+          warehouseId: so.warehouse_id,
+          shipmentNumber: `SHIP-${Date.now()}`,
+          lines: so.lines.map(line => ({
+            id: line.id,
+            itemId: line.item_id,
+            quantityShipped: line.quantity_ordered - (line.quantity_shipped || 0),
+            unitPrice: line.unit_price
+          }))
+        }, userId);
+      }
+
+      const result = await db.query(
+        'UPDATE sales_orders SET status = ?, updated_at = NOW() WHERE tenant_id = ? AND id = ?',
+        [status, tenantId, soId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error('Sales order not found');
+      }
+
+      logger.info('SO status updated', { soId, tenantId, status, userId });
+    } catch (error) {
+      logger.error('Failed to update SO status', { soId, tenantId, status, error: error.message });
+      throw error;
+    }
   }
 }
 

@@ -28,6 +28,7 @@ router.get('/:id',
 
 // PUT /api/purchase-orders/:id/status
 router.put('/:id/status',
+  validate(schemas.updatePOStatusSchema),
   requirePermission('purchase_management'),
   validateTenantConsistency,
   auditLog('purchase_order_status_updated'),

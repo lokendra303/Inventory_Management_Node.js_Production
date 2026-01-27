@@ -11,7 +11,9 @@ const PurchaseOrders = () => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [receiveModalVisible, setReceiveModalVisible] = useState(false);
+  const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedPO, setSelectedPO] = useState(null);
+  const [selectedPOForView, setSelectedPOForView] = useState(null);
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
 
@@ -34,7 +36,7 @@ const PurchaseOrders = () => {
         return <span style={{ color: colors[status] || 'black' }}>{status?.toUpperCase()}</span>;
       }
     },
-    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val) => `$${val || 0}` },
+    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val, record) => `${record.currency || 'USD'} ${val || 0}` },
     { title: 'Order Date', dataIndex: 'order_date', key: 'order_date' },
     {
       title: 'Actions',
@@ -132,8 +134,16 @@ const PurchaseOrders = () => {
     }
   };
 
-  const viewPO = (po) => {
-    message.info(`Viewing PO: ${po.po_number}`);
+  const viewPO = async (po) => {
+    try {
+      const response = await apiService.get(`/purchase-orders/${po.id}`);
+      if (response.success) {
+        setSelectedPOForView(response.data);
+        setViewModalVisible(true);
+      }
+    } catch (error) {
+      message.error('Failed to load PO details');
+    }
   };
 
   const receivePO = async (po) => {
@@ -266,6 +276,15 @@ const PurchaseOrders = () => {
               {warehouses.map(wh => (
                 <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
               ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item name="currency" label="Currency" initialValue="USD">
+            <Select placeholder="Select currency">
+              <Select.Option value="USD">USD</Select.Option>
+              <Select.Option value="EUR">EUR</Select.Option>
+              <Select.Option value="GBP">GBP</Select.Option>
+              <Select.Option value="INR">INR</Select.Option>
             </Select>
           </Form.Item>
           
@@ -438,6 +457,71 @@ const PurchaseOrders = () => {
             </Space>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* View PO Modal */}
+      <Modal
+        title={`Purchase Order Details - ${selectedPOForView?.po_number}`}
+        open={viewModalVisible}
+        onCancel={() => {
+          setViewModalVisible(false);
+          setSelectedPOForView(null);
+        }}
+        footer={[
+          <Button key="close" onClick={() => {
+            setViewModalVisible(false);
+            setSelectedPOForView(null);
+          }}>
+            Close
+          </Button>
+        ]}
+        width={1000}
+      >
+        {selectedPOForView && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <strong>Vendor:</strong> {selectedPOForView.vendor_name}<br/>
+              <strong>Warehouse:</strong> {selectedPOForView.warehouse_name}<br/>
+              <strong>Status:</strong> {selectedPOForView.status?.toUpperCase()}<br/>
+              <strong>Order Date:</strong> {selectedPOForView.order_date}<br/>
+              <strong>Expected Date:</strong> {selectedPOForView.expected_date}<br/>
+              <strong>Currency:</strong> {selectedPOForView.currency}<br/>
+              <strong>Total Amount:</strong> {selectedPOForView.currency} {selectedPOForView.total_amount}
+            </div>
+            
+            <h4>Line Items:</h4>
+            <Table
+              dataSource={selectedPOForView.lines || []}
+              rowKey="id"
+              pagination={false}
+              columns={[
+                { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
+                { title: 'SKU', dataIndex: 'sku', key: 'sku' },
+                { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered' },
+                { title: 'Received', dataIndex: 'quantity_received', key: 'quantity_received', render: (val) => val || 0 },
+                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', render: (val) => `${selectedPOForView.currency} ${val}` },
+                { title: 'Line Total', dataIndex: 'line_total', key: 'line_total', render: (val) => `${selectedPOForView.currency} ${val}` },
+                { title: 'Status', dataIndex: 'status', key: 'status', render: (val) => val?.toUpperCase() }
+              ]}
+            />
+            
+            {selectedPOForView.grns && selectedPOForView.grns.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4>Goods Receipt Notes:</h4>
+                <Table
+                  dataSource={selectedPOForView.grns}
+                  rowKey="id"
+                  pagination={false}
+                  columns={[
+                    { title: 'GRN Number', dataIndex: 'grn_number', key: 'grn_number' },
+                    { title: 'Receipt Date', dataIndex: 'receipt_date', key: 'receipt_date' },
+                    { title: 'Status', dataIndex: 'status', key: 'status', render: (val) => val?.toUpperCase() }
+                  ]}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

@@ -1,6 +1,7 @@
 const express = require('express');
 const purchaseOrderController = require('../controllers/purchaseOrderController');
 const { requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
+const { validate, schemas } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -12,6 +13,7 @@ router.get('/pending-receipts',
 
 // POST /api/grn
 router.post('/',
+  validate(schemas.createGRNSchema),
   requirePermission('inventory_receive'),
   validateTenantConsistency,
   auditLog('grn_created'),

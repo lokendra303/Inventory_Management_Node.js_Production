@@ -28,6 +28,7 @@ router.use('/vendors', require('./vendors'));
 router.use('/sales-orders', require('./sales-orders'));
 router.use('/grn', require('./grn'));
 router.use('/reorder-levels', require('./reorder-levels'));
+router.use('/reports', require('./reports'));
 router.use('/settings', require('./settings'));
 
 // Error handling middleware

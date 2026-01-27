@@ -56,7 +56,7 @@ class PurchaseOrderController {
 
   async getPurchaseOrder(req, res) {
     try {
-      const { poId } = req.params;
+      const { id: poId } = req.params;
       const po = await purchaseOrderService.getPurchaseOrder(req.tenantId, poId);
       
       if (!po) {
@@ -74,7 +74,7 @@ class PurchaseOrderController {
       logger.error('Failed to get purchase order', { 
         error: error.message, 
         tenantId: req.tenantId,
-        poId: req.params.poId 
+        poId: req.params.id 
       });
       res.status(500).json({
         success: false,
@@ -144,20 +144,28 @@ class PurchaseOrderController {
 
   async updatePOStatus(req, res) {
     try {
-      const { poId } = req.params;
+      const { id: poId } = req.params;
       const { status } = req.body;
-      
+
+      // Additional validation (already handled by middleware, but keeping for safety)
+      if (!status) {
+        return res.status(400).json({
+          success: false,
+          error: 'Status is required'
+        });
+      }
+
       await purchaseOrderService.updatePOStatus(req.tenantId, poId, status, req.user.userId);
-      
+
       res.json({
         success: true,
         message: 'Purchase order status updated successfully'
       });
     } catch (error) {
-      logger.error('Failed to update PO status', { 
-        error: error.message, 
+      logger.error('Failed to update PO status', {
+        error: error.message,
         tenantId: req.tenantId,
-        poId: req.params.poId 
+        poId: req.params.id
       });
       res.status(400).json({
         success: false,

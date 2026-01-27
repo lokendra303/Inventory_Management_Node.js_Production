@@ -212,6 +212,13 @@ class PurchaseOrderService {
           poStatus = 'received';
         } else if (anyReceived) {
           poStatus = 'partially_received';
+        } else {
+          // If no items received yet, keep current status (could be 'confirmed' or 'sent')
+          const [currentPO] = await connection.execute(
+            'SELECT status FROM purchase_orders WHERE id = ?',
+            [poId]
+          );
+          poStatus = currentPO[0]?.status || 'sent';
         }
 
         await connection.execute(
@@ -258,8 +265,8 @@ class PurchaseOrderService {
   }
 
   async getPurchaseOrder(tenantId, poId) {
-    const [pos] = await db.query(
-      `SELECT po.*, v.name as vendor_name, w.name as warehouse_name
+    const pos = await db.query(
+      `SELECT po.*, COALESCE(v.name, po.vendor_name) as vendor_name, w.name as warehouse_name
        FROM purchase_orders po
        LEFT JOIN vendors v ON po.vendor_id = v.id
        LEFT JOIN warehouses w ON po.warehouse_id = w.id

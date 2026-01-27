@@ -26,4 +26,13 @@ router.get('/:id',
   salesOrderController.getSalesOrder
 );
 
+// PUT /api/sales-orders/:id/status
+router.put('/:id/status',
+  validate(schemas.updateSOStatusSchema),
+  requirePermission('sales_management'),
+  validateTenantConsistency,
+  auditLog('sales_order_status_updated'),
+  salesOrderController.updateSOStatus
+);
+
 module.exports = router;
