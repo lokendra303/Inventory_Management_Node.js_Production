@@ -1,0 +1,27 @@
+{
+  "name": "@yourcompany/universal-auth",
+  "version": "1.0.0",
+  "description": "Universal authentication service with multi-tenant support - write once, use anywhere",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "build": "node scripts/build.js"
+  },
+  "keywords": ["auth", "authentication", "multi-tenant", "jwt", "universal", "reusable"],
+  "author": "Your Company",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.0",
+    "uuid": "^9.0.0"
+  },
+  "peerDependencies": {
+    "mysql2": "^3.0.0"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "migrations/",
+    "README.md"
+  ]
+}
