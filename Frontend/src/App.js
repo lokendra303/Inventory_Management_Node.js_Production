@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { CurrencyProvider } from './contexts/CurrencyContext';
 import { withPermission } from './components/PermissionWrapper';
 import SessionActivityTracker from './components/SessionActivityTracker';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
@@ -93,7 +94,9 @@ function App() {
       <Router>
         <AuthProvider>
           <CurrencyProvider>
-            <AppContent />
+            <ErrorBoundary>
+              <AppContent />
+            </ErrorBoundary>
           </CurrencyProvider>
         </AuthProvider>
       </Router>

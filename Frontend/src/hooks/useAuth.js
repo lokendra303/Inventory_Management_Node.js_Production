@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { message } from 'antd';
+import { message, Modal } from 'antd';
 import apiService from '../services/apiService';
 import { useSessionManager } from './useSessionManager';
 
@@ -42,6 +42,16 @@ export const AuthProvider = ({ children }) => {
           console.log('Session expired, removing token');
           sessionStorage.removeItem('token');
           sessionStorage.removeItem('lastActivity');
+          Modal.warning({
+            title: 'Session Expired',
+            content: 'Your session has expired. Please login again.',
+            okText: 'Login',
+            onOk: () => {
+              window.location.href = '/';
+            },
+            centered: true,
+            maskClosable: false,
+          });
           setLoading(false);
           return;
         }
@@ -69,8 +79,27 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Failed to fetch profile:', error);
-      sessionStorage.removeItem('token');
-      apiService.setAuthToken(null);
+      
+      // Check if it's a session expired error
+      if (error.response?.data?.code === 'SESSION_EXPIRED' || 
+          error.response?.data?.error?.includes('expired')) {
+        Modal.warning({
+          title: 'Session Expired',
+          content: 'Your session has expired. Please login again.',
+          okText: 'Login',
+          onOk: () => {
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('lastActivity');
+            apiService.setAuthToken(null);
+            window.location.href = '/';
+          },
+          centered: true,
+          maskClosable: false,
+        });
+      } else {
+        sessionStorage.removeItem('token');
+        apiService.setAuthToken(null);
+      }
     } finally {
       console.log('Setting loading to false');
       setLoading(false);

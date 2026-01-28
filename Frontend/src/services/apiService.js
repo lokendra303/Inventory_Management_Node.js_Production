@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { Modal } from 'antd';
 
 class ApiService {
   constructor() {
@@ -33,7 +34,30 @@ class ApiService {
       },
       async (error) => {
         if (error.response?.status === 401) {
-          // Try to refresh token first
+          const errorData = error.response?.data;
+          
+          // Check if it's a session expired error
+          if (errorData?.code === 'SESSION_EXPIRED' || errorData?.error?.includes('expired')) {
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('lastActivity');
+            
+            // Show session expired popup
+            const { Modal } = await import('antd');
+            Modal.warning({
+              title: 'Session Expired',
+              content: 'Your session has expired. Please login again.',
+              okText: 'Login',
+              onOk: () => {
+                window.location.href = '/';
+              },
+              centered: true,
+              maskClosable: false,
+            });
+            
+            return Promise.reject(error);
+          }
+          
+          // Try to refresh token for other 401 errors
           const token = sessionStorage.getItem('token');
           if (token && !error.config._retry) {
             error.config._retry = true;

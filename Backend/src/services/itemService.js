@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/connection');
 const logger = require('../utils/logger');
+const itemFieldService = require('./itemFieldService');
 
 class ItemService {
   async createItem(tenantId, itemData, userId) {
@@ -41,6 +42,12 @@ class ItemService {
       openingValue = 0,
       asOfDate
     } = itemData;
+
+    // Validate custom fields based on item type
+    const validationErrors = await itemFieldService.validateCustomFields(tenantId, type, customFields);
+    if (validationErrors.length > 0) {
+      throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
+    }
 
     const itemId = uuidv4();
 
@@ -260,6 +267,33 @@ class ItemService {
         };
       }
     });
+  }
+
+  async getItemFieldConfig(tenantId, itemType) {
+    return await itemFieldService.getFieldConfig(tenantId, itemType);
+  }
+
+  async createItemFieldConfig(tenantId, fieldData, userId) {
+    return await itemFieldService.createFieldConfig(tenantId, fieldData, userId);
+  }
+
+  async getItemTypeFields(itemType) {
+    const defaultConfigs = itemFieldService.getDefaultFieldConfigs();
+    return defaultConfigs[itemType] || [];
+  }
+
+  async updateItemFieldOptions(tenantId, itemType, fieldName, options, userId) {
+    const result = await db.query(
+      'UPDATE item_field_configs SET options = ?, updated_at = NOW() WHERE tenant_id = ? AND item_type = ? AND field_name = ?',
+      [JSON.stringify(options), tenantId, itemType, fieldName]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Field configuration not found');
+    }
+
+    logger.info('Field options updated', { itemType, fieldName, tenantId, userId });
+    return true;
   }
 
   async createCompositeItem(tenantId, compositeData, userId) {

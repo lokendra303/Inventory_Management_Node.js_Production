@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, message, InputNumber, Row, Col, Upload } from 'antd';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload } from 'antd';
 import { PlusOutlined, EditOutlined, UploadOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import { useAuth } from '../hooks/useAuth';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { formatPrice, convertPrice, getCurrencies } from '../utils/currency';
+import CustomizableDropdown from '../components/CustomizableDropdown';
 
 const Items = () => {
   const { user } = useAuth();
@@ -22,6 +23,9 @@ const Items = () => {
   const [imageFile, setImageFile] = useState(null);
   const [form] = Form.useForm();
   const [categoryForm] = Form.useForm();
+  const [unitOptions, setUnitOptions] = useState([]);
+  const [manufacturerOptions, setManufacturerOptions] = useState([]);
+  const [brandOptions, setBrandOptions] = useState([]);
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -77,6 +81,22 @@ const Items = () => {
     }
   ];
 
+  const fetchDropdownOptions = async () => {
+    try {
+      const [unitsRes, manufacturersRes, brandsRes] = await Promise.all([
+        apiService.get('/dropdown-options/units'),
+        apiService.get('/dropdown-options/manufacturers'), 
+        apiService.get('/dropdown-options/brands')
+      ]);
+      
+      if (unitsRes.success) setUnitOptions(unitsRes.data);
+      if (manufacturersRes.success) setManufacturerOptions(manufacturersRes.data);
+      if (brandsRes.success) setBrandOptions(brandsRes.data);
+    } catch (error) {
+      console.log('Using empty options');
+    }
+  };
+
   const fetchItems = async () => {
     try {
       setLoading(true);
@@ -124,7 +144,6 @@ const Items = () => {
     try {
       console.log('Form values:', values);
       
-      // Map form field names to database field names
       const itemData = {
         sku: values.sku,
         name: values.name,
@@ -143,8 +162,6 @@ const Items = () => {
         maxStockLevel: values.maxStockLevel,
         barcode: values.barcode
       };
-      
-      console.log('Sending item data:', itemData);
       
       if (editingItem) {
         const response = await apiService.put(`/items/${editingItem.id}`, itemData);
@@ -182,7 +199,7 @@ const Items = () => {
 
   const editItem = (item) => {
     setEditingItem(item);
-    setPriceCurrency(currency); // Set to current display currency
+    setPriceCurrency(currency);
     form.setFieldsValue({
       sku: item.sku,
       name: item.name,
@@ -204,7 +221,7 @@ const Items = () => {
 
   const openCreateModal = () => {
     setEditingItem(null);
-    setPriceCurrency(currency); // Set to current display currency
+    setPriceCurrency(currency);
     setImageUrl('');
     setImageFile(null);
     form.resetFields();
@@ -213,6 +230,7 @@ const Items = () => {
 
   useEffect(() => {
     fetchItems();
+    fetchDropdownOptions();
   }, []);
 
   return (
@@ -307,6 +325,39 @@ const Items = () => {
                       <Select 
                         placeholder="Select category"
                         allowClear
+                        dropdownRender={(menu) => (
+                          <div>
+                            {menu}
+                            <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                              <Button 
+                                type="link" 
+                                size="small"
+                                onClick={() => {
+                                  const newOption = prompt('Enter new category:');
+                                  if (newOption && !categories.find(c => c.name === newOption)) {
+                                    setCategories([...categories, { id: Date.now(), name: newOption }]);
+                                  }
+                                }}
+                              >
+                                + Add Category
+                              </Button>
+                              <Button 
+                                type="link" 
+                                size="small"
+                                danger
+                                onClick={() => {
+                                  const optionToDelete = prompt('Enter category name to delete:');
+                                  if (optionToDelete) {
+                                    setCategories(categories.filter(c => c.name !== optionToDelete));
+                                    message.success('Category deleted');
+                                  }
+                                }}
+                              >
+                                - Delete Category
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       >
                         {categories.map(category => (
                           <Select.Option key={category.id} value={category.name}>
@@ -321,16 +372,45 @@ const Items = () => {
                 </Col>
                 <Col span={8}>
                   <Form.Item name="unit" label="Unit" initialValue="pcs">
-                    <Select placeholder="Select unit">
-                      <Select.Option value="pcs">Pieces</Select.Option>
-                      <Select.Option value="kg">Kilograms</Select.Option>
-                      <Select.Option value="g">Grams</Select.Option>
-                      <Select.Option value="l">Liters</Select.Option>
-                      <Select.Option value="ml">Milliliters</Select.Option>
-                      <Select.Option value="m">Meters</Select.Option>
-                      <Select.Option value="cm">Centimeters</Select.Option>
-                      <Select.Option value="box">Box</Select.Option>
-                      <Select.Option value="pack">Pack</Select.Option>
+                    <Select 
+                      placeholder="Select unit"
+                      dropdownRender={(menu) => (
+                        <div>
+                          {menu}
+                          <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                            <Button 
+                              type="link" 
+                              size="small"
+                              onClick={() => {
+                                const newOption = prompt('Enter new unit:');
+                                if (newOption && !unitOptions.includes(newOption)) {
+                                  setUnitOptions([...unitOptions, newOption]);
+                                }
+                              }}
+                            >
+                              + Add Unit
+                            </Button>
+                            <Button 
+                              type="link" 
+                              size="small"
+                              danger
+                              onClick={() => {
+                                const optionToDelete = prompt('Enter unit to delete:');
+                                if (optionToDelete && unitOptions.includes(optionToDelete)) {
+                                  setUnitOptions(unitOptions.filter(u => u !== optionToDelete));
+                                  message.success('Unit deleted');
+                                }
+                              }}
+                            >
+                              - Delete Unit
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    >
+                      {unitOptions.map(unit => (
+                        <Select.Option key={unit} value={unit}>{unit.charAt(0).toUpperCase() + unit.slice(1)}</Select.Option>
+                      ))}
                     </Select>
                   </Form.Item>
                 </Col>
@@ -360,7 +440,6 @@ const Items = () => {
               </Row>
             </Col>
             
-            {/* Image Upload Section */}
             <Col span={8}>
               <Form.Item name="image" label="Item Image">
                 <Upload
@@ -380,7 +459,6 @@ const Items = () => {
                       return false;
                     }
                     
-                    // Create preview URL
                     const reader = new FileReader();
                     reader.onload = (e) => {
                       setImageUrl(e.target.result);
@@ -388,7 +466,7 @@ const Items = () => {
                     reader.readAsDataURL(file);
                     setImageFile(file);
                     
-                    return false; // Prevent auto upload
+                    return false;
                   }}
                 >
                   {imageUrl ? (
@@ -435,9 +513,46 @@ const Items = () => {
             </Col>
             <Col span={8}>
               <Form.Item name="manufacturer" label="Manufacturer">
-                <Select placeholder="Select or Add Manufacturer" allowClear>
-                  <Select.Option value="manufacturer1">Manufacturer 1</Select.Option>
-                  <Select.Option value="manufacturer2">Manufacturer 2</Select.Option>
+                <Select 
+                  placeholder="Select or Add Manufacturer" 
+                  allowClear
+                  dropdownRender={(menu) => (
+                    <div>
+                      {menu}
+                      <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                        <Button 
+                          type="link" 
+                          size="small"
+                          onClick={() => {
+                            const newOption = prompt('Enter new manufacturer:');
+                            if (newOption && !manufacturerOptions.includes(newOption)) {
+                              setManufacturerOptions([...manufacturerOptions, newOption]);
+                            }
+                          }}
+                        >
+                          + Add Manufacturer
+                        </Button>
+                        <Button 
+                          type="link" 
+                          size="small"
+                          danger
+                          onClick={() => {
+                            const optionToDelete = prompt('Enter manufacturer to delete:');
+                            if (optionToDelete && manufacturerOptions.includes(optionToDelete)) {
+                              setManufacturerOptions(manufacturerOptions.filter(m => m !== optionToDelete));
+                              message.success('Manufacturer deleted');
+                            }
+                          }}
+                        >
+                          - Delete Manufacturer
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                >
+                  {manufacturerOptions.map(manufacturer => (
+                    <Select.Option key={manufacturer} value={manufacturer}>{manufacturer}</Select.Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -451,9 +566,46 @@ const Items = () => {
             </Col>
             <Col span={8}>
               <Form.Item name="brand" label="Brand">
-                <Select placeholder="Select or Add Brand" allowClear>
-                  <Select.Option value="brand1">Brand 1</Select.Option>
-                  <Select.Option value="brand2">Brand 2</Select.Option>
+                <Select 
+                  placeholder="Select or Add Brand" 
+                  allowClear
+                  dropdownRender={(menu) => (
+                    <div>
+                      {menu}
+                      <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                        <Button 
+                          type="link" 
+                          size="small"
+                          onClick={() => {
+                            const newOption = prompt('Enter new brand:');
+                            if (newOption && !brandOptions.includes(newOption)) {
+                              setBrandOptions([...brandOptions, newOption]);
+                            }
+                          }}
+                        >
+                          + Add Brand
+                        </Button>
+                        <Button 
+                          type="link" 
+                          size="small"
+                          danger
+                          onClick={() => {
+                            const optionToDelete = prompt('Enter brand to delete:');
+                            if (optionToDelete && brandOptions.includes(optionToDelete)) {
+                              setBrandOptions(brandOptions.filter(b => b !== optionToDelete));
+                              message.success('Brand deleted');
+                            }
+                          }}
+                        >
+                          - Delete Brand
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                >
+                  {brandOptions.map(brand => (
+                    <Select.Option key={brand} value={brand}>{brand}</Select.Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -477,7 +629,6 @@ const Items = () => {
             </Col>
           </Row>
 
-          {/* Sales Information Section */}
           <div style={{ marginTop: 24, marginBottom: 16 }}>
             <h3>Sales Information</h3>
           </div>
@@ -509,7 +660,6 @@ const Items = () => {
             </Col>
           </Row>
 
-          {/* Purchase Information Section */}
           <div style={{ marginTop: 24, marginBottom: 16 }}>
             <h3>Purchase Information</h3>
           </div>
@@ -546,7 +696,6 @@ const Items = () => {
             </Col>
           </Row>
 
-          {/* Inventory Tracking Section */}
           <div style={{ marginTop: 24, marginBottom: 16 }}>
             <Form.Item name="trackInventory" label="" valuePropName="checked">
               <input type="checkbox" /> Track Inventory for this Item

@@ -1,8 +1,23 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { message } from 'antd';
+import { Modal } from 'antd';
 
 const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
 const WARNING_TIME = 2 * 60 * 1000; // 2 minutes before timeout
+
+const showSessionExpiredModal = () => {
+  Modal.warning({
+    title: 'Session Expired',
+    content: 'Your session has expired. Please login again.',
+    okText: 'Login',
+    onOk: () => {
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('lastActivity');
+      window.location.href = '/';
+    },
+    centered: true,
+    maskClosable: false,
+  });
+};
 
 export const useSessionManager = (user, logout) => {
   const timeoutRef = useRef(null);
@@ -21,15 +36,20 @@ export const useSessionManager = (user, logout) => {
 
     // Set warning timer (2 minutes before timeout)
     warningRef.current = setTimeout(() => {
-      message.warning('Your session will expire in 2 minutes due to inactivity', 5);
+      Modal.warning({
+        title: 'Session Warning',
+        content: 'Your session will expire in 2 minutes due to inactivity',
+        okText: 'Continue',
+        onOk: () => resetTimer(),
+        centered: true,
+      });
     }, SESSION_TIMEOUT - WARNING_TIME);
 
     // Set logout timer
     timeoutRef.current = setTimeout(() => {
-      message.error('Session expired due to inactivity');
-      logout();
+      showSessionExpiredModal();
     }, SESSION_TIMEOUT);
-  }, [user, logout]);
+  }, [user]);
 
   const checkSessionValidity = useCallback(() => {
     if (!user) return true;
@@ -42,13 +62,12 @@ export const useSessionManager = (user, logout) => {
 
     const timeSinceLastActivity = Date.now() - parseInt(lastActivity);
     if (timeSinceLastActivity > SESSION_TIMEOUT) {
-      message.error('Session expired due to inactivity');
-      logout();
+      showSessionExpiredModal();
       return false;
     }
 
     return true;
-  }, [user, logout]);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;

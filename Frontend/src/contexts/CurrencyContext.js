@@ -13,7 +13,18 @@ export const useCurrency = () => {
 
 export const CurrencyProvider = ({ children }) => {
   const [currency, setCurrency] = useState('USD');
+  const [exchangeRate, setExchangeRate] = useState(1);
   const [loading, setLoading] = useState(false);
+
+  // Simple exchange rates (you can update these or fetch from API)
+  const exchangeRates = {
+    'USD': 1,
+    'EUR': 0.85,
+    'GBP': 0.73,
+    'INR': 83.12,
+    'JPY': 110.0,
+    'CAD': 1.25
+  };
 
   useEffect(() => {
     fetchCurrency();
@@ -23,7 +34,11 @@ export const CurrencyProvider = ({ children }) => {
     try {
       const response = await apiService.get('/settings');
       if (response.success) {
-        setCurrency(response.data.currency || 'USD');
+        const newCurrency = response.data.currency || 'USD';
+        const newRate = exchangeRates[newCurrency] || 1;
+        setCurrency(newCurrency);
+        setExchangeRate(newRate);
+        console.log('Currency loaded:', newCurrency, 'Rate:', newRate);
       }
     } catch (error) {
       console.error('Failed to fetch currency');
@@ -35,7 +50,9 @@ export const CurrencyProvider = ({ children }) => {
       setLoading(true);
       const response = await apiService.put('/settings', { currency: newCurrency });
       if (response.success) {
+        const newRate = exchangeRates[newCurrency] || 1;
         setCurrency(newCurrency);
+        setExchangeRate(newRate);
         return true;
       }
       return false;
@@ -47,8 +64,14 @@ export const CurrencyProvider = ({ children }) => {
     }
   };
 
+  const formatCurrency = (amount) => {
+    const convertedAmount = (amount * exchangeRate).toFixed(2);
+    console.log('Converting:', amount, 'x', exchangeRate, '=', convertedAmount);
+    return `${currency} ${convertedAmount}`;
+  };
+
   return (
-    <CurrencyContext.Provider value={{ currency, updateCurrency, loading }}>
+    <CurrencyContext.Provider value={{ currency, exchangeRate, formatCurrency, updateCurrency, loading }}>
       {children}
     </CurrencyContext.Provider>
   );

@@ -55,6 +55,50 @@ class ItemController {
     }
   }
 
+  async getItemFieldConfig(req, res) {
+    try {
+      const { itemType } = req.params;
+      const fieldConfig = await itemService.getItemFieldConfig(req.tenantId, itemType);
+      
+      res.json({
+        success: true,
+        data: fieldConfig
+      });
+    } catch (error) {
+      logger.error('Failed to get item field config', { error: error.message, tenantId: req.tenantId });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  async createItemFieldConfig(req, res) {
+    try {
+      const configId = await itemService.createItemFieldConfig(
+        req.tenantId,
+        req.body,
+        req.user.userId
+      );
+      
+      res.status(201).json({
+        success: true,
+        message: 'Field configuration created successfully',
+        data: { configId }
+      });
+    } catch (error) {
+      logger.error('Field config creation failed', { 
+        error: error.message, 
+        tenantId: req.tenantId,
+        userId: req.user.userId 
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
   async getItem(req, res) {
     try {
       const { itemId } = req.params;
@@ -106,6 +150,36 @@ class ItemController {
         error: error.message, 
         tenantId: req.tenantId,
         itemId: req.params.itemId,
+        userId: req.user.userId 
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async updateItemFieldConfig(req, res) {
+    try {
+      const { itemType, fieldName } = req.params;
+      const { options } = req.body;
+      
+      await itemService.updateItemFieldOptions(
+        req.tenantId,
+        itemType,
+        fieldName,
+        options,
+        req.user.userId
+      );
+      
+      res.json({
+        success: true,
+        message: 'Field options updated successfully'
+      });
+    } catch (error) {
+      logger.error('Field options update failed', { 
+        error: error.message, 
+        tenantId: req.tenantId,
         userId: req.user.userId 
       });
       res.status(400).json({

@@ -16,6 +16,10 @@ const extractTenantContext = async (req, res, next) => {
         tenantId = decoded.tenantId;
         req.user = decoded;
       } catch (error) {
+        // Check if token is expired
+        if (error.name === 'TokenExpiredError' || error.message.includes('expired')) {
+          return res.status(401).json({ error: 'Session expired', code: 'SESSION_EXPIRED' });
+        }
         // Token invalid, continue to other methods
       }
     }
@@ -78,6 +82,12 @@ const requireAuth = async (req, res, next) => {
     next();
   } catch (error) {
     logger.error('Authentication failed', { error: error.message, path: req.path });
+    
+    // Check if token is expired
+    if (error.name === 'TokenExpiredError' || error.message.includes('expired')) {
+      return res.status(401).json({ error: 'Session expired', code: 'SESSION_EXPIRED' });
+    }
+    
     res.status(401).json({ error: 'Invalid token' });
   }
 };

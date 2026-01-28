@@ -10,11 +10,31 @@ router.get('/',
   itemController.getItems
 );
 
+// GET /api/items/field-config/:itemType
+router.get('/field-config/:itemType',
+  requirePermission('item_view'),
+  itemController.getItemFieldConfig
+);
+
+// POST /api/items/field-config
+router.post('/field-config',
+  requirePermission('item_management'),
+  auditLog('field_config_created'),
+  itemController.createItemFieldConfig
+);
+
 // POST /api/items
 router.post('/',
   requirePermission('item_management'),
   auditLog('item_created'),
   itemController.createItem
+);
+
+// PUT /api/items/field-config/:itemType/:fieldName/options
+router.put('/field-config/:itemType/:fieldName/options',
+  requirePermission('item_management'),
+  auditLog('field_options_updated'),
+  itemController.updateItemFieldConfig
 );
 
 // GET /api/items/:id

@@ -19,6 +19,7 @@ router.use(validateTenantConsistency);
 router.use('/users', require('./users'));
 router.use('/roles', require('./roles'));
 router.use('/items', require('./items'));
+router.use('/dropdown-options', require('./dropdown-options'));
 router.use('/categories', require('./categories'));
 router.use('/warehouses', require('./warehouses'));
 router.use('/warehouse-types', require('./warehouse-types'));
