@@ -88,7 +88,8 @@ class AuthService {
       [user.id]
     );
 
-    // Generate JWT token
+    // Generate JWT token with session timestamp
+    const sessionTimestamp = Date.now();
     const token = jwt.sign(
       {
         userId: user.id,
@@ -96,7 +97,8 @@ class AuthService {
         email: user.email,
         role: user.role,
         permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || []
+        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || [],
+        sessionTimestamp
       },
       config.jwt.secret,
       { expiresIn: config.jwt.expiresIn }
@@ -123,6 +125,14 @@ class AuthService {
     try {
       const decoded = jwt.verify(token, config.jwt.secret);
       
+      // Check session timeout (15 minutes = 900000ms)
+      if (decoded.sessionTimestamp) {
+        const sessionAge = Date.now() - decoded.sessionTimestamp;
+        if (sessionAge > 15 * 60 * 1000) {
+          throw new Error('Session expired due to inactivity');
+        }
+      }
+      
       // Verify user still exists and is active
       const users = await db.query(
         'SELECT u.*, t.status as tenant_status FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?',
@@ -136,6 +146,56 @@ class AuthService {
       return decoded;
     } catch (error) {
       throw new Error('Invalid token');
+    }
+  }
+
+  async refreshToken(token) {
+    try {
+      const decoded = jwt.verify(token, config.jwt.secret);
+      
+      // Verify user still exists and is active
+      const users = await db.query(
+        'SELECT u.*, t.status as tenant_status FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?',
+        [decoded.userId]
+      );
+
+      if (users.length === 0 || users[0].status !== 'active' || users[0].tenant_status !== 'active') {
+        throw new Error('Invalid token');
+      }
+
+      const user = users[0];
+      
+      // Generate new token with updated session timestamp
+      const sessionTimestamp = Date.now();
+      const newToken = jwt.sign(
+        {
+          userId: user.id,
+          tenantId: user.tenant_id,
+          email: user.email,
+          role: user.role,
+          permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
+          warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || [],
+          sessionTimestamp
+        },
+        config.jwt.secret,
+        { expiresIn: config.jwt.expiresIn }
+      );
+
+      return {
+        token: newToken,
+        user: {
+          id: user.id,
+          tenantId: user.tenant_id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          role: user.role,
+          permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
+          warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || []
+        }
+      };
+    } catch (error) {
+      throw new Error('Invalid or expired token');
     }
   }
 

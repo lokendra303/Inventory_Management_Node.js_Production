@@ -1,7 +1,7 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const { validate, schemas } = require('../utils/validation');
-const { auditLog } = require('../middleware/auth');
+const { auditLog, requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -27,5 +27,8 @@ router.post('/temp-login',
 
 // POST /api/auth/refresh
 router.post('/refresh', authController.refreshToken);
+
+// GET /api/auth/profile (PROTECTED)
+router.get('/profile', requireAuth, authController.getProfile);
 
 module.exports = router;

@@ -27,14 +27,44 @@ class ApiService {
     // Response interceptor
     this.api.interceptors.response.use(
       (response) => {
+        // Update last activity on successful API calls
+        sessionStorage.setItem('lastActivity', Date.now().toString());
         return response.data;
       },
-      (error) => {
+      async (error) => {
         if (error.response?.status === 401) {
-          sessionStorage.removeItem('token');
-          window.location.href = '/login';
+          // Try to refresh token first
+          const token = sessionStorage.getItem('token');
+          if (token && !error.config._retry) {
+            error.config._retry = true;
+            try {
+              const refreshResponse = await axios.post(
+                `${this.api.defaults.baseURL}/auth/refresh`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              
+              if (refreshResponse.data.success) {
+                const newToken = refreshResponse.data.data.token;
+                sessionStorage.setItem('token', newToken);
+                sessionStorage.setItem('lastActivity', Date.now().toString());
+                this.setAuthToken(newToken);
+                error.config.headers.Authorization = `Bearer ${newToken}`;
+                return this.api.request(error.config);
+              }
+            } catch (refreshError) {
+              // Refresh failed, redirect to login
+              sessionStorage.removeItem('token');
+              sessionStorage.removeItem('lastActivity');
+              window.location.href = '/';
+              return Promise.reject(refreshError);
+            }
+          } else {
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('lastActivity');
+            window.location.href = '/';
+          }
         } else if (error.response?.status === 403) {
-          // Permission denied - let the component handle it
           return Promise.reject({
             ...error,
             isPermissionError: true,

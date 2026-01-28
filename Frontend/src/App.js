@@ -4,6 +4,7 @@ import { ConfigProvider, Layout, message } from 'antd';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { CurrencyProvider } from './contexts/CurrencyContext';
 import { withPermission } from './components/PermissionWrapper';
+import SessionActivityTracker from './components/SessionActivityTracker';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
@@ -51,6 +52,7 @@ function AppContent() {
   console.log('User authenticated, showing main app');
   return (
     <Layout style={{ minHeight: '100vh' }}>
+      <SessionActivityTracker />
       <Sidebar collapsed={collapsed} />
       <Layout>
         <Header 

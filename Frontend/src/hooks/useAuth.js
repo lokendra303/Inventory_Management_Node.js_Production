@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { message } from 'antd';
 import apiService from '../services/apiService';
+import { useSessionManager } from './useSessionManager';
 
 const AuthContext = createContext();
 
@@ -18,11 +19,33 @@ export const AuthProvider = ({ children }) => {
 
   console.log('AuthProvider render - user:', user, 'loading:', loading);
 
+  const logout = () => {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('lastActivity');
+    apiService.setAuthToken(null);
+    setUser(null);
+    message.success('Logged out successfully');
+    window.location.href = '/';
+  };
+
+  const { checkSessionValidity } = useSessionManager(user, logout);
+
   useEffect(() => {
     console.log('AuthProvider useEffect triggered');
     const token = sessionStorage.getItem('token');
     console.log('Token from sessionStorage:', token);
     if (token) {
+      const lastActivity = sessionStorage.getItem('lastActivity');
+      if (lastActivity) {
+        const timeSinceLastActivity = Date.now() - parseInt(lastActivity);
+        if (timeSinceLastActivity > 15 * 60 * 1000) {
+          console.log('Session expired, removing token');
+          sessionStorage.removeItem('token');
+          sessionStorage.removeItem('lastActivity');
+          setLoading(false);
+          return;
+        }
+      }
       apiService.setAuthToken(token);
       fetchProfile();
     } else {
@@ -64,6 +87,7 @@ export const AuthProvider = ({ children }) => {
         const { token, user: userData } = response.data;
         console.log('Login successful, setting user:', userData);
         sessionStorage.setItem('token', token);
+        sessionStorage.setItem('lastActivity', Date.now().toString());
         apiService.setAuthToken(token);
         setUser(userData);
         message.success('Login successful');
@@ -81,14 +105,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    sessionStorage.removeItem('token');
-    apiService.setAuthToken(null);
-    setUser(null);
-    message.success('Logged out successfully');
-    // Clear any cached route information
-    window.location.href = '/';
-  };
+
 
   const register = async (tenantData) => {
     try {
