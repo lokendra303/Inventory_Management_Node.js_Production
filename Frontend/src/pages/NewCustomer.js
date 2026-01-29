@@ -1,0 +1,612 @@
+import React, { useState } from 'react';
+import {
+  Form,
+  Input,
+  Select,
+  Button,
+  Tabs,
+  Card,
+  Row,
+  Col,
+  Space,
+  Checkbox,
+  Upload,
+  Tooltip,
+  message,
+  Divider,
+  InputNumber
+} from 'antd';
+import { UploadOutlined, InfoCircleOutlined, LinkOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import apiService from '../services/apiService';
+
+const NewCustomer = () => {
+  const [form] = Form.useForm();
+  const [activeTab, setActiveTab] = useState('otherDetails');
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      const values = await form.validateFields();
+      
+      const apiData = {
+        displayName: values.displayName,
+        companyName: values.companyName || '',
+        salutation: values.salutation || '',
+        firstName: values.firstName || '',
+        lastName: values.lastName || '',
+        email: values.email || '',
+        workPhone: values.workPhone || '',
+        mobilePhone: values.mobilePhone || '',
+        pan: values.pan || '',
+        gstin: values.gstin || '',
+        msmeRegistered: values.msmeRegistered || false,
+        currency: values.currency || 'INR',
+        paymentTerms: values.paymentTerms || '',
+        tds: values.tds || '',
+        websiteUrl: values.websiteUrl || '',
+        department: values.department || '',
+        designation: values.designation || '',
+        billingAttention: values.billingAttention || '',
+        billingCountry: values.billingCountry || '',
+        billingAddress1: values.billingAddress1 || '',
+        billingAddress2: values.billingAddress2 || '',
+        billingCity: values.billingCity || '',
+        billingState: values.billingState || '',
+        billingPinCode: values.billingPinCode || '',
+        shippingAttention: values.shippingAttention || '',
+        shippingCountry: values.shippingCountry || '',
+        shippingAddress1: values.shippingAddress1 || '',
+        shippingAddress2: values.shippingAddress2 || '',
+        shippingCity: values.shippingCity || '',
+        shippingState: values.shippingState || '',
+        shippingPinCode: values.shippingPinCode || '',
+        remarks: values.remarks || '',
+        creditLimit: values.creditLimit || 0,
+        bankName: values.bankName || '',
+        accountHolderName: values.accountHolderName || '',
+        accountNumber: values.accountNumber || '',
+        ifscCode: values.ifscCode || '',
+        branchName: values.branchName || '',
+        accountType: values.accountType || '',
+        swiftCode: values.swiftCode || '',
+        iban: values.iban || ''
+      };
+      
+      const response = await apiService.post('/customers', apiData);
+      
+      if (response.success || response.data?.success) {
+        message.success('Customer created successfully');
+        setTimeout(() => {
+          navigate('/sales/customers');
+        }, 1500);
+      } else {
+        message.error(response.error || 'Failed to create customer');
+      }
+    } catch (error) {
+      console.error('Error saving customer:', error);
+      const errorMsg = error.response?.data?.error || error.message || 'Failed to save customer';
+      message.error(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const salutationOptions = [
+    { label: 'Mr.', value: 'mr' },
+    { label: 'Ms.', value: 'ms' },
+    { label: 'Mrs.', value: 'mrs' },
+    { label: 'Dr.', value: 'dr' }
+  ];
+
+  const currencyOptions = [
+    { label: 'INR- Indian Rupee', value: 'INR' },
+    { label: 'USD- US Dollar', value: 'USD' },
+    { label: 'EUR- Euro', value: 'EUR' }
+  ];
+
+  const paymentTermsOptions = [
+    { label: 'Due on Receipt', value: 'due_on_receipt' },
+    { label: 'Net 15', value: 'net_15' },
+    { label: 'Net 30', value: 'net_30' },
+    { label: 'Net 60', value: 'net_60' }
+  ];
+
+  const taxOptions = [
+    { label: 'SGST', value: 'sgst' },
+    { label: 'CGST', value: 'cgst' },
+    { label: 'IGST', value: 'igst' }
+  ];
+
+  const countryOptions = [
+    { label: 'India', value: 'india' },
+    { label: 'USA', value: 'usa' },
+    { label: 'UK', value: 'uk' }
+  ];
+
+  const stateOptions = [
+    { label: 'Andhra Pradesh', value: 'ap' },
+    { label: 'Assam', value: 'assam' },
+    { label: 'Delhi', value: 'delhi' }
+  ];
+
+  const accountTypeOptions = [
+    { label: 'Savings', value: 'savings' },
+    { label: 'Current', value: 'current' },
+    { label: 'Cash Credit (CC)', value: 'cc' },
+    { label: 'Overdraft (OD)', value: 'od' }
+  ];
+
+  return (
+    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <h1 style={{ marginBottom: '8px', fontSize: '28px', fontWeight: '600' }}>New Customer</h1>
+      
+      <Card 
+        style={{ 
+          marginBottom: '24px', 
+          background: '#e6f7ff', 
+          border: '1px solid #91d5ff',
+          borderRadius: '4px'
+        }}
+        styles={{ body: { padding: '12px 16px' } }}
+      >
+        <Space>
+          <InfoCircleOutlined style={{ color: '#1890ff', fontSize: '16px', flexShrink: 0 }} />
+          <span style={{ fontSize: '13px' }}>
+            Prefill Customer details from the GST portal using the Customer's GSTIN.{' '}
+            <span style={{ color: '#1890ff', fontWeight: '500', cursor: 'pointer' }}>
+              Prefill →
+            </span>
+          </span>
+        </Space>
+      </Card>
+
+      <Form form={form} layout="vertical" autoComplete="off">
+        <Card style={{ marginBottom: '24px', borderRadius: '4px' }}>
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: '600' }}>
+              Primary Contact
+              <Tooltip title="Main contact person for this customer">
+                <InfoCircleOutlined style={{ marginLeft: '8px', color: '#999' }} />
+              </Tooltip>
+            </h3>
+          </div>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={8} md={6}>
+              <Form.Item name="salutation" label="Salutation">
+                <Select placeholder="Select" options={salutationOptions} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8} md={9}>
+              <Form.Item name="firstName" label="First Name">
+                <Input placeholder="First Name" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8} md={9}>
+              <Form.Item name="lastName" label="Last Name">
+                <Input placeholder="Last Name" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
+              <Form.Item label="Company Name" name="companyName">
+                <Input placeholder="Enter company name" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={
+                  <span>
+                    Display Name
+                    <span style={{ color: '#ff4d4f' }}> *</span>
+                    <Tooltip title="How customer will be displayed in the system">
+                      <InfoCircleOutlined style={{ marginLeft: '8px', color: '#999' }} />
+                    </Tooltip>
+                  </span>
+                }
+                name="displayName"
+                rules={[{ required: true, message: 'Display Name is required' }]}
+              >
+                <Input placeholder="Enter display name" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
+              <Form.Item 
+                label={
+                  <span>
+                    Email Address
+                    <Tooltip title="Primary email for customer communication">
+                      <InfoCircleOutlined style={{ marginLeft: '8px', color: '#999' }} />
+                    </Tooltip>
+                  </span>
+                } 
+                name="email"
+              >
+                <Input type="email" placeholder="customer@example.com" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} md={9}>
+              <Form.Item name="workPhone" label="Work Phone">
+                <Input placeholder="Work Phone Number" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Form.Item name="mobilePhone" label="Mobile">
+                <Input placeholder="Mobile Number" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          style={{ background: '#fff' }}
+          items={[
+            {
+              key: 'otherDetails',
+              label: 'Other Details',
+              children: (
+                <Card style={{ marginTop: '0px', borderTop: 'none' }}>
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item 
+                        label={
+                          <span>
+                            PAN
+                            <Tooltip title="Permanent Account Number">
+                              <InfoCircleOutlined style={{ marginLeft: '8px', color: '#999' }} />
+                            </Tooltip>
+                          </span>
+                        } 
+                        name="pan"
+                      >
+                        <Input placeholder="Enter PAN" />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item 
+                        label={
+                          <span>
+                            Credit Limit
+                            <Tooltip title="Maximum credit limit for this customer">
+                              <InfoCircleOutlined style={{ marginLeft: '8px', color: '#999' }} />
+                            </Tooltip>
+                          </span>
+                        } 
+                        name="creditLimit"
+                      >
+                        <InputNumber 
+                          placeholder="Enter credit limit" 
+                          style={{ width: '100%' }}
+                          min={0}
+                          formatter={value => `₹ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                          parser={value => value.replace(/₹\s?|(,*)/g, '')}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24}>
+                      <Form.Item name="msmeRegistered" valuePropName="checked">
+                        <Checkbox style={{ fontSize: '14px' }}>
+                          This customer is MSME registered
+                        </Checkbox>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Divider style={{ margin: '24px 0' }} />
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Currency" name="currency">
+                        <Select placeholder="Select Currency" options={currencyOptions} />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Payment Terms" name="paymentTerms">
+                        <Select placeholder="Select Payment Terms" options={paymentTermsOptions} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="TDS" name="tds">
+                        <Select placeholder="Select a Tax" options={taxOptions} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Divider style={{ margin: '24px 0' }} />
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24}>
+                      <Form.Item label="Documents" name="documents" valuePropName="fileList">
+                        <Upload>
+                          <Button icon={<UploadOutlined />}>Upload File</Button>
+                        </Upload>
+                      </Form.Item>
+                      <p style={{ color: '#999', fontSize: '12px', margin: '8px 0 0 0' }}>
+                        You can upload a maximum of 10 files, 10MB each
+                      </p>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Website URL" name="websiteUrl">
+                        <Input 
+                          prefix={<LinkOutlined style={{ color: '#bfbfbf' }} />} 
+                          placeholder="ex: www.customer.com" 
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Department" name="department">
+                        <Input placeholder="Enter department" />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Designation" name="designation">
+                        <Input placeholder="Enter designation" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+              )
+            },
+            {
+              key: 'address',
+              label: 'Address',
+              children: (
+                <Card style={{ marginTop: '0px', borderTop: 'none' }}>
+                  <Row gutter={32}>
+                    <Col xs={24} md={12}>
+                      <div style={{ marginBottom: '24px' }}>
+                        <h4 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '600' }}>
+                          Billing Address
+                        </h4>
+                      </div>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item label="Attention" name="billingAttention">
+                            <Input placeholder="Enter name" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item label="Country/Region" name="billingCountry">
+                            <Select placeholder="Select" options={countryOptions} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item label="Address" name="billingAddress1">
+                            <Input.TextArea placeholder="Street 1" rows={2} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item name="billingAddress2">
+                            <Input.TextArea placeholder="Street 2" rows={2} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={12}>
+                          <Form.Item label="City" name="billingCity">
+                            <Input placeholder="Enter city" />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} sm={12}>
+                          <Form.Item label="State" name="billingState">
+                            <Select placeholder="Select or type to add" options={stateOptions} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item label="Pin Code" name="billingPinCode">
+                            <Input placeholder="Enter pin code" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                        <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '600' }}>
+                          Shipping Address
+                        </h4>
+                        <Button type="link" size="small" style={{ padding: 0 }}>
+                          📋 Copy billing address
+                        </Button>
+                      </div>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item label="Attention" name="shippingAttention">
+                            <Input placeholder="Enter name" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item label="Country/Region" name="shippingCountry">
+                            <Select placeholder="Select" options={countryOptions} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item label="Address" name="shippingAddress1">
+                            <Input.TextArea placeholder="Street 1" rows={2} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item name="shippingAddress2">
+                            <Input.TextArea placeholder="Street 2" rows={2} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={12}>
+                          <Form.Item label="City" name="shippingCity">
+                            <Input placeholder="Enter city" />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} sm={12}>
+                          <Form.Item label="State" name="shippingState">
+                            <Select placeholder="Select or type to add" options={stateOptions} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24}>
+                          <Form.Item label="Pin Code" name="shippingPinCode">
+                            <Input placeholder="Enter pin code" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </Col>
+                  </Row>
+                </Card>
+              )
+            },
+            {
+              key: 'bankDetails',
+              label: 'Bank Details',
+              children: (
+                <Card style={{ marginTop: '0px', borderTop: 'none' }}>
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Bank Name" name="bankName">
+                        <Input placeholder="Enter bank name" />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Account Holder Name" name="accountHolderName">
+                        <Input placeholder="Enter account holder name" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Account Number" name="accountNumber">
+                        <Input placeholder="Enter account number" />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Account Type" name="accountType">
+                        <Select placeholder="Select account type" options={accountTypeOptions} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="IFSC Code" name="ifscCode">
+                        <Input placeholder="Enter IFSC code" />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="Branch Name" name="branchName">
+                        <Input placeholder="Enter branch name" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="SWIFT Code" name="swiftCode">
+                        <Input placeholder="Enter SWIFT code (for international)" />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item label="IBAN" name="iban">
+                        <Input placeholder="Enter IBAN (for international)" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+              )
+            },
+            {
+              key: 'remarks',
+              label: 'Remarks',
+              children: (
+                <Card style={{ marginTop: '0px', borderTop: 'none' }}>
+                  <Form.Item name="remarks">
+                    <Input.TextArea placeholder="Add remarks here" rows={4} />
+                  </Form.Item>
+                </Card>
+              )
+            }
+          ]}
+        />
+
+        <Row gutter={16} style={{ marginTop: '24px', marginBottom: '24px' }}>
+          <Col>
+            <Button 
+              type="primary" 
+              onClick={handleSave}
+              loading={loading}
+              disabled={loading}
+              style={{ minWidth: '100px', height: '40px', fontSize: '14px', fontWeight: '500' }}
+            >
+              Save
+            </Button>
+          </Col>
+          <Col>
+            <Button 
+              style={{ minWidth: '100px', height: '40px', fontSize: '14px' }}
+              disabled={loading}
+              onClick={() => navigate('/sales/customers')}
+            >
+              Cancel
+            </Button>
+          </Col>
+        </Row>
+      </Form>
+    </div>
+  );
+};
+
+export default NewCustomer;

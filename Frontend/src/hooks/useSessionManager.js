@@ -1,112 +1,110 @@
-import { useEffect, useCallback, useRef } from 'react';
-import { Modal } from 'antd';
+import { useEffect, useRef, useCallback } from 'react';
+import { message } from 'antd';
+import apiService from '../services/apiService';
 
-const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
-const WARNING_TIME = 2 * 60 * 1000; // 2 minutes before timeout
-
-const showSessionExpiredModal = () => {
-  Modal.warning({
-    title: 'Session Expired',
-    content: 'Your session has expired. Please login again.',
-    okText: 'Login',
-    onOk: () => {
-      sessionStorage.removeItem('token');
-      sessionStorage.removeItem('lastActivity');
-      window.location.href = '/';
-    },
-    centered: true,
-    maskClosable: false,
-  });
-};
-
-export const useSessionManager = (user, logout) => {
-  const timeoutRef = useRef(null);
-  const warningRef = useRef(null);
+/**
+ * Session Manager Hook
+ * 
+ * Automatically manages user session based on activity:
+ * - Tracks user interactions (mouse, keyboard, touch, scroll)
+ * - Extends session when user is active (every 5+ minutes)
+ * - Shows warning 5 minutes before session expiry
+ * - Auto-logout after 25 minutes of inactivity
+ * 
+ * Usage: Call this hook in the main App component for authenticated users
+ */
+const useSessionManager = () => {
+  const activityTimeoutRef = useRef(null);
+  const warningTimeoutRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
+  
+  // Session configuration
+  const ACTIVITY_TIMEOUT = 25 * 60 * 1000; // 25 minutes total session timeout
+  const WARNING_TIME = 5 * 60 * 1000; // Show warning 5 minutes before expiry
+  const EXTEND_THRESHOLD = 5 * 60 * 1000; // Extend session if activity within 5 minutes
 
-  const resetTimer = useCallback(() => {
-    if (!user) return;
+  // Extend session by calling backend API
+  const extendSession = useCallback(async () => {
+    try {
+      await apiService.post('/auth/extend-session');
+      console.log('Session extended successfully');
+    } catch (error) {
+      console.error('Failed to extend session:', error);
+    }
+  }, []);
 
-    lastActivityRef.current = Date.now();
-    sessionStorage.setItem('lastActivity', lastActivityRef.current.toString());
+  // Show session expiry warning to user
+  const showWarning = useCallback(() => {
+    message.warning({
+      content: 'Your session will expire in 5 minutes due to inactivity',
+      duration: 10,
+      key: 'session-warning'
+    });
+  }, []);
 
+  // Reset activity timers and extend session if needed
+  const resetActivityTimer = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLastActivity = now - lastActivityRef.current;
+    
     // Clear existing timers
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (warningRef.current) clearTimeout(warningRef.current);
-
-    // Set warning timer (2 minutes before timeout)
-    warningRef.current = setTimeout(() => {
-      Modal.warning({
-        title: 'Session Warning',
-        content: 'Your session will expire in 2 minutes due to inactivity',
-        okText: 'Continue',
-        onOk: () => resetTimer(),
-        centered: true,
-      });
-    }, SESSION_TIMEOUT - WARNING_TIME);
-
-    // Set logout timer
-    timeoutRef.current = setTimeout(() => {
-      showSessionExpiredModal();
-    }, SESSION_TIMEOUT);
-  }, [user]);
-
-  const checkSessionValidity = useCallback(() => {
-    if (!user) return true;
-
-    const lastActivity = sessionStorage.getItem('lastActivity');
-    if (!lastActivity) {
-      sessionStorage.setItem('lastActivity', Date.now().toString());
-      return true;
+    if (activityTimeoutRef.current) {
+      clearTimeout(activityTimeoutRef.current);
+    }
+    if (warningTimeoutRef.current) {
+      clearTimeout(warningTimeoutRef.current);
     }
 
-    const timeSinceLastActivity = Date.now() - parseInt(lastActivity);
-    if (timeSinceLastActivity > SESSION_TIMEOUT) {
-      showSessionExpiredModal();
-      return false;
+    // Extend session if there was significant activity gap
+    if (timeSinceLastActivity > EXTEND_THRESHOLD) {
+      extendSession();
     }
 
-    return true;
-  }, [user]);
+    lastActivityRef.current = now;
+
+    // Set warning timer (20 minutes from now)
+    warningTimeoutRef.current = setTimeout(showWarning, ACTIVITY_TIMEOUT - WARNING_TIME);
+
+    // Set final logout timer (25 minutes from now)
+    activityTimeoutRef.current = setTimeout(() => {
+      message.error('Session expired due to inactivity');
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }, ACTIVITY_TIMEOUT);
+  }, [extendSession, showWarning]);
+
+  const handleActivity = useCallback(() => {
+    resetActivityTimer();
+  }, [resetActivityTimer]);
 
   useEffect(() => {
-    if (!user) return;
-
-    // Check session validity on mount
-    if (!checkSessionValidity()) return;
-
-    // Activity events to track
+    // Events that indicate user activity
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-
-    // Reset timer on activity
+    
+    // Add event listeners for activity tracking
     events.forEach(event => {
-      document.addEventListener(event, resetTimer, true);
+      document.addEventListener(event, handleActivity, true);
     });
 
-    // Initial timer setup
-    resetTimer();
+    // Initialize session timer
+    resetActivityTimer();
 
-    // Cleanup
+    // Cleanup on unmount
     return () => {
       events.forEach(event => {
-        document.removeEventListener(event, resetTimer, true);
+        document.removeEventListener(event, handleActivity, true);
       });
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (warningRef.current) clearTimeout(warningRef.current);
-    };
-  }, [user, resetTimer, checkSessionValidity]);
-
-  // Check session on page visibility change
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden && user) {
-        checkSessionValidity();
+      
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+      }
+      if (warningTimeoutRef.current) {
+        clearTimeout(warningTimeoutRef.current);
       }
     };
+  }, [handleActivity, resetActivityTimer]);
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [user, checkSessionValidity]);
-
-  return { checkSessionValidity, resetTimer };
+  return null;
 };
+
+export default useSessionManager;

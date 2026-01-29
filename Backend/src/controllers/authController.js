@@ -385,6 +385,24 @@ class AuthController {
       });
     }
   }
+
+  async extendSession(req, res) {
+    try {
+      const result = await authService.extendSession(req.user.userId, req.tenantId);
+      
+      res.json({
+        success: true,
+        message: 'Session extended successfully',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Session extension failed', { error: error.message, userId: req.user.userId });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new AuthController();

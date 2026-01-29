@@ -519,6 +519,39 @@ class AuthService {
 
     logger.info('Tenant settings updated', { tenantId });
   }
+
+  async extendSession(userId, tenantId) {
+    // Verify user is still active
+    const users = await db.query(
+      'SELECT u.*, t.status as tenant_status FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ? AND u.tenant_id = ?',
+      [userId, tenantId]
+    );
+
+    if (users.length === 0 || users[0].status !== 'active' || users[0].tenant_status !== 'active') {
+      throw new Error('User or tenant is inactive');
+    }
+
+    const user = users[0];
+    
+    // Generate new token with updated session timestamp
+    const sessionTimestamp = Date.now();
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        tenantId: user.tenant_id,
+        email: user.email,
+        role: user.role,
+        permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
+        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || [],
+        sessionTimestamp
+      },
+      config.jwt.secret,
+      { expiresIn: config.jwt.expiresIn }
+    );
+
+    logger.info('Session extended', { userId, tenantId });
+    return { token, sessionTimestamp };
+  }
 }
 
 module.exports = new AuthService();

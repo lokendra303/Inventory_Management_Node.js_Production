@@ -4,7 +4,7 @@ import { ConfigProvider, Layout, message } from 'antd';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { CurrencyProvider } from './contexts/CurrencyContext';
 import { withPermission } from './components/PermissionWrapper';
-import SessionActivityTracker from './components/SessionActivityTracker';
+import useSessionManager from './hooks/useSessionManager';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -18,6 +18,13 @@ import Users from './pages/Users';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Documents from './pages/Documents';
+import Vendors from './pages/Vendors';
+import NewVendor from './pages/NewVendor';
+import ViewVendor from './pages/ViewVendor';
+import Customers from './pages/Customers';
+import NewCustomer from './pages/NewCustomer';
+import ViewCustomer from './pages/ViewCustomer';
+import EditCustomer from './pages/EditCustomer';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import './App.css';
@@ -32,10 +39,20 @@ const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
 const ProtectedPurchaseOrders = withPermission('purchase_view')(PurchaseOrders);
 const ProtectedSalesOrders = withPermission('sales_view')(SalesOrders);
 const ProtectedUsers = withPermission('user_management')(Users);
+const ProtectedVendors = withPermission('purchase_view')(Vendors);
+const ProtectedNewVendor = withPermission('purchase_view')(NewVendor);
+const ProtectedViewVendor = withPermission('purchase_view')(ViewVendor);
+const ProtectedCustomers = withPermission('sales_view')(Customers);
+const ProtectedNewCustomer = withPermission('sales_view')(NewCustomer);
+const ProtectedViewCustomer = withPermission('sales_view')(ViewCustomer);
+const ProtectedEditCustomer = withPermission('customer_management')(EditCustomer);
 
 function AppContent() {
   const { user, loading } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  
+  // Initialize session manager for authenticated users
+  useSessionManager();
 
   console.log('AppContent render - user:', user, 'loading:', loading);
 
@@ -56,7 +73,6 @@ function AppContent() {
   console.log('User authenticated, showing main app');
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <SessionActivityTracker />
       <Sidebar collapsed={collapsed} />
       <Layout>
         <Header 
@@ -78,6 +94,13 @@ function AppContent() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/documents" element={<Documents />} />
+            <Route path="/purchases/vendors" element={<ProtectedVendors />} />
+            <Route path="/purchases/vendors/new" element={<ProtectedNewVendor />} />
+            <Route path="/purchases/vendors/:vendorId" element={<ProtectedViewVendor />} />
+            <Route path="/sales/customers" element={<ProtectedCustomers />} />
+            <Route path="/sales/customers/new" element={<ProtectedNewCustomer />} />
+            <Route path="/sales/customers/:id" element={<ProtectedViewCustomer />} />
+            <Route path="/sales/customers/:id/edit" element={<ProtectedEditCustomer />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Content>

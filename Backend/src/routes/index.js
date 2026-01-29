@@ -10,6 +10,7 @@ const salesOrderController = require('../controllers/salesOrderController');
 const reorderLevelController = require('../controllers/reorderLevelController');
 const categoryController = require('../controllers/categoryController');
 const settingsController = require('../controllers/settingsController');
+const customerController = require('../controllers/customerController');
 const allDataRoutes = require('./all-data');
 const { requireAuth, requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
@@ -324,6 +325,36 @@ router.put('/vendors/:vendorId',
 router.get('/vendors/:vendorId/performance',
   requirePermission('vendor_view'),
   purchaseOrderController.getVendorPerformance
+);
+
+// Customer management
+router.post('/customers',
+  requirePermission('customer_management'),
+  validateTenantConsistency,
+  auditLog('customer_created'),
+  customerController.createCustomer
+);
+
+router.get('/customers',
+  requirePermission('customer_view'),
+  customerController.getCustomers
+);
+
+router.get('/customers/:id',
+  requirePermission('customer_view'),
+  customerController.getCustomer
+);
+
+router.put('/customers/:id',
+  requirePermission('customer_management'),
+  validateTenantConsistency,
+  auditLog('customer_updated'),
+  customerController.updateCustomer
+);
+
+router.get('/customers/:id/performance',
+  requirePermission('customer_view'),
+  customerController.getCustomerPerformance
 );
 
 // Sales Order management

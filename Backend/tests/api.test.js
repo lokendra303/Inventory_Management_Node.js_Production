@@ -2,6 +2,19 @@ const request = require('supertest');
 const Server = require('../src/server');
 const db = require('../src/database/connection');
 
+/**
+ * Comprehensive API Test Suite
+ * 
+ * Tests core functionality including:
+ * - Authentication endpoints
+ * - Protected route security
+ * - Event store functionality
+ * - Inventory service operations
+ * 
+ * Run with: npm test
+ * Requires: Jest testing framework
+ */
+
 describe('IMS SEPCUNE API Tests', () => {
   let server;
   let app;

@@ -26,6 +26,7 @@ router.use('/warehouse-types', require('./warehouse-types'));
 router.use('/inventory', require('./inventory'));
 router.use('/purchase-orders', require('./purchase-orders'));
 router.use('/vendors', require('./vendors'));
+router.use('/customers', require('./customers'));
 router.use('/sales-orders', require('./sales-orders'));
 router.use('/grn', require('./grn'));
 router.use('/reorder-levels', require('./reorder-levels'));

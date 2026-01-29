@@ -233,17 +233,18 @@ class PurchaseOrderController {
         data: vendors
       });
     } catch (error) {
-      logger.error('Failed to get vendors', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get vendors', { message: error.message, stack: error.stack, tenantId: req.tenantId });
+      const isProd = process.env.NODE_ENV === 'production';
       res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: isProd ? 'Internal server error' : (error.message || 'Unknown error')
       });
     }
   }
 
   async getVendor(req, res) {
     try {
-      const { vendorId } = req.params;
+      const { id: vendorId } = req.params;
       const vendor = await vendorService.getVendor(req.tenantId, vendorId);
       
       if (!vendor) {
@@ -261,7 +262,7 @@ class PurchaseOrderController {
       logger.error('Failed to get vendor', { 
         error: error.message, 
         tenantId: req.tenantId,
-        vendorId: req.params.vendorId 
+        vendorId: req.params.id 
       });
       res.status(500).json({
         success: false,
@@ -272,7 +273,7 @@ class PurchaseOrderController {
 
   async updateVendor(req, res) {
     try {
-      const { vendorId } = req.params;
+      const { id: vendorId } = req.params;
       await vendorService.updateVendor(req.tenantId, vendorId, req.body, req.user.userId);
       
       res.json({
@@ -283,7 +284,7 @@ class PurchaseOrderController {
       logger.error('Failed to update vendor', { 
         error: error.message, 
         tenantId: req.tenantId,
-        vendorId: req.params.vendorId 
+        vendorId: req.params.id 
       });
       res.status(400).json({
         success: false,
@@ -294,7 +295,7 @@ class PurchaseOrderController {
 
   async getVendorPerformance(req, res) {
     try {
-      const { vendorId } = req.params;
+      const { id: vendorId } = req.params;
       const { startDate, endDate } = req.query;
       
       const performance = await vendorService.getVendorPerformance(
@@ -312,7 +313,7 @@ class PurchaseOrderController {
       logger.error('Failed to get vendor performance', { 
         error: error.message, 
         tenantId: req.tenantId,
-        vendorId: req.params.vendorId 
+        vendorId: req.params.id 
       });
       res.status(500).json({
         success: false,

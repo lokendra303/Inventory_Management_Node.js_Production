@@ -31,4 +31,7 @@ router.post('/refresh', authController.refreshToken);
 // GET /api/auth/profile (PROTECTED)
 router.get('/profile', requireAuth, authController.getProfile);
 
+// POST /api/auth/extend-session (PROTECTED)
+router.post('/extend-session', requireAuth, authController.extendSession);
+
 module.exports = router;

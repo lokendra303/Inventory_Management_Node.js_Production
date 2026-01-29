@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { message, Modal } from 'antd';
 import apiService from '../services/apiService';
-import { useSessionManager } from './useSessionManager';
 
 const AuthContext = createContext();
 
@@ -27,8 +26,6 @@ export const AuthProvider = ({ children }) => {
     message.success('Logged out successfully');
     window.location.href = '/';
   };
-
-  const { checkSessionValidity } = useSessionManager(user, logout);
 
   useEffect(() => {
     console.log('AuthProvider useEffect triggered');
