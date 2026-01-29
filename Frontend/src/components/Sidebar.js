@@ -12,7 +12,8 @@ import {
   FileTextOutlined,
   BarChartOutlined,
   SettingOutlined,
-  UserOutlined
+  UserOutlined,
+  FileOutlined
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -101,9 +102,29 @@ const Sidebar = ({ collapsed }) => {
       label: 'User Management'
     },
     {
-      key: '/reports',
+      key: 'reports',
       icon: <BarChartOutlined />,
-      label: 'Reports'
+      label: 'Reports',
+      children: [
+        { key: '/reports', label: 'Home' },
+        { key: '/reports/favorites', label: 'Favorites' },
+        { key: '/reports/shared', label: 'Shared Reports' },
+        { key: '/reports/scheduled', label: 'Scheduled Reports' },
+        { key: '/reports/sales', label: 'Sales' },
+        { key: '/reports/inventory', label: 'Inventory' },
+        { key: '/reports/inventory-valuation', label: 'Inventory Valuation' },
+        { key: '/reports/receivables', label: 'Receivables' },
+        { key: '/reports/payments-received', label: 'Payments Received' },
+        { key: '/reports/payables', label: 'Payables' },
+        { key: '/reports/purchases', label: 'Purchases' },
+        { key: '/reports/activity', label: 'Activity' },
+        { key: '/reports/automation', label: 'Automation' }
+      ]
+    },
+    {
+      key: '/documents',
+      icon: <FileOutlined />,
+      label: 'Documents'
     },
     {
       key: '/settings',

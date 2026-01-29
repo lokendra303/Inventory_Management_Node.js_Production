@@ -17,6 +17,7 @@ import SalesOrders from './pages/SalesOrders';
 import Users from './pages/Users';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Documents from './pages/Documents';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import './App.css';
@@ -76,6 +77,7 @@ function AppContent() {
             <Route path="/users" element={<ProtectedUsers />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/documents" element={<Documents />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Content>
