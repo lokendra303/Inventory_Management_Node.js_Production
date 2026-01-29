@@ -1,0 +1,17 @@
+.settings-page{padding:24px}
+.settings-page h1{margin-bottom:16px}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}
+.settings-card{border-radius:12px;box-shadow:0 6px 18px rgba(20,20,40,0.03)}
+.card-header{font-weight:600;padding:12px 14px;border-radius:8px;margin-bottom:8px;display:inline-block}
+.card-header.green{background:linear-gradient(90deg,#eaf8f1,#f3fff8);color:#1f8a5f}
+.card-header.red{background:linear-gradient(90deg,#fff0f0,#fff6f6);color:#c94a4a}
+.card-header.orange{background:linear-gradient(90deg,#fff6ea,#fffbf2);color:#c97b2b}
+.card-header.blue{background:linear-gradient(90deg,#eef8ff,#f8fdff);color:#2b7fc9}
+.card-header.peach{background:linear-gradient(90deg,#fff7f1,#fffbfa);color:#c97f5a}
+.card-header.pink{background:linear-gradient(90deg,#fff2f7,#fff9fb);color:#c94a8a}
+.card-header.mint{background:linear-gradient(90deg,#f4fff8,#fbfffb);color:#3aa07f}
+.card-header.teal{background:linear-gradient(90deg,#f2fffb,#fbfffd);color:#15868a}
+.card-list{padding:6px 8px}
+.card-item{padding:10px 6px;border-radius:6px;color:#333;margin:6px 0;cursor:pointer}
+.card-item:hover{background:rgba(0,0,0,0.03)}
+@media (max-width:520px){.settings-grid{grid-template-columns:repeat(1,1fr)}}
