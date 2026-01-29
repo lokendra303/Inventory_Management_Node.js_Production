@@ -1,7 +1,7 @@
 import React from 'react';
 import { Layout, Button, Dropdown, Avatar, Space, Typography } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, SettingOutlined } from '@ant-design/icons';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth.jsx';
 import { useNavigate } from 'react-router-dom';
 
 const { Header: AntHeader } = Layout;

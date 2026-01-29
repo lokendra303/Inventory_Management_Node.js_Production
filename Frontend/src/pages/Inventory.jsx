@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message } from 'antd';
 import { PlusOutlined, SwapOutlined, EditOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth.jsx';
 
 const Inventory = () => {
   const { user } = useAuth();

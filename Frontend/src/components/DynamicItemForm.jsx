@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { itemService } from '../services/itemService';
-import CustomizableDropdown from './CustomizableDropdown';
+import CustomizableDropdown from './CustomizableDropdown.jsx';
 
 const DynamicItemForm = ({ itemType = 'simple', onSubmit, initialData = {} }) => {
   const [formData, setFormData] = useState({

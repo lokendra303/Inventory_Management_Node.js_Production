@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import DynamicItemForm from './DynamicItemForm';
+import DynamicItemForm from './DynamicItemForm.jsx';
 import { itemService } from '../services/itemService';
 
 const ItemTypeManager = () => {

@@ -8,7 +8,7 @@ import {
 } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import apiService from '../services/apiService';
-import { useCurrency } from '../contexts/CurrencyContext';
+import { useCurrency } from '../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../utils/currency';
 
 const Dashboard = () => {

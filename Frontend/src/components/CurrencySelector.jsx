@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Select, message } from 'antd';
 import { getCurrencies } from '../utils/currency';
-import { useCurrency } from '../contexts/CurrencyContext';
+import { useCurrency } from '../contexts/CurrencyContext.jsx';
 
 const CurrencySelector = () => {
   const { currency, updateCurrency, loading } = useCurrency();

@@ -1,8 +1,8 @@
 import React from 'react';
 import { Layout, Menu } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-import CurrencySelector from './CurrencySelector';
+import { useAuth } from '../hooks/useAuth.jsx';
+import CurrencySelector from './CurrencySelector.jsx';
 import {
   DashboardOutlined,
   InboxOutlined,

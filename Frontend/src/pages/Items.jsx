@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload } from 'antd';
 import { PlusOutlined, EditOutlined, UploadOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
-import { useAuth } from '../hooks/useAuth';
-import { useCurrency } from '../contexts/CurrencyContext';
+import { useAuth } from '../hooks/useAuth.jsx';
+import { useCurrency } from '../contexts/CurrencyContext.jsx';
 import { formatPrice, convertPrice, getCurrencies } from '../utils/currency';
 import CustomizableDropdown from '../components/CustomizableDropdown';
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, Tag, message, Tabs, Checkbox, Typography, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, SettingOutlined, KeyOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth.jsx';
 
 const { TabPane } = Tabs;
 const { Text, Paragraph } = Typography;

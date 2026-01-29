@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, Card, Tabs, message, Row, Col } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined, ShopOutlined, PhoneOutlined } from '@ant-design/icons';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth.jsx';
 import { useNavigate } from 'react-router-dom';
 
 const { TabPane } = Tabs;

@@ -3,7 +3,7 @@ import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Statis
 import { PlusOutlined, EyeOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import { usePermissions } from '../components/PermissionWrapper';
-import { useCurrency } from '../contexts/CurrencyContext';
+import { useCurrency } from '../contexts/CurrencyContext.jsx';
 
 const Warehouses = () => {
   const { hasPermission } = usePermissions();

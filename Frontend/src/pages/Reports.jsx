@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, DatePicker, Select, message, Tabs, Modal, Descriptions } from 'antd';
 import { FileTextOutlined, EyeOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
-import { useCurrency } from '../contexts/CurrencyContext';
+import { useCurrency } from '../contexts/CurrencyContext.jsx';
 
 const { RangePicker } = DatePicker;
 const { TabPane } = Tabs;
