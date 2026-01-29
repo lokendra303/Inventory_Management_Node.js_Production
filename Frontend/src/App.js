@@ -9,6 +9,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
+import Packages from './pages/Packages';
 import Items from './pages/Items';
 import Warehouses from './pages/Warehouses';
 import PurchaseOrders from './pages/PurchaseOrders';
@@ -24,6 +25,7 @@ const { Content } = Layout;
 
 // Protected components
 const ProtectedInventory = withPermission('inventory_view')(Inventory);
+const ProtectedPackages = withPermission('inventory_view')(Packages);
 const ProtectedItems = withPermission('item_view')(Items);
 const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
 const ProtectedPurchaseOrders = withPermission('purchase_view')(PurchaseOrders);
@@ -66,6 +68,7 @@ function AppContent() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<ProtectedInventory />} />
+            <Route path="/inventory/packages" element={<ProtectedPackages />} />
             <Route path="/items" element={<ProtectedItems />} />
             <Route path="/warehouses" element={<ProtectedWarehouses />} />
             <Route path="/purchase-orders" element={<ProtectedPurchaseOrders />} />

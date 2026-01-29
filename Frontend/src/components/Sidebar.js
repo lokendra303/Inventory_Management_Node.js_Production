@@ -35,9 +35,17 @@ const Sidebar = ({ collapsed }) => {
       label: 'Dashboard'
     },
     hasPermission('inventory_view') && {
-      key: '/inventory',
+      key: 'inventory',
       icon: <InboxOutlined />,
-      label: 'Inventory'
+      label: 'Inventory',
+      children: [
+        { key: '/inventory', label: 'Overview' },
+        { key: '/inventory/adjustments', label: 'Inventory Adjustments' },
+        { key: '/inventory/packages', label: 'Packages' },
+        { key: '/inventory/shipments', label: 'Shipments' },
+        { key: '/inventory/move-orders', label: 'Move Orders' },
+        { key: '/inventory/putaways', label: 'Putaways' }
+      ]
     },
     hasPermission('item_view') && {
       key: 'items',
@@ -59,15 +67,33 @@ const Sidebar = ({ collapsed }) => {
       icon: <ShopOutlined />,
       label: 'Warehouses'
     },
-    hasPermission('purchase_view') && {
-      key: '/purchase-orders',
-      icon: <ShoppingCartOutlined />,
-      label: 'Purchase Orders'
-    },
+    
     hasPermission('sales_view') && {
-      key: '/sales-orders',
+      key: 'sales',
       icon: <FileTextOutlined />,
-      label: 'Sales Orders'
+      label: 'Sales',
+      children: [
+        { key: '/sales/customers', label: 'Customers' },
+        { key: '/sales-orders', label: 'Sales Orders' },
+        { key: '/sales/invoices', label: 'Invoices' },
+        { key: '/sales/delivery-challans', label: 'Delivery Challans' },
+        { key: '/sales/payments-received', label: 'Payments Received' },
+        { key: '/sales/returns', label: 'Sales Returns' },
+        { key: '/sales/credit-notes', label: 'Credit Notes' }
+      ]
+    },
+    hasPermission('purchase_view') && {
+      key: 'purchases',
+      icon: <ShoppingCartOutlined />,
+      label: 'Purchases',
+      children: [
+        { key: '/purchases/vendors', label: 'Vendors' },
+        { key: '/purchase-orders', label: 'Purchase Orders' },
+        { key: '/purchases/receives', label: 'Purchase Receives' },
+        { key: '/purchases/bills', label: 'Bills' },
+        { key: '/purchases/payments-made', label: 'Payments Made' },
+        { key: '/purchases/vendor-credits', label: 'Vendor Credits' }
+      ]
     },
     hasPermission('user_management') && {
       key: '/users',
@@ -106,7 +132,11 @@ const Sidebar = ({ collapsed }) => {
         mode="inline"
         selectedKeys={[location.pathname]}
         items={menuItems}
-        onClick={({ key }) => navigate(key)}
+        onClick={({ key }) => {
+          if (typeof key === 'string' && key.startsWith('/')) {
+            navigate(key);
+          }
+        }}
       />
       {!collapsed && <CurrencySelector />}
     </Sider>
