@@ -101,7 +101,7 @@ class ItemController {
 
   async getItem(req, res) {
     try {
-      const { itemId } = req.params;
+      const { id: itemId } = req.params;
       const item = await itemService.getItem(req.institutionId, itemId);
       
       if (!item) {
@@ -119,7 +119,7 @@ class ItemController {
       logger.error('Failed to get item', { 
         error: error.message, 
         institutionId: req.institutionId,
-        itemId: req.params.itemId 
+        itemId: req.params.id 
       });
       res.status(500).json({
         success: false,
@@ -130,7 +130,7 @@ class ItemController {
 
   async updateItem(req, res) {
     try {
-      const { itemId } = req.params;
+      const { id: itemId } = req.params;
       
       console.log('Update item request:', {
         itemId,
@@ -149,7 +149,7 @@ class ItemController {
       logger.error('Item update failed', { 
         error: error.message, 
         institutionId: req.institutionId,
-        itemId: req.params.itemId,
+        itemId: req.params.id,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -191,7 +191,7 @@ class ItemController {
 
   async deleteItem(req, res) {
     try {
-      const { itemId } = req.params;
+      const { id: itemId } = req.params;
       await itemService.deleteItem(req.institutionId, itemId, req.user.userId);
       
       res.json({
@@ -202,7 +202,7 @@ class ItemController {
       logger.error('Item deletion failed', { 
         error: error.message, 
         institutionId: req.institutionId,
-        itemId: req.params.itemId,
+        itemId: req.params.id,
         userId: req.user.userId 
       });
       res.status(400).json({

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload } from 'antd';
-import { PlusOutlined, EditOutlined, UploadOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useCurrency } from '../contexts/CurrencyContext.jsx';
@@ -17,8 +17,10 @@ const Items = () => {
   const [currencies] = useState(getCurrencies());
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [viewModalVisible, setViewModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [viewingItem, setViewingItem] = useState(null);
   const [imageUrl, setImageUrl] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [form] = Form.useForm();
@@ -58,6 +60,13 @@ const Items = () => {
       key: 'actions',
       render: (_, record) => (
         <Space>
+          <Button 
+            icon={<EyeOutlined />} 
+            size="small"
+            onClick={() => viewItem(record)}
+          >
+            View
+          </Button>
           {canManageItems && (
             <Button 
               icon={<EditOutlined />} 
@@ -148,6 +157,7 @@ const Items = () => {
         sku: values.sku,
         name: values.name,
         description: values.description,
+        image: imageUrl, // Store base64 image
         type: values.type,
         category: values.category,
         unit: values.unit,
@@ -197,9 +207,15 @@ const Items = () => {
     }
   };
 
+  const viewItem = (item) => {
+    setViewingItem(item);
+    setViewModalVisible(true);
+  };
+
   const editItem = (item) => {
     setEditingItem(item);
     setPriceCurrency(currency);
+    setImageUrl(item.image || ''); // Load existing image
     form.setFieldsValue({
       sku: item.sku,
       name: item.name,
@@ -808,6 +824,95 @@ const Items = () => {
           </Form>
         </Modal>
       )}
+
+      {/* View Item Modal */}
+      <Modal
+        title="View Item Details"
+        open={viewModalVisible}
+        onCancel={() => {
+          setViewModalVisible(false);
+          setViewingItem(null);
+        }}
+        footer={[
+          <Button key="close" onClick={() => {
+            setViewModalVisible(false);
+            setViewingItem(null);
+          }}>
+            Close
+          </Button>
+        ]}
+        width={800}
+      >
+        {viewingItem && (
+          <div>
+            <Row gutter={16}>
+              <Col span={16}>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <p><strong>SKU:</strong> {viewingItem.sku}</p>
+                    <p><strong>Name:</strong> {viewingItem.name}</p>
+                    <p><strong>Type:</strong> {viewingItem.type}</p>
+                    <p><strong>Category:</strong> {viewingItem.category || 'N/A'}</p>
+                    <p><strong>Unit:</strong> {viewingItem.unit}</p>
+                    <p><strong>Brand:</strong> {viewingItem.brand || 'N/A'}</p>
+                    <p><strong>Manufacturer:</strong> {viewingItem.manufacturer || 'N/A'}</p>
+                  </Col>
+                  <Col span={12}>
+                    <p><strong>Cost Price:</strong> {viewingItem.cost_price ? formatPrice(viewingItem.cost_price, currency, 'USD') : 'N/A'}</p>
+                    <p><strong>Selling Price:</strong> {viewingItem.selling_price ? formatPrice(viewingItem.selling_price, currency, 'USD') : 'N/A'}</p>
+                    <p><strong>MRP:</strong> {viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'}</p>
+                    <p><strong>Tax Rate:</strong> {viewingItem.tax_rate ? `${viewingItem.tax_rate}%` : 'N/A'}</p>
+                    <p><strong>Min Stock Level:</strong> {viewingItem.min_stock_level || 'N/A'}</p>
+                    <p><strong>Max Stock Level:</strong> {viewingItem.max_stock_level || 'N/A'}</p>
+                    <p><strong>Status:</strong> <span style={{ color: viewingItem.status === 'active' ? '#52c41a' : '#ff4d4f' }}>{viewingItem.status}</span></p>
+                  </Col>
+                </Row>
+              </Col>
+              <Col span={8}>
+                <div style={{ textAlign: 'center' }}>
+                  <p><strong>Item Image</strong></p>
+                  {viewingItem.image ? (
+                    <img 
+                      src={viewingItem.image} 
+                      alt={viewingItem.name}
+                      style={{ 
+                        width: '150px', 
+                        height: '150px', 
+                        objectFit: 'cover',
+                        border: '1px solid #d9d9d9',
+                        borderRadius: '6px'
+                      }} 
+                    />
+                  ) : (
+                    <div style={{
+                      width: '150px',
+                      height: '150px',
+                      border: '2px dashed #d9d9d9',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#999',
+                      fontSize: '12px',
+                      margin: '0 auto'
+                    }}>
+                      No Image Available
+                    </div>
+                  )}
+                </div>
+              </Col>
+            </Row>
+            {viewingItem.description && (
+              <Row gutter={16} style={{ marginTop: 16 }}>
+                <Col span={24}>
+                  <p><strong>Description:</strong></p>
+                  <p>{viewingItem.description}</p>
+                </Col>
+              </Row>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

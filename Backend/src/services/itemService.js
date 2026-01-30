@@ -9,6 +9,7 @@ class ItemService {
       sku,
       name,
       description,
+      image,
       type = 'simple',
       category,
       unit = 'pcs',
@@ -53,14 +54,14 @@ class ItemService {
 
     await db.query(
       `INSERT INTO items 
-       (id, institution_id, sku, name, description, type, category, unit, barcode, hsn_code, 
+       (id, institution_id, sku, name, description, image, type, category, unit, barcode, hsn_code, 
         custom_fields, valuation_method, allow_negative_stock, cost_price, selling_price, mrp, 
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [itemId, institutionId, sku, name, description || null, type, category || null, unit, barcode || null, hsnCode || null,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+      [itemId, institutionId, sku, name, description || null, image || null, type, category || null, unit, barcode || null, hsnCode || null,
        JSON.stringify(customFields), valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
@@ -77,6 +78,7 @@ class ItemService {
       sku,
       name,
       description,
+      image,
       category,
       unit,
       barcode,
@@ -109,6 +111,10 @@ class ItemService {
     if (description !== undefined) {
       updateFields.push('description = ?');
       updateValues.push(description);
+    }
+    if (image !== undefined) {
+      updateFields.push('image = ?');
+      updateValues.push(image);
     }
     if (category !== undefined) {
       updateFields.push('category = ?');

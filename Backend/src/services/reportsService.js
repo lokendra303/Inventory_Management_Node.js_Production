@@ -65,7 +65,7 @@ class ReportsService {
   // Purchase Reports
   async getPurchaseReport(institutionId, filters = {}) {
     let query = `
-      SELECT po.*, COALESCE(v.name, po.vendor_name) as vendor_name, w.name as warehouse_name,
+      SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name, w.name as warehouse_name,
              COUNT(pol.id) as line_count,
              SUM(pol.quantity_ordered) as total_quantity,
              SUM(pol.quantity_received) as total_received
@@ -134,7 +134,7 @@ class ReportsService {
   // Sales Reports
   async getSalesReport(institutionId, filters = {}) {
     let query = `
-      SELECT so.*, COALESCE(c.name, so.customer_name) as customer_name, w.name as warehouse_name,
+      SELECT so.*, COALESCE(c.display_name, so.customer_name) as customer_name, w.name as warehouse_name,
              COUNT(sol.id) as line_count,
              SUM(sol.quantity_ordered) as total_quantity,
              SUM(sol.quantity_shipped) as total_shipped
@@ -260,7 +260,7 @@ class ReportsService {
 
   async getVendorPerformanceReport(institutionId, filters = {}) {
     let query = `
-      SELECT v.id, v.name, v.vendor_code,
+      SELECT v.id, v.display_name as name, v.vendor_code,
              COUNT(po.id) as total_orders,
              SUM(po.total_amount) as total_value,
              AVG(DATEDIFF(grn.receipt_date, po.order_date)) as avg_delivery_days,
