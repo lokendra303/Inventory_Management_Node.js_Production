@@ -3,22 +3,22 @@ const db = require('../database/connection');
 const logger = require('../utils/logger');
 
 class WarehouseService {
-  async createWarehouse(tenantId, warehouseData, userId) {
+  async createWarehouse(institutionId, warehouseData, userId) {
     const { code, name, type, address, contactPerson, phone, email } = warehouseData;
 
     const warehouseId = uuidv4();
 
     await db.query(
-      `INSERT INTO warehouses (id, tenant_id, code, name, type, address, contact_person, phone, email, status) 
+      `INSERT INTO warehouses (id, institution_id, code, name, type, address, contact_person, phone, email, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [warehouseId, tenantId, code, name, type || 'standard', address, contactPerson, phone, email]
+      [warehouseId, institutionId, code, name, type || 'standard', address, contactPerson, phone, email]
     );
 
-    logger.info('Warehouse created', { warehouseId, tenantId, code, userId });
+    logger.info('Warehouse created', { warehouseId, institutionId, code, userId });
     return warehouseId;
   }
 
-  async updateWarehouse(tenantId, warehouseId, updateData, userId) {
+  async updateWarehouse(institutionId, warehouseId, updateData, userId) {
     const {
       name,
       type,
@@ -71,10 +71,10 @@ class WarehouseService {
     }
 
     updateFields.push('updated_at = NOW()');
-    updateValues.push(tenantId, warehouseId);
+    updateValues.push(institutionId, warehouseId);
 
     const result = await db.query(
-      `UPDATE warehouses SET ${updateFields.join(', ')} WHERE tenant_id = ? AND id = ?`,
+      `UPDATE warehouses SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
       updateValues
     );
 
@@ -82,18 +82,18 @@ class WarehouseService {
       throw new Error('Warehouse not found');
     }
 
-    logger.info('Warehouse updated', { warehouseId, tenantId, userId });
+    logger.info('Warehouse updated', { warehouseId, institutionId, userId });
     return warehouseId;
   }
 
-  async getWarehouse(tenantId, warehouseId) {
+  async getWarehouse(institutionId, warehouseId) {
     if (!warehouseId) {
       return null;
     }
     
     const warehouses = await db.query(
-      'SELECT * FROM warehouses WHERE tenant_id = ? AND id = ?',
-      [tenantId, warehouseId]
+      'SELECT * FROM warehouses WHERE institution_id = ? AND id = ?',
+      [institutionId, warehouseId]
     );
 
     if (warehouses.length === 0) {
@@ -107,7 +107,7 @@ class WarehouseService {
     };
   }
 
-  async getWarehouseDetails(tenantId, warehouseId) {
+  async getWarehouseDetails(institutionId, warehouseId) {
     try {
       if (!warehouseId) {
         throw new Error('Warehouse ID is required');
@@ -115,8 +115,8 @@ class WarehouseService {
       
       // Get warehouse basic info
       const warehouses = await db.query(
-        'SELECT * FROM warehouses WHERE tenant_id = ? AND id = ?',
-        [tenantId, warehouseId]
+        'SELECT * FROM warehouses WHERE institution_id = ? AND id = ?',
+        [institutionId, warehouseId]
       );
 
       if (warehouses.length === 0) {
@@ -133,8 +133,8 @@ class WarehouseService {
            SUM(ip.total_value) as total_value,
            COUNT(CASE WHEN ip.quantity_on_hand <= 10 THEN 1 END) as low_stock_items
          FROM inventory_projections ip
-         WHERE ip.tenant_id = ? AND ip.warehouse_id = ? AND ip.quantity_on_hand > 0`,
-        [tenantId, warehouseId]
+         WHERE ip.institution_id = ? AND ip.warehouse_id = ? AND ip.quantity_on_hand > 0`,
+        [institutionId, warehouseId]
       );
 
       // Get items by category
@@ -146,10 +146,10 @@ class WarehouseService {
            SUM(ip.total_value) as total_value
          FROM inventory_projections ip
          JOIN items i ON ip.item_id = i.id
-         WHERE ip.tenant_id = ? AND ip.warehouse_id = ? AND ip.quantity_on_hand > 0
+         WHERE ip.institution_id = ? AND ip.warehouse_id = ? AND ip.quantity_on_hand > 0
          GROUP BY i.category
          ORDER BY total_value DESC`,
-        [tenantId, warehouseId]
+        [institutionId, warehouseId]
       );
 
       // Get top items by value
@@ -159,10 +159,10 @@ class WarehouseService {
            ip.quantity_on_hand, ip.average_cost, ip.total_value
          FROM inventory_projections ip
          JOIN items i ON ip.item_id = i.id
-         WHERE ip.tenant_id = ? AND ip.warehouse_id = ? AND ip.quantity_on_hand > 0
+         WHERE ip.institution_id = ? AND ip.warehouse_id = ? AND ip.quantity_on_hand > 0
          ORDER BY ip.total_value DESC
          LIMIT 20`,
-        [tenantId, warehouseId]
+        [institutionId, warehouseId]
       );
 
       return {
@@ -178,17 +178,17 @@ class WarehouseService {
         topItems
       };
     } catch (error) {
-      logger.error('Failed to get warehouse details', { tenantId, warehouseId, error: error.message });
+      logger.error('Failed to get warehouse details', { institutionId, warehouseId, error: error.message });
       throw error;
     }
   }
 
-  async getWarehouses(tenantId, filters = {}) {
+  async getWarehouses(institutionId, filters = {}) {
     let query = `SELECT w.*, COALESCE(wt.name, 'Standard') as type_name 
                  FROM warehouses w 
                  LEFT JOIN warehouse_types wt ON w.type = wt.id 
-                 WHERE w.tenant_id = ?`;
-    const params = [tenantId];
+                 WHERE w.institution_id = ?`;
+    const params = [institutionId];
 
     if (filters.status) {
       query += ' AND w.status = ?';
@@ -200,7 +200,7 @@ class WarehouseService {
     return await db.query(query, params);
   }
 
-  async getWarehouseStats(tenantId, warehouseId) {
+  async getWarehouseStats(institutionId, warehouseId) {
     const stats = await db.query(
       `SELECT 
          COUNT(DISTINCT ip.item_id) as total_items,
@@ -208,8 +208,8 @@ class WarehouseService {
          SUM(ip.total_value) as total_value,
          COUNT(CASE WHEN ip.quantity_available <= 10 THEN 1 END) as low_stock_items
        FROM inventory_projections ip
-       WHERE ip.tenant_id = ? AND ip.warehouse_id = ?`,
-      [tenantId, warehouseId]
+       WHERE ip.institution_id = ? AND ip.warehouse_id = ?`,
+      [institutionId, warehouseId]
     );
 
     return stats[0] || {
@@ -220,13 +220,13 @@ class WarehouseService {
     };
   }
 
-  async getWarehouseCapacityUtilization(tenantId, warehouseId) {
-    const warehouse = await this.getWarehouse(tenantId, warehouseId);
+  async getWarehouseCapacityUtilization(institutionId, warehouseId) {
+    const warehouse = await this.getWarehouse(institutionId, warehouseId);
     if (!warehouse || !warehouse.capacity_constraints.maxItems) {
       return null;
     }
 
-    const stats = await this.getWarehouseStats(tenantId, warehouseId);
+    const stats = await this.getWarehouseStats(institutionId, warehouseId);
     const utilizationPercentage = (stats.total_items / warehouse.capacity_constraints.maxItems) * 100;
 
     return {
@@ -237,18 +237,18 @@ class WarehouseService {
     };
   }
 
-  async checkWarehouseAccess(tenantId, userId, warehouseId) {
+  async checkWarehouseAccess(institutionId, userId, warehouseId) {
     // Get user's warehouse access
-    const users = await db.query(
-      'SELECT warehouse_access, role FROM users WHERE tenant_id = ? AND id = ?',
-      [tenantId, userId]
+    const institution_users = await db.query(
+      'SELECT warehouse_access, role FROM institution_users WHERE institution_id = ? AND id = ?',
+      [institutionId, userId]
     );
 
-    if (users.length === 0) {
+    if (institution_users.length === 0) {
       return false;
     }
 
-    const user = users[0];
+    const user = institution_users[0];
     
     // Admin has access to all warehouses
     if (user.role === 'admin') {
@@ -265,28 +265,28 @@ class WarehouseService {
     return warehouseAccess.includes(warehouseId);
   }
 
-  async getUserWarehouses(tenantId, userId) {
-    const users = await db.query(
-      'SELECT warehouse_access, role FROM users WHERE tenant_id = ? AND id = ?',
-      [tenantId, userId]
+  async getUserWarehouses(institutionId, userId) {
+    const institution_users = await db.query(
+      'SELECT warehouse_access, role FROM institution_users WHERE institution_id = ? AND id = ?',
+      [institutionId, userId]
     );
 
-    if (users.length === 0) {
+    if (institution_users.length === 0) {
       return [];
     }
 
-    const user = users[0];
+    const user = institution_users[0];
     
     // Admin has access to all warehouses
     if (user.role === 'admin') {
-      return await this.getWarehouses(tenantId, { status: 'active' });
+      return await this.getWarehouses(institutionId, { status: 'active' });
     }
 
     const warehouseAccess = JSON.parse(user.warehouse_access || '[]');
     
     // Empty array means access to all warehouses
     if (warehouseAccess.length === 0) {
-      return await this.getWarehouses(tenantId, { status: 'active' });
+      return await this.getWarehouses(institutionId, { status: 'active' });
     }
 
     // Get specific warehouses
@@ -294,9 +294,9 @@ class WarehouseService {
       const placeholders = warehouseAccess.map(() => '?').join(',');
       const warehouses = await db.query(
         `SELECT * FROM warehouses 
-         WHERE tenant_id = ? AND id IN (${placeholders}) AND status = 'active'
+         WHERE institution_id = ? AND id IN (${placeholders}) AND status = 'active'
          ORDER BY name`,
-        [tenantId, ...warehouseAccess]
+        [institutionId, ...warehouseAccess]
       );
 
       return warehouses.map(warehouse => ({
@@ -308,11 +308,11 @@ class WarehouseService {
     return [];
   }
 
-  async deleteWarehouse(tenantId, warehouseId, userId) {
+  async deleteWarehouse(institutionId, warehouseId, userId) {
     // Check if warehouse has any inventory
     const inventory = await db.query(
-      'SELECT COUNT(*) as count FROM inventory_projections WHERE tenant_id = ? AND warehouse_id = ? AND quantity_on_hand > 0',
-      [tenantId, warehouseId]
+      'SELECT COUNT(*) as count FROM inventory_projections WHERE institution_id = ? AND warehouse_id = ? AND quantity_on_hand > 0',
+      [institutionId, warehouseId]
     );
 
     if (inventory[0].count > 0) {
@@ -321,19 +321,19 @@ class WarehouseService {
 
     // Soft delete
     const result = await db.query(
-      'UPDATE warehouses SET status = "inactive", updated_at = NOW() WHERE tenant_id = ? AND id = ?',
-      [tenantId, warehouseId]
+      'UPDATE warehouses SET status = "inactive", updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [institutionId, warehouseId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Warehouse not found');
     }
 
-    logger.info('Warehouse deleted', { warehouseId, tenantId, userId });
+    logger.info('Warehouse deleted', { warehouseId, institutionId, userId });
     return true;
   }
 
-  async getWarehouseMovements(tenantId, warehouseId, limit = 100, offset = 0) {
+  async getWarehouseMovements(institutionId, warehouseId, limit = 100, offset = 0) {
     // Get recent inventory movements for this warehouse
     const eventStore = require('../events/eventStore');
     
@@ -341,12 +341,12 @@ class WarehouseService {
       `SELECT es.*, i.sku, i.name as item_name
        FROM event_store es
        JOIN items i ON JSON_EXTRACT(es.event_data, '$.itemId') = i.id
-       WHERE es.tenant_id = ? 
+       WHERE es.institution_id = ? 
          AND JSON_EXTRACT(es.event_data, '$.warehouseId') = ?
          AND es.aggregate_type = 'inventory'
        ORDER BY es.created_at DESC
        LIMIT ? OFFSET ?`,
-      [tenantId, warehouseId, limit, offset]
+      [institutionId, warehouseId, limit, offset]
     );
 
     return events.map(event => ({

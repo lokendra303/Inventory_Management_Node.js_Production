@@ -15,12 +15,12 @@ async function createDropdownOptionsTable() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS dropdown_options (
         id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         type VARCHAR(50) NOT NULL,
         options JSON NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_type (tenant_id, type)
+        UNIQUE KEY unique_institution_type (institution_id, type)
       )
     `);
 

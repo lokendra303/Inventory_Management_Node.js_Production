@@ -5,7 +5,7 @@ class CustomerController {
   async createCustomer(req, res) {
     try {
       const customerId = await customerService.createCustomer(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -18,7 +18,7 @@ class CustomerController {
     } catch (error) {
       logger.error('Customer creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -35,14 +35,14 @@ class CustomerController {
         search: req.query.search
       };
       
-      const customers = await customerService.getCustomers(req.tenantId, filters);
+      const customers = await customerService.getCustomers(req.institutionId, filters);
       
       res.json({
         success: true,
         data: customers
       });
     } catch (error) {
-      logger.error('Failed to get customers', { message: error.message, stack: error.stack, tenantId: req.tenantId });
+      logger.error('Failed to get customers', { message: error.message, stack: error.stack, institutionId: req.institutionId });
       const isProd = process.env.NODE_ENV === 'production';
       res.status(500).json({
         success: false,
@@ -54,7 +54,7 @@ class CustomerController {
   async getCustomer(req, res) {
     try {
       const { id: customerId } = req.params;
-      const customer = await customerService.getCustomer(req.tenantId, customerId);
+      const customer = await customerService.getCustomer(req.institutionId, customerId);
       
       if (!customer) {
         return res.status(404).json({
@@ -70,7 +70,7 @@ class CustomerController {
     } catch (error) {
       logger.error('Failed to get customer', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         customerId: req.params.id 
       });
       res.status(500).json({
@@ -83,7 +83,7 @@ class CustomerController {
   async updateCustomer(req, res) {
     try {
       const { id: customerId } = req.params;
-      await customerService.updateCustomer(req.tenantId, customerId, req.body, req.user.userId);
+      await customerService.updateCustomer(req.institutionId, customerId, req.body, req.user.userId);
       
       res.json({
         success: true,
@@ -92,7 +92,7 @@ class CustomerController {
     } catch (error) {
       logger.error('Failed to update customer', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         customerId: req.params.id 
       });
       res.status(400).json({
@@ -108,7 +108,7 @@ class CustomerController {
       const { startDate, endDate } = req.query;
       
       const performance = await customerService.getCustomerPerformance(
-        req.tenantId, 
+        req.institutionId, 
         customerId, 
         startDate, 
         endDate
@@ -121,7 +121,7 @@ class CustomerController {
     } catch (error) {
       logger.error('Failed to get customer performance', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         customerId: req.params.id 
       });
       res.status(500).json({
@@ -135,7 +135,7 @@ class CustomerController {
     try {
       const { customerId } = req.params;
       const bankDetailId = await customerService.addCustomerBankDetails(
-        req.tenantId,
+        req.institutionId,
         customerId,
         req.body
       );
@@ -149,7 +149,7 @@ class CustomerController {
       logger.error('Failed to add bank details', { 
         error: error.message,
         customerId: req.params.customerId,
-        tenantId: req.tenantId
+        institutionId: req.institutionId
       });
       res.status(400).json({
         success: false,
@@ -162,7 +162,7 @@ class CustomerController {
     try {
       const { customerId } = req.params;
       const bankDetails = await customerService.getCustomerBankDetails(
-        req.tenantId,
+        req.institutionId,
         customerId
       );
 
@@ -174,7 +174,7 @@ class CustomerController {
       logger.error('Failed to get bank details', { 
         error: error.message,
         customerId: req.params.customerId,
-        tenantId: req.tenantId
+        institutionId: req.institutionId
       });
       res.status(500).json({
         success: false,
@@ -188,7 +188,7 @@ class CustomerController {
       const { customerId, bankDetailId } = req.params;
       
       await customerService.updateCustomerBankDetails(
-        req.tenantId,
+        req.institutionId,
         bankDetailId,
         req.body
       );
@@ -201,7 +201,7 @@ class CustomerController {
       logger.error('Failed to update bank details', { 
         error: error.message,
         bankDetailId: req.params.bankDetailId,
-        tenantId: req.tenantId
+        institutionId: req.institutionId
       });
       res.status(400).json({
         success: false,
@@ -215,7 +215,7 @@ class CustomerController {
       const { customerId, bankDetailId } = req.params;
 
       await customerService.deleteCustomerBankDetails(
-        req.tenantId,
+        req.institutionId,
         bankDetailId
       );
 
@@ -227,7 +227,7 @@ class CustomerController {
       logger.error('Failed to delete bank details', { 
         error: error.message,
         bankDetailId: req.params.bankDetailId,
-        tenantId: req.tenantId
+        institutionId: req.institutionId
       });
       res.status(400).json({
         success: false,

@@ -22,20 +22,20 @@ async function checkAndFixItems() {
       console.log('Sample item:', items[0]);
     } else {
       // Create sample items if none exist
-      const [tenants] = await connection.execute('SELECT id FROM tenants LIMIT 1');
-      if (tenants.length > 0) {
-        const tenantId = tenants[0].id;
+      const [institutions] = await connection.execute('SELECT id FROM institutions LIMIT 1');
+      if (institutions.length > 0) {
+        const institutionId = institutions[0].id;
         
         await connection.execute(
-          `INSERT INTO items (id, tenant_id, sku, name, type, unit, status) 
+          `INSERT INTO items (id, institution_id, sku, name, type, unit, status) 
            VALUES (UUID(), ?, 'ITEM001', 'Sample Item 1', 'simple', 'pcs', 'active')`,
-          [tenantId]
+          [institutionId]
         );
         
         await connection.execute(
-          `INSERT INTO items (id, tenant_id, sku, name, type, unit, status) 
+          `INSERT INTO items (id, institution_id, sku, name, type, unit, status) 
            VALUES (UUID(), ?, 'ITEM002', 'Sample Item 2', 'simple', 'pcs', 'active')`,
-          [tenantId]
+          [institutionId]
         );
         
         console.log('Created sample items');

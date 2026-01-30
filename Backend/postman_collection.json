@@ -21,7 +21,7 @@
       "name": "Authentication",
       "item": [
         {
-          "name": "Register Tenant",
+          "name": "Register institution",
           "request": {
             "method": "POST",
             "header": [

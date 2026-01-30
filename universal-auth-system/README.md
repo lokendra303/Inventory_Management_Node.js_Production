@@ -9,7 +9,7 @@
 ## ✨ Features
 
 - 🔐 **Complete Authentication** - Login, register, JWT tokens
-- 🏢 **Multi-Tenant Support** - Perfect for SaaS applications
+- 🏢 **Multi-institution Support** - Perfect for SaaS applications
 - 🛡️ **Role & Permission Based** - Granular access control
 - 🔄 **Auto-Migration** - Works with any existing project
 - 📱 **Production Ready** - Security best practices included
@@ -168,7 +168,7 @@ const auth = new OptionalAuth({ enabled: false });
 ## 🛡️ Security Features
 
 - 🔐 **JWT Authentication** - Secure token-based auth
-- 🏢 **Multi-Tenant Isolation** - Complete data separation
+- 🏢 **Multi-institution Isolation** - Complete data separation
 - 🛡️ **Role-Based Access** - Admin, manager, user roles
 - 🎯 **Permission System** - Granular access control
 - 🔄 **Session Management** - Automatic token refresh
@@ -177,7 +177,7 @@ const auth = new OptionalAuth({ enabled: false });
 ## 📊 Database Support
 
 - **Auto-Migration** - Adds auth tables to existing database
-- **Multi-Tenant** - Automatic tenant_id isolation
+- **Multi-institution** - Automatic institution_id isolation
 - **Backward Compatible** - Existing queries still work
 - **Performance Optimized** - Proper indexing included
 
@@ -203,7 +203,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Save Development Time** - No need to build auth from scratch
 - **Production Ready** - Security best practices included
-- **Multi-Tenant** - Perfect for SaaS applications
+- **Multi-institution** - Perfect for SaaS applications
 - **Zero Breaking Changes** - Works with existing projects
 - **Comprehensive** - Complete auth solution
 

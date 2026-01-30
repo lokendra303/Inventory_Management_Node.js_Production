@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 const itemFieldService = require('./itemFieldService');
 
 class ItemService {
-  async createItem(tenantId, itemData, userId) {
+  async createItem(institutionId, itemData, userId) {
     const {
       sku,
       name,
@@ -44,7 +44,7 @@ class ItemService {
     } = itemData;
 
     // Validate custom fields based on item type
-    const validationErrors = await itemFieldService.validateCustomFields(tenantId, type, customFields);
+    const validationErrors = await itemFieldService.validateCustomFields(institutionId, type, customFields);
     if (validationErrors.length > 0) {
       throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
     }
@@ -53,14 +53,14 @@ class ItemService {
 
     await db.query(
       `INSERT INTO items 
-       (id, tenant_id, sku, name, description, type, category, unit, barcode, hsn_code, 
+       (id, institution_id, sku, name, description, type, category, unit, barcode, hsn_code, 
         custom_fields, valuation_method, allow_negative_stock, cost_price, selling_price, mrp, 
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [itemId, tenantId, sku, name, description || null, type, category || null, unit, barcode || null, hsnCode || null,
+      [itemId, institutionId, sku, name, description || null, type, category || null, unit, barcode || null, hsnCode || null,
        JSON.stringify(customFields), valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
@@ -68,11 +68,11 @@ class ItemService {
        openingStock, openingValue, asOfDate || null]
     );
 
-    logger.info('Item created', { itemId, tenantId, sku, userId });
+    logger.info('Item created', { itemId, institutionId, sku, userId });
     return itemId;
   }
 
-  async updateItem(tenantId, itemId, updateData, userId) {
+  async updateItem(institutionId, itemId, updateData, userId) {
     const {
       sku,
       name,
@@ -180,13 +180,13 @@ class ItemService {
     }
 
     updateFields.push('updated_at = NOW()');
-    updateValues.push(tenantId, itemId);
+    updateValues.push(institutionId, itemId);
 
     console.log('Update query fields:', updateFields);
     console.log('Update query values:', updateValues);
 
     const result = await db.query(
-      `UPDATE items SET ${updateFields.join(', ')} WHERE tenant_id = ? AND id = ?`,
+      `UPDATE items SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
       updateValues
     );
 
@@ -198,19 +198,19 @@ class ItemService {
 
     // Verify the update by fetching the updated item
     const updatedItem = await db.query(
-      'SELECT id, name, cost_price, selling_price, mrp FROM items WHERE tenant_id = ? AND id = ?',
-      [tenantId, itemId]
+      'SELECT id, name, cost_price, selling_price, mrp FROM items WHERE institution_id = ? AND id = ?',
+      [institutionId, itemId]
     );
     console.log('Updated item verification:', updatedItem[0]);
 
-    logger.info('Item updated', { itemId, tenantId, userId });
+    logger.info('Item updated', { itemId, institutionId, userId });
     return itemId;
   }
 
-  async getItem(tenantId, itemId) {
+  async getItem(institutionId, itemId) {
     const items = await db.query(
-      'SELECT * FROM items WHERE tenant_id = ? AND id = ?',
-      [tenantId, itemId]
+      'SELECT * FROM items WHERE institution_id = ? AND id = ?',
+      [institutionId, itemId]
     );
 
     if (items.length === 0) {
@@ -224,10 +224,10 @@ class ItemService {
     };
   }
 
-  async getItemBySku(tenantId, sku) {
+  async getItemBySku(institutionId, sku) {
     const items = await db.query(
-      'SELECT * FROM items WHERE tenant_id = ? AND sku = ?',
-      [tenantId, sku]
+      'SELECT * FROM items WHERE institution_id = ? AND sku = ?',
+      [institutionId, sku]
     );
 
     if (items.length === 0) {
@@ -241,9 +241,9 @@ class ItemService {
     };
   }
 
-  async getItems(tenantId, filters = {}) {
-    let query = 'SELECT * FROM items WHERE tenant_id = ?';
-    const params = [tenantId];
+  async getItems(institutionId, filters = {}) {
+    let query = 'SELECT * FROM items WHERE institution_id = ?';
+    const params = [institutionId];
 
     if (filters.status) {
       query += ' AND status = ?';
@@ -269,12 +269,12 @@ class ItemService {
     });
   }
 
-  async getItemFieldConfig(tenantId, itemType) {
-    return await itemFieldService.getFieldConfig(tenantId, itemType);
+  async getItemFieldConfig(institutionId, itemType) {
+    return await itemFieldService.getFieldConfig(institutionId, itemType);
   }
 
-  async createItemFieldConfig(tenantId, fieldData, userId) {
-    return await itemFieldService.createFieldConfig(tenantId, fieldData, userId);
+  async createItemFieldConfig(institutionId, fieldData, userId) {
+    return await itemFieldService.createFieldConfig(institutionId, fieldData, userId);
   }
 
   async getItemTypeFields(itemType) {
@@ -282,21 +282,21 @@ class ItemService {
     return defaultConfigs[itemType] || [];
   }
 
-  async updateItemFieldOptions(tenantId, itemType, fieldName, options, userId) {
+  async updateItemFieldOptions(institutionId, itemType, fieldName, options, userId) {
     const result = await db.query(
-      'UPDATE item_field_configs SET options = ?, updated_at = NOW() WHERE tenant_id = ? AND item_type = ? AND field_name = ?',
-      [JSON.stringify(options), tenantId, itemType, fieldName]
+      'UPDATE item_field_configs SET options = ?, updated_at = NOW() WHERE institution_id = ? AND item_type = ? AND field_name = ?',
+      [JSON.stringify(options), institutionId, itemType, fieldName]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Field configuration not found');
     }
 
-    logger.info('Field options updated', { itemType, fieldName, tenantId, userId });
+    logger.info('Field options updated', { itemType, fieldName, institutionId, userId });
     return true;
   }
 
-  async createCompositeItem(tenantId, compositeData, userId) {
+  async createCompositeItem(institutionId, compositeData, userId) {
     const { itemData, components } = compositeData;
 
     if (!components || components.length === 0) {
@@ -305,7 +305,7 @@ class ItemService {
 
     const itemId = await db.transaction(async (connection) => {
       // Create the composite item
-      const compositeItemId = await this.createItem(tenantId, {
+      const compositeItemId = await this.createItem(institutionId, {
         ...itemData,
         type: 'composite'
       }, userId);
@@ -315,11 +315,11 @@ class ItemService {
         const componentId = uuidv4();
         await connection.execute(
           `INSERT INTO composite_components 
-           (id, tenant_id, composite_item_id, component_item_id, quantity_required, consumption_timing) 
+           (id, institution_id, composite_item_id, component_item_id, quantity_required, consumption_timing) 
            VALUES (?, ?, ?, ?, ?, ?)`,
           [
             componentId,
-            tenantId,
+            institutionId,
             compositeItemId,
             component.itemId,
             component.quantityRequired,
@@ -331,22 +331,22 @@ class ItemService {
       return compositeItemId;
     });
 
-    logger.info('Composite item created', { itemId, tenantId, userId, componentCount: components.length });
+    logger.info('Composite item created', { itemId, institutionId, userId, componentCount: components.length });
     return itemId;
   }
 
-  async getCompositeComponents(tenantId, compositeItemId) {
+  async getCompositeComponents(institutionId, compositeItemId) {
     return await db.query(
       `SELECT cc.*, i.sku, i.name as component_name, i.unit
        FROM composite_components cc
        JOIN items i ON cc.component_item_id = i.id
-       WHERE cc.tenant_id = ? AND cc.composite_item_id = ?`,
-      [tenantId, compositeItemId]
+       WHERE cc.institution_id = ? AND cc.composite_item_id = ?`,
+      [institutionId, compositeItemId]
     );
   }
 
-  async calculateCompositeStock(tenantId, compositeItemId, warehouseId) {
-    const components = await this.getCompositeComponents(tenantId, compositeItemId);
+  async calculateCompositeStock(institutionId, compositeItemId, warehouseId) {
+    const components = await this.getCompositeComponents(institutionId, compositeItemId);
     
     if (components.length === 0) {
       return 0;
@@ -357,7 +357,7 @@ class ItemService {
 
     for (const component of components) {
       const componentStock = await projectionService.getInventoryProjection(
-        tenantId,
+        institutionId,
         component.component_item_id,
         warehouseId
       );
@@ -371,11 +371,11 @@ class ItemService {
     return minAvailableStock === Infinity ? 0 : minAvailableStock;
   }
 
-  async deleteItem(tenantId, itemId, userId) {
+  async deleteItem(institutionId, itemId, userId) {
     // Check if item has any inventory
     const inventory = await db.query(
-      'SELECT COUNT(*) as count FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND quantity_on_hand > 0',
-      [tenantId, itemId]
+      'SELECT COUNT(*) as count FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND quantity_on_hand > 0',
+      [institutionId, itemId]
     );
 
     if (inventory[0].count > 0) {
@@ -384,22 +384,22 @@ class ItemService {
 
     // Soft delete
     const result = await db.query(
-      'UPDATE items SET status = "inactive", updated_at = NOW() WHERE tenant_id = ? AND id = ?',
-      [tenantId, itemId]
+      'UPDATE items SET status = "inactive", updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [institutionId, itemId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Item not found');
     }
 
-    logger.info('Item deleted', { itemId, tenantId, userId });
+    logger.info('Item deleted', { itemId, institutionId, userId });
     return true;
   }
 
-  async getItemCategories(tenantId) {
+  async getItemCategories(institutionId) {
     const categories = await db.query(
-      'SELECT DISTINCT category FROM items WHERE tenant_id = ? AND category IS NOT NULL ORDER BY category',
-      [tenantId]
+      'SELECT DISTINCT category FROM items WHERE institution_id = ? AND category IS NOT NULL ORDER BY category',
+      [institutionId]
     );
 
     return categories.map(row => row.category);

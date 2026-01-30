@@ -12,7 +12,7 @@ const categoryController = require('../controllers/categoryController');
 const settingsController = require('../controllers/settingsController');
 const customerController = require('../controllers/customerController');
 const allDataRoutes = require('./all-data');
-const { requireAuth, requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
+const { requireAuth, requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 
 const router = express.Router();
@@ -23,10 +23,10 @@ router.get('/health', (req, res) => {
 });
 
 // Public routes (no authentication required)
-router.post('/auth/register-tenant', 
-  validate(schemas.registerTenantSchema),
-  auditLog('tenant_registration'),
-  authController.registerTenant
+router.post('/auth/register-institution', 
+  validate(schemas.registerinstitutionSchema),
+  auditLog('institution_registration'),
+  authController.registerinstitution
 );
 
 router.post('/auth/login', 
@@ -42,7 +42,7 @@ router.post('/auth/temp-login',
 
 // Protected routes (authentication required)
 router.use(requireAuth);
-router.use(validateTenantConsistency);
+router.use(validateInstitutionConsistency);
 
 // Auth routes
 router.get('/auth/profile', authController.getProfile);
@@ -241,7 +241,7 @@ router.get('/inventory/warehouse/:warehouseId',
 
 router.get('/inventory', 
   requirePermission('inventory_view'),
-  inventoryController.getTenantInventory
+  inventoryController.getInstitutionInventory
 );
 
 router.get('/inventory/dashboard-stats', 
@@ -258,7 +258,7 @@ router.get('/inventory/low-stock',
 router.post('/purchase-orders',
   validate(schemas.createPurchaseOrderSchema),
   requirePermission('purchase_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('purchase_order_created'),
   purchaseOrderController.createPurchaseOrder
 );
@@ -275,14 +275,14 @@ router.get('/purchase-orders/:poId',
 
 router.put('/purchase-orders/:poId/status',
   requirePermission('purchase_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('purchase_order_status_updated'),
   purchaseOrderController.updatePOStatus
 );
 
 router.post('/grn',
   requirePermission('inventory_receive'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('grn_created'),
   purchaseOrderController.createGRN
 );
@@ -300,7 +300,7 @@ router.get('/pending-receipts',
 // Vendor management
 router.post('/vendors',
   requirePermission('vendor_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('vendor_created'),
   purchaseOrderController.createVendor
 );
@@ -317,7 +317,7 @@ router.get('/vendors/:vendorId',
 
 router.put('/vendors/:vendorId',
   requirePermission('vendor_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('vendor_updated'),
   purchaseOrderController.updateVendor
 );
@@ -330,7 +330,7 @@ router.get('/vendors/:vendorId/performance',
 // Customer management
 router.post('/customers',
   requirePermission('customer_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('customer_created'),
   customerController.createCustomer
 );
@@ -347,7 +347,7 @@ router.get('/customers/:id',
 
 router.put('/customers/:id',
   requirePermission('customer_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('customer_updated'),
   customerController.updateCustomer
 );
@@ -361,7 +361,7 @@ router.get('/customers/:id/performance',
 router.post('/sales-orders',
   validate(schemas.createSalesOrderSchema),
   requirePermission('sales_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('sales_order_created'),
   salesOrderController.createSalesOrder
 );
@@ -379,7 +379,7 @@ router.get('/sales-orders/:soId',
 // Reorder Level Management
 router.post('/reorder-levels',
   requirePermission('inventory_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('reorder_level_set'),
   reorderLevelController.setReorderLevel
 );
@@ -408,7 +408,7 @@ router.get('/reorder-suggestions',
 // Category Management
 router.post('/categories',
   requirePermission('category_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('category_created'),
   categoryController.createCategory
 );
@@ -425,7 +425,7 @@ router.get('/categories/tree',
 
 router.put('/categories/:categoryId',
   requirePermission('category_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('category_updated'),
   categoryController.updateCategory
 );
@@ -438,12 +438,12 @@ router.delete('/categories/:categoryId',
 
 // Settings Management
 router.get('/settings',
-  settingsController.getTenantSettings
+  settingsController.getInstitutionSettings
 );
 
 router.put('/settings',
   auditLog('settings_updated'),
-  settingsController.updateTenantSettings
+  settingsController.updateInstitutionSettings
 );
 
 // All Data and Features Management
@@ -457,7 +457,7 @@ router.use((error, req, res, next) => {
     stack: error.stack,
     path: req.path,
     method: req.method,
-    tenantId: req.tenantId,
+    institutionId: req.institutionId,
     userId: req.user?.userId
   });
 

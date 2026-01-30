@@ -12,7 +12,7 @@ The vendor management system is fully implemented with complete database integra
 CREATE TABLE vendors (
   -- Primary Keys
   id VARCHAR(36) PRIMARY KEY
-  tenant_id VARCHAR(36) NOT NULL
+  institution_id VARCHAR(36) NOT NULL
   
   -- Identification
   vendor_code VARCHAR(100)
@@ -80,26 +80,26 @@ CREATE TABLE vendors (
 **Location:** `Backend/src/services/vendorService.js`
 
 **Methods:**
-1. **createVendor(tenantId, vendorData, userId)**
+1. **createVendor(institutionId, vendorData, userId)**
    - Accepts all 40+ vendor fields in camelCase
    - Automatically converts to snake_case for database
    - Returns vendor UUID
 
-2. **getVendors(tenantId, filters)**
+2. **getVendors(institutionId, filters)**
    - Filters: `status`, `search`
-   - Returns all vendors for tenant with all fields
+   - Returns all vendors for institution with all fields
    - Orders by display_name
 
-3. **getVendor(tenantId, vendorId)**
+3. **getVendor(institutionId, vendorId)**
    - Fetches single vendor with all fields
    - Returns null if not found
 
-4. **updateVendor(tenantId, vendorId, updateData, userId)**
+4. **updateVendor(institutionId, vendorId, updateData, userId)**
    - Dynamically updates any/all fields
    - Includes all 40+ field mappings
    - Converts msmeRegistered to boolean handling
 
-5. **getVendorPerformance(tenantId, vendorId, startDate, endDate)**
+5. **getVendorPerformance(institutionId, vendorId, startDate, endDate)**
    - Calculates delivery metrics
    - Returns on-time delivery percentage
 
@@ -218,7 +218,7 @@ All form values collected in camelCase, sent to API for processing.
 
 ### Authentication:
 - JWT token in Authorization header
-- Tenant context validation
+- institution context validation
 - User identification for audit logs
 
 ---
@@ -270,7 +270,7 @@ GET /api/vendors (with auth token)
   ↓
 Controller retrieves from service
   ↓
-Service queries: SELECT * FROM vendors WHERE tenant_id = ?
+Service queries: SELECT * FROM vendors WHERE institution_id = ?
   ↓
 Map 40+ database fields to display format
   ↓
@@ -460,7 +460,7 @@ Backend (Node.js + Express)
     └── vendors table     (40+ columns)
 
 MySQL Database
-└── vendors table         (Multi-tenant, indexed)
+└── vendors table         (Multi-institution, indexed)
 ```
 
 ---

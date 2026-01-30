@@ -22,10 +22,10 @@
 - **Root Cause**: Missing database structure and test data
 - **Solutions Applied**:
   - Created proper vendors table structure
-  - Added test tenant and user data
+  - Added test institution and user data
   - Fixed vendorService to handle missing vendor_code
 - **Files Created**:
-  - `setup-test-data.js` - Creates test tenant and user
+  - `setup-test-data.js` - Creates test institution and user
   - `fix-all-vendor-issues.js` - Comprehensive fix script
 
 ### 4. Authentication & Permissions ✅ VERIFIED
@@ -38,7 +38,7 @@
 ## Database Schema Fixed
 
 The vendors table now includes all required fields:
-- Basic Info: id, tenant_id, vendor_code, display_name, company_name
+- Basic Info: id, institution_id, vendor_code, display_name, company_name
 - Contact: salutation, first_name, last_name, email, work_phone, mobile_phone
 - Business: pan, gstin, msme_registered, currency, payment_terms, tds
 - Web: website_url, department, designation

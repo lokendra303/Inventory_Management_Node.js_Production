@@ -1,10 +1,10 @@
 # Universal Auth Package
 
-A reusable authentication service with multi-tenant support. Write once, use anywhere!
+A reusable authentication service with multi-institution support. Write once, use anywhere!
 
 ## Features
 
-- ✅ Multi-tenant architecture
+- ✅ Multi-institution architecture
 - ✅ JWT-based authentication
 - ✅ Role-based permissions
 - ✅ Session management
@@ -65,7 +65,7 @@ const express = require('express');
 const router = express.Router();
 
 // Public routes
-router.post('/register', authController.registerTenant.bind(authController));
+router.post('/register', authController.registerinstitution.bind(authController));
 router.post('/login', authController.login.bind(authController));
 router.post('/refresh-token', authController.refreshToken.bind(authController));
 
@@ -85,7 +85,7 @@ module.exports = router;
 
 ## Usage Examples
 
-### Register New Tenant (Company)
+### Register New institution (Company)
 
 ```javascript
 // POST /auth/register
@@ -101,9 +101,9 @@ module.exports = router;
 // Response
 {
   "success": true,
-  "message": "Tenant created successfully",
+  "message": "institution created successfully",
   "data": {
-    "tenantId": "uuid-here",
+    "institutionId": "uuid-here",
     "userId": "uuid-here"
   }
 }
@@ -116,7 +116,7 @@ module.exports = router;
 {
   "email": "admin@acme.com",
   "password": "securePassword123",
-  "tenantId": "optional-tenant-id"
+  "institutionId": "optional-institution-id"
 }
 
 // Response
@@ -127,7 +127,7 @@ module.exports = router;
     "token": "jwt-token-here",
     "user": {
       "id": "uuid",
-      "tenantId": "uuid",
+      "institutionId": "uuid",
       "email": "admin@acme.com",
       "firstName": "John",
       "lastName": "Doe",
@@ -241,15 +241,15 @@ app.use('/api/admin',
 );
 ```
 
-### Tenant Isolation
+### institution Isolation
 
 ```javascript
-// Ensure all operations are tenant-scoped
+// Ensure all operations are institution-scoped
 app.use('/api/*', 
   authMiddleware.authenticate(),
-  authMiddleware.requireTenant(),
+  authMiddleware.requireinstitution(),
   (req, res, next) => {
-    // All database queries should use req.tenantId
+    // All database queries should use req.institutionId
     next();
   }
 );
@@ -286,8 +286,8 @@ const authService = new UniversalAuth({
 
 The package automatically creates these tables:
 
-- `tenants` - Company/organization data
-- `users` - User accounts with multi-tenant support
+- `institutions` - Company/organization data
+- `users` - User accounts with multi-institution support
 - `temp_access_tokens` - Temporary access for password resets
 
 ## Migration to Existing Apps
@@ -327,7 +327,7 @@ const authController = new AuthController(authService);
 2. **Maintainability**: Update once, deploy everywhere
 3. **Security**: Centralized security updates
 4. **Time Saving**: No need to rewrite auth for each app
-5. **Multi-tenant**: Built-in support for SaaS applications
+5. **Multi-institution**: Built-in support for SaaS applications
 6. **Scalable**: Works with any database and framework
 
 ## License

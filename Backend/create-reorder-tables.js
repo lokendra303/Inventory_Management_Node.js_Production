@@ -14,7 +14,7 @@ async function createReorderTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS reorder_levels (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
         reorder_level DECIMAL(15,3) NOT NULL DEFAULT 0,
@@ -25,8 +25,8 @@ async function createReorderTables() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
         FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_item_warehouse (tenant_id, item_id, warehouse_id),
-        INDEX idx_tenant_active (tenant_id, is_active)
+        UNIQUE KEY unique_item_warehouse (institution_id, item_id, warehouse_id),
+        INDEX idx_institution_active (institution_id, is_active)
       )
     `);
 
@@ -34,7 +34,7 @@ async function createReorderTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS low_stock_alerts (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
         current_stock DECIMAL(15,3) NOT NULL,
@@ -46,7 +46,7 @@ async function createReorderTables() {
         resolved_at TIMESTAMP NULL,
         FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
         FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE,
-        INDEX idx_tenant_status (tenant_id, status),
+        INDEX idx_institution_status (institution_id, status),
         INDEX idx_alert_date (alert_date)
       )
     `);
@@ -60,7 +60,7 @@ async function createReorderTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS item_batches (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
         batch_number VARCHAR(100) NOT NULL,
@@ -73,8 +73,8 @@ async function createReorderTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
         FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_batch (tenant_id, item_id, warehouse_id, batch_number),
-        INDEX idx_expiry (tenant_id, expiry_date, status)
+        UNIQUE KEY unique_batch (institution_id, item_id, warehouse_id, batch_number),
+        INDEX idx_expiry (institution_id, expiry_date, status)
       )
     `);
 
@@ -82,7 +82,7 @@ async function createReorderTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS item_serials (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
         serial_number VARCHAR(100) NOT NULL,
@@ -94,8 +94,8 @@ async function createReorderTables() {
         FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
         FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE,
         FOREIGN KEY (batch_id) REFERENCES item_batches(id) ON DELETE SET NULL,
-        UNIQUE KEY unique_serial (tenant_id, item_id, serial_number),
-        INDEX idx_status (tenant_id, status)
+        UNIQUE KEY unique_serial (institution_id, item_id, serial_number),
+        INDEX idx_status (institution_id, status)
       )
     `);
 

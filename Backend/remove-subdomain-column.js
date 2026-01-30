@@ -17,8 +17,8 @@ async function removeSubdomain() {
     
     // Remove subdomain column and related index
     console.log('🗑️  Removing subdomain column...');
-    await connection.execute('ALTER TABLE tenants DROP INDEX idx_subdomain');
-    await connection.execute('ALTER TABLE tenants DROP COLUMN subdomain');
+    await connection.execute('ALTER TABLE institutions DROP INDEX idx_subdomain');
+    await connection.execute('ALTER TABLE institutions DROP COLUMN subdomain');
     
     console.log('✅ Subdomain column removed successfully!');
     

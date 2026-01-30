@@ -1,12 +1,12 @@
-# IMS SEPCUNE - Production-Ready Multi-Tenant Inventory Management System
+# IMS SEPCUNE - Production-Ready Multi-institution Inventory Management System
 
-A comprehensive, event-sourced, multi-tenant inventory management system built with Node.js, React, MySQL, and Redis. Designed for real SME and enterprise usage with strong consistency guarantees, tenant isolation, and operational safety.
+A comprehensive, event-sourced, multi-institution inventory management system built with Node.js, React, MySQL, and Redis. Designed for real SME and enterprise usage with strong consistency guarantees, institution isolation, and operational safety.
 
 ## 🏗️ Architecture Overview
 
 ### Core Principles
 - **Event Sourcing**: All state changes are captured as immutable events
-- **Multi-Tenancy**: Complete tenant isolation at all levels
+- **Multi-Tenancy**: Complete institution isolation at all levels
 - **CQRS**: Separate read and write models with projections
 - **Concurrency Safety**: Optimistic locking and aggregate-level consistency
 - **Audit Trail**: Complete audit log of all operations
@@ -15,7 +15,7 @@ A comprehensive, event-sourced, multi-tenant inventory management system built w
 - **Backend**: Node.js, Express.js
 - **Database**: MySQL (primary), Redis (cache)
 - **Frontend**: React, Ant Design
-- **Authentication**: JWT with tenant context
+- **Authentication**: JWT with institution context
 - **Background Jobs**: Bull Queue (Redis-based)
 
 ## 🚀 Quick Start
@@ -85,10 +85,10 @@ The application will be available at:
 - ✅ **Concurrency Control**: Prevents overselling and race conditions
 
 ### Multi-Tenancy
-- ✅ **Complete Tenant Isolation**: Data, cache, and operations
-- ✅ **Tenant Context Enforcement**: All operations tenant-scoped
-- ✅ **Subdomain Support**: tenant.yourdomain.com routing
-- ✅ **Per-Tenant Configuration**: Settings and feature flags
+- ✅ **Complete institution Isolation**: Data, cache, and operations
+- ✅ **institution Context Enforcement**: All operations institution-scoped
+- ✅ **Subdomain Support**: institution.yourdomain.com routing
+- ✅ **Per-institution Configuration**: Settings and feature flags
 
 ### Purchase Management
 - ✅ **Purchase Orders**: Multi-line POs with partial receipts
@@ -103,7 +103,7 @@ The application will be available at:
 - ✅ **Shipment Processing**: Separate reservation and fulfillment
 
 ### Automation & Rules
-- ✅ **Rule Engine**: Tenant-configurable business rules
+- ✅ **Rule Engine**: institution-configurable business rules
 - ✅ **Event Triggers**: React to inventory events
 - ✅ **Actions**: Email, Webhook, WhatsApp notifications
 - ✅ **Conditional Logic**: IF-THEN rule processing
@@ -112,7 +112,7 @@ The application will be available at:
 - ✅ **JWT Authentication**: Secure token-based auth
 - ✅ **Role-Based Access Control**: Admin, Manager, User roles
 - ✅ **Warehouse-Level Permissions**: Granular access control
-- ✅ **Rate Limiting**: Per-tenant API rate limits
+- ✅ **Rate Limiting**: Per-institution API rate limits
 
 ### Reporting & Analytics
 - ✅ **Real-Time Projections**: Fast read models
@@ -120,25 +120,25 @@ The application will be available at:
 - ✅ **Low Stock Alerts**: Configurable threshold monitoring
 - ✅ **Audit Reports**: Complete event history
 
-## 🏢 Multi-Tenant Architecture
+## 🏢 Multi-institution Architecture
 
-### Tenant Isolation Levels
-1. **Database Level**: All tables include tenant_id
-2. **API Level**: Tenant context in every request
-3. **Cache Level**: Tenant-prefixed Redis keys
-4. **Background Jobs**: Tenant-scoped processing
+### institution Isolation Levels
+1. **Database Level**: All tables include institution_id
+2. **API Level**: institution context in every request
+3. **Cache Level**: institution-prefixed Redis keys
+4. **Background Jobs**: institution-scoped processing
 
-### Tenant Context Sources
+### institution Context Sources
 1. **JWT Token**: Primary method for authenticated requests
-2. **Subdomain**: tenant.domain.com routing
-3. **Header**: X-Tenant-ID header fallback
+2. **Subdomain**: institution.domain.com routing
+3. **Header**: X-institution-ID header fallback
 
 ## 📊 Event Sourcing Implementation
 
 ### Event Store Structure
 ```sql
 event_store (
-  id, tenant_id, aggregate_type, aggregate_id, 
+  id, institution_id, aggregate_type, aggregate_id, 
   aggregate_version, event_type, event_data, 
   metadata, idempotency_key, created_at
 )
@@ -154,7 +154,7 @@ event_store (
 ### Projection Rebuilding
 ```bash
 # Rebuild specific projection
-node src/scripts/rebuildProjection.js --tenant=<tenant-id> --item=<item-id> --warehouse=<warehouse-id>
+node src/scripts/rebuildProjection.js --institution=<institution-id> --item=<item-id> --warehouse=<warehouse-id>
 ```
 
 ## 🔧 Configuration
@@ -181,8 +181,8 @@ PORT=3000
 NODE_ENV=development
 ```
 
-### Tenant Settings
-Each tenant can configure:
+### institution Settings
+Each institution can configure:
 - Inventory valuation method (FIFO/Weighted Average)
 - Allow negative stock
 - Low stock thresholds
@@ -192,15 +192,15 @@ Each tenant can configure:
 ## 🔒 Security Features
 
 ### Authentication & Authorization
-- JWT tokens with tenant context
+- JWT tokens with institution context
 - Role-based permissions (admin, manager, user)
 - Warehouse-level access control
 - Session management and token refresh
 
 ### Data Protection
-- Tenant data isolation
+- institution data isolation
 - Audit logging for all operations
-- Rate limiting per tenant
+- Rate limiting per institution
 - Input validation and sanitization
 
 ### API Security
@@ -212,20 +212,20 @@ Each tenant can configure:
 ## 📈 Scalability Considerations
 
 ### Database Optimization
-- Proper indexing on tenant_id + other fields
-- Event store partitioning by tenant
+- Proper indexing on institution_id + other fields
+- Event store partitioning by institution
 - Read replicas for reporting queries
 - Connection pooling
 
 ### Caching Strategy
 - Redis for projection caching
-- Tenant-aware cache keys
+- institution-aware cache keys
 - Cache invalidation on events
 - Session storage
 
 ### Background Processing
 - Bull queues for async operations
-- Tenant-scoped job processing
+- institution-scoped job processing
 - Retry mechanisms
 - Dead letter queues
 
@@ -274,12 +274,12 @@ docker-compose up -d
 
 ### Logging
 - Structured JSON logging with Winston
-- Tenant-aware log entries
+- institution-aware log entries
 - Error tracking and alerting
 - Performance monitoring
 
 ### Metrics
-- Per-tenant usage metrics
+- Per-institution usage metrics
 - API response times
 - Database query performance
 - Cache hit rates
@@ -313,7 +313,7 @@ For support and questions:
 
 ### Phase 1 (Current)
 - ✅ Core inventory management
-- ✅ Multi-tenant architecture
+- ✅ Multi-institution architecture
 - ✅ Event sourcing implementation
 - ✅ Basic reporting
 

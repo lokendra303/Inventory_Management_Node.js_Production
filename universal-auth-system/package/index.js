@@ -49,7 +49,7 @@ class OptionalAuth {
     const express = require('express');
     const router = express.Router();
     
-    router.post('/register', this.controller.registerTenant.bind(this.controller));
+    router.post('/register', this.controller.registerinstitution.bind(this.controller));
     router.post('/login', this.controller.login.bind(this.controller));
     router.post('/refresh', this.controller.refreshToken.bind(this.controller));
     

@@ -14,20 +14,20 @@ All API requests (except registration and login) require authentication via JWT 
 Authorization: Bearer <jwt_token>
 ```
 
-### Tenant Context
+### institution Context
 
-Tenant context is required for all authenticated requests and can be provided via:
+institution context is required for all authenticated requests and can be provided via:
 1. JWT token (preferred)
-2. Subdomain: `tenant.ims-sepcune.com`
-3. Header: `X-Tenant-ID: <tenant_id>`
+2. Subdomain: `institution.ims-sepcune.com`
+3. Header: `X-institution-ID: <institution_id>`
 
 ## API Endpoints
 
 ### Authentication
 
-#### Register Tenant
+#### Register institution
 ```http
-POST /auth/register-tenant
+POST /auth/register-institution
 Content-Type: application/json
 
 {
@@ -214,7 +214,7 @@ All API responses follow this format:
 ## Rate Limits
 
 - Global: 100 requests per 15 minutes
-- Per Tenant: 1000 requests per 15 minutes
+- Per institution: 1000 requests per 15 minutes
 - Authentication endpoints: 10 requests per minute
 
 ## Event Types

@@ -9,8 +9,8 @@ router.get('/:type', requirePermission('item_view'), async (req, res) => {
   try {
     const { type } = req.params;
     const options = await db.query(
-      'SELECT options FROM dropdown_options WHERE tenant_id = ? AND type = ?',
-      [req.tenantId, type]
+      'SELECT options FROM dropdown_options WHERE institution_id = ? AND type = ?',
+      [req.institutionId, type]
     );
     
     if (options.length > 0) {
@@ -39,10 +39,10 @@ router.post('/:type', requirePermission('item_management'), async (req, res) => 
     const { options } = req.body;
     
     await db.query(
-      `INSERT INTO dropdown_options (tenant_id, type, options) 
+      `INSERT INTO dropdown_options (institution_id, type, options) 
        VALUES (?, ?, ?) 
        ON DUPLICATE KEY UPDATE options = VALUES(options)`,
-      [req.tenantId, type, JSON.stringify(options)]
+      [req.institutionId, type, JSON.stringify(options)]
     );
     
     res.json({

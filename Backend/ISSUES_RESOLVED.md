@@ -22,7 +22,7 @@
 ## 📊 CURRENT SYSTEM STATUS
 
 ### **Database Records**
-- **Tenants**: 2 (including default)
+- **institutions**: 2 (including default)
 - **Users**: 2 (including admin)
 - **Warehouses**: 1 (with proper type assignment)
 - **Warehouse Types**: 1 (default Standard type)
@@ -32,7 +32,7 @@
 - **Categories**: 1 (sample category)
 
 ### **Features Enabled**
-- ✅ Multi-tenant architecture
+- ✅ Multi-institution architecture
 - ✅ User authentication & authorization
 - ✅ Warehouse management with types
 - ✅ Item management
@@ -57,7 +57,7 @@ The following frontend errors should be resolved:
 - `GET /api/warehouse-types` - Get warehouse types
 - `GET /api/items` - Get all items
 - `GET /api/inventory` - Get inventory data
-- `GET /api/settings` - Get tenant settings
+- `GET /api/settings` - Get institution settings
 - All other endpoints as documented
 
 ## 🔧 TO START THE SYSTEM
@@ -77,7 +77,7 @@ The following frontend errors should be resolved:
 3. **Login Credentials**:
    - Email: `lk.kushwah303@gmail.com`
    - Password: `Lk@12345`
-   - Tenant ID: `a628631c-98e4-411c-ab1e-3c0a7e436045`
+   - institution ID: `a628631c-98e4-411c-ab1e-3c0a7e436045`
 
 ## 🎯 WHAT TO EXPECT
 

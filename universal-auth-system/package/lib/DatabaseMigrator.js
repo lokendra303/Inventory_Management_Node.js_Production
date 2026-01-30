@@ -23,59 +23,59 @@ class DatabaseMigrator {
     return rows[0].count > 0;
   }
 
-  // Add tenant_id to existing tables
-  async addTenantSupport(tableName) {
-    console.log(`🔄 Adding multi-tenant support to ${tableName}...`);
+  // Add institution_id to existing tables
+  async addinstitutionSupport(tableName) {
+    console.log(`🔄 Adding multi-institution support to ${tableName}...`);
     
     if (!await this.tableExists(tableName)) {
       console.log(`⚠️ Table ${tableName} doesn't exist - skipping`);
       return;
     }
 
-    // Add tenant_id column if missing
-    if (!await this.columnExists(tableName, 'tenant_id')) {
+    // Add institution_id column if missing
+    if (!await this.columnExists(tableName, 'institution_id')) {
       await this.db.execute(`
         ALTER TABLE ${tableName} 
-        ADD COLUMN tenant_id VARCHAR(36) DEFAULT 'default' AFTER id
+        ADD COLUMN institution_id VARCHAR(36) DEFAULT 'default' AFTER id
       `);
-      console.log(`✅ Added tenant_id to ${tableName}`);
+      console.log(`✅ Added institution_id to ${tableName}`);
     }
 
-    // Add index for tenant_id
+    // Add index for institution_id
     try {
       await this.db.execute(`
         ALTER TABLE ${tableName} 
-        ADD INDEX idx_${tableName}_tenant (tenant_id)
+        ADD INDEX idx_${tableName}_institution (institution_id)
       `);
     } catch (error) {
       // Index might already exist
     }
   }
 
-  // Migrate existing data to default tenant
+  // Migrate existing data to default institution
   async migrateExistingData() {
-    console.log('🔄 Migrating existing data to default tenant...');
+    console.log('🔄 Migrating existing data to default institution...');
     
-    // Create default tenant if not exists
-    const defaultTenantId = 'default-tenant-' + Date.now();
+    // Create default institution if not exists
+    const defaultinstitutionId = 'default-institution-' + Date.now();
     
     try {
       await this.db.execute(`
-        INSERT IGNORE INTO tenants (id, name, status) 
+        INSERT IGNORE INTO institutions (id, name, status) 
         VALUES (?, 'Default Company', 'active')
-      `, [defaultTenantId]);
+      `, [defaultinstitutionId]);
       
-      // Update all tables with null tenant_id
+      // Update all tables with null institution_id
       const tables = ['users', 'products', 'orders', 'inventory', 'items', 'warehouses'];
       
       for (const table of tables) {
         if (await this.tableExists(table)) {
           await this.db.execute(`
             UPDATE ${table} 
-            SET tenant_id = ? 
-            WHERE tenant_id IS NULL OR tenant_id = 'default'
-          `, [defaultTenantId]);
-          console.log(`✅ Migrated ${table} data to default tenant`);
+            SET institution_id = ? 
+            WHERE institution_id IS NULL OR institution_id = 'default'
+          `, [defaultinstitutionId]);
+          console.log(`✅ Migrated ${table} data to default institution`);
         }
       }
       
@@ -91,13 +91,13 @@ class DatabaseMigrator {
     // 1. Create auth tables
     await this.createAuthTables();
     
-    // 2. Detect existing tables and add tenant support
+    // 2. Detect existing tables and add institution support
     const existingTables = await this.getExistingTables();
     console.log('📋 Found existing tables:', existingTables.join(', '));
     
     for (const table of existingTables) {
-      if (!['tenants', 'users', 'temp_access_tokens'].includes(table)) {
-        await this.addTenantSupport(table);
+      if (!['institutions', 'users', 'temp_access_tokens'].includes(table)) {
+        await this.addinstitutionSupport(table);
       }
     }
     
@@ -105,7 +105,7 @@ class DatabaseMigrator {
     await this.migrateExistingData();
     
     console.log('\n🎉 Auto-migration completed!');
-    console.log('✅ Your existing project now supports multi-tenant authentication');
+    console.log('✅ Your existing project now supports multi-institution authentication');
   }
 
   async getExistingTables() {
@@ -120,9 +120,9 @@ class DatabaseMigrator {
   async createAuthTables() {
     console.log('🔄 Creating auth tables...');
     
-    // Create tenants table
+    // Create institutions table
     await this.db.execute(`
-      CREATE TABLE IF NOT EXISTS tenants (
+      CREATE TABLE IF NOT EXISTS institutions (
         id VARCHAR(36) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         plan VARCHAR(50) DEFAULT 'starter',
@@ -130,7 +130,7 @@ class DatabaseMigrator {
         settings JSON,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_tenant_status (status)
+        INDEX idx_institution_status (status)
       )
     `);
 
@@ -138,7 +138,7 @@ class DatabaseMigrator {
     await this.db.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
         mobile VARCHAR(20),
         password_hash VARCHAR(255) NOT NULL,
@@ -160,8 +160,8 @@ class DatabaseMigrator {
         last_login TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-        INDEX idx_user_tenant (tenant_id),
+        FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
+        INDEX idx_user_institution (institution_id),
         INDEX idx_user_email (email),
         INDEX idx_user_status (status)
       )
@@ -171,7 +171,7 @@ class DatabaseMigrator {
     await this.db.execute(`
       CREATE TABLE IF NOT EXISTS temp_access_tokens (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         target_user_id VARCHAR(36) NOT NULL,
         created_by VARCHAR(36) NOT NULL,
         temp_password VARCHAR(255) NOT NULL,
@@ -179,7 +179,7 @@ class DatabaseMigrator {
         used_at TIMESTAMP NULL,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+        FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
         FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
         INDEX idx_temp_token_user (target_user_id),
@@ -211,11 +211,11 @@ class DatabaseMigrator {
         { field: 'last_login', type: 'TIMESTAMP NULL', after: 'status' }
       ],
       items: [
-        { field: 'tenant_id', type: 'VARCHAR(36) DEFAULT "default"', after: 'id' },
+        { field: 'institution_id', type: 'VARCHAR(36) DEFAULT "default"', after: 'id' },
         { field: 'created_by', type: 'VARCHAR(36)', after: 'updated_at' }
       ],
       inventory: [
-        { field: 'tenant_id', type: 'VARCHAR(36) DEFAULT "default"', after: 'id' },
+        { field: 'institution_id', type: 'VARCHAR(36) DEFAULT "default"', after: 'id' },
         { field: 'created_by', type: 'VARCHAR(36)', after: 'updated_at' }
       ]
     };

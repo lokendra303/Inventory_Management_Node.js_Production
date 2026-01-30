@@ -6,15 +6,15 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/api-keys - Get all API keys for tenant
+// GET /api/api-keys - Get all API keys for institution
 router.get('/',
   requireAuth,
   requirePermission('api_key_management'),
   async (req, res) => {
     try {
       const keys = await db.query(
-        'SELECT id, name, permissions, status, created_at, last_used_at, usage_count FROM api_keys WHERE tenant_id = ? ORDER BY created_at DESC',
-        [req.tenantId]
+        'SELECT id, name, permissions, status, created_at, last_used_at, usage_count FROM api_keys WHERE institution_id = ? ORDER BY created_at DESC',
+        [req.institutionId]
       );
 
       res.json({
@@ -41,8 +41,8 @@ router.post('/',
       const keyValue = generateApiKey();
 
       await db.query(
-        'INSERT INTO api_keys (id, tenant_id, name, key_value, permissions, status, created_by) VALUES (?, ?, ?, ?, ?, "active", ?)',
-        [keyId, req.tenantId, name, keyValue, JSON.stringify(permissions), req.user.userId]
+        'INSERT INTO api_keys (id, institution_id, name, key_value, permissions, status, created_by) VALUES (?, ?, ?, ?, ?, "active", ?)',
+        [keyId, req.institutionId, name, keyValue, JSON.stringify(permissions), req.user.userId]
       );
 
       res.status(201).json({
@@ -74,8 +74,8 @@ router.put('/:id/status',
       const { status } = req.body;
 
       await db.query(
-        'UPDATE api_keys SET status = ? WHERE id = ? AND tenant_id = ?',
-        [status, id, req.tenantId]
+        'UPDATE api_keys SET status = ? WHERE id = ? AND institution_id = ?',
+        [status, id, req.institutionId]
       );
 
       res.json({
@@ -100,8 +100,8 @@ router.delete('/:id',
       const { id } = req.params;
 
       await db.query(
-        'DELETE FROM api_keys WHERE id = ? AND tenant_id = ?',
-        [id, req.tenantId]
+        'DELETE FROM api_keys WHERE id = ? AND institution_id = ?',
+        [id, req.institutionId]
       );
 
       res.json({

@@ -6,15 +6,15 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/bearer-tokens - Get all Bearer tokens for tenant
+// GET /api/bearer-tokens - Get all Bearer tokens for institution
 router.get('/',
   requireAuth,
   requirePermission('api_key_management'),
   async (req, res) => {
     try {
       const tokens = await db.query(
-        'SELECT id, name, permissions, status, expires_at, created_at, last_used_at, usage_count FROM bearer_tokens WHERE tenant_id = ? ORDER BY created_at DESC',
-        [req.tenantId]
+        'SELECT id, name, permissions, status, expires_at, created_at, last_used_at, usage_count FROM bearer_tokens WHERE institution_id = ? ORDER BY created_at DESC',
+        [req.institutionId]
       );
 
       res.json({
@@ -47,8 +47,8 @@ router.post('/',
       }
 
       await db.query(
-        'INSERT INTO bearer_tokens (id, tenant_id, name, token_value, permissions, status, expires_at, created_by) VALUES (?, ?, ?, ?, ?, "active", ?, ?)',
-        [tokenId, req.tenantId, name, tokenValue, JSON.stringify(permissions), expiresAt, req.user.userId]
+        'INSERT INTO bearer_tokens (id, institution_id, name, token_value, permissions, status, expires_at, created_by) VALUES (?, ?, ?, ?, ?, "active", ?, ?)',
+        [tokenId, req.institutionId, name, tokenValue, JSON.stringify(permissions), expiresAt, req.user.userId]
       );
 
       res.status(201).json({
@@ -81,8 +81,8 @@ router.put('/:id/status',
       const { status } = req.body;
 
       await db.query(
-        'UPDATE bearer_tokens SET status = ? WHERE id = ? AND tenant_id = ?',
-        [status, id, req.tenantId]
+        'UPDATE bearer_tokens SET status = ? WHERE id = ? AND institution_id = ?',
+        [status, id, req.institutionId]
       );
 
       res.json({
@@ -107,8 +107,8 @@ router.delete('/:id',
       const { id } = req.params;
 
       await db.query(
-        'DELETE FROM bearer_tokens WHERE id = ? AND tenant_id = ?',
-        [id, req.tenantId]
+        'DELETE FROM bearer_tokens WHERE id = ? AND institution_id = ?',
+        [id, req.institutionId]
       );
 
       res.json({

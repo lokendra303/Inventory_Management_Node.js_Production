@@ -216,7 +216,7 @@ status === 'active' ? 'Active' : 'Inactive'
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "tenant_id": "abc123",
+  "institution_id": "abc123",
   "vendor_code": "VENDOR-001",
   "display_name": "ABC Supplies",
   "company_name": "ABC Trading Company",
@@ -302,17 +302,17 @@ status === 'active' ? 'Active' : 'Inactive'
 ## Database Indexes
 
 ```sql
-UNIQUE KEY unique_tenant_vendor_code (tenant_id, vendor_code)
-INDEX idx_tenant_status (tenant_id, status)
-INDEX idx_tenant_email (tenant_id, email)
-FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+UNIQUE KEY unique_institution_vendor_code (institution_id, vendor_code)
+INDEX idx_institution_status (institution_id, status)
+INDEX idx_institution_email (institution_id, email)
+FOREIGN KEY (institution_id) REFERENCES institutions(id)
 ```
 
 **Query Performance:**
-- List vendors: Uses `idx_tenant_status` ✅
-- Find by email: Uses `idx_tenant_email` ✅
-- Filter by status: Uses `idx_tenant_status` ✅
-- Unique code per tenant: Uses `unique_tenant_vendor_code` ✅
+- List vendors: Uses `idx_institution_status` ✅
+- Find by email: Uses `idx_institution_email` ✅
+- Filter by status: Uses `idx_institution_status` ✅
+- Unique code per institution: Uses `unique_institution_vendor_code` ✅
 
 ---
 
@@ -321,7 +321,7 @@ FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 - **Required Fields:** 1 (displayName)
 - **Recommended Fields:** 6 (email, gstin, pan, billing_address1, billing_city, billing_state)
 - **Optional Fields:** 33
-- **System Fields:** 4 (id, tenant_id, created_at, updated_at)
+- **System Fields:** 4 (id, institution_id, created_at, updated_at)
 - **Total:** 40 fields
 
 ---

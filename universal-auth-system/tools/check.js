@@ -17,7 +17,7 @@ class CompatibilityChecker {
     const report = {
       existingTables: [],
       missingAuthTables: [],
-      tablesNeedingTenantId: [],
+      tablesNeedinginstitutionId: [],
       missingFields: {},
       recommendations: []
     };
@@ -27,15 +27,15 @@ class CompatibilityChecker {
     console.log('📋 Found tables:', report.existingTables.join(', '));
 
     // Check for auth tables
-    const authTables = ['tenants', 'users', 'temp_access_tokens'];
+    const authTables = ['institutions', 'users', 'temp_access_tokens'];
     report.missingAuthTables = authTables.filter(table => !report.existingTables.includes(table));
 
-    // Check which tables need tenant_id
+    // Check which tables need institution_id
     for (const table of report.existingTables) {
       if (!authTables.includes(table)) {
-        const hasTenantId = await this.columnExists(table, 'tenant_id');
-        if (!hasTenantId) {
-          report.tablesNeedingTenantId.push(table);
+        const hasinstitutionId = await this.columnExists(table, 'institution_id');
+        if (!hasinstitutionId) {
+          report.tablesNeedinginstitutionId.push(table);
         }
       }
     }
@@ -72,10 +72,10 @@ class CompatibilityChecker {
   async checkMissingFields(report) {
     const expectedFields = {
       users: ['mobile', 'address', 'city', 'state', 'country', 'postal_code', 'date_of_birth', 'gender', 'department', 'designation', 'permissions', 'warehouse_access', 'last_login'],
-      items: ['tenant_id', 'created_by'],
-      inventory: ['tenant_id', 'created_by'],
-      products: ['tenant_id', 'created_by'],
-      orders: ['tenant_id', 'created_by']
+      items: ['institution_id', 'created_by'],
+      inventory: ['institution_id', 'created_by'],
+      products: ['institution_id', 'created_by'],
+      orders: ['institution_id', 'created_by']
     };
 
     for (const [tableName, fields] of Object.entries(expectedFields)) {
@@ -102,11 +102,11 @@ class CompatibilityChecker {
       });
     }
 
-    if (report.tablesNeedingTenantId.length > 0) {
+    if (report.tablesNeedinginstitutionId.length > 0) {
       report.recommendations.push({
         type: 'important',
-        message: `Tables need tenant_id: ${report.tablesNeedingTenantId.join(', ')}`,
-        action: 'Add tenant_id column for multi-tenant support'
+        message: `Tables need institution_id: ${report.tablesNeedinginstitutionId.join(', ')}`,
+        action: 'Add institution_id column for multi-institution support'
       });
     }
 
@@ -134,7 +134,7 @@ class CompatibilityChecker {
     console.log('🗃️  Current Database:');
     console.log(`   Tables: ${report.existingTables.length}`);
     console.log(`   Auth tables: ${3 - report.missingAuthTables.length}/3`);
-    console.log(`   Multi-tenant ready: ${report.existingTables.length - report.tablesNeedingTenantId.length}/${report.existingTables.length}`);
+    console.log(`   Multi-institution ready: ${report.existingTables.length - report.tablesNeedinginstitutionId.length}/${report.existingTables.length}`);
 
     // Missing auth tables
     if (report.missingAuthTables.length > 0) {
@@ -144,10 +144,10 @@ class CompatibilityChecker {
       });
     }
 
-    // Tables needing tenant_id
-    if (report.tablesNeedingTenantId.length > 0) {
-      console.log('\n⚠️  Tables Needing tenant_id:');
-      report.tablesNeedingTenantId.forEach(table => {
+    // Tables needing institution_id
+    if (report.tablesNeedinginstitutionId.length > 0) {
+      console.log('\n⚠️  Tables Needing institution_id:');
+      report.tablesNeedinginstitutionId.forEach(table => {
         console.log(`   • ${table}`);
       });
     }
@@ -169,7 +169,7 @@ class CompatibilityChecker {
     });
 
     // Migration command
-    if (report.missingAuthTables.length > 0 || report.tablesNeedingTenantId.length > 0) {
+    if (report.missingAuthTables.length > 0 || report.tablesNeedinginstitutionId.length > 0) {
       console.log('🚀 QUICK FIX:');
       console.log('   Run: node auto-migrate-existing-project.js');
       console.log('   This will automatically fix all compatibility issues.\n');
@@ -196,7 +196,7 @@ async function checkDatabase() {
     await db.end();
 
     // Return compatibility status
-    const isCompatible = report.missingAuthTables.length === 0 && report.tablesNeedingTenantId.length === 0;
+    const isCompatible = report.missingAuthTables.length === 0 && report.tablesNeedinginstitutionId.length === 0;
     process.exit(isCompatible ? 0 : 1);
 
   } catch (error) {

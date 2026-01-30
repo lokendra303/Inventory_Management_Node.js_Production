@@ -7,16 +7,16 @@ const logger = require('../utils/logger');
 const { ROLE_PERMISSIONS } = require('../constants/permissions');
 
 class AuthService {
-  async createTenant(tenantData) {
+  async createInstitution(institutionData) {
     const { 
       name, adminEmail, adminMobile, adminPassword, adminFirstName, adminLastName,
       adminAddress, adminCity, adminState, adminCountry, adminPostalCode, 
       adminDateOfBirth, adminGender, adminDepartment, adminDesignation 
-    } = tenantData;
+    } = institutionData;
     
     // Check if email already exists
     const existingUser = await db.query(
-      'SELECT id FROM users WHERE email = ?',
+      'SELECT id FROM institution_users WHERE email = ?',
       [adminEmail]
     );
 
@@ -24,41 +24,41 @@ class AuthService {
       throw new Error('Email already registered');
     }
     
-    const tenantId = uuidv4();
+    const institutionId = uuidv4();
     const userId = uuidv4();
     const passwordHash = await bcrypt.hash(adminPassword, 12);
 
     await db.transaction(async (connection) => {
-      // Create tenant
+      // Create institution
       await connection.execute(
-        `INSERT INTO tenants (id, name, plan, status, settings) 
+        `INSERT INTO institutions (id, name, plan, status, settings) 
          VALUES (?, ?, 'starter', 'active', '{}')`,
-        [tenantId, name]
+        [institutionId, name]
       );
 
       // Create admin user with null handling
       await connection.execute(
-        `INSERT INTO users (id, tenant_id, email, mobile, password_hash, first_name, last_name, 
+        `INSERT INTO institution_users (id, institution_id, email, mobile, password_hash, first_name, last_name, 
          address, city, state, country, postal_code, date_of_birth, gender, department, designation, 
          role, permissions, status) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', '{"all": true}', 'active')`,
-        [userId, tenantId, adminEmail, adminMobile || null, passwordHash, adminFirstName, adminLastName,
+        [userId, institutionId, adminEmail, adminMobile || null, passwordHash, adminFirstName, adminLastName,
          adminAddress || null, adminCity || null, adminState || null, adminCountry || null, adminPostalCode || null, 
          adminDateOfBirth || null, adminGender || null, adminDepartment || null, adminDesignation || null]
       );
     });
 
-    logger.info('Tenant created', { tenantId, adminEmail });
-    return { tenantId, userId };
+    logger.info('Institution created', { institutionId, adminEmail });
+    return { institutionId, userId };
   }
 
-  async authenticateUser(email, password, tenantId = null) {
-    let query = 'SELECT u.*, t.status as tenant_status FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ?';
+  async authenticateUser(email, password, institutionId = null) {
+    let query = 'SELECT u.*, t.status as institution_status FROM institution_users u JOIN institutions t ON u.institution_id = t.id WHERE u.email = ?';
     let params = [email];
 
-    if (tenantId) {
-      query += ' AND u.tenant_id = ?';
-      params.push(tenantId);
+    if (institutionId) {
+      query += ' AND u.institution_id = ?';
+      params.push(institutionId);
     }
 
     const users = await db.query(query, params);
@@ -73,8 +73,8 @@ class AuthService {
       throw new Error('User account is inactive');
     }
 
-    if (user.tenant_status !== 'active') {
-      throw new Error('Tenant account is suspended');
+    if (user.institution_status !== 'active') {
+      throw new Error('Institution account is suspended');
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
@@ -84,7 +84,7 @@ class AuthService {
 
     // Update last login
     await db.query(
-      'UPDATE users SET last_login = NOW() WHERE id = ?',
+      'UPDATE institution_users SET last_login = NOW() WHERE id = ?',
       [user.id]
     );
 
@@ -93,7 +93,7 @@ class AuthService {
     const token = jwt.sign(
       {
         userId: user.id,
-        tenantId: user.tenant_id,
+        institutionId: user.institution_id,
         email: user.email,
         role: user.role,
         permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
@@ -104,13 +104,13 @@ class AuthService {
       { expiresIn: config.jwt.expiresIn }
     );
 
-    logger.info('User authenticated', { userId: user.id, tenantId: user.tenant_id, email: user.email });
+    logger.info('User authenticated', { userId: user.id, institutionId: user.institution_id, email: user.email });
 
     return {
       token,
       user: {
         id: user.id,
-        tenantId: user.tenant_id,
+        institutionId: user.institution_id,
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
@@ -135,11 +135,11 @@ class AuthService {
       
       // Verify user still exists and is active
       const users = await db.query(
-        'SELECT u.*, t.status as tenant_status FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?',
+        'SELECT u.*, t.status as institution_status FROM institution_users u JOIN institutions t ON u.institution_id = t.id WHERE u.id = ?',
         [decoded.userId]
       );
 
-      if (users.length === 0 || users[0].status !== 'active' || users[0].tenant_status !== 'active') {
+      if (users.length === 0 || users[0].status !== 'active' || users[0].institution_status !== 'active') {
         throw new Error('Invalid token');
       }
 
@@ -155,11 +155,11 @@ class AuthService {
       
       // Verify user still exists and is active
       const users = await db.query(
-        'SELECT u.*, t.status as tenant_status FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?',
+        'SELECT u.*, t.status as institution_status FROM institution_users u JOIN institutions t ON u.institution_id = t.id WHERE u.id = ?',
         [decoded.userId]
       );
 
-      if (users.length === 0 || users[0].status !== 'active' || users[0].tenant_status !== 'active') {
+      if (users.length === 0 || users[0].status !== 'active' || users[0].institution_status !== 'active') {
         throw new Error('Invalid token');
       }
 
@@ -170,7 +170,7 @@ class AuthService {
       const newToken = jwt.sign(
         {
           userId: user.id,
-          tenantId: user.tenant_id,
+          institutionId: user.institution_id,
           email: user.email,
           role: user.role,
           permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
@@ -185,7 +185,7 @@ class AuthService {
         token: newToken,
         user: {
           id: user.id,
-          tenantId: user.tenant_id,
+          institutionId: user.institution_id,
           email: user.email,
           firstName: user.first_name,
           lastName: user.last_name,
@@ -199,7 +199,7 @@ class AuthService {
     }
   }
 
-  async createUser(tenantId, userData, createdBy) {
+  async createUser(institutionId, userData, createdBy) {
     const { 
       email, mobile, password, firstName, lastName, address, city, state, country, 
       postalCode, dateOfBirth, gender, department, designation,
@@ -208,7 +208,7 @@ class AuthService {
 
     // Check if user already exists (email is globally unique)
     const existingUser = await db.query(
-      'SELECT id FROM users WHERE email = ?',
+      'SELECT id FROM institution_users WHERE email = ?',
       [email]
     );
 
@@ -224,28 +224,28 @@ class AuthService {
     const finalPermissions = { ...defaultPermissions, ...permissions };
 
     await db.query(
-      `INSERT INTO users (id, tenant_id, email, mobile, password_hash, first_name, last_name, 
+      `INSERT INTO institution_users (id, institution_id, email, mobile, password_hash, first_name, last_name, 
        address, city, state, country, postal_code, date_of_birth, gender, department, designation,
        role, permissions, warehouse_access, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [userId, tenantId, email, mobile || null, passwordHash, firstName, lastName,
+      [userId, institutionId, email, mobile || null, passwordHash, firstName, lastName,
        address || null, city || null, state || null, country || null, postalCode || null, 
        dateOfBirth || null, gender || null, department || null, designation || null,
        role, JSON.stringify(finalPermissions), JSON.stringify(warehouseAccess)]
     );
 
-    logger.info('User created', { userId, tenantId, email, createdBy });
+    logger.info('User created', { userId, institutionId, email, createdBy });
     return userId;
   }
 
-  async updateUserProfile(tenantId, userId, updateData) {
+  async updateUserProfile(institutionId, userId, updateData) {
     const { firstName, lastName, email } = updateData;
     
     // Check if email is being changed and if it already exists
     if (email) {
       const existingUser = await db.query(
-        'SELECT id FROM users WHERE tenant_id = ? AND email = ? AND id != ?',
-        [tenantId, email, userId]
+        'SELECT id FROM institution_users WHERE institution_id = ? AND email = ? AND id != ?',
+        [institutionId, email, userId]
       );
       
       if (existingUser.length > 0) {
@@ -274,10 +274,10 @@ class AuthService {
     }
 
     updateFields.push('updated_at = NOW()');
-    updateValues.push(tenantId, userId);
+    updateValues.push(institutionId, userId);
 
     const result = await db.query(
-      `UPDATE users SET ${updateFields.join(', ')} WHERE tenant_id = ? AND id = ?`,
+      `UPDATE institution_users SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
       updateValues
     );
 
@@ -285,14 +285,14 @@ class AuthService {
       throw new Error('User not found');
     }
 
-    logger.info('User profile updated', { userId, tenantId });
+    logger.info('User profile updated', { userId, institutionId });
   }
 
-  async changePassword(tenantId, userId, currentPassword, newPassword) {
+  async changePassword(institutionId, userId, currentPassword, newPassword) {
     // Get current password hash
     const users = await db.query(
-      'SELECT password_hash FROM users WHERE tenant_id = ? AND id = ?',
-      [tenantId, userId]
+      'SELECT password_hash FROM institution_users WHERE institution_id = ? AND id = ?',
+      [institutionId, userId]
     );
 
     if (users.length === 0) {
@@ -310,14 +310,14 @@ class AuthService {
 
     // Update password
     await db.query(
-      'UPDATE users SET password_hash = ?, updated_at = NOW() WHERE tenant_id = ? AND id = ?',
-      [newPasswordHash, tenantId, userId]
+      'UPDATE institution_users SET password_hash = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [newPasswordHash, institutionId, userId]
     );
 
-    logger.info('User password changed', { userId, tenantId });
+    logger.info('User password changed', { userId, institutionId });
   }
 
-  async generateTempAccess(tenantId, targetUserId, adminUserId, expiresInHours = 24) {
+  async generateTempAccess(institutionId, targetUserId, adminUserId, expiresInHours = 24) {
     // Generate random temp password
     const tempPassword = Math.random().toString(36).slice(-12);
     const tempPasswordHash = await bcrypt.hash(tempPassword, 12);
@@ -326,25 +326,25 @@ class AuthService {
 
     // Store temp access token
     await db.query(
-      `INSERT INTO temp_access_tokens (id, tenant_id, target_user_id, created_by, temp_password, expires_at) 
+      `INSERT INTO temp_access_tokens (id, institution_id, target_user_id, created_by, temp_password, expires_at) 
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [tokenId, tenantId, targetUserId, adminUserId, tempPasswordHash, expiresAt]
+      [tokenId, institutionId, targetUserId, adminUserId, tempPasswordHash, expiresAt]
     );
 
-    logger.info('Temp access generated', { tokenId, targetUserId, adminUserId, tenantId });
+    logger.info('Temp access generated', { tokenId, targetUserId, adminUserId, institutionId });
     return { tokenId, tempPassword, expiresAt };
   }
 
-  async loginWithTempAccess(email, tempPassword, tenantId) {
+  async loginWithTempAccess(email, tempPassword, institutionId) {
     // Get user and check for active temp access
     const users = await db.query(
-      `SELECT u.*, t.status as tenant_status,
+      `SELECT u.*, t.status as institution_status,
               ta.id as token_id, ta.temp_password, ta.expires_at, ta.used_at
-       FROM users u 
-       JOIN tenants t ON u.tenant_id = t.id
+       FROM institution_users u 
+       JOIN institutions t ON u.institution_id = t.id
        LEFT JOIN temp_access_tokens ta ON u.id = ta.target_user_id AND ta.is_active = TRUE
-       WHERE u.email = ? AND u.tenant_id = ?`,
-      [email, tenantId]
+       WHERE u.email = ? AND u.institution_id = ?`,
+      [email, institutionId]
     );
 
     if (users.length === 0) {
@@ -381,7 +381,7 @@ class AuthService {
     const token = jwt.sign(
       {
         userId: user.id,
-        tenantId: user.tenant_id,
+        institutionId: user.institution_id,
         email: user.email,
         role: user.role,
         permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
@@ -391,13 +391,13 @@ class AuthService {
       { expiresIn: '2h' } // Shorter expiry for temp access
     );
 
-    logger.info('Temp access login successful', { userId: user.id, tenantId: user.tenant_id, tokenId: user.token_id });
+    logger.info('Temp access login successful', { userId: user.id, institutionId: user.institution_id, tokenId: user.token_id });
 
     return {
       token,
       user: {
         id: user.id,
-        tenantId: user.tenant_id,
+        institutionId: user.institution_id,
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
@@ -408,14 +408,14 @@ class AuthService {
     };
   }
 
-  async updateUserPermissions(tenantId, userId, permissions, warehouseAccess, role = null) {
+  async updateUserPermissions(institutionId, userId, permissions, warehouseAccess, role = null) {
     console.log('=== AUTH SERVICE UPDATE START ===');
-    console.log('Input params:', { tenantId, userId, permissions, warehouseAccess, role });
+    console.log('Input params:', { institutionId, userId, permissions, warehouseAccess, role });
     
     // First, let's check if user exists
     const checkUser = await db.query(
-      'SELECT id, role, permissions FROM users WHERE tenant_id = ? AND id = ?',
-      [tenantId, userId]
+      'SELECT id, role, permissions FROM institution_users WHERE institution_id = ? AND id = ?',
+      [institutionId, userId]
     );
     
     console.log('User check result:', checkUser);
@@ -424,7 +424,7 @@ class AuthService {
       throw new Error('User not found');
     }
     
-    let query = 'UPDATE users SET permissions = ?, warehouse_access = ?';
+    let query = 'UPDATE institution_users SET permissions = ?, warehouse_access = ?';
     let params = [JSON.stringify(permissions), JSON.stringify(warehouseAccess)];
     
     if (role) {
@@ -432,8 +432,8 @@ class AuthService {
       params.push(role);
     }
     
-    query += ', updated_at = NOW() WHERE tenant_id = ? AND id = ?';
-    params.push(tenantId, userId);
+    query += ', updated_at = NOW() WHERE institution_id = ? AND id = ?';
+    params.push(institutionId, userId);
     
     console.log('Final query:', query);
     console.log('Final params:', params);
@@ -444,15 +444,15 @@ class AuthService {
     
     // Verify the update
     const verifyUpdate = await db.query(
-      'SELECT id, role, permissions FROM users WHERE tenant_id = ? AND id = ?',
-      [tenantId, userId]
+      'SELECT id, role, permissions FROM institution_users WHERE institution_id = ? AND id = ?',
+      [institutionId, userId]
     );
     
     console.log('Verification result:', verifyUpdate);
     
     logger.info('User permissions updated', { 
       userId, 
-      tenantId, 
+      institutionId, 
       role, 
       affectedRows: result.affectedRows,
       query,
@@ -464,11 +464,11 @@ class AuthService {
     }
   }
 
-  async updateUserStatus(tenantId, userId, status) {
+  async updateUserStatus(institutionId, userId, status) {
     // Check if user exists and get their role
     const users = await db.query(
-      'SELECT role FROM users WHERE id = ? AND tenant_id = ?',
-      [userId, tenantId]
+      'SELECT role FROM institution_users WHERE id = ? AND institution_id = ?',
+      [userId, institutionId]
     );
 
     if (users.length === 0) {
@@ -482,53 +482,53 @@ class AuthService {
 
     // Update user status
     const result = await db.query(
-      'UPDATE users SET status = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?',
-      [status, userId, tenantId]
+      'UPDATE institution_users SET status = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?',
+      [status, userId, institutionId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Failed to update user status');
     }
 
-    logger.info('User status updated', { userId, tenantId, status });
+    logger.info('User status updated', { userId, institutionId, status });
   }
 
-  async getTenantUsers(tenantId, limit = 50, offset = 0) {
+  async getInstitutionUsers(institutionId, limit = 50, offset = 0) {
     return await db.query(
       `SELECT id, email, first_name, last_name, role, permissions, warehouse_access, status, last_login, created_at
-       FROM users 
-       WHERE tenant_id = ? 
+       FROM institution_users 
+       WHERE institution_id = ? 
        ORDER BY created_at DESC`,
-      [tenantId]
+      [institutionId]
     );
   }
 
-  async getTenantBySubdomain(subdomain) {
-    const tenants = await db.query(
-      'SELECT * FROM tenants WHERE name = ? AND status = "active"',
+  async getInstitutionByEmail(subdomain) {
+    const institutions = await db.query(
+      'SELECT * FROM institutions WHERE name = ? AND status = "active"',
       [subdomain]
     );
-    return tenants[0] || null;
+    return institutions[0] || null;
   }
 
-  async updateTenantSettings(tenantId, settings) {
+  async updateInstitutionSettings(institutionId, settings) {
     await db.query(
-      'UPDATE tenants SET settings = ?, updated_at = NOW() WHERE id = ?',
-      [JSON.stringify(settings), tenantId]
+      'UPDATE institutions SET settings = ?, updated_at = NOW() WHERE id = ?',
+      [JSON.stringify(settings), institutionId]
     );
 
-    logger.info('Tenant settings updated', { tenantId });
+    logger.info('Institution settings updated', { institutionId });
   }
 
-  async extendSession(userId, tenantId) {
+  async extendSession(userId, institutionId) {
     // Verify user is still active
     const users = await db.query(
-      'SELECT u.*, t.status as tenant_status FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ? AND u.tenant_id = ?',
-      [userId, tenantId]
+      'SELECT u.*, t.status as institution_status FROM institution_users u JOIN institutions t ON u.institution_id = t.id WHERE u.id = ? AND u.institution_id = ?',
+      [userId, institutionId]
     );
 
-    if (users.length === 0 || users[0].status !== 'active' || users[0].tenant_status !== 'active') {
-      throw new Error('User or tenant is inactive');
+    if (users.length === 0 || users[0].status !== 'active' || users[0].institution_status !== 'active') {
+      throw new Error('User or institution is inactive');
     }
 
     const user = users[0];
@@ -538,7 +538,7 @@ class AuthService {
     const token = jwt.sign(
       {
         userId: user.id,
-        tenantId: user.tenant_id,
+        institutionId: user.institution_id,
         email: user.email,
         role: user.role,
         permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
@@ -549,7 +549,7 @@ class AuthService {
       { expiresIn: config.jwt.expiresIn }
     );
 
-    logger.info('Session extended', { userId, tenantId });
+    logger.info('Session extended', { userId, institutionId });
     return { token, sessionTimestamp };
   }
 }

@@ -5,11 +5,11 @@ const { auditLog, requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// POST /api/auth/register-tenant (PUBLIC - Creates company + admin user)
-router.post('/register-tenant', 
-  validate(schemas.registerTenantSchema),
-  auditLog('tenant_registration'),
-  authController.registerTenant
+// POST /api/auth/register-institution (PUBLIC - Creates company + admin user)
+router.post('/register-institution', 
+  validate(schemas.registerInstitutionSchema),
+  auditLog('institution_registration'),
+  authController.registerInstitution
 );
 
 // POST /api/auth/login

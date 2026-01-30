@@ -11,7 +11,7 @@ router.get('/',
   authController.getUsers
 );
 
-// POST /api/users/create (PROTECTED - Create user within existing tenant)
+// POST /api/users/create (PROTECTED - Create user within existing institution)
 router.post('/create', 
   requirePermission('user_management'),
   validate(schemas.createUserSchema),
@@ -19,7 +19,7 @@ router.post('/create',
   authController.createUser
 );
 
-// POST /api/users (PROTECTED - Create user within existing tenant)
+// POST /api/users (PROTECTED - Create user within existing institution)
 router.post('/', 
   requirePermission('user_management'),
   validate(schemas.createUserSchema),

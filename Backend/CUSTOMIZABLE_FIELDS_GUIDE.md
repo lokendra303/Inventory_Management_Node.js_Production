@@ -189,7 +189,7 @@ Fields are automatically rendered based on their type:
 ```sql
 CREATE TABLE item_field_configs (
   id VARCHAR(36) PRIMARY KEY,
-  tenant_id VARCHAR(36) NOT NULL,
+  institution_id VARCHAR(36) NOT NULL,
   item_type ENUM('simple', 'variant', 'composite', 'service'),
   field_name VARCHAR(100) NOT NULL,
   field_label VARCHAR(255) NOT NULL,

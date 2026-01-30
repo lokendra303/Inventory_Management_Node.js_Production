@@ -23,7 +23,7 @@ const validateBearerToken = async (req, res, next) => {
 
     // Check if token exists and is active
     const tokens = await db.query(
-      'SELECT bt.*, t.id as tenant_id, t.name as tenant_name FROM bearer_tokens bt JOIN tenants t ON bt.tenant_id = t.id WHERE bt.token_value = ? AND bt.status = "active" AND (bt.expires_at IS NULL OR bt.expires_at > NOW())',
+      'SELECT bt.*, t.id as institution_id, t.name as institution_name FROM bearer_tokens bt JOIN institutions t ON bt.institution_id = t.id WHERE bt.token_value = ? AND bt.status = "active" AND (bt.expires_at IS NULL OR bt.expires_at > NOW())',
       [token]
     );
 
@@ -42,8 +42,8 @@ const validateBearerToken = async (req, res, next) => {
       [tokenData.id]
     );
 
-    // Set tenant context
-    req.tenantId = tokenData.tenant_id;
+    // Set institution context
+    req.institutionId = tokenData.institution_id;
     req.bearerToken = {
       id: tokenData.id,
       name: tokenData.name,
@@ -52,7 +52,7 @@ const validateBearerToken = async (req, res, next) => {
 
     logger.info('Bearer token authenticated', {
       tokenId: tokenData.id,
-      tenantId: tokenData.tenant_id,
+      institutionId: tokenData.institution_id,
       path: req.path
     });
 

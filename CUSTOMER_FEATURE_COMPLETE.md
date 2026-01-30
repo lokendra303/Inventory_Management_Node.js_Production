@@ -74,7 +74,7 @@ Successfully implemented a complete customer management system similar to the ve
 ```sql
 CREATE TABLE customers (
   id VARCHAR(36) PRIMARY KEY,
-  tenant_id VARCHAR(36) NOT NULL,
+  institution_id VARCHAR(36) NOT NULL,
   customer_code VARCHAR(50),
   display_name VARCHAR(255) NOT NULL,
   company_name VARCHAR(255),

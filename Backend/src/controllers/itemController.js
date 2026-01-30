@@ -5,7 +5,7 @@ class ItemController {
   async createItem(req, res) {
     try {
       const itemId = await itemService.createItem(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -18,7 +18,7 @@ class ItemController {
     } catch (error) {
       logger.error('Item creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -39,7 +39,7 @@ class ItemController {
         search: req.query.search
       };
       
-      const items = await itemService.getItems(req.tenantId, filters, limit, offset);
+      const items = await itemService.getItems(req.institutionId, filters, limit, offset);
       
       res.json({
         success: true,
@@ -47,7 +47,7 @@ class ItemController {
         pagination: { limit, offset, total: items.length }
       });
     } catch (error) {
-      logger.error('Failed to get items', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get items', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -58,14 +58,14 @@ class ItemController {
   async getItemFieldConfig(req, res) {
     try {
       const { itemType } = req.params;
-      const fieldConfig = await itemService.getItemFieldConfig(req.tenantId, itemType);
+      const fieldConfig = await itemService.getItemFieldConfig(req.institutionId, itemType);
       
       res.json({
         success: true,
         data: fieldConfig
       });
     } catch (error) {
-      logger.error('Failed to get item field config', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get item field config', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -76,7 +76,7 @@ class ItemController {
   async createItemFieldConfig(req, res) {
     try {
       const configId = await itemService.createItemFieldConfig(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -89,7 +89,7 @@ class ItemController {
     } catch (error) {
       logger.error('Field config creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -102,7 +102,7 @@ class ItemController {
   async getItem(req, res) {
     try {
       const { itemId } = req.params;
-      const item = await itemService.getItem(req.tenantId, itemId);
+      const item = await itemService.getItem(req.institutionId, itemId);
       
       if (!item) {
         return res.status(404).json({
@@ -118,7 +118,7 @@ class ItemController {
     } catch (error) {
       logger.error('Failed to get item', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         itemId: req.params.itemId 
       });
       res.status(500).json({
@@ -135,10 +135,10 @@ class ItemController {
       console.log('Update item request:', {
         itemId,
         body: req.body,
-        tenantId: req.tenantId
+        institutionId: req.institutionId
       });
       
-      await itemService.updateItem(req.tenantId, itemId, req.body, req.user.userId);
+      await itemService.updateItem(req.institutionId, itemId, req.body, req.user.userId);
       
       res.json({
         success: true,
@@ -148,7 +148,7 @@ class ItemController {
       console.error('Item update error:', error);
       logger.error('Item update failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         itemId: req.params.itemId,
         userId: req.user.userId 
       });
@@ -165,7 +165,7 @@ class ItemController {
       const { options } = req.body;
       
       await itemService.updateItemFieldOptions(
-        req.tenantId,
+        req.institutionId,
         itemType,
         fieldName,
         options,
@@ -179,7 +179,7 @@ class ItemController {
     } catch (error) {
       logger.error('Field options update failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -192,7 +192,7 @@ class ItemController {
   async deleteItem(req, res) {
     try {
       const { itemId } = req.params;
-      await itemService.deleteItem(req.tenantId, itemId, req.user.userId);
+      await itemService.deleteItem(req.institutionId, itemId, req.user.userId);
       
       res.json({
         success: true,
@@ -201,7 +201,7 @@ class ItemController {
     } catch (error) {
       logger.error('Item deletion failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         itemId: req.params.itemId,
         userId: req.user.userId 
       });

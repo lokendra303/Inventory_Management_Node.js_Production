@@ -67,20 +67,20 @@ async function fixAllIssues() {
     const [warehouseTypes] = await connection.execute('SELECT COUNT(*) as count FROM warehouse_types');
     
     if (warehouseTypes[0].count === 0) {
-      const [tenants] = await connection.execute('SELECT id FROM tenants LIMIT 1');
-      if (tenants.length > 0) {
-        const tenantId = tenants[0].id;
+      const [institutions] = await connection.execute('SELECT id FROM institutions LIMIT 1');
+      if (institutions.length > 0) {
+        const institutionId = institutions[0].id;
         const typeId = generateUUID();
         
         await connection.execute(`
-          INSERT INTO warehouse_types (id, tenant_id, name, description, status) 
+          INSERT INTO warehouse_types (id, institution_id, name, description, status) 
           VALUES (?, ?, 'Standard', 'Standard warehouse type', 'active')
-        `, [typeId, tenantId]);
+        `, [typeId, institutionId]);
         
         // Update existing warehouses to use this type
         await connection.execute(`
-          UPDATE warehouses SET type = ? WHERE tenant_id = ? AND type IS NULL
-        `, [typeId, tenantId]);
+          UPDATE warehouses SET type = ? WHERE institution_id = ? AND type IS NULL
+        `, [typeId, institutionId]);
         
         console.log('   ✅ Created default warehouse type');
         console.log('   ✅ Updated existing warehouses');
@@ -93,7 +93,7 @@ async function fixAllIssues() {
     console.log('\n📊 Verifying data integrity...');
     
     const tables = [
-      'tenants', 'users', 'warehouses', 'warehouse_types', 
+      'institutions', 'users', 'warehouses', 'warehouse_types', 
       'items', 'vendors', 'customers', 'categories'
     ];
     
@@ -123,25 +123,25 @@ async function fixAllIssues() {
     console.log('\n🧪 Testing critical queries...');
     
     try {
-      const [tenants] = await connection.execute('SELECT id FROM tenants LIMIT 1');
-      if (tenants.length > 0) {
-        const tenantId = tenants[0].id;
+      const [institutions] = await connection.execute('SELECT id FROM institutions LIMIT 1');
+      if (institutions.length > 0) {
+        const institutionId = institutions[0].id;
         
         // Test warehouse query
         await connection.execute(`
           SELECT w.*, COALESCE(wt.name, 'Standard') as type_name 
           FROM warehouses w 
           LEFT JOIN warehouse_types wt ON w.type = wt.id 
-          WHERE w.tenant_id = ?
-        `, [tenantId]);
+          WHERE w.institution_id = ?
+        `, [institutionId]);
         console.log('   ✅ Warehouse query works');
         
         // Test items query
-        await connection.execute('SELECT * FROM items WHERE tenant_id = ? LIMIT 1', [tenantId]);
+        await connection.execute('SELECT * FROM items WHERE institution_id = ? LIMIT 1', [institutionId]);
         console.log('   ✅ Items query works');
         
         // Test inventory query
-        await connection.execute('SELECT * FROM inventory_projections WHERE tenant_id = ? LIMIT 1', [tenantId]);
+        await connection.execute('SELECT * FROM inventory_projections WHERE institution_id = ? LIMIT 1', [institutionId]);
         console.log('   ✅ Inventory query works');
         
       }

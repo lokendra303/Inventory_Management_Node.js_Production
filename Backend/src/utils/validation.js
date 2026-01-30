@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
 // Common schemas
-const tenantId = Joi.string().uuid().required();
+const institutionId = Joi.string().uuid().required();
 const itemId = Joi.string().uuid().required();
 const warehouseId = Joi.string().uuid().required();
 const quantity = Joi.number().positive().required();
@@ -9,7 +9,7 @@ const unitCost = Joi.number().positive().required();
 const unitPrice = Joi.number().positive().required();
 
 // Auth schemas
-const registerTenantSchema = Joi.object({
+const registerinstitutionSchema = Joi.object({
   name: Joi.string().min(2).max(255).required(),
   adminEmail: Joi.string().email().required(),
   adminMobile: Joi.string().pattern(/^[0-9+\-\s()]{10,20}$/).required(),
@@ -226,13 +226,13 @@ const createGRNSchema = Joi.object({
 // Purchase Order status update schema
 const updatePOStatusSchema = Joi.object({
   status: Joi.string().valid('draft', 'pending_approval', 'approved', 'sent', 'confirmed', 'partially_received', 'received', 'cancelled').required(),
-  tenantId: Joi.string().uuid().optional()
+  institutionId: Joi.string().uuid().optional()
 });
 
 // Sales Order status update schema
 const updateSOStatusSchema = Joi.object({
   status: Joi.string().valid('draft', 'confirmed', 'shipped', 'delivered', 'cancelled').required(),
-  tenantId: Joi.string().uuid().optional()
+  institutionId: Joi.string().uuid().optional()
 });
 
 // Automation Rule schemas
@@ -266,7 +266,7 @@ const validate = (schema) => {
 module.exports = {
   validate,
   schemas: {
-    registerTenantSchema,
+    registerinstitutionSchema,
     loginSchema,
     createUserSchema,
     createItemSchema,

@@ -9,7 +9,7 @@ const config = require('./config');
 const db = require('./database/connection');
 const logger = require('./utils/logger');
 const routes = require('./routes');
-const { extractTenantContext, createTenantRateLimit } = require('./middleware/auth');
+const { extractInstitutionContext } = require('./middleware/auth');
 
 class Server {
   constructor() {
@@ -51,9 +51,6 @@ class Server {
     });
     this.app.use('/api', limiter);
 
-    // Tenant-specific rate limiting
-    this.app.use('/api', createTenantRateLimit(15 * 60 * 1000, 1000)); // 1000 requests per 15 minutes per tenant
-
     // Body parsing
     this.app.use(express.json({ limit: '10mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -69,12 +66,12 @@ class Server {
       next();
     });
 
-    // Tenant context extraction (skip for public routes)
+    // Institution context extraction (skip for public routes)
     this.app.use('/api', (req, res, next) => {
-      if (req.path === '/auth/register-tenant' || req.path === '/auth/login' || req.path === '/health') {
+      if (req.path === '/auth/register-institution' || req.path === '/auth/login' || req.path === '/health') {
         return next();
       }
-      return extractTenantContext(req, res, next);
+      return extractInstitutionContext(req, res, next);
     });
 
     // Create logs directory if it doesn't exist

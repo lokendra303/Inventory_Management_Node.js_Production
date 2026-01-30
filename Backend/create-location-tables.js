@@ -14,7 +14,7 @@ async function createLocationTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS warehouse_zones (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
         zone_code VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
@@ -23,8 +23,8 @@ async function createLocationTables() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_zone_code (tenant_id, warehouse_id, zone_code),
-        INDEX idx_tenant_warehouse (tenant_id, warehouse_id)
+        UNIQUE KEY unique_zone_code (institution_id, warehouse_id, zone_code),
+        INDEX idx_institution_warehouse (institution_id, warehouse_id)
       )
     `);
 
@@ -32,7 +32,7 @@ async function createLocationTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS warehouse_racks (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         zone_id VARCHAR(36) NOT NULL,
         rack_code VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
@@ -41,8 +41,8 @@ async function createLocationTables() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (zone_id) REFERENCES warehouse_zones(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_rack_code (tenant_id, zone_id, rack_code),
-        INDEX idx_tenant_zone (tenant_id, zone_id)
+        UNIQUE KEY unique_rack_code (institution_id, zone_id, rack_code),
+        INDEX idx_institution_zone (institution_id, zone_id)
       )
     `);
 
@@ -50,7 +50,7 @@ async function createLocationTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS warehouse_bins (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         rack_id VARCHAR(36) NOT NULL,
         bin_code VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
@@ -59,8 +59,8 @@ async function createLocationTables() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (rack_id) REFERENCES warehouse_racks(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_bin_code (tenant_id, rack_id, bin_code),
-        INDEX idx_tenant_rack (tenant_id, rack_id)
+        UNIQUE KEY unique_bin_code (institution_id, rack_id, bin_code),
+        INDEX idx_institution_rack (institution_id, rack_id)
       )
     `);
 
@@ -85,7 +85,7 @@ async function createLocationTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS composite_components (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         composite_item_id VARCHAR(36) NOT NULL,
         component_item_id VARCHAR(36) NOT NULL,
         quantity_required DECIMAL(15,3) NOT NULL,
@@ -93,8 +93,8 @@ async function createLocationTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (composite_item_id) REFERENCES items(id) ON DELETE CASCADE,
         FOREIGN KEY (component_item_id) REFERENCES items(id) ON DELETE CASCADE,
-        INDEX idx_tenant_composite (tenant_id, composite_item_id),
-        INDEX idx_tenant_component (tenant_id, component_item_id)
+        INDEX idx_institution_composite (institution_id, composite_item_id),
+        INDEX idx_institution_component (institution_id, component_item_id)
       )
     `);
 

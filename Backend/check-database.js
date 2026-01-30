@@ -31,16 +31,16 @@ async function checkDatabaseStructure() {
       console.log('\n❌ Users table does not exist');
     }
 
-    // Check tenants table structure if it exists
-    const [tenantTables] = await connection.execute("SHOW TABLES LIKE 'tenants'");
-    if (tenantTables.length > 0) {
-      console.log('\nTenants table structure:');
-      const [columns] = await connection.execute("DESCRIBE tenants");
+    // Check institutions table structure if it exists
+    const [institutionTables] = await connection.execute("SHOW TABLES LIKE 'institutions'");
+    if (institutionTables.length > 0) {
+      console.log('\ninstitutions table structure:');
+      const [columns] = await connection.execute("DESCRIBE institutions");
       columns.forEach(col => {
         console.log(`  ${col.Field}: ${col.Type} ${col.Null === 'NO' ? 'NOT NULL' : 'NULL'} ${col.Default ? `DEFAULT ${col.Default}` : ''}`);
       });
     } else {
-      console.log('\n❌ Tenants table does not exist');
+      console.log('\n❌ institutions table does not exist');
     }
 
   } catch (error) {

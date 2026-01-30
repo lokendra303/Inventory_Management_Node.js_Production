@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiService from '../services/apiService';
+import { useAuth } from '../hooks/useAuth';
 
 const CurrencyContext = createContext();
 
@@ -12,6 +13,7 @@ export const useCurrency = () => {
 };
 
 export const CurrencyProvider = ({ children }) => {
+  const { user } = useAuth();
   const [currency, setCurrency] = useState('USD');
   const [exchangeRate, setExchangeRate] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -27,8 +29,10 @@ export const CurrencyProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    fetchCurrency();
-  }, []);
+    if (user) {
+      fetchCurrency();
+    }
+  }, [user]);
 
   const fetchCurrency = async () => {
     try {

@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 
 class ReportsService {
   // Inventory Reports
-  async getInventoryReport(tenantId, filters = {}) {
+  async getInventoryReport(institutionId, filters = {}) {
     let query = `
       SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name,
              c.name as category_name
@@ -11,9 +11,9 @@ class ReportsService {
       JOIN items i ON ip.item_id = i.id
       JOIN warehouses w ON ip.warehouse_id = w.id
       LEFT JOIN categories c ON i.category = c.name
-      WHERE ip.tenant_id = ?
+      WHERE ip.institution_id = ?
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.warehouseId) {
       query += ' AND ip.warehouse_id = ?';
@@ -34,16 +34,16 @@ class ReportsService {
     }
   }
 
-  async getInventoryMovementReport(tenantId, filters = {}) {
+  async getInventoryMovementReport(institutionId, filters = {}) {
     let query = `
       SELECT es.created_at, es.event_type, es.event_data, es.metadata,
              i.sku, i.name as item_name, w.name as warehouse_name
       FROM event_store es
       LEFT JOIN items i ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = i.id
       LEFT JOIN warehouses w ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.warehouseId')) = w.id
-      WHERE es.tenant_id = ? AND es.aggregate_type = 'inventory'
+      WHERE es.institution_id = ? AND es.aggregate_type = 'inventory'
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.startDate) {
       query += ' AND DATE(es.created_at) >= ?';
@@ -63,7 +63,7 @@ class ReportsService {
   }
 
   // Purchase Reports
-  async getPurchaseReport(tenantId, filters = {}) {
+  async getPurchaseReport(institutionId, filters = {}) {
     let query = `
       SELECT po.*, COALESCE(v.name, po.vendor_name) as vendor_name, w.name as warehouse_name,
              COUNT(pol.id) as line_count,
@@ -73,9 +73,9 @@ class ReportsService {
       LEFT JOIN vendors v ON po.vendor_id = v.id
       LEFT JOIN warehouses w ON po.warehouse_id = w.id
       LEFT JOIN purchase_order_lines pol ON po.id = pol.po_id
-      WHERE po.tenant_id = ?
+      WHERE po.institution_id = ?
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.startDate) {
       query += ' AND DATE(po.order_date) >= ?';
@@ -104,7 +104,7 @@ class ReportsService {
     }
   }
 
-  async getGRNReport(tenantId, filters = {}) {
+  async getGRNReport(institutionId, filters = {}) {
     let query = `
       SELECT grn.*, po.po_number, w.name as warehouse_name,
              COUNT(gl.id) as line_count,
@@ -114,9 +114,9 @@ class ReportsService {
       JOIN purchase_orders po ON grn.po_id = po.id
       LEFT JOIN warehouses w ON grn.warehouse_id = w.id
       LEFT JOIN grn_lines gl ON grn.id = gl.grn_id
-      WHERE grn.tenant_id = ?
+      WHERE grn.institution_id = ?
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.startDate) {
       query += ' AND grn.receipt_date >= ?';
@@ -132,7 +132,7 @@ class ReportsService {
   }
 
   // Sales Reports
-  async getSalesReport(tenantId, filters = {}) {
+  async getSalesReport(institutionId, filters = {}) {
     let query = `
       SELECT so.*, COALESCE(c.name, so.customer_name) as customer_name, w.name as warehouse_name,
              COUNT(sol.id) as line_count,
@@ -142,9 +142,9 @@ class ReportsService {
       LEFT JOIN customers c ON so.customer_id = c.id
       LEFT JOIN warehouses w ON so.warehouse_id = w.id
       LEFT JOIN sales_order_lines sol ON so.id = sol.so_id
-      WHERE so.tenant_id = ?
+      WHERE so.institution_id = ?
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.startDate) {
       query += ' AND DATE(so.order_date) >= ?';
@@ -170,7 +170,7 @@ class ReportsService {
   }
 
   // Financial Reports
-  async getProfitLossReport(tenantId, filters = {}) {
+  async getProfitLossReport(institutionId, filters = {}) {
     const startDate = filters.startDate || new Date(new Date().getFullYear(), 0, 1);
     const endDate = filters.endDate || new Date();
 
@@ -178,16 +178,16 @@ class ReportsService {
       db.query(`
         SELECT SUM(total_amount) as total_sales
         FROM sales_orders 
-        WHERE tenant_id = ? AND status IN ('shipped', 'delivered') 
+        WHERE institution_id = ? AND status IN ('shipped', 'delivered') 
         AND order_date BETWEEN ? AND ?
-      `, [tenantId, startDate, endDate]),
+      `, [institutionId, startDate, endDate]),
       
       db.query(`
         SELECT SUM(total_amount) as total_purchases
         FROM purchase_orders 
-        WHERE tenant_id = ? AND status = 'received'
+        WHERE institution_id = ? AND status = 'received'
         AND order_date BETWEEN ? AND ?
-      `, [tenantId, startDate, endDate])
+      `, [institutionId, startDate, endDate])
     ]);
 
     return {
@@ -198,16 +198,16 @@ class ReportsService {
     };
   }
 
-  async getInventoryValuationReport(tenantId, filters = {}) {
+  async getInventoryValuationReport(institutionId, filters = {}) {
     let query = `
       SELECT ip.*, i.sku, i.name as item_name, w.name as warehouse_name,
              (ip.quantity_on_hand * ip.average_cost) as current_value
       FROM inventory_projections ip
       JOIN items i ON ip.item_id = i.id
       JOIN warehouses w ON ip.warehouse_id = w.id
-      WHERE ip.tenant_id = ?
+      WHERE ip.institution_id = ?
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.warehouseId) {
       query += ' AND ip.warehouse_id = ?';
@@ -223,16 +223,16 @@ class ReportsService {
   }
 
   // Analytics Reports
-  async getTopSellingItems(tenantId, filters = {}) {
+  async getTopSellingItems(institutionId, filters = {}) {
     let query = `
       SELECT i.id, i.sku, i.name, SUM(sol.quantity_ordered) as total_sold,
              SUM(sol.line_total) as total_revenue
       FROM sales_order_lines sol
       JOIN sales_orders so ON sol.so_id = so.id
       JOIN items i ON sol.item_id = i.id
-      WHERE so.tenant_id = ? AND so.status IN ('shipped', 'delivered')
+      WHERE so.institution_id = ? AND so.status IN ('shipped', 'delivered')
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.startDate) {
       query += ' AND so.order_date >= ?';
@@ -247,18 +247,18 @@ class ReportsService {
     return await db.query(query, params);
   }
 
-  async getLowStockReport(tenantId, threshold = 10) {
+  async getLowStockReport(institutionId, threshold = 10) {
     return await db.query(`
       SELECT ip.*, i.sku, i.name as item_name, w.name as warehouse_name
       FROM inventory_projections ip
       JOIN items i ON ip.item_id = i.id
       JOIN warehouses w ON ip.warehouse_id = w.id
-      WHERE ip.tenant_id = ? AND ip.quantity_available <= ?
+      WHERE ip.institution_id = ? AND ip.quantity_available <= ?
       ORDER BY ip.quantity_available ASC
-    `, [tenantId, threshold]);
+    `, [institutionId, threshold]);
   }
 
-  async getVendorPerformanceReport(tenantId, filters = {}) {
+  async getVendorPerformanceReport(institutionId, filters = {}) {
     let query = `
       SELECT v.id, v.name, v.vendor_code,
              COUNT(po.id) as total_orders,
@@ -268,9 +268,9 @@ class ReportsService {
       FROM vendors v
       LEFT JOIN purchase_orders po ON v.id = po.vendor_id
       LEFT JOIN goods_receipt_notes grn ON po.id = grn.po_id
-      WHERE v.tenant_id = ?
+      WHERE v.institution_id = ?
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.startDate) {
       query += ' AND po.order_date >= ?';
@@ -286,12 +286,12 @@ class ReportsService {
   }
 
   // Dashboard Summary
-  async getDashboardSummary(tenantId) {
+  async getDashboardSummary(institutionId) {
     const [inventory, sales, purchases, lowStock] = await Promise.all([
-      db.query('SELECT SUM(total_value) as total_value FROM inventory_projections WHERE tenant_id = ?', [tenantId]),
-      db.query('SELECT COUNT(*) as count, SUM(total_amount) as value FROM sales_orders WHERE tenant_id = ? AND status IN ("shipped", "delivered")', [tenantId]),
-      db.query('SELECT COUNT(*) as count, SUM(total_amount) as value FROM purchase_orders WHERE tenant_id = ? AND status = "received"', [tenantId]),
-      db.query('SELECT COUNT(*) as count FROM inventory_projections WHERE tenant_id = ? AND quantity_available <= 10', [tenantId])
+      db.query('SELECT SUM(total_value) as total_value FROM inventory_projections WHERE institution_id = ?', [institutionId]),
+      db.query('SELECT COUNT(*) as count, SUM(total_amount) as value FROM sales_orders WHERE institution_id = ? AND status IN ("shipped", "delivered")', [institutionId]),
+      db.query('SELECT COUNT(*) as count, SUM(total_amount) as value FROM purchase_orders WHERE institution_id = ? AND status = "received"', [institutionId]),
+      db.query('SELECT COUNT(*) as count FROM inventory_projections WHERE institution_id = ? AND quantity_available <= 10', [institutionId])
     ]);
 
     return {

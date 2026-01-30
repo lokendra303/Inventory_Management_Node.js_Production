@@ -19,7 +19,7 @@
 - **Database**: MySQL
 - **Frontend**: React.js, Ant Design
 - **Authentication**: JWT
-- **Architecture**: Multi-tenant SaaS
+- **Architecture**: Multi-institution SaaS
 
 ### Directory Structure
 ```
@@ -58,10 +58,10 @@ Client Request → Middleware Chain → Controller → Service → Database → 
 #### Middleware Chain Order:
 1. **CORS** - Cross-origin resource sharing
 2. **Body Parser** - Parse request body
-3. **extractTenantContext** - Extract tenant from token/subdomain
+3. **extractinstitutionContext** - Extract institution from token/subdomain
 4. **requireAuth** - Validate JWT token
 5. **requirePermission** - Check user permissions
-6. **validateTenantConsistency** - Ensure tenant data consistency
+6. **validateinstitutionConsistency** - Ensure institution data consistency
 7. **Controller** - Handle business logic
 
 ### 2. Authentication Flow
@@ -75,7 +75,7 @@ sequenceDiagram
     API-->>-Client: Token + User data
     
     Client->>+API: API Request with Bearer token
-    API->>+Middleware: extractTenantContext
+    API->>+Middleware: extractinstitutionContext
     Middleware->>Middleware: Verify JWT
     Middleware->>+Database: Get user permissions
     Database-->>-Middleware: Permissions
@@ -89,7 +89,7 @@ sequenceDiagram
 ```javascript
 // 1. Request hits middleware chain
 app.get('/inventory', 
-  extractTenantContext,     // Extract tenant
+  extractinstitutionContext,     // Extract institution
   requireAuth,              // Validate token
   requirePermission('inventory_view'), // Check permissions
   inventoryController.getInventory     // Handle request
@@ -98,8 +98,8 @@ app.get('/inventory',
 // 2. Controller processes request
 async getInventory(req, res) {
   try {
-    const { tenantId } = req;
-    const inventory = await inventoryService.getByTenant(tenantId);
+    const { institutionId } = req;
+    const inventory = await inventoryService.getByinstitution(institutionId);
     res.json({ success: true, data: inventory });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -107,15 +107,15 @@ async getInventory(req, res) {
 }
 
 // 3. Service handles business logic
-async getByTenant(tenantId, filters = {}) {
+async getByinstitution(institutionId, filters = {}) {
   const query = `
     SELECT i.*, it.name as item_name, w.name as warehouse_name
     FROM inventory i
     JOIN items it ON i.item_id = it.id
     JOIN warehouses w ON i.warehouse_id = w.id
-    WHERE i.tenant_id = ?
+    WHERE i.institution_id = ?
   `;
-  return await db.query(query, [tenantId]);
+  return await db.query(query, [institutionId]);
 }
 ```
 
@@ -125,7 +125,7 @@ async getByTenant(tenantId, filters = {}) {
 ```javascript
 {
   "userId": "uuid",
-  "tenantId": "uuid", 
+  "institutionId": "uuid", 
   "email": "user@example.com",
   "role": "admin|user",
   "permissions": {
@@ -185,8 +185,8 @@ useEffect(() => {
 
 ### Core Tables
 ```sql
--- Tenants (Multi-tenancy)
-CREATE TABLE tenants (
+-- institutions (Multi-tenancy)
+CREATE TABLE institutions (
   id VARCHAR(36) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   subdomain VARCHAR(100) UNIQUE,
@@ -197,48 +197,48 @@ CREATE TABLE tenants (
 -- Users
 CREATE TABLE users (
   id VARCHAR(36) PRIMARY KEY,
-  tenant_id VARCHAR(36) NOT NULL,
+  institution_id VARCHAR(36) NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('admin', 'user') DEFAULT 'user',
   permissions JSON,
   status ENUM('active', 'inactive') DEFAULT 'active',
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+  FOREIGN KEY (institution_id) REFERENCES institutions(id)
 );
 
 -- Items
 CREATE TABLE items (
   id VARCHAR(36) PRIMARY KEY,
-  tenant_id VARCHAR(36) NOT NULL,
+  institution_id VARCHAR(36) NOT NULL,
   name VARCHAR(255) NOT NULL,
   sku VARCHAR(100) NOT NULL,
   description TEXT,
   unit_price DECIMAL(10,2),
-  UNIQUE KEY unique_tenant_sku (tenant_id, sku),
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+  UNIQUE KEY unique_institution_sku (institution_id, sku),
+  FOREIGN KEY (institution_id) REFERENCES institutions(id)
 );
 
 -- Warehouses
 CREATE TABLE warehouses (
   id VARCHAR(36) PRIMARY KEY,
-  tenant_id VARCHAR(36) NOT NULL,
+  institution_id VARCHAR(36) NOT NULL,
   name VARCHAR(255) NOT NULL,
   location VARCHAR(255),
   type ENUM('main', 'branch', 'virtual') DEFAULT 'main',
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+  FOREIGN KEY (institution_id) REFERENCES institutions(id)
 );
 
 -- Inventory
 CREATE TABLE inventory (
   id VARCHAR(36) PRIMARY KEY,
-  tenant_id VARCHAR(36) NOT NULL,
+  institution_id VARCHAR(36) NOT NULL,
   item_id VARCHAR(36) NOT NULL,
   warehouse_id VARCHAR(36) NOT NULL,
   quantity_on_hand INT DEFAULT 0,
   quantity_available INT DEFAULT 0,
   quantity_reserved INT DEFAULT 0,
-  UNIQUE KEY unique_item_warehouse (tenant_id, item_id, warehouse_id),
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  UNIQUE KEY unique_item_warehouse (institution_id, item_id, warehouse_id),
+  FOREIGN KEY (institution_id) REFERENCES institutions(id),
   FOREIGN KEY (item_id) REFERENCES items(id),
   FOREIGN KEY (warehouse_id) REFERENCES warehouses(id)
 );
@@ -284,10 +284,10 @@ module.exports = app;
 const express = require('express');
 const router = express.Router();
 const inventoryController = require('../controllers/inventoryController');
-const { extractTenantContext, requireAuth, requirePermission } = require('../middleware/auth');
+const { extractinstitutionContext, requireAuth, requirePermission } = require('../middleware/auth');
 
 // Apply middleware to all routes
-router.use(extractTenantContext);
+router.use(extractinstitutionContext);
 router.use(requireAuth);
 
 // Routes
@@ -307,23 +307,23 @@ const logger = require('../utils/logger');
 class InventoryController {
   async getInventory(req, res) {
     try {
-      const { tenantId } = req;
+      const { institutionId } = req;
       const { warehouseId, itemId } = req.query;
       
       const inventory = await inventoryService.getInventory({
-        tenantId,
+        institutionId,
         warehouseId,
         itemId
       });
       
-      logger.info('Inventory retrieved', { tenantId, count: inventory.length });
+      logger.info('Inventory retrieved', { institutionId, count: inventory.length });
       
       res.json({
         success: true,
         data: inventory
       });
     } catch (error) {
-      logger.error('Error getting inventory', { error: error.message, tenantId: req.tenantId });
+      logger.error('Error getting inventory', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Failed to retrieve inventory'
@@ -333,19 +333,19 @@ class InventoryController {
 
   async receiveStock(req, res) {
     try {
-      const { tenantId, user } = req;
-      const stockData = { ...req.body, tenantId, userId: user.userId };
+      const { institutionId, user } = req;
+      const stockData = { ...req.body, institutionId, userId: user.userId };
       
       const result = await inventoryService.receiveStock(stockData);
       
-      logger.info('Stock received', { tenantId, itemId: stockData.itemId, quantity: stockData.quantity });
+      logger.info('Stock received', { institutionId, itemId: stockData.itemId, quantity: stockData.quantity });
       
       res.json({
         success: true,
         data: result
       });
     } catch (error) {
-      logger.error('Error receiving stock', { error: error.message, tenantId: req.tenantId });
+      logger.error('Error receiving stock', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Failed to receive stock'
@@ -364,7 +364,7 @@ const db = require('../database/connection');
 const { v4: uuidv4 } = require('uuid');
 
 class InventoryService {
-  async getInventory({ tenantId, warehouseId, itemId }) {
+  async getInventory({ institutionId, warehouseId, itemId }) {
     let query = `
       SELECT 
         i.*,
@@ -374,10 +374,10 @@ class InventoryService {
       FROM inventory i
       JOIN items it ON i.item_id = it.id
       JOIN warehouses w ON i.warehouse_id = w.id
-      WHERE i.tenant_id = ?
+      WHERE i.institution_id = ?
     `;
     
-    const params = [tenantId];
+    const params = [institutionId];
     
     if (warehouseId) {
       query += ' AND i.warehouse_id = ?';
@@ -394,7 +394,7 @@ class InventoryService {
     return await db.query(query, params);
   }
 
-  async receiveStock({ tenantId, itemId, warehouseId, quantity, unitCost, poId, grnNumber }) {
+  async receiveStock({ institutionId, itemId, warehouseId, quantity, unitCost, poId, grnNumber }) {
     const connection = await db.getConnection();
     
     try {
@@ -402,7 +402,7 @@ class InventoryService {
       
       // 1. Update or create inventory record
       const inventoryId = await this.updateInventory(connection, {
-        tenantId,
+        institutionId,
         itemId,
         warehouseId,
         quantityChange: quantity,
@@ -412,7 +412,7 @@ class InventoryService {
       // 2. Create inventory transaction
       await this.createTransaction(connection, {
         id: uuidv4(),
-        tenantId,
+        institutionId,
         inventoryId,
         type: 'receive',
         quantity,
@@ -433,11 +433,11 @@ class InventoryService {
     }
   }
 
-  async updateInventory(connection, { tenantId, itemId, warehouseId, quantityChange, type }) {
+  async updateInventory(connection, { institutionId, itemId, warehouseId, quantityChange, type }) {
     // Check if inventory record exists
     const [existing] = await connection.query(
-      'SELECT id, quantity_on_hand, quantity_available FROM inventory WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-      [tenantId, itemId, warehouseId]
+      'SELECT id, quantity_on_hand, quantity_available FROM inventory WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+      [institutionId, itemId, warehouseId]
     );
     
     if (existing.length > 0) {
@@ -456,8 +456,8 @@ class InventoryService {
       const inventoryId = uuidv4();
       
       await connection.query(
-        'INSERT INTO inventory (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available) VALUES (?, ?, ?, ?, ?, ?)',
-        [inventoryId, tenantId, itemId, warehouseId, quantityChange, quantityChange]
+        'INSERT INTO inventory (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available) VALUES (?, ?, ?, ?, ?, ?)',
+        [inventoryId, institutionId, itemId, warehouseId, quantityChange, quantityChange]
       );
       
       return inventoryId;
@@ -709,7 +709,7 @@ app.use((error, req, res, next) => {
     stack: error.stack,
     url: req.url,
     method: req.method,
-    tenantId: req.tenantId
+    institutionId: req.institutionId
   });
 
   if (error.name === 'ValidationError') {

@@ -1,7 +1,7 @@
 {
   "name": "ims-sepcune",
   "version": "1.0.0",
-  "description": "Production-ready Multi-tenant Inventory Management System",
+  "description": "Production-ready Multi-institution Inventory Management System",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

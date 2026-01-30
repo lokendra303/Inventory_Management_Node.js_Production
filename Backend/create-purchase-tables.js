@@ -14,7 +14,7 @@ async function createPurchaseTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS purchase_orders (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         po_number VARCHAR(100) NOT NULL,
         vendor_id VARCHAR(36),
         vendor_name VARCHAR(255) NOT NULL,
@@ -31,10 +31,10 @@ async function createPurchaseTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
-        UNIQUE KEY unique_po_number (tenant_id, po_number),
-        INDEX idx_tenant_status (tenant_id, status),
-        INDEX idx_vendor (tenant_id, vendor_id),
-        INDEX idx_warehouse (tenant_id, warehouse_id)
+        UNIQUE KEY unique_po_number (institution_id, po_number),
+        INDEX idx_institution_status (institution_id, status),
+        INDEX idx_vendor (institution_id, vendor_id),
+        INDEX idx_warehouse (institution_id, warehouse_id)
       )
     `);
 
@@ -42,7 +42,7 @@ async function createPurchaseTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS purchase_order_lines (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         po_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         line_number INT NOT NULL,
@@ -56,9 +56,9 @@ async function createPurchaseTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
-        INDEX idx_tenant_po (tenant_id, po_id),
-        INDEX idx_item (tenant_id, item_id),
-        INDEX idx_status (tenant_id, status)
+        INDEX idx_institution_po (institution_id, po_id),
+        INDEX idx_item (institution_id, item_id),
+        INDEX idx_status (institution_id, status)
       )
     `);
 
@@ -66,7 +66,7 @@ async function createPurchaseTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS goods_receipt_notes (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         grn_number VARCHAR(100) NOT NULL,
         po_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
@@ -76,10 +76,10 @@ async function createPurchaseTables() {
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_grn_number (tenant_id, grn_number),
+        UNIQUE KEY unique_grn_number (institution_id, grn_number),
         FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
-        INDEX idx_tenant_po (tenant_id, po_id),
-        INDEX idx_receipt_date (tenant_id, receipt_date)
+        INDEX idx_institution_po (institution_id, po_id),
+        INDEX idx_receipt_date (institution_id, receipt_date)
       )
     `);
 
@@ -87,7 +87,7 @@ async function createPurchaseTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS grn_lines (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         grn_id VARCHAR(36) NOT NULL,
         po_line_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
@@ -99,9 +99,9 @@ async function createPurchaseTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (grn_id) REFERENCES goods_receipt_notes(id) ON DELETE CASCADE,
         FOREIGN KEY (po_line_id) REFERENCES purchase_order_lines(id) ON DELETE CASCADE,
-        INDEX idx_tenant_grn (tenant_id, grn_id),
-        INDEX idx_po_line (tenant_id, po_line_id),
-        INDEX idx_item (tenant_id, item_id)
+        INDEX idx_institution_grn (institution_id, grn_id),
+        INDEX idx_po_line (institution_id, po_line_id),
+        INDEX idx_item (institution_id, item_id)
       )
     `);
 
@@ -109,7 +109,7 @@ async function createPurchaseTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS vendors (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         vendor_code VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
         contact_person VARCHAR(255),
@@ -122,8 +122,8 @@ async function createPurchaseTables() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_vendor_code (tenant_id, vendor_code),
-        INDEX idx_tenant_status (tenant_id, status)
+        UNIQUE KEY unique_vendor_code (institution_id, vendor_code),
+        INDEX idx_institution_status (institution_id, status)
       )
     `);
 

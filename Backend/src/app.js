@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const logger = require('./utils/logger');
-const { requireAuth, validateTenantConsistency } = require('./middleware/auth');
+const { requireAuth, validateinstitutionConsistency } = require('./middleware/auth');
 const { validateApiKey } = require('./middleware/apiKey');
 const { validateBearerToken } = require('./middleware/bearerToken');
 
@@ -39,16 +39,16 @@ app.post('/api/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName, companyName } = req.body;
     
-    // Create tenant first
-    const tenantId = require('uuid').v4();
+    // Create institution first
+    const institutionId = require('uuid').v4();
     
     await require('./database/connection').query(
-      'INSERT INTO tenants (id, name, status) VALUES (?, ?, "active")',
-      [tenantId, companyName]
+      'INSERT INTO institutions (id, name, status) VALUES (?, ?, "active")',
+      [institutionId, companyName]
     );
     
     // Create admin user
-    const userId = await require('./services/authService').createUser(tenantId, {
+    const userId = await require('./services/authService').createUser(institutionId, {
       email,
       password,
       firstName,
@@ -59,7 +59,7 @@ app.post('/api/register', async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Company and admin user created successfully',
-      data: { userId, tenantId, companyName }
+      data: { userId, institutionId, companyName }
     });
   } catch (error) {
     res.status(400).json({
@@ -70,8 +70,8 @@ app.post('/api/register', async (req, res) => {
 });
 
 // Token management routes (JWT protected)
-app.use('/api/api-keys', requireAuth, validateTenantConsistency, require('./routes/api-keys'));
-app.use('/api/bearer-tokens', requireAuth, validateTenantConsistency, require('./routes/bearer-tokens'));
+app.use('/api/api-keys', requireAuth, validateinstitutionConsistency, require('./routes/api-keys'));
+app.use('/api/bearer-tokens', requireAuth, validateinstitutionConsistency, require('./routes/bearer-tokens'));
 
 // Protected routes (JWT, API Key, or Bearer Token)
 const authMiddleware = (req, res, next) => {
@@ -96,7 +96,7 @@ const authMiddleware = (req, res, next) => {
 app.use('/api', authMiddleware);
 app.use('/api', (req, res, next) => {
   if (!req.apiKey && !req.bearerToken) {
-    return validateTenantConsistency(req, res, next);
+    return validateinstitutionConsistency(req, res, next);
   }
   next();
 });

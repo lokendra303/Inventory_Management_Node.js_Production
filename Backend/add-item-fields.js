@@ -53,7 +53,7 @@ async function addItemFields() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS item_variants (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         parent_item_id VARCHAR(36) NOT NULL,
         variant_name VARCHAR(255) NOT NULL,
         sku VARCHAR(100) NOT NULL,
@@ -71,8 +71,8 @@ async function addItemFields() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (parent_item_id) REFERENCES items(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_variant_sku (tenant_id, sku),
-        INDEX idx_tenant_parent (tenant_id, parent_item_id)
+        UNIQUE KEY unique_variant_sku (institution_id, sku),
+        INDEX idx_institution_parent (institution_id, parent_item_id)
       )
     `);
 
@@ -80,7 +80,7 @@ async function addItemFields() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS item_suppliers (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         vendor_id VARCHAR(36) NOT NULL,
         supplier_item_code VARCHAR(100) DEFAULT NULL,
@@ -92,8 +92,8 @@ async function addItemFields() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
         FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_item_vendor (tenant_id, item_id, vendor_id),
-        INDEX idx_tenant_item (tenant_id, item_id)
+        UNIQUE KEY unique_item_vendor (institution_id, item_id, vendor_id),
+        INDEX idx_institution_item (institution_id, item_id)
       )
     `);
 
@@ -101,7 +101,7 @@ async function addItemFields() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS item_price_history (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         price_type ENUM('cost', 'selling', 'mrp') NOT NULL,
         old_price DECIMAL(15,4) NOT NULL,
@@ -111,7 +111,7 @@ async function addItemFields() {
         changed_by VARCHAR(36) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
-        INDEX idx_tenant_item_date (tenant_id, item_id, effective_date)
+        INDEX idx_institution_item_date (institution_id, item_id, effective_date)
       )
     `);
 

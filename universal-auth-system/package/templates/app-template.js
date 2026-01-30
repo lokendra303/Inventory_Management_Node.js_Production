@@ -60,7 +60,7 @@ class NewApplication {
     const authRouter = express.Router();
 
     // Public routes - no authentication required
-    authRouter.post('/register', this.authController.registerTenant.bind(this.authController));
+    authRouter.post('/register', this.authController.registerinstitution.bind(this.authController));
     authRouter.post('/login', this.authController.login.bind(this.authController));
     authRouter.post('/refresh-token', this.authController.refreshToken.bind(this.authController));
 
@@ -89,8 +89,8 @@ class NewApplication {
     taskRouter.get('/', async (req, res) => {
       try {
         const tasks = await this.db.query(
-          'SELECT * FROM tasks WHERE tenant_id = ? ORDER BY created_at DESC',
-          [req.tenantId]
+          'SELECT * FROM tasks WHERE institution_id = ? ORDER BY created_at DESC',
+          [req.institutionId]
         );
         res.json({ success: true, data: tasks });
       } catch (error) {
@@ -107,8 +107,8 @@ class NewApplication {
           const taskId = require('uuid').v4();
           
           await this.db.query(
-            'INSERT INTO tasks (id, tenant_id, title, description, priority, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-            [taskId, req.tenantId, title, description, priority, req.user.userId]
+            'INSERT INTO tasks (id, institution_id, title, description, priority, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+            [taskId, req.institutionId, title, description, priority, req.user.userId]
           );
           
           res.status(201).json({ 
@@ -128,8 +128,8 @@ class NewApplication {
       async (req, res) => {
         try {
           const result = await this.db.query(
-            'DELETE FROM tasks WHERE id = ? AND tenant_id = ?',
-            [req.params.taskId, req.tenantId]
+            'DELETE FROM tasks WHERE id = ? AND institution_id = ?',
+            [req.params.taskId, req.institutionId]
           );
           
           if (result.affectedRows === 0) {
@@ -158,8 +158,8 @@ class NewApplication {
             COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_tasks,
             COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_tasks
           FROM tasks 
-          WHERE tenant_id = ?
-        `, [req.tenantId]);
+          WHERE institution_id = ?
+        `, [req.institutionId]);
         
         res.json({ success: true, data: stats[0] });
       } catch (error) {
@@ -175,7 +175,7 @@ class NewApplication {
     await this.db.query(`
       CREATE TABLE IF NOT EXISTS tasks (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         title VARCHAR(255) NOT NULL,
         description TEXT,
         priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
@@ -184,10 +184,10 @@ class NewApplication {
         assigned_to VARCHAR(36),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+        FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
-        INDEX idx_task_tenant (tenant_id),
+        INDEX idx_task_institution (institution_id),
         INDEX idx_task_status (status),
         INDEX idx_task_priority (priority)
       )
@@ -231,8 +231,8 @@ async function testAPI() {
   try {
     console.log('🧪 Testing API...');
 
-    // 1. Register new tenant
-    console.log('1. Registering new tenant...');
+    // 1. Register new institution
+    console.log('1. Registering new institution...');
     const registerResponse = await axios.post(`${baseURL}/auth/register`, {
       name: 'Test Company',
       adminEmail: 'admin@test.com',
@@ -240,7 +240,7 @@ async function testAPI() {
       adminFirstName: 'John',
       adminLastName: 'Doe'
     });
-    console.log('✓ Tenant registered:', registerResponse.data);
+    console.log('✓ institution registered:', registerResponse.data);
 
     // 2. Login
     console.log('2. Logging in...');

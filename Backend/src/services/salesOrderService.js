@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 const inventoryService = require('./inventoryService');
 
 class SalesOrderService {
-  async createSalesOrder(tenantId, soData, userId) {
+  async createSalesOrder(institutionId, soData, userId) {
     const {
       soNumber,
       customerId,
@@ -28,10 +28,10 @@ class SalesOrderService {
         // Create SO header
         await connection.execute(
           `INSERT INTO sales_orders 
-           (id, tenant_id, so_number, customer_id, customer_name, warehouse_id, channel, currency, 
+           (id, institution_id, so_number, customer_id, customer_name, warehouse_id, channel, currency, 
             order_date, expected_ship_date, notes, created_by, status, is_preorder) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
-          [soId, tenantId, soNumber, customerId || null, customerName, warehouseId, channel, currency, 
+          [soId, institutionId, soNumber, customerId || null, customerName, warehouseId, channel, currency, 
            orderDate || null, expectedShipDate || null, notes || null, userId, isPreorder]
         );
 
@@ -48,9 +48,9 @@ class SalesOrderService {
 
           await connection.execute(
             `INSERT INTO sales_order_lines 
-             (id, tenant_id, so_id, item_id, line_number, quantity_ordered, unit_price, line_total) 
+             (id, institution_id, so_id, item_id, line_number, quantity_ordered, unit_price, line_total) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, tenantId, soId, line.itemId, i + 1, line.quantity, line.unitPrice, lineTotal]
+            [lineId, institutionId, soId, line.itemId, i + 1, line.quantity, line.unitPrice, lineTotal]
           );
         }
 
@@ -61,17 +61,17 @@ class SalesOrderService {
         );
       });
 
-      logger.info('Sales order created', { soId, tenantId, soNumber, userId, isPreorder });
+      logger.info('Sales order created', { soId, institutionId, soNumber, userId, isPreorder });
       return soId;
     } catch (error) {
-      logger.error('Failed to create sales order', { tenantId, soNumber, error: error.message });
+      logger.error('Failed to create sales order', { institutionId, soNumber, error: error.message });
       throw error;
     }
   }
 
-  async getSalesOrders(tenantId, filters = {}) {
+  async getSalesOrders(institutionId, filters = {}) {
     let query = `
-      SELECT so.*, c.name as customer_name, w.name as warehouse_name,
+      SELECT so.*, c.display_name as customer_name, w.name as warehouse_name,
              COUNT(sol.id) as line_count,
              SUM(sol.quantity_ordered) as total_quantity_ordered,
              SUM(sol.quantity_shipped) as total_quantity_shipped
@@ -79,9 +79,9 @@ class SalesOrderService {
       LEFT JOIN customers c ON so.customer_id = c.id
       LEFT JOIN warehouses w ON so.warehouse_id = w.id
       LEFT JOIN sales_order_lines sol ON so.id = sol.so_id
-      WHERE so.tenant_id = ?
+      WHERE so.institution_id = ?
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.status) {
       query += ' AND so.status = ?';
@@ -93,14 +93,14 @@ class SalesOrderService {
     return await db.query(query, params);
   }
 
-  async getSalesOrder(tenantId, soId) {
+  async getSalesOrder(institutionId, soId) {
     const sos = await db.query(
-      `SELECT so.*, COALESCE(c.name, so.customer_name) as customer_name, w.name as warehouse_name
+      `SELECT so.*, COALESCE(c.display_name, so.customer_name) as customer_name, w.name as warehouse_name
        FROM sales_orders so
        LEFT JOIN customers c ON so.customer_id = c.id
        LEFT JOIN warehouses w ON so.warehouse_id = w.id
-       WHERE so.tenant_id = ? AND so.id = ?`,
-      [tenantId, soId]
+       WHERE so.institution_id = ? AND so.id = ?`,
+      [institutionId, soId]
     );
 
     if (sos.length === 0) return null;
@@ -112,21 +112,21 @@ class SalesOrderService {
       `SELECT sol.*, i.sku, i.name as item_name, i.unit
        FROM sales_order_lines sol
        JOIN items i ON sol.item_id = i.id
-       WHERE sol.tenant_id = ? AND sol.so_id = ?
+       WHERE sol.institution_id = ? AND sol.so_id = ?
        ORDER BY sol.line_number`,
-      [tenantId, soId]
+      [institutionId, soId]
     );
 
     return { ...so, lines };
   }
-  async reserveStock(tenantId, soData, userId) {
+  async reserveStock(institutionId, soData, userId) {
     const { soId, warehouseId, lines } = soData;
 
     try {
       await db.transaction(async (connection) => {
         for (const line of lines) {
           // Reserve inventory for each line
-          await inventoryService.reserveStock(tenantId, {
+          await inventoryService.reserveStock(institutionId, {
             itemId: line.itemId,
             warehouseId,
             quantity: line.quantity,
@@ -143,21 +143,21 @@ class SalesOrderService {
         }
       });
 
-      logger.info('Stock reserved for SO', { soId, tenantId, userId });
+      logger.info('Stock reserved for SO', { soId, institutionId, userId });
     } catch (error) {
-      logger.error('Failed to reserve stock for SO', { soId, tenantId, error: error.message });
+      logger.error('Failed to reserve stock for SO', { soId, institutionId, error: error.message });
       throw error;
     }
   }
 
-  async shipStock(tenantId, soData, userId) {
+  async shipStock(institutionId, soData, userId) {
     const { soId, warehouseId, lines, shipmentNumber } = soData;
 
     try {
       await db.transaction(async (connection) => {
         for (const line of lines) {
           // Ship inventory for each line
-          await inventoryService.shipStock(tenantId, {
+          await inventoryService.shipStock(institutionId, {
             itemId: line.itemId,
             warehouseId,
             quantity: line.quantityShipped,
@@ -175,21 +175,21 @@ class SalesOrderService {
         }
       });
 
-      logger.info('Stock shipped for SO', { soId, tenantId, userId });
+      logger.info('Stock shipped for SO', { soId, institutionId, userId });
     } catch (error) {
-      logger.error('Failed to ship stock for SO', { soId, tenantId, error: error.message });
+      logger.error('Failed to ship stock for SO', { soId, institutionId, error: error.message });
       throw error;
     }
   }
-  async updateSOStatus(tenantId, soId, status, userId) {
+  async updateSOStatus(institutionId, soId, status, userId) {
     try {
       // Get SO details for inventory operations
-      const so = await this.getSalesOrder(tenantId, soId);
+      const so = await this.getSalesOrder(institutionId, soId);
       if (!so) throw new Error('Sales order not found');
 
       // Handle inventory based on status
       if (status === 'confirmed') {
-        await this.reserveStock(tenantId, {
+        await this.reserveStock(institutionId, {
           soId,
           warehouseId: so.warehouse_id,
           lines: so.lines.map(line => ({
@@ -200,7 +200,7 @@ class SalesOrderService {
           }))
         }, userId);
       } else if (status === 'shipped') {
-        await this.shipStock(tenantId, {
+        await this.shipStock(institutionId, {
           soId,
           warehouseId: so.warehouse_id,
           shipmentNumber: `SHIP-${Date.now()}`,
@@ -214,17 +214,17 @@ class SalesOrderService {
       }
 
       const result = await db.query(
-        'UPDATE sales_orders SET status = ?, updated_at = NOW() WHERE tenant_id = ? AND id = ?',
-        [status, tenantId, soId]
+        'UPDATE sales_orders SET status = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+        [status, institutionId, soId]
       );
 
       if (result.affectedRows === 0) {
         throw new Error('Sales order not found');
       }
 
-      logger.info('SO status updated', { soId, tenantId, status, userId });
+      logger.info('SO status updated', { soId, institutionId, status, userId });
     } catch (error) {
-      logger.error('Failed to update SO status', { soId, tenantId, status, error: error.message });
+      logger.error('Failed to update SO status', { soId, institutionId, status, error: error.message });
       throw error;
     }
   }

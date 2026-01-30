@@ -104,6 +104,7 @@ const Login = () => {
                         <Input.Password 
                           prefix={<LockOutlined />} 
                           placeholder="Password"
+                          autoComplete="current-password"
                         />
                       </Form.Item>
 
@@ -202,6 +203,7 @@ const Login = () => {
                         <Input.Password 
                           prefix={<LockOutlined />} 
                           placeholder="Password (min 8 characters)"
+                          autoComplete="new-password"
                         />
                       </Form.Item>
 

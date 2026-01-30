@@ -6,7 +6,7 @@ class PurchaseOrderController {
   async createPurchaseOrder(req, res) {
     try {
       const poId = await purchaseOrderService.createPurchaseOrder(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -19,7 +19,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('PO creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -38,7 +38,7 @@ class PurchaseOrderController {
         vendorId: req.query.vendorId
       };
       
-      const pos = await purchaseOrderService.getPurchaseOrders(req.tenantId, filters, limit, offset);
+      const pos = await purchaseOrderService.getPurchaseOrders(req.institutionId, filters, limit, offset);
       
       res.json({
         success: true,
@@ -46,7 +46,7 @@ class PurchaseOrderController {
         pagination: { limit, offset, total: pos.length }
       });
     } catch (error) {
-      logger.error('Failed to get purchase orders', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get purchase orders', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -57,7 +57,7 @@ class PurchaseOrderController {
   async getPurchaseOrder(req, res) {
     try {
       const { id: poId } = req.params;
-      const po = await purchaseOrderService.getPurchaseOrder(req.tenantId, poId);
+      const po = await purchaseOrderService.getPurchaseOrder(req.institutionId, poId);
       
       if (!po) {
         return res.status(404).json({
@@ -73,7 +73,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('Failed to get purchase order', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         poId: req.params.id 
       });
       res.status(500).json({
@@ -86,11 +86,11 @@ class PurchaseOrderController {
   async createGRN(req, res) {
     try {
       console.log('GRN request body:', JSON.stringify(req.body, null, 2));
-      console.log('Tenant ID:', req.tenantId);
+      console.log('Institution ID:', req.institutionId);
       console.log('User ID:', req.user.userId);
       
       const grnId = await purchaseOrderService.createGRN(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -103,7 +103,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('GRN creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -116,7 +116,7 @@ class PurchaseOrderController {
   async getGRN(req, res) {
     try {
       const { grnId } = req.params;
-      const grn = await purchaseOrderService.getGRN(req.tenantId, grnId);
+      const grn = await purchaseOrderService.getGRN(req.institutionId, grnId);
       
       if (!grn) {
         return res.status(404).json({
@@ -132,7 +132,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('Failed to get GRN', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         grnId: req.params.grnId 
       });
       res.status(500).json({
@@ -155,7 +155,7 @@ class PurchaseOrderController {
         });
       }
 
-      await purchaseOrderService.updatePOStatus(req.tenantId, poId, status, req.user.userId);
+      await purchaseOrderService.updatePOStatus(req.institutionId, poId, status, req.user.userId);
 
       res.json({
         success: true,
@@ -164,7 +164,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('Failed to update PO status', {
         error: error.message,
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         poId: req.params.id
       });
       res.status(400).json({
@@ -177,14 +177,14 @@ class PurchaseOrderController {
   async getPendingReceipts(req, res) {
     try {
       const { warehouseId } = req.query;
-      const pendingReceipts = await purchaseOrderService.getPendingReceipts(req.tenantId, warehouseId);
+      const pendingReceipts = await purchaseOrderService.getPendingReceipts(req.institutionId, warehouseId);
       
       res.json({
         success: true,
         data: pendingReceipts
       });
     } catch (error) {
-      logger.error('Failed to get pending receipts', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get pending receipts', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -196,7 +196,7 @@ class PurchaseOrderController {
   async createVendor(req, res) {
     try {
       const vendorId = await vendorService.createVendor(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -209,7 +209,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('Vendor creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -226,14 +226,14 @@ class PurchaseOrderController {
         search: req.query.search
       };
       
-      const vendors = await vendorService.getVendors(req.tenantId, filters);
+      const vendors = await vendorService.getVendors(req.institutionId, filters);
       
       res.json({
         success: true,
         data: vendors
       });
     } catch (error) {
-      logger.error('Failed to get vendors', { message: error.message, stack: error.stack, tenantId: req.tenantId });
+      logger.error('Failed to get vendors', { message: error.message, stack: error.stack, institutionId: req.institutionId });
       const isProd = process.env.NODE_ENV === 'production';
       res.status(500).json({
         success: false,
@@ -245,7 +245,7 @@ class PurchaseOrderController {
   async getVendor(req, res) {
     try {
       const { id: vendorId } = req.params;
-      const vendor = await vendorService.getVendor(req.tenantId, vendorId);
+      const vendor = await vendorService.getVendor(req.institutionId, vendorId);
       
       if (!vendor) {
         return res.status(404).json({
@@ -261,7 +261,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('Failed to get vendor', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         vendorId: req.params.id 
       });
       res.status(500).json({
@@ -274,7 +274,7 @@ class PurchaseOrderController {
   async updateVendor(req, res) {
     try {
       const { id: vendorId } = req.params;
-      await vendorService.updateVendor(req.tenantId, vendorId, req.body, req.user.userId);
+      await vendorService.updateVendor(req.institutionId, vendorId, req.body, req.user.userId);
       
       res.json({
         success: true,
@@ -283,7 +283,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('Failed to update vendor', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         vendorId: req.params.id 
       });
       res.status(400).json({
@@ -299,7 +299,7 @@ class PurchaseOrderController {
       const { startDate, endDate } = req.query;
       
       const performance = await vendorService.getVendorPerformance(
-        req.tenantId, 
+        req.institutionId, 
         vendorId, 
         startDate, 
         endDate
@@ -312,7 +312,7 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('Failed to get vendor performance', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         vendorId: req.params.id 
       });
       res.status(500).json({

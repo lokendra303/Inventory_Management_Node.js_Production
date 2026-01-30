@@ -58,7 +58,7 @@ Activity-based session management system:
 #### Backend API
 - **Session Extension Endpoint**: `POST /auth/extend-session`
 - **Token Refresh**: Generates new JWT with updated timestamp
-- **Security**: Validates user/tenant status before extending
+- **Security**: Validates user/institution status before extending
 
 ### Configuration
 ```javascript

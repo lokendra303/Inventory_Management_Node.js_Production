@@ -8,7 +8,7 @@ const router = express.Router();
 // GET /api/inventory
 router.get('/', 
   requirePermission('inventory_view'),
-  inventoryController.getTenantInventory
+  inventoryController.getInstitutionInventory
 );
 
 // GET /api/inventory/dashboard-stats

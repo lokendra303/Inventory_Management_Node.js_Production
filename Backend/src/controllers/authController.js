@@ -6,17 +6,17 @@ class AuthController {
     try {
       const { email, password, firstName, lastName, companyName } = req.body;
       
-      // Generate tenant ID
-      const tenantId = require('uuid').v4();
+      // Generate institution ID
+      const institutionId = require('uuid').v4();
       
-      // Create tenant first
+      // Create institution first
       await require('../database/connection').query(
-        'INSERT INTO tenants (id, name, status) VALUES (?, ?, "active")',
-        [tenantId, companyName]
+        'INSERT INTO institutions (id, name, status) VALUES (?, ?, "active")',
+        [institutionId, companyName]
       );
       
-      // Create admin user for the new tenant
-      const userId = await authService.createUser(tenantId, {
+      // Create admin user for the new institution
+      const userId = await authService.createUser(institutionId, {
         email,
         password,
         firstName,
@@ -29,7 +29,7 @@ class AuthController {
         message: 'User registered successfully with new company',
         data: { 
           userId, 
-          tenantId,
+          institutionId,
           companyName
         }
       });
@@ -42,17 +42,21 @@ class AuthController {
     }
   }
 
-  async registerTenant(req, res) {
+  async registerinstitution(req, res) {
+    return this.registerInstitution(req, res);
+  }
+
+  async registerInstitution(req, res) {
     try {
-      const { tenantId, userId } = await authService.createTenant(req.body);
+      const { institutionId, userId } = await authService.createInstitution(req.body);
       
       res.status(201).json({
         success: true,
-        message: 'Tenant created successfully',
-        data: { tenantId, userId }
+        message: 'Institution created successfully',
+        data: { institutionId, userId }
       });
     } catch (error) {
-      logger.error('Tenant registration failed', { error: error.message, body: req.body });
+      logger.error('Institution registration failed', { error: error.message, body: req.body });
       res.status(400).json({
         success: false,
         error: error.message
@@ -82,7 +86,7 @@ class AuthController {
   async createUser(req, res) {
     try {
       const userId = await authService.createUser(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -95,7 +99,7 @@ class AuthController {
     } catch (error) {
       logger.error('User creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         createdBy: req.user.userId 
       });
       res.status(400).json({
@@ -110,15 +114,15 @@ class AuthController {
       const limit = parseInt(req.query.limit) || 50;
       const offset = parseInt(req.query.offset) || 0;
       
-      const users = await authService.getTenantUsers(req.tenantId, limit, offset);
+      const institution_users = await authService.getInstitutionUsers(req.institutionId, limit, offset);
       
       res.json({
         success: true,
-        data: users,
-        pagination: { limit, offset, total: users.length }
+        data: institution_users,
+        pagination: { limit, offset, total: institution_users.length }
       });
     } catch (error) {
-      logger.error('Failed to get users', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get institution_users', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -136,17 +140,17 @@ class AuthController {
         role,
         permissions,
         warehouseAccess,
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         requestBody: req.body,
         params: req.params
       });
       
       // Validate user exists first
-      const users = await authService.getTenantUsers(req.tenantId);
-      const existingUser = users.find(u => u.id === userId);
+      const institution_users = await authService.getInstitutionUsers(req.institutionId);
+      const existingUser = institution_users.find(u => u.id === userId);
       
       if (!existingUser) {
-        logger.error('User not found for permissions update', { userId, tenantId: req.tenantId });
+        logger.error('User not found for permissions update', { userId, institutionId: req.institutionId });
         return res.status(404).json({
           success: false,
           error: 'User not found'
@@ -162,11 +166,11 @@ class AuthController {
         }
       });
       
-      await authService.updateUserPermissions(req.tenantId, userId, permissions, warehouseAccess, role);
+      await authService.updateUserPermissions(req.institutionId, userId, permissions, warehouseAccess, role);
       
       logger.info('=== PERMISSIONS UPDATE COMPLETED ===', {
         userId,
-        tenantId: req.tenantId
+        institutionId: req.institutionId
       });
       
       res.json({
@@ -177,7 +181,7 @@ class AuthController {
       logger.error('Failed to update user permissions', { 
         error: error.message,
         stack: error.stack,
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.params.userId 
       });
       res.status(400).json({
@@ -195,19 +199,19 @@ class AuthController {
       logger.info('Update user status request', {
         userId,
         status,
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         requestingUser: req.user?.userId
       });
       
-      if (!req.tenantId) {
-        logger.error('Missing tenant context in updateUserStatus');
+      if (!req.institutionId) {
+        logger.error('Missing institution context in updateUserStatus');
         return res.status(400).json({
           success: false,
-          error: 'Tenant context required'
+          error: 'Institution context required'
         });
       }
       
-      await authService.updateUserStatus(req.tenantId, userId, status);
+      await authService.updateUserStatus(req.institutionId, userId, status);
       
       res.json({
         success: true,
@@ -216,7 +220,7 @@ class AuthController {
     } catch (error) {
       logger.error('Failed to update user status', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.params.userId 
       });
       res.status(400).json({
@@ -229,8 +233,8 @@ class AuthController {
   async getProfile(req, res) {
     try {
       // Get full user details from database
-      const users = await authService.getTenantUsers(req.tenantId);
-      const userProfile = users.find(u => u.id === req.user.userId);
+      const institution_users = await authService.getInstitutionUsers(req.institutionId);
+      const userProfile = institution_users.find(u => u.id === req.user.userId);
       
       if (!userProfile) {
         return res.status(404).json({
@@ -244,7 +248,7 @@ class AuthController {
         data: {
           id: userProfile.id,
           userId: req.user.userId,
-          tenantId: req.user.tenantId,
+          institutionId: req.user.institutionId,
           email: userProfile.email,
           firstName: userProfile.first_name,
           lastName: userProfile.last_name,
@@ -292,16 +296,16 @@ class AuthController {
     try {
       const { firstName, lastName, email } = req.body;
       const userId = req.user.userId;
-      const tenantId = req.tenantId;
+      const institutionId = req.institutionId;
 
-      await authService.updateUserProfile(tenantId, userId, {
+      await authService.updateUserProfile(institutionId, userId, {
         firstName,
         lastName,
         email
       });
 
       // Fetch updated profile
-      const updatedUser = await authService.getTenantUsers(tenantId);
+      const updatedUser = await authService.getInstitutionUsers(institutionId);
       const userProfile = updatedUser.find(u => u.id === userId);
 
       res.json({
@@ -327,9 +331,9 @@ class AuthController {
     try {
       const { currentPassword, newPassword } = req.body;
       const userId = req.user.userId;
-      const tenantId = req.tenantId;
+      const institutionId = req.institutionId;
 
-      await authService.changePassword(tenantId, userId, currentPassword, newPassword);
+      await authService.changePassword(institutionId, userId, currentPassword, newPassword);
 
       res.json({
         success: true,
@@ -348,12 +352,12 @@ class AuthController {
       const { targetUserId, expiresInHours = 24 } = req.body;
       const { userId: paramUserId } = req.params;
       const adminUserId = req.user.userId;
-      const tenantId = req.tenantId;
+      const institutionId = req.institutionId;
 
       // Use targetUserId from body, or fall back to URL param
       const finalTargetUserId = targetUserId || paramUserId;
 
-      const result = await authService.generateTempAccess(tenantId, finalTargetUserId, adminUserId, expiresInHours);
+      const result = await authService.generateTempAccess(institutionId, finalTargetUserId, adminUserId, expiresInHours);
 
       res.json({
         success: true,
@@ -370,8 +374,8 @@ class AuthController {
 
   async tempLogin(req, res) {
     try {
-      const { email, tempPassword, tenantId } = req.body;
-      const result = await authService.loginWithTempAccess(email, tempPassword, tenantId);
+      const { email, tempPassword, institutionId } = req.body;
+      const result = await authService.loginWithTempAccess(email, tempPassword, institutionId);
       
       res.json({
         success: true,
@@ -388,7 +392,7 @@ class AuthController {
 
   async extendSession(req, res) {
     try {
-      const result = await authService.extendSession(req.user.userId, req.tenantId);
+      const result = await authService.extendSession(req.user.userId, req.institutionId);
       
       res.json({
         success: true,

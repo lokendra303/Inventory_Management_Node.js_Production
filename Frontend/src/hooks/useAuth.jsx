@@ -133,11 +133,11 @@ export const AuthProvider = ({ children }) => {
 
 
 
-  const register = async (tenantData) => {
+  const register = async (institutionData) => {
     try {
-      const response = await apiService.post('/auth/register-tenant', tenantData);
+      const response = await apiService.post('/auth/register-institution', institutionData);
       if (response.success) {
-        message.success('Tenant registered successfully. Please login.');
+        message.success('institution registered successfully. Please login.');
         return { success: true };
       } else {
         message.error(response.error || 'Registration failed');

@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth, validateTenantConsistency } = require('../middleware/auth');
+const { requireAuth, validateInstitutionConsistency } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ router.use('/auth', require('./auth'));
 
 // Protected routes (authentication required)
 router.use(requireAuth);
-router.use(validateTenantConsistency);
+router.use(validateInstitutionConsistency);
 
 // Resource routes
 router.use('/users', require('./users'));
@@ -41,7 +41,7 @@ router.use((error, req, res, next) => {
     stack: error.stack,
     path: req.path,
     method: req.method,
-    tenantId: req.tenantId,
+    institutionId: req.institutionId,
     userId: req.user?.userId
   });
 

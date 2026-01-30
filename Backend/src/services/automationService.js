@@ -3,7 +3,7 @@ const db = require('../database/connection');
 const logger = require('../utils/logger');
 
 class AutomationService {
-  async createRule(tenantId, ruleData, userId) {
+  async createRule(institutionId, ruleData, userId) {
     const {
       name,
       description,
@@ -42,11 +42,11 @@ class AutomationService {
 
     await db.query(
       `INSERT INTO automation_rules 
-       (id, tenant_id, name, description, trigger_event, conditions, actions, is_active, created_by) 
+       (id, institution_id, name, description, trigger_event, conditions, actions, is_active, created_by) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         ruleId,
-        tenantId,
+        institutionId,
         name,
         description,
         triggerEvent,
@@ -57,7 +57,7 @@ class AutomationService {
       ]
     );
 
-    logger.info('Automation rule created', { ruleId, tenantId, triggerEvent, userId });
+    logger.info('Automation rule created', { ruleId, institutionId, triggerEvent, userId });
     return ruleId;
   }
 
@@ -130,7 +130,7 @@ class AutomationService {
     return true;
   }
 
-  async updateRule(tenantId, ruleId, updateData, userId) {
+  async updateRule(institutionId, ruleId, updateData, userId) {
     const {
       name,
       description,
@@ -174,10 +174,10 @@ class AutomationService {
     }
 
     updateFields.push('version = version + 1', 'updated_at = NOW()');
-    updateValues.push(tenantId, ruleId);
+    updateValues.push(institutionId, ruleId);
 
     const result = await db.query(
-      `UPDATE automation_rules SET ${updateFields.join(', ')} WHERE tenant_id = ? AND id = ?`,
+      `UPDATE automation_rules SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
       updateValues
     );
 
@@ -185,14 +185,14 @@ class AutomationService {
       throw new Error('Rule not found');
     }
 
-    logger.info('Automation rule updated', { ruleId, tenantId, userId });
+    logger.info('Automation rule updated', { ruleId, institutionId, userId });
     return ruleId;
   }
 
-  async getRule(tenantId, ruleId) {
+  async getRule(institutionId, ruleId) {
     const [rules] = await db.query(
-      'SELECT * FROM automation_rules WHERE tenant_id = ? AND id = ?',
-      [tenantId, ruleId]
+      'SELECT * FROM automation_rules WHERE institution_id = ? AND id = ?',
+      [institutionId, ruleId]
     );
 
     if (rules.length === 0) {
@@ -207,9 +207,9 @@ class AutomationService {
     };
   }
 
-  async getRules(tenantId, filters = {}, limit = 100, offset = 0) {
-    let query = 'SELECT * FROM automation_rules WHERE tenant_id = ?';
-    const params = [tenantId];
+  async getRules(institutionId, filters = {}, limit = 100, offset = 0) {
+    let query = 'SELECT * FROM automation_rules WHERE institution_id = ?';
+    const params = [institutionId];
 
     if (filters.triggerEvent) {
       query += ' AND trigger_event = ?';
@@ -233,9 +233,9 @@ class AutomationService {
     }));
   }
 
-  async executeRules(tenantId, triggerEvent, eventData) {
+  async executeRules(institutionId, triggerEvent, eventData) {
     // Get all active rules for this trigger event
-    const rules = await this.getRules(tenantId, { 
+    const rules = await this.getRules(institutionId, { 
       triggerEvent, 
       isActive: true 
     });
@@ -247,7 +247,7 @@ class AutomationService {
         const shouldExecute = this.evaluateConditions(rule.conditions, eventData);
         
         if (shouldExecute) {
-          const result = await this.executeActions(tenantId, rule.actions, eventData);
+          const result = await this.executeActions(institutionId, rule.actions, eventData);
           executionResults.push({
             ruleId: rule.id,
             ruleName: rule.name,
@@ -257,7 +257,7 @@ class AutomationService {
 
           logger.info('Automation rule executed', {
             ruleId: rule.id,
-            tenantId,
+            institutionId,
             triggerEvent,
             result
           });
@@ -265,7 +265,7 @@ class AutomationService {
       } catch (error) {
         logger.error('Automation rule execution failed', {
           ruleId: rule.id,
-          tenantId,
+          institutionId,
           triggerEvent,
           error: error.message
         });
@@ -334,7 +334,7 @@ class AutomationService {
     return value;
   }
 
-  async executeActions(tenantId, actions, eventData) {
+  async executeActions(institutionId, actions, eventData) {
     const results = [];
 
     for (const action of actions) {
@@ -343,13 +343,13 @@ class AutomationService {
 
         switch (action.type) {
           case 'email':
-            result = await this.executeEmailAction(tenantId, action, eventData);
+            result = await this.executeEmailAction(institutionId, action, eventData);
             break;
           case 'webhook':
-            result = await this.executeWebhookAction(tenantId, action, eventData);
+            result = await this.executeWebhookAction(institutionId, action, eventData);
             break;
           case 'whatsapp':
-            result = await this.executeWhatsAppAction(tenantId, action, eventData);
+            result = await this.executeWhatsAppAction(institutionId, action, eventData);
             break;
           default:
             result = { success: false, error: `Unknown action type: ${action.type}` };
@@ -368,11 +368,11 @@ class AutomationService {
     return results;
   }
 
-  async executeEmailAction(tenantId, action, eventData) {
+  async executeEmailAction(institutionId, action, eventData) {
     // Email action implementation would go here
     // For now, just log the action
     logger.info('Email action executed', {
-      tenantId,
+      institutionId,
       to: action.to,
       subject: action.subject,
       template: action.template,
@@ -382,7 +382,7 @@ class AutomationService {
     return { success: true, message: 'Email sent' };
   }
 
-  async executeWebhookAction(tenantId, action, eventData) {
+  async executeWebhookAction(institutionId, action, eventData) {
     const axios = require('axios');
 
     try {
@@ -390,7 +390,7 @@ class AutomationService {
         method: action.method,
         url: action.url,
         data: {
-          tenantId,
+          institutionId,
           eventData,
           ...action.payload
         },
@@ -412,10 +412,10 @@ class AutomationService {
     }
   }
 
-  async executeWhatsAppAction(tenantId, action, eventData) {
+  async executeWhatsAppAction(institutionId, action, eventData) {
     // WhatsApp action implementation would go here
     logger.info('WhatsApp action executed', {
-      tenantId,
+      institutionId,
       to: action.to,
       template: action.template,
       eventData
@@ -424,22 +424,22 @@ class AutomationService {
     return { success: true, message: 'WhatsApp message sent' };
   }
 
-  async deleteRule(tenantId, ruleId, userId) {
+  async deleteRule(institutionId, ruleId, userId) {
     const result = await db.query(
-      'DELETE FROM automation_rules WHERE tenant_id = ? AND id = ?',
-      [tenantId, ruleId]
+      'DELETE FROM automation_rules WHERE institution_id = ? AND id = ?',
+      [institutionId, ruleId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Rule not found');
     }
 
-    logger.info('Automation rule deleted', { ruleId, tenantId, userId });
+    logger.info('Automation rule deleted', { ruleId, institutionId, userId });
     return true;
   }
 
-  async testRule(tenantId, ruleId, testEventData) {
-    const rule = await this.getRule(tenantId, ruleId);
+  async testRule(institutionId, ruleId, testEventData) {
+    const rule = await this.getRule(institutionId, ruleId);
     if (!rule) {
       throw new Error('Rule not found');
     }

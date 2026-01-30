@@ -5,7 +5,7 @@ class WarehouseController {
   async createWarehouse(req, res) {
     try {
       const warehouseId = await warehouseService.createWarehouse(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -18,7 +18,7 @@ class WarehouseController {
     } catch (error) {
       logger.error('Warehouse creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -37,12 +37,12 @@ class WarehouseController {
         search: req.query.search
       };
       
-      let warehouses = await warehouseService.getWarehouses(req.tenantId, filters, limit, offset);
+      let warehouses = await warehouseService.getWarehouses(req.institutionId, filters, limit, offset);
       
       // Filter warehouses based on user's warehouse access
       const userWarehouseAccess = req.user.warehouseAccess || [];
       
-      // Admin or users with empty warehouse access can see all warehouses
+      // Admin or institution_users with empty warehouse access can see all warehouses
       if (req.user.role !== 'admin' && userWarehouseAccess.length > 0) {
         warehouses = warehouses.filter(warehouse => 
           userWarehouseAccess.includes(warehouse.id)
@@ -55,7 +55,7 @@ class WarehouseController {
         pagination: { limit, offset, total: warehouses.length }
       });
     } catch (error) {
-      logger.error('Failed to get warehouses', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get warehouses', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -66,7 +66,7 @@ class WarehouseController {
   async getWarehouse(req, res) {
     try {
       const { warehouseId } = req.params;
-      const warehouse = await warehouseService.getWarehouse(req.tenantId, warehouseId);
+      const warehouse = await warehouseService.getWarehouse(req.institutionId, warehouseId);
       
       if (!warehouse) {
         return res.status(404).json({
@@ -82,7 +82,7 @@ class WarehouseController {
     } catch (error) {
       logger.error('Failed to get warehouse', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         warehouseId: req.params.warehouseId 
       });
       res.status(500).json({
@@ -103,7 +103,7 @@ class WarehouseController {
         });
       }
       
-      const details = await warehouseService.getWarehouseDetails(req.tenantId, warehouseId);
+      const details = await warehouseService.getWarehouseDetails(req.institutionId, warehouseId);
       
       res.json({
         success: true,
@@ -112,7 +112,7 @@ class WarehouseController {
     } catch (error) {
       logger.error('Failed to get warehouse details', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         warehouseId: req.params.warehouseId 
       });
       res.status(500).json({
@@ -125,7 +125,7 @@ class WarehouseController {
   async updateWarehouse(req, res) {
     try {
       const { warehouseId } = req.params;
-      await warehouseService.updateWarehouse(req.tenantId, warehouseId, req.body, req.user.userId);
+      await warehouseService.updateWarehouse(req.institutionId, warehouseId, req.body, req.user.userId);
       
       res.json({
         success: true,
@@ -134,7 +134,7 @@ class WarehouseController {
     } catch (error) {
       logger.error('Warehouse update failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         warehouseId: req.params.warehouseId,
         userId: req.user.userId 
       });
@@ -148,7 +148,7 @@ class WarehouseController {
   async deleteWarehouse(req, res) {
     try {
       const { warehouseId } = req.params;
-      await warehouseService.deleteWarehouse(req.tenantId, warehouseId, req.user.userId);
+      await warehouseService.deleteWarehouse(req.institutionId, warehouseId, req.user.userId);
       
       res.json({
         success: true,
@@ -157,7 +157,7 @@ class WarehouseController {
     } catch (error) {
       logger.error('Warehouse deletion failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         warehouseId: req.params.warehouseId,
         userId: req.user.userId 
       });

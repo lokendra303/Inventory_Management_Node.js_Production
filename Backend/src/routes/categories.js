@@ -1,6 +1,6 @@
 const express = require('express');
 const categoryController = require('../controllers/categoryController');
-const { requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
+const { requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ router.get('/',
 // POST /api/categories
 router.post('/',
   requirePermission('category_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('category_created'),
   categoryController.createCategory
 );
@@ -33,7 +33,7 @@ router.get('/:id',
 // PUT /api/categories/:id
 router.put('/:id',
   requirePermission('category_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('category_updated'),
   categoryController.updateCategory
 );

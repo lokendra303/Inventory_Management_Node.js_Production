@@ -3,11 +3,11 @@ const { v4: uuidv4 } = require('uuid');
 
 class ItemFieldService {
   // Get field configuration for item type
-  async getFieldConfig(tenantId, itemType) {
-    // Get both tenant-specific and default configs
+  async getFieldConfig(institutionId, itemType) {
+    // Get both institution-specific and default configs
     const configs = await db.query(
-      'SELECT * FROM item_field_configs WHERE (tenant_id = ? OR tenant_id = "default") AND item_type = ? AND status = "active" ORDER BY tenant_id DESC',
-      [tenantId, itemType]
+      'SELECT * FROM item_field_configs WHERE (institution_id = ? OR institution_id = "default") AND item_type = ? AND status = "active" ORDER BY institution_id DESC',
+      [institutionId, itemType]
     );
     
     return configs.map(config => ({
@@ -18,7 +18,7 @@ class ItemFieldService {
   }
 
   // Create custom field configuration
-  async createFieldConfig(tenantId, fieldData, userId) {
+  async createFieldConfig(institutionId, fieldData, userId) {
     const {
       itemType,
       fieldName,
@@ -35,12 +35,12 @@ class ItemFieldService {
     
     await db.query(
       `INSERT INTO item_field_configs 
-       (id, tenant_id, item_type, field_name, field_label, field_type, 
+       (id, institution_id, item_type, field_name, field_label, field_type, 
         is_required, validation_rules, options, default_value, display_order, 
         status, created_by) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
       [
-        configId, tenantId, itemType, fieldName, fieldLabel, fieldType,
+        configId, institutionId, itemType, fieldName, fieldLabel, fieldType,
         isRequired, JSON.stringify(validationRules), JSON.stringify(options),
         defaultValue, displayOrder, userId
       ]
@@ -80,8 +80,8 @@ class ItemFieldService {
   }
 
   // Validate custom fields based on configuration
-  async validateCustomFields(tenantId, itemType, customFields) {
-    const fieldConfigs = await this.getFieldConfig(tenantId, itemType);
+  async validateCustomFields(institutionId, itemType, customFields) {
+    const fieldConfigs = await this.getFieldConfig(institutionId, itemType);
     const errors = [];
 
     for (const config of fieldConfigs) {

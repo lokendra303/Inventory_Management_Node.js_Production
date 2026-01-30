@@ -108,7 +108,7 @@ class App {
     
     // Auth routes
     const auth = express.Router();
-    auth.post('/register', this.authController.registerTenant.bind(this.authController));
+    auth.post('/register', this.authController.registerinstitution.bind(this.authController));
     auth.post('/login', this.authController.login.bind(this.authController));
     auth.post('/refresh', this.authController.refreshToken.bind(this.authController));
     
@@ -134,7 +134,7 @@ class App {
             id: req.user.userId,
             email: req.user.email,
             role: req.user.role,
-            tenantId: req.tenantId
+            institutionId: req.institutionId
           }
         });
       }
@@ -221,7 +221,7 @@ async function testAuth() {
       adminFirstName: 'John',
       adminLastName: 'Doe'
     });
-    console.log('✅ Company registered:', registerRes.data.data.tenantId);
+    console.log('✅ Company registered:', registerRes.data.data.institutionId);
     
     // 2. Login
     console.log('2. Logging in...');
@@ -316,7 +316,7 @@ const products = express.Router();
 products.use(this.authMiddleware.authenticate());
 
 products.get('/', async (req, res) => {
-  // Your logic here - req.tenantId and req.user available
+  // Your logic here - req.institutionId and req.user available
 });
 
 this.app.use('/api/products', products);
@@ -325,11 +325,11 @@ this.app.use('/api/products', products);
 ## Database Tables
 
 Universal Auth creates these tables automatically:
-- \`tenants\` - Company/organization data
-- \`users\` - User accounts with multi-tenant support  
+- \`institutions\` - Company/organization data
+- \`users\` - User accounts with multi-institution support  
 - \`temp_access_tokens\` - Temporary access tokens
 
-Add \`tenant_id\` to your app tables for multi-tenant support.
+Add \`institution_id\` to your app tables for multi-institution support.
 `;
 
 fs.writeFileSync('README.md', readmeContent);

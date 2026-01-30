@@ -41,8 +41,8 @@ node check-database-compatibility.js
 **Output:**
 ```
 📊 COMPATIBILITY REPORT
-❌ Missing Auth Tables: tenants, users
-⚠️  Tables Needing tenant_id: products, orders, inventory
+❌ Missing Auth Tables: institutions, users
+⚠️  Tables Needing institution_id: products, orders, inventory
 💡 Run: node auto-migrate-existing-project.js
 ```
 
@@ -52,20 +52,20 @@ node auto-migrate-existing-project.js
 ```
 **What it does:**
 - ✅ Creates missing auth tables
-- ✅ Adds `tenant_id` to existing tables
-- ✅ Migrates existing data to default tenant
+- ✅ Adds `institution_id` to existing tables
+- ✅ Migrates existing data to default institution
 - ✅ Adds missing fields (mobile, permissions, etc.)
 - ✅ Preserves all existing data
 
 ### Database Structure (Auto-Created)
 
 #### Auth Tables
-- `tenants` - Companies/organizations
-- `users` - User accounts with multi-tenant support
+- `institutions` - Companies/organizations
+- `users` - User accounts with multi-institution support
 - `temp_access_tokens` - Password reset tokens
 
 #### Your Existing Tables
-- Auto-adds `tenant_id VARCHAR(36)` to all tables
+- Auto-adds `institution_id VARCHAR(36)` to all tables
 - Auto-adds `created_by VARCHAR(36)` where needed
 - Maintains all existing data and structure
 
@@ -113,9 +113,9 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "message": "Tenant created successfully",
+  "message": "institution created successfully",
   "data": {
-    "tenantId": "uuid-here",
+    "institutionId": "uuid-here",
     "userId": "uuid-here"
   }
 }
@@ -129,7 +129,7 @@ Content-Type: application/json
 {
   "email": "admin@acme.com",
   "password": "securePassword123",
-  "tenantId": "optional-tenant-id"
+  "institutionId": "optional-institution-id"
 }
 ```
 **Response:**
@@ -141,7 +141,7 @@ Content-Type: application/json
     "token": "jwt-token-here",
     "user": {
       "id": "uuid",
-      "tenantId": "uuid",
+      "institutionId": "uuid",
       "email": "admin@acme.com",
       "firstName": "John",
       "lastName": "Doe",
@@ -183,7 +183,7 @@ Authorization: Bearer <token>
   "data": {
     "id": "uuid",
     "userId": "uuid",
-    "tenantId": "uuid",
+    "institutionId": "uuid",
     "email": "admin@acme.com",
     "firstName": "John",
     "lastName": "Doe",
@@ -366,12 +366,12 @@ curl -X POST http://localhost:3000/api/auth/users \
 // Require login for all routes
 app.use('/api/protected', auth.authenticate());
 
-// Available in route: req.user, req.tenantId
+// Available in route: req.user, req.institutionId
 app.get('/api/protected/data', (req, res) => {
   res.json({
     message: 'Protected data',
     user: req.user.email,
-    tenant: req.tenantId
+    institution: req.institutionId
   });
 });
 ```
@@ -430,33 +430,33 @@ app.use('/api/sensitive',
 );
 ```
 
-## 🗄️ Multi-Tenant Database Patterns
+## 🗄️ Multi-institution Database Patterns
 
 ### Auto-Migration Handles This
 ```bash
-# Automatically adds tenant_id to existing tables
+# Automatically adds institution_id to existing tables
 node auto-migrate-existing-project.js
 ```
 
-### Manual Multi-Tenant Queries
+### Manual Multi-institution Queries
 ```javascript
-// Always filter by tenant_id
+// Always filter by institution_id
 app.get('/api/products', auth.authenticate(), async (req, res) => {
   const products = await db.query(
-    'SELECT * FROM products WHERE tenant_id = ? ORDER BY created_at DESC',
-    [req.tenantId]
+    'SELECT * FROM products WHERE institution_id = ? ORDER BY created_at DESC',
+    [req.institutionId]
   );
   res.json({ success: true, data: products });
 });
 
-// Always insert with tenant_id
+// Always insert with institution_id
 app.post('/api/products', auth.authenticate(), async (req, res) => {
   const { name, price } = req.body;
   const productId = require('uuid').v4();
   
   await db.query(
-    'INSERT INTO products (id, tenant_id, name, price, created_by) VALUES (?, ?, ?, ?, ?)',
-    [productId, req.tenantId, name, price, req.user.userId]
+    'INSERT INTO products (id, institution_id, name, price, created_by) VALUES (?, ?, ?, ?, ?)',
+    [productId, req.institutionId, name, price, req.user.userId]
   );
   
   res.json({ success: true, data: { id: productId } });
@@ -466,13 +466,13 @@ app.post('/api/products', auth.authenticate(), async (req, res) => {
 ### Database Schema After Migration
 ```sql
 -- Your existing tables get updated automatically
-ALTER TABLE products ADD COLUMN tenant_id VARCHAR(36) DEFAULT 'default';
-ALTER TABLE orders ADD COLUMN tenant_id VARCHAR(36) DEFAULT 'default';
-ALTER TABLE inventory ADD COLUMN tenant_id VARCHAR(36) DEFAULT 'default';
+ALTER TABLE products ADD COLUMN institution_id VARCHAR(36) DEFAULT 'default';
+ALTER TABLE orders ADD COLUMN institution_id VARCHAR(36) DEFAULT 'default';
+ALTER TABLE inventory ADD COLUMN institution_id VARCHAR(36) DEFAULT 'default';
 
 -- Indexes added for performance
-ALTER TABLE products ADD INDEX idx_products_tenant (tenant_id);
-ALTER TABLE orders ADD INDEX idx_orders_tenant (tenant_id);
+ALTER TABLE products ADD INDEX idx_products_institution (institution_id);
+ALTER TABLE orders ADD INDEX idx_orders_institution (institution_id);
 ```
 
 ## ⚡ Migration Scenarios
@@ -582,7 +582,7 @@ try {
 // Debug user permissions
 console.log('User permissions:', req.user.permissions);
 console.log('User role:', req.user.role);
-console.log('Tenant ID:', req.tenantId);
+console.log('institution ID:', req.institutionId);
 ```
 
 ### Error Codes
