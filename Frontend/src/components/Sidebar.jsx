@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, Menu } from 'antd';
+import { Layout, Menu, Drawer } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import CurrencySelector from './CurrencySelector.jsx';
@@ -18,7 +18,7 @@ import {
 
 const { Sider } = Layout;
 
-const Sidebar = ({ collapsed }) => {
+const Sidebar = ({ collapsed, isMobile, onClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -131,10 +131,19 @@ const Sidebar = ({ collapsed }) => {
       icon: <SettingOutlined />,
       label: 'Settings'
     }
-  ].filter(Boolean); // Remove false values
+  ].filter(Boolean);
 
-  return (
-    <Sider trigger={null} collapsible collapsed={collapsed}>
+  const handleMenuClick = ({ key }) => {
+    if (typeof key === 'string' && key.startsWith('/')) {
+      navigate(key);
+      if (isMobile && onClose) {
+        onClose();
+      }
+    }
+  };
+
+  const sidebarContent = (
+    <>
       <div style={{ 
         height: '32px', 
         margin: '16px', 
@@ -146,20 +155,38 @@ const Sidebar = ({ collapsed }) => {
         color: 'white',
         fontWeight: 'bold'
       }}>
-        {collapsed ? 'IMS' : 'IMS SEPCUNE'}
+        {collapsed && !isMobile ? 'IMS' : 'IMS SEPCUNE'}
       </div>
       <Menu
         theme="dark"
         mode="inline"
         selectedKeys={[location.pathname]}
         items={menuItems}
-        onClick={({ key }) => {
-          if (typeof key === 'string' && key.startsWith('/')) {
-            navigate(key);
-          }
-        }}
+        onClick={handleMenuClick}
       />
-      {!collapsed && <CurrencySelector />}
+      {!collapsed && !isMobile && <CurrencySelector />}
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer
+        title="IMS SEPCUNE"
+        placement="left"
+        onClose={onClose}
+        open={!collapsed}
+        bodyStyle={{ padding: 0, background: '#001529' }}
+        headerStyle={{ background: '#001529', color: 'white' }}
+        width={250}
+      >
+        {sidebarContent}
+      </Drawer>
+    );
+  }
+
+  return (
+    <Sider trigger={null} collapsible collapsed={collapsed} breakpoint="lg">
+      {sidebarContent}
     </Sider>
   );
 };

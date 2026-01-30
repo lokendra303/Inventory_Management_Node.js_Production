@@ -50,9 +50,25 @@ const ProtectedEditCustomer = withPermission('customer_management')(EditCustomer
 function AppContent() {
   const { user, loading } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   
   // Initialize session manager for authenticated users
   useSessionManager();
+
+  // Handle responsive behavior
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setCollapsed(true);
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   console.log('AppContent render - user:', user, 'loading:', loading);
 
@@ -73,14 +89,19 @@ function AppContent() {
   console.log('User authenticated, showing main app');
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sidebar collapsed={collapsed} />
+      <Sidebar 
+        collapsed={collapsed} 
+        isMobile={isMobile}
+        onClose={() => setCollapsed(true)}
+      />
       <Layout>
         <Header 
           collapsed={collapsed} 
           setCollapsed={setCollapsed}
           user={user}
+          isMobile={isMobile}
         />
-        <Content style={{ margin: '16px' }}>
+        <Content className="ant-layout-content">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />

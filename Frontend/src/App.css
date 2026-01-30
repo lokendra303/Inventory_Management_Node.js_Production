@@ -1,5 +1,157 @@
+/* Global Responsive Styles */
+* {
+  box-sizing: border-box;
+}
+
 .App {
   text-align: center;
+}
+
+/* Loading Container */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100%;
+}
+
+.loading-spinner {
+  font-size: 18px;
+  color: #1890ff;
+}
+
+/* Responsive Layout */
+.ant-layout {
+  min-height: 100vh;
+}
+
+.ant-layout-content {
+  margin: 16px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 6px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .ant-layout-content {
+    margin: 8px;
+    padding: 12px;
+  }
+  
+  .ant-table-wrapper {
+    overflow-x: auto;
+  }
+  
+  .ant-form-item {
+    margin-bottom: 16px;
+  }
+  
+  .ant-btn {
+    margin-bottom: 8px;
+  }
+}
+
+/* Tablet Responsive */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .ant-layout-content {
+    margin: 12px;
+    padding: 14px;
+  }
+}
+
+/* Small Mobile */
+@media (max-width: 480px) {
+  .ant-layout-content {
+    margin: 4px;
+    padding: 8px;
+  }
+  
+  .ant-card {
+    margin-bottom: 12px;
+  }
+  
+  .ant-form-item-label {
+    text-align: left;
+  }
+}
+
+/* Utility Classes */
+.mobile-hidden {
+  display: block;
+}
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-hidden {
+    display: none;
+  }
+  
+  .mobile-only {
+    display: block;
+  }
+}
+
+/* Responsive Tables */
+.responsive-table {
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .ant-table-thead > tr > th {
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+  
+  .ant-table-tbody > tr > td {
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+}
+
+/* Responsive Forms */
+@media (max-width: 768px) {
+  .ant-form-item-label {
+    text-align: left;
+    padding-bottom: 4px;
+  }
+  
+  .ant-col {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Responsive Cards */
+@media (max-width: 768px) {
+  .ant-card {
+    margin-bottom: 12px;
+  }
+  
+  .ant-card-head-title {
+    font-size: 16px;
+  }
+  
+  .ant-card-body {
+    padding: 16px;
+  }
+}
+
+/* Responsive Buttons */
+@media (max-width: 768px) {
+  .ant-btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .ant-btn-group .ant-btn {
+    width: 100%;
+  }
 }
 
 .App-logo {
