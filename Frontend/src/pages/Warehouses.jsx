@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Statistic, Row, Col, Descriptions, Tag } from 'antd';
-import { PlusOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import { usePermissions } from '../components/PermissionWrapper';
 import { useCurrency } from '../contexts/CurrencyContext.jsx';
@@ -16,6 +16,7 @@ const Warehouses = () => {
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState(null);
   const [warehouseDetails, setWarehouseDetails] = useState(null);
+  const [editingWarehouse, setEditingWarehouse] = useState(null);
   const [form] = Form.useForm();
   const [typeForm] = Form.useForm();
 
@@ -49,6 +50,8 @@ const Warehouses = () => {
     {
       title: 'Actions',
       key: 'actions',
+      width: 250,
+      fixed: 'right',
       render: (_, record) => (
         <Space>
           <Button 
@@ -56,8 +59,17 @@ const Warehouses = () => {
             icon={<EyeOutlined />}
             onClick={() => viewWarehouseDetails(record)}
           >
-            View Details
+            View
           </Button>
+          {canManageWarehouses && (
+            <Button 
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => editWarehouse(record)}
+            >
+              Edit
+            </Button>
+          )}
           {canManageWarehouses && (
             <Button 
               size="small"
@@ -124,17 +136,51 @@ const Warehouses = () => {
     }
   };
 
+  const editWarehouse = (warehouse) => {
+    setEditingWarehouse(warehouse);
+    form.setFieldsValue({
+      code: warehouse.code,
+      name: warehouse.name,
+      type: warehouse.type,
+      address: warehouse.address,
+      contactPerson: warehouse.contact_person,
+      phone: warehouse.phone,
+      email: warehouse.email
+    });
+    setModalVisible(true);
+  };
+
   const handleAddWarehouse = async (values) => {
     try {
-      const response = await apiService.post('/warehouses', values);
-      if (response.success) {
-        message.success('Warehouse created successfully');
-        setModalVisible(false);
-        form.resetFields();
-        fetchWarehouses();
+      // Clean up the values to avoid undefined parameters
+      const cleanedValues = {
+        code: values.code || null,
+        name: values.name || null,
+        type: values.type || null,
+        address: values.address || null,
+        contactPerson: values.contactPerson || null,
+        phone: values.phone || null,
+        email: values.email || null
+      };
+      
+      if (editingWarehouse) {
+        const response = await apiService.put(`/warehouses/${editingWarehouse.id}`, cleanedValues);
+        if (response.success) {
+          message.success('Warehouse updated successfully');
+        }
+      } else {
+        const response = await apiService.post('/warehouses', cleanedValues);
+        if (response.success) {
+          message.success('Warehouse created successfully');
+        }
       }
+      setModalVisible(false);
+      setEditingWarehouse(null);
+      form.resetFields();
+      fetchWarehouses();
     } catch (error) {
-      message.error('Failed to create warehouse');
+      console.error('Warehouse operation error:', error);
+      message.error(`Failed to ${editingWarehouse ? 'update' : 'create'} warehouse: ${error.response?.data?.error || error.message}`);
     }
   };
 
@@ -173,9 +219,13 @@ const Warehouses = () => {
       </Card>
 
       <Modal
-        title="Add New Warehouse"
+        title={editingWarehouse ? "Edit Warehouse" : "Add New Warehouse"}
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          setModalVisible(false);
+          setEditingWarehouse(null);
+          form.resetFields();
+        }}
         footer={null}
       >
         <Form
@@ -234,9 +284,13 @@ const Warehouses = () => {
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit">
-                Create Warehouse
+                {editingWarehouse ? 'Update Warehouse' : 'Create Warehouse'}
               </Button>
-              <Button onClick={() => setModalVisible(false)}>
+              <Button onClick={() => {
+                setModalVisible(false);
+                setEditingWarehouse(null);
+                form.resetFields();
+              }}>
                 Cancel
               </Button>
             </Space>

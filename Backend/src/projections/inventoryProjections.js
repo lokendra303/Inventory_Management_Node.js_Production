@@ -215,7 +215,7 @@ class InventoryProjectionService {
 
   async getWarehouseInventory(institutionId, warehouseId) {
     return await db.query(
-      `SELECT ip.*, i.sku, i.name as item_name, i.unit
+      `SELECT ip.*, i.sku, i.name as item_name, i.unit, i.cost_price, i.selling_price, i.mrp
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        WHERE ip.institution_id = ? AND ip.warehouse_id = ?
@@ -225,7 +225,7 @@ class InventoryProjectionService {
   }
 
   async getInstitutionInventory(institutionId, limit = 100, offset = 0, warehouseId = null, accessibleWarehouseIds = []) {
-    let query = `SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
+    let query = `SELECT ip.*, i.sku, i.name as item_name, i.unit, i.cost_price, i.selling_price, i.mrp, w.name as warehouse_name
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
@@ -297,6 +297,20 @@ class InventoryProjectionService {
       totalItems: totalItemsResult[0]?.total_items || 0,
       lowStockCount: lowStockResult[0]?.low_stock_count || 0
     };
+  }
+
+  async syncInventoryPricing(institutionId) {
+    // Update all inventory projections to reflect current item cost prices
+    await db.query(
+      `UPDATE inventory_projections ip
+       JOIN items i ON ip.item_id = i.id
+       SET ip.average_cost = i.cost_price,
+           ip.total_value = ip.quantity_on_hand * i.cost_price
+       WHERE ip.institution_id = ?`,
+      [institutionId]
+    );
+    
+    logger.info('Inventory pricing synced', { institutionId });
   }
 
   async rebuildProjection(institutionId, itemId, warehouseId) {

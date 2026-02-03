@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const logger = require('./utils/logger');
-const { requireAuth, validateinstitutionConsistency } = require('./middleware/auth');
+const { requireAuth, validateInstitutionConsistency } = require('./middleware/auth');
 const { validateApiKey } = require('./middleware/apiKey');
 const { validateBearerToken } = require('./middleware/bearerToken');
 
@@ -70,8 +70,8 @@ app.post('/api/register', async (req, res) => {
 });
 
 // Token management routes (JWT protected)
-app.use('/api/api-keys', requireAuth, validateinstitutionConsistency, require('./routes/api-keys'));
-app.use('/api/bearer-tokens', requireAuth, validateinstitutionConsistency, require('./routes/bearer-tokens'));
+app.use('/api/api-keys', requireAuth, validateInstitutionConsistency, require('./routes/api-keys'));
+app.use('/api/bearer-tokens', requireAuth, validateInstitutionConsistency, require('./routes/bearer-tokens'));
 
 // Protected routes (JWT, API Key, or Bearer Token)
 const authMiddleware = (req, res, next) => {
@@ -96,7 +96,7 @@ const authMiddleware = (req, res, next) => {
 app.use('/api', authMiddleware);
 app.use('/api', (req, res, next) => {
   if (!req.apiKey && !req.bearerToken) {
-    return validateinstitutionConsistency(req, res, next);
+    return validateInstitutionConsistency(req, res, next);
   }
   next();
 });

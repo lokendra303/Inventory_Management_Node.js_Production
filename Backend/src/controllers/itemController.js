@@ -134,9 +134,17 @@ class ItemController {
       
       console.log('Update item request:', {
         itemId,
+        params: req.params,
         body: req.body,
         institutionId: req.institutionId
       });
+      
+      if (!itemId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Item ID is required'
+        });
+      }
       
       await itemService.updateItem(req.institutionId, itemId, req.body, req.user.userId);
       

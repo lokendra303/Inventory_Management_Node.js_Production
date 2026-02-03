@@ -94,7 +94,9 @@ class ItemService {
       brand,
       manufacturer,
       minStockLevel,
-      maxStockLevel
+      maxStockLevel,
+      warehouseId,
+      type
     } = updateData;
 
     const updateFields = [];
@@ -180,34 +182,35 @@ class ItemService {
       updateFields.push('max_stock_level = ?');
       updateValues.push(maxStockLevel);
     }
+    if (type !== undefined) {
+      updateFields.push('type = ?');
+      updateValues.push(type);
+    }
 
     if (updateFields.length === 0) {
       throw new Error('No fields to update');
     }
 
     updateFields.push('updated_at = NOW()');
-    updateValues.push(institutionId, itemId);
-
-    console.log('Update query fields:', updateFields);
-    console.log('Update query values:', updateValues);
-
+    
     const result = await db.query(
       `UPDATE items SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
-      updateValues
+      [...updateValues, institutionId, itemId]
     );
-
-    console.log('Update result:', result);
 
     if (result.affectedRows === 0) {
       throw new Error('Item not found');
     }
 
-    // Verify the update by fetching the updated item
-    const updatedItem = await db.query(
-      'SELECT id, name, cost_price, selling_price, mrp FROM items WHERE institution_id = ? AND id = ?',
-      [institutionId, itemId]
-    );
-    console.log('Updated item verification:', updatedItem[0]);
+    // Update inventory projections if cost price changed
+    if (costPrice !== undefined) {
+      await db.query(
+        `UPDATE inventory_projections 
+         SET average_cost = ?, total_value = quantity_on_hand * ?, updated_at = NOW()
+         WHERE institution_id = ? AND item_id = ?`,
+        [costPrice, costPrice, institutionId, itemId]
+      );
+    }
 
     logger.info('Item updated', { itemId, institutionId, userId });
     return itemId;

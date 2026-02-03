@@ -5,10 +5,13 @@ const logger = require('../utils/logger');
 class PurchaseOrderController {
   async createPurchaseOrder(req, res) {
     try {
+      // Ensure we have a valid user ID, or use null if not authenticated
+      const userId = req.user?.userId || null;
+      
       const poId = await purchaseOrderService.createPurchaseOrder(
         req.institutionId,
         req.body,
-        req.user.userId
+        userId
       );
       
       res.status(201).json({
@@ -20,7 +23,7 @@ class PurchaseOrderController {
       logger.error('PO creation failed', { 
         error: error.message, 
         institutionId: req.institutionId,
-        userId: req.user.userId 
+        userId: req.user?.userId || null
       });
       res.status(400).json({
         success: false,
@@ -87,12 +90,15 @@ class PurchaseOrderController {
     try {
       console.log('GRN request body:', JSON.stringify(req.body, null, 2));
       console.log('Institution ID:', req.institutionId);
-      console.log('User ID:', req.user.userId);
+      console.log('User ID:', req.user?.userId || null);
+      
+      // Ensure we have a valid user ID, or use null if not authenticated
+      const userId = req.user?.userId || null;
       
       const grnId = await purchaseOrderService.createGRN(
         req.institutionId,
         req.body,
-        req.user.userId
+        userId
       );
       
       res.status(201).json({
@@ -104,7 +110,7 @@ class PurchaseOrderController {
       logger.error('GRN creation failed', { 
         error: error.message, 
         institutionId: req.institutionId,
-        userId: req.user.userId 
+        userId: req.user?.userId || null
       });
       res.status(400).json({
         success: false,

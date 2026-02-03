@@ -23,14 +23,22 @@ class PurchaseOrderService {
 
     try {
       await db.transaction(async (connection) => {
-        // Create PO header
+        // Validate required fields
+        if (!institutionId) throw new Error('institutionId is required');
+        if (!poNumber) throw new Error('poNumber is required');
+        if (!vendorName) throw new Error('vendorName is required');
+        if (!warehouseId) throw new Error('warehouseId is required');
+        
+        // Create PO header with null created_by if userId is invalid
+        const createdBy = userId || null;
+        
         await connection.execute(
           `INSERT INTO purchase_orders 
            (id, institution_id, po_number, vendor_id, vendor_name, warehouse_id, currency, exchange_rate, 
             order_date, expected_date, notes, created_by, status) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
           [poId, institutionId, poNumber, vendorId || null, vendorName, warehouseId, currency, exchangeRate, 
-           orderDate || null, expectedDate || null, notes || null, userId]
+           orderDate || null, expectedDate || null, notes || null, createdBy]
         );
 
         // Create PO lines
@@ -85,10 +93,12 @@ class PurchaseOrderService {
     if (!institutionId) throw new Error('institutionId is required');
     if (!poId) throw new Error(`poId is required. Received: ${poId}`);
     if (!warehouseId) throw new Error(`warehouseId is required. Received: ${warehouseId}`);
-    if (!userId) throw new Error('userId is required');
     if (!lines || !Array.isArray(lines) || lines.length === 0) {
       throw new Error('lines array is required and must not be empty');
     }
+    
+    // userId can be null, but we'll use it if provided
+    const receivedBy = userId || null;
 
     const grnId = uuidv4();
 
@@ -102,7 +112,7 @@ class PurchaseOrderService {
           poId, 
           warehouseId, 
           receiptDate || new Date().toISOString().split('T')[0], 
-          userId, 
+          receivedBy, 
           notes || null
         ];
         
@@ -280,7 +290,7 @@ class PurchaseOrderService {
 
   async getPurchaseOrder(institutionId, poId) {
     const pos = await db.query(
-      `SELECT po.*, COALESCE(v.name, po.vendor_name) as vendor_name, w.name as warehouse_name
+      `SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name, w.name as warehouse_name
        FROM purchase_orders po
        LEFT JOIN vendors v ON po.vendor_id = v.id
        LEFT JOIN warehouses w ON po.warehouse_id = w.id

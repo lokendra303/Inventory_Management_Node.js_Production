@@ -21,6 +21,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('lastActivity');
+    sessionStorage.removeItem('institutionId');
     apiService.setAuthToken(null);
     setUser(null);
     message.success('Logged out successfully');
@@ -39,6 +40,7 @@ export const AuthProvider = ({ children }) => {
           console.log('Session expired, removing token');
           sessionStorage.removeItem('token');
           sessionStorage.removeItem('lastActivity');
+          sessionStorage.removeItem('institutionId');
           Modal.warning({
             title: 'Session Expired',
             content: 'Your session has expired. Please login again.',
@@ -68,6 +70,12 @@ export const AuthProvider = ({ children }) => {
       console.log('Profile response:', response);
       if (response.success) {
         console.log('Profile fetch successful, setting user:', response.data);
+        
+        // Store institution ID if available
+        if (response.data.institutionId) {
+          sessionStorage.setItem('institutionId', response.data.institutionId);
+        }
+        
         setUser(response.data);
       } else {
         console.log('Profile fetch failed, removing token');
@@ -87,6 +95,7 @@ export const AuthProvider = ({ children }) => {
           onOk: () => {
             sessionStorage.removeItem('token');
             sessionStorage.removeItem('lastActivity');
+            sessionStorage.removeItem('institutionId');
             apiService.setAuthToken(null);
             window.location.href = '/';
           },
@@ -95,6 +104,7 @@ export const AuthProvider = ({ children }) => {
         });
       } else {
         sessionStorage.removeItem('token');
+        sessionStorage.removeItem('institutionId');
         apiService.setAuthToken(null);
       }
     } finally {
@@ -114,6 +124,12 @@ export const AuthProvider = ({ children }) => {
         console.log('Login successful, setting user:', userData);
         sessionStorage.setItem('token', token);
         sessionStorage.setItem('lastActivity', Date.now().toString());
+        
+        // Store institution ID for API requests
+        if (userData.institutionId) {
+          sessionStorage.setItem('institutionId', userData.institutionId);
+        }
+        
         apiService.setAuthToken(token);
         setUser(userData);
         message.success('Login successful');

@@ -71,11 +71,10 @@ class WarehouseService {
     }
 
     updateFields.push('updated_at = NOW()');
-    updateValues.push(institutionId, warehouseId);
 
     const result = await db.query(
       `UPDATE warehouses SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
-      updateValues
+      [...updateValues, institutionId, warehouseId]
     );
 
     if (result.affectedRows === 0) {

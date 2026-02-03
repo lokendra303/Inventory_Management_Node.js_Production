@@ -20,6 +20,8 @@ const Dashboard = () => {
     lowStockItems: [],
     lowStockCount: 0,
     activeWarehouses: 0,
+    inactiveWarehouses: 0,
+    totalItemsCount: 0,
     recentMovements: [],
     stockTrend: []
   });
@@ -32,26 +34,43 @@ const Dashboard = () => {
     try {
       setLoading(true);
       
-      // Fetch multiple data sources in parallel
-      const [statsResponse, warehousesResponse, lowStockResponse] = await Promise.all([
-        apiService.get('/inventory/dashboard-stats'),
-        apiService.get('/warehouses'),
-        apiService.get('/inventory/low-stock')
+      // Fetch data from existing endpoints
+      const [inventoryResponse, warehousesResponse, lowStockResponse, itemsResponse] = await Promise.all([
+        apiService.get('/inventory').catch(() => ({ success: false, data: [] })),
+        apiService.get('/warehouses').catch(() => ({ success: false, data: [] })),
+        apiService.get('/inventory/low-stock').catch(() => ({ success: false, data: [] })),
+        apiService.get('/items').catch(() => ({ success: false, data: [] }))
       ]);
 
-      const stats = statsResponse.success ? statsResponse.data : {};
-      const activeWarehouses = warehousesResponse.success ? warehousesResponse.data.length : 0;
+      const inventory = inventoryResponse.success ? inventoryResponse.data : [];
+      const warehouses = warehousesResponse.success ? warehousesResponse.data : [];
       const lowStockItems = lowStockResponse.success ? lowStockResponse.data : [];
+      const items = itemsResponse.success ? itemsResponse.data : [];
       
-      // Generate mock stock trend data (in real app, this would come from API)
+      // Calculate stats from data
+      const totalItems = inventory.length;
+      const totalValue = inventory.reduce((sum, item) => {
+        const quantity = parseFloat(item.quantity_on_hand) || 0;
+        const avgCost = parseFloat(item.average_cost) || 0;
+        return sum + (quantity * avgCost);
+      }, 0);
+      const activeWarehouses = warehouses.filter(w => w.status === 'active').length;
+      const inactiveWarehouses = warehouses.filter(w => w.status === 'inactive').length;
+      const totalItemsCount = items.length;
+      
+      console.log('Dashboard data:', { totalItems, totalValue, inventory: inventory.slice(0, 3) });
+      
+      // Generate mock stock trend data
       const stockTrend = generateMockTrendData();
 
       setDashboardData({
-        totalItems: stats.totalItems || 0,
-        totalValue: stats.totalValue || 0,
-        lowStockItems: lowStockItems,
-        lowStockCount: stats.lowStockCount || lowStockItems.length,
+        totalItems,
+        totalValue,
+        lowStockItems: lowStockItems.slice(0, 10),
+        lowStockCount: lowStockItems.length,
         activeWarehouses,
+        inactiveWarehouses,
+        totalItemsCount,
         stockTrend
       });
     } catch (error) {
@@ -120,17 +139,17 @@ const Dashboard = () => {
       
       {/* Key Metrics */}
       <Row gutter={16} style={{ marginBottom: '24px' }}>
-        <Col span={6}>
+        <Col span={4}>
           <Card>
             <Statistic
               title="Total Items"
-              value={dashboardData.totalItems}
+              value={dashboardData.totalItemsCount}
               prefix={<InboxOutlined />}
               valueStyle={{ color: '#3f8600' }}
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={5}>
           <Card>
             <Statistic
               title="Total Inventory Value"
@@ -140,7 +159,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={4}>
           <Card>
             <Statistic
               title="Low Stock Items"
@@ -150,13 +169,23 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={5}>
           <Card>
             <Statistic
               title="Active Warehouses"
               value={dashboardData.activeWarehouses}
               prefix={<ShoppingCartOutlined />}
               valueStyle={{ color: '#722ed1' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Inactive Warehouses"
+              value={dashboardData.inactiveWarehouses}
+              prefix={<ShoppingCartOutlined />}
+              valueStyle={{ color: '#ff4d4f' }}
             />
           </Card>
         </Col>

@@ -15,8 +15,23 @@ class ApiService {
     this.api.interceptors.request.use(
       (config) => {
         const token = sessionStorage.getItem('token');
+        
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
+          
+          // Try to extract institution ID from token or get from storage
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (payload.institutionId) {
+              config.headers['x-institution-id'] = payload.institutionId;
+            }
+          } catch (error) {
+            // If token parsing fails, try to get from sessionStorage
+            const institutionId = sessionStorage.getItem('institutionId');
+            if (institutionId) {
+              config.headers['x-institution-id'] = institutionId;
+            }
+          }
         }
         return config;
       },
@@ -28,65 +43,17 @@ class ApiService {
     // Response interceptor
     this.api.interceptors.response.use(
       (response) => {
-        // Update last activity on successful API calls
-        sessionStorage.setItem('lastActivity', Date.now().toString());
         return response.data;
       },
       async (error) => {
         if (error.response?.status === 401) {
+          // Only logout on explicit session expired or invalid token errors
           const errorData = error.response?.data;
           
-          // Check if it's a session expired error
-          if (errorData?.code === 'SESSION_EXPIRED' || errorData?.error?.includes('expired')) {
+          if (errorData?.code === 'SESSION_EXPIRED' || errorData?.code === 'INVALID_TOKEN') {
             sessionStorage.removeItem('token');
-            sessionStorage.removeItem('lastActivity');
-            
-            // Show session expired popup
-            const { Modal } = await import('antd');
-            Modal.warning({
-              title: 'Session Expired',
-              content: 'Your session has expired. Please login again.',
-              okText: 'Login',
-              onOk: () => {
-                window.location.href = '/';
-              },
-              centered: true,
-              maskClosable: false,
-            });
-            
-            return Promise.reject(error);
-          }
-          
-          // Try to refresh token for other 401 errors
-          const token = sessionStorage.getItem('token');
-          if (token && !error.config._retry) {
-            error.config._retry = true;
-            try {
-              const refreshResponse = await axios.post(
-                `${this.api.defaults.baseURL}/auth/refresh`,
-                {},
-                { headers: { Authorization: `Bearer ${token}` } }
-              );
-              
-              if (refreshResponse.data.success) {
-                const newToken = refreshResponse.data.data.token;
-                sessionStorage.setItem('token', newToken);
-                sessionStorage.setItem('lastActivity', Date.now().toString());
-                this.setAuthToken(newToken);
-                error.config.headers.Authorization = `Bearer ${newToken}`;
-                return this.api.request(error.config);
-              }
-            } catch (refreshError) {
-              // Refresh failed, redirect to login
-              sessionStorage.removeItem('token');
-              sessionStorage.removeItem('lastActivity');
-              window.location.href = '/';
-              return Promise.reject(refreshError);
-            }
-          } else {
-            sessionStorage.removeItem('token');
-            sessionStorage.removeItem('lastActivity');
             window.location.href = '/';
+            return Promise.reject(error);
           }
         } else if (error.response?.status === 403) {
           return Promise.reject({
@@ -239,6 +206,11 @@ class ApiService {
 
   async updateSalesOrder(soId, data) {
     return this.put(`/sales-orders/${soId}`, data);
+  }
+
+  // Dashboard API methods
+  async getDashboardStats() {
+    return this.get('/dashboard/stats');
   }
 
   // Reports API methods

@@ -5,6 +5,7 @@ import apiService from '../services/apiService';
 
 const SalesOrders = () => {
   const [sos, setSOs] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -56,13 +57,15 @@ const SalesOrders = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [sosRes, warehousesRes, itemsRes] = await Promise.all([
+      const [sosRes, customersRes, warehousesRes, itemsRes] = await Promise.all([
         apiService.get('/sales-orders').catch(() => ({ success: false, data: [] })),
+        apiService.get('/customers').catch(() => ({ success: false, data: [] })),
         apiService.get('/warehouses'),
         apiService.get('/items')
       ]);
       
       setSOs(sosRes.success ? sosRes.data : []);
+      setCustomers(customersRes.success ? customersRes.data : []);
       setWarehouses(warehousesRes.success ? warehousesRes.data : []);
       setItems(itemsRes.success ? itemsRes.data : []);
     } catch (error) {
@@ -74,8 +77,12 @@ const SalesOrders = () => {
 
   const handleCreateSO = async (values) => {
     try {
+      // Get selected customer details
+      const selectedCustomer = customers.find(c => c.id === values.customerId);
+      
       const soData = {
         ...values,
+        customerName: selectedCustomer?.display_name || selectedCustomer?.company_name || 'Unknown Customer',
         orderDate: values.orderDate.format('YYYY-MM-DD'),
         expectedShipDate: values.expectedShipDate?.format('YYYY-MM-DD'),
         lines: values.lines || []
@@ -177,8 +184,14 @@ const SalesOrders = () => {
             <Input placeholder="Enter SO number" />
           </Form.Item>
           
-          <Form.Item name="customerName" label="Customer Name" rules={[{ required: true }]}>
-            <Input placeholder="Enter customer name" />
+          <Form.Item name="customerId" label="Customer" rules={[{ required: true }]}>
+            <Select placeholder="Select customer" showSearch optionFilterProp="children">
+              {customers.map(customer => (
+                <Select.Option key={customer.id} value={customer.id}>
+                  {customer.display_name} {customer.company_name && `- ${customer.company_name}`}
+                </Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           
           <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>

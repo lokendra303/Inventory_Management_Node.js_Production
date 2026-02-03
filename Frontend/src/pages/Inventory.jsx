@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import { useAuth } from '../hooks/useAuth.jsx';
 
@@ -15,16 +15,44 @@ const Inventory = () => {
   const [modalType, setModalType] = useState('receive');
   const [form] = Form.useForm();
 
+  const [currency, setCurrency] = useState('');
+
+  const [editingRecord, setEditingRecord] = useState(null);
+
   // Permission checks
   const canReceive = user?.permissions?.inventory_receive || user?.permissions?.all;
+  const allowManualOperations = user?.permissions?.manual_inventory || user?.role === 'admin';
+  const showManualButtons = process.env.REACT_APP_ENABLE_MANUAL_INVENTORY !== 'false' && allowManualOperations;
 
   const columns = [
     { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
     { title: 'SKU', dataIndex: 'sku', key: 'sku' },
+    { title: 'Unit', dataIndex: 'unit', key: 'unit' },
     { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
     { title: 'On Hand', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand', render: (val) => val || 0 },
     { title: 'Available', dataIndex: 'quantity_available', key: 'quantity_available', render: (val) => val || 0 },
-    { title: 'Reserved', dataIndex: 'quantity_reserved', key: 'quantity_reserved', render: (val) => val || 0 }
+    { title: 'Reserved', dataIndex: 'quantity_reserved', key: 'quantity_reserved', render: (val) => val || 0 },
+    { title: 'Avg Cost', dataIndex: 'average_cost', key: 'average_cost', render: (val, record) => (val && !isNaN(Number(val))) ? `${record.currency || currency}${Number(val).toFixed(2)}` : '-' },
+    { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', render: (val, record) => (val && !isNaN(Number(val))) ? `${record.currency || currency}${Number(val).toFixed(2)}` : '-' },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 100,
+      fixed: 'right',
+      render: (_, record) => (
+        showManualButtons ? (
+          <Button 
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => openEditModal(record)}
+          >
+            Edit
+          </Button>
+        ) : (
+          <span style={{ color: '#999' }}>View Only</span>
+        )
+      )
+    }
   ];
 
   const fetchData = async (warehouseFilter = selectedWarehouse) => {
@@ -33,15 +61,41 @@ const Inventory = () => {
       const inventoryUrl = warehouseFilter === 'all' ? '/inventory' : `/inventory/warehouse/${warehouseFilter}`;
       
       const [inventoryRes, itemsRes, warehousesRes] = await Promise.all([
-        apiService.get(inventoryUrl).catch(() => ({ success: false, data: [] })),
-        apiService.get('/items'),
-        apiService.get('/warehouses')
+        apiService.get(inventoryUrl).catch((error) => {
+          if (error.response?.status === 401) {
+            window.location.href = '/login';
+          }
+          return { success: false, data: [] };
+        }),
+        apiService.get('/items').catch((error) => {
+          if (error.response?.status === 401) {
+            window.location.href = '/login';
+          }
+          return { success: false, data: [] };
+        }),
+        apiService.get('/warehouses').catch((error) => {
+          if (error.response?.status === 401) {
+            window.location.href = '/login';
+          }
+          return { success: false, data: [] };
+        })
       ]);
+      
+      // Get currency from user settings or first inventory item
+      if (inventoryRes.success && inventoryRes.data.length > 0) {
+        const firstItem = inventoryRes.data[0];
+        if (firstItem.currency) {
+          setCurrency(firstItem.currency);
+        }
+      }
       
       setInventory(inventoryRes.success ? inventoryRes.data : []);
       setItems(itemsRes.success ? itemsRes.data : []);
       setWarehouses(warehousesRes.success ? warehousesRes.data : []);
     } catch (error) {
+      if (error.response?.status === 401) {
+        window.location.href = '/login';
+      }
       message.error('Failed to fetch data');
     } finally {
       setLoading(false);
@@ -67,29 +121,68 @@ const Inventory = () => {
         transferId: values.transferId || '00000000-0000-0000-0000-000000000000'
       };
 
-      switch (modalType) {
-        case 'receive':
-          response = await apiService.post('/inventory/receive', operationData);
-          break;
-        case 'adjust':
-          response = await apiService.post('/inventory/adjust', operationData);
-          break;
-        case 'transfer':
-          response = await apiService.post('/inventory/transfer', operationData);
-          break;
-        default:
-          throw new Error('Unknown operation type');
+      if (modalType === 'receive') {
+        response = await apiService.post('/inventory/receive', operationData);
+      } else if (modalType === 'edit') {
+        const currentQuantity = editingRecord?.quantity_on_hand || 0;
+        const newQuantity = values.quantityOnHand;
+        const quantityChange = newQuantity - currentQuantity;
+        
+        console.log('Edit data:', {
+          itemId: editingRecord.item_id,
+          warehouseId: editingRecord.warehouse_id,
+          currentQuantity,
+          newQuantity,
+          quantityChange,
+          adjustmentType: quantityChange >= 0 ? 'increase' : 'decrease'
+        });
+        
+        if (quantityChange === 0) {
+          message.info('No quantity change detected');
+          setModalVisible(false);
+          setEditingRecord(null);
+          form.resetFields();
+          return;
+        }
+        
+        response = await apiService.post('/inventory/adjust', {
+          itemId: editingRecord.item_id,
+          warehouseId: editingRecord.warehouse_id,
+          adjustmentType: quantityChange >= 0 ? 'increase' : 'decrease',
+          quantityChange: Math.abs(quantityChange),
+          reason: 'Manual adjustment via edit'
+        });
       }
 
-      if (response.success) {
-        message.success(`Stock ${modalType} successful`);
+      if (response && response.success) {
+        message.success(`${modalType === 'edit' ? 'Update' : 'Stock receive'} successful`);
         setModalVisible(false);
+        setEditingRecord(null);
         form.resetFields();
-        fetchData();
+        // Force refresh with a small delay to ensure backend updates are complete
+        setTimeout(() => {
+          fetchData();
+        }, 500);
       }
     } catch (error) {
-      message.error(`Failed to ${modalType} stock`);
+      if (error.response?.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      console.error('Operation error:', error);
+      console.error('Error response:', error.response?.data);
+      const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
+      message.error(`Failed to ${modalType === 'edit' ? 'update' : 'receive'} stock: ${errorMessage}`);
     }
+  };
+
+  const openEditModal = (record) => {
+    setModalType('edit');
+    setEditingRecord(record);
+    form.setFieldsValue({
+      quantityOnHand: record.quantity_on_hand
+    });
+    setModalVisible(true);
   };
 
   const openModal = (type) => {
@@ -115,7 +208,7 @@ const Inventory = () => {
           </Form.Item>
           <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
             <Select placeholder="Select warehouse">
-              {warehouses.map(wh => (
+              {warehouses.filter(wh => wh.status === 'active').map(wh => (
                 <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
               ))}
             </Select>
@@ -130,6 +223,16 @@ const Inventory = () => {
       );
     }
 
+    if (modalType === 'edit') {
+      return (
+        <>
+          <Form.Item name="quantityOnHand" label="On Hand Quantity" rules={[{ required: true }]}>
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+        </>
+      );
+    }
+
     return null;
   }; 
 
@@ -139,13 +242,13 @@ const Inventory = () => {
       <Card>
         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
-            {canReceive && (
+            {showManualButtons && canReceive && (
               <Button 
                 type="primary" 
                 icon={<PlusOutlined />}
                 onClick={() => openModal('receive')}
               >
-                Receive Stock
+                Manual Receive
               </Button>
             )}
           </Space>

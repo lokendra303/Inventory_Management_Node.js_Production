@@ -84,8 +84,12 @@ const PurchaseOrders = () => {
 
   const handleCreatePO = async (values) => {
     try {
+      // Get selected vendor details
+      const selectedVendor = vendors.find(v => v.id === values.vendorId);
+      
       const poData = {
         ...values,
+        vendorName: selectedVendor?.display_name || selectedVendor?.company_name || 'Unknown Vendor',
         orderDate: values.orderDate.format('YYYY-MM-DD'),
         expectedDate: values.expectedDate?.format('YYYY-MM-DD'),
         lines: values.lines || []
@@ -267,8 +271,14 @@ const PurchaseOrders = () => {
             <Input placeholder="Enter PO number" />
           </Form.Item>
           
-          <Form.Item name="vendorName" label="Vendor Name" rules={[{ required: true }]}>
-            <Input placeholder="Enter vendor name" />
+          <Form.Item name="vendorId" label="Vendor" rules={[{ required: true }]}>
+            <Select placeholder="Select vendor" showSearch optionFilterProp="children">
+              {vendors.map(vendor => (
+                <Select.Option key={vendor.id} value={vendor.id}>
+                  {vendor.display_name} {vendor.company_name && `- ${vendor.company_name}`}
+                </Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           
           <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
