@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message } from 'antd';
-import { PlusOutlined, SwapOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import { useAuth } from '../hooks/useAuth.jsx';
 
@@ -17,8 +17,6 @@ const Inventory = () => {
 
   // Permission checks
   const canReceive = user?.permissions?.inventory_receive || user?.permissions?.all;
-  const canAdjust = user?.permissions?.inventory_adjust || user?.permissions?.all;
-  const canTransfer = user?.permissions?.inventory_transfer || user?.permissions?.all;
 
   const columns = [
     { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
@@ -105,96 +103,35 @@ const Inventory = () => {
   }, []);
 
   const renderModalContent = () => {
-    switch (modalType) {
-      case 'receive':
-        return (
-          <>
-            <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
-              <Select placeholder="Select item">
-                {items.map(item => (
-                  <Select.Option key={item.id} value={item.id}>{item.name} ({item.sku})</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
-              <Select placeholder="Select warehouse">
-                {warehouses.map(wh => (
-                  <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}>
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="unitCost" label="Unit Cost" rules={[{ required: true }]}>
-              <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
-            </Form.Item>
-          </>
-        );
-      case 'adjust':
-        return (
-          <>
-            <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
-              <Select placeholder="Select item">
-                {items.map(item => (
-                  <Select.Option key={item.id} value={item.id}>{item.name} ({item.sku})</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
-              <Select placeholder="Select warehouse">
-                {warehouses.map(wh => (
-                  <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item name="adjustmentType" label="Type" rules={[{ required: true }]}>
-              <Select placeholder="Select adjustment type">
-                <Select.Option value="increase">Increase</Select.Option>
-                <Select.Option value="decrease">Decrease</Select.Option>
-              </Select>
-            </Form.Item>
-            <Form.Item name="quantityChange" label="Quantity" rules={[{ required: true }]}>
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="reason" label="Reason" rules={[{ required: true }]}>
-              <Input placeholder="Enter reason for adjustment" />
-            </Form.Item>
-          </>
-        );
-      case 'transfer':
-        return (
-          <>
-            <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
-              <Select placeholder="Select item">
-                {items.map(item => (
-                  <Select.Option key={item.id} value={item.id}>{item.name} ({item.sku})</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item name="fromWarehouseId" label="From Warehouse" rules={[{ required: true }]}>
-              <Select placeholder="Select source warehouse">
-                {warehouses.map(wh => (
-                  <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item name="toWarehouseId" label="To Warehouse" rules={[{ required: true }]}>
-              <Select placeholder="Select destination warehouse">
-                {warehouses.map(wh => (
-                  <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}>
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-          </>
-        );
-      default:
-        return null;
+    if (modalType === 'receive') {
+      return (
+        <>
+          <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
+            <Select placeholder="Select item">
+              {items.map(item => (
+                <Select.Option key={item.id} value={item.id}>{item.name} ({item.sku})</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
+            <Select placeholder="Select warehouse">
+              {warehouses.map(wh => (
+                <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}>
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="unitCost" label="Unit Cost" rules={[{ required: true }]}>
+            <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
+          </Form.Item>
+        </>
+      );
     }
-  };
+
+    return null;
+  }; 
 
   return (
     <div style={{ padding: '24px' }}>
@@ -209,22 +146,6 @@ const Inventory = () => {
                 onClick={() => openModal('receive')}
               >
                 Receive Stock
-              </Button>
-            )}
-            {canAdjust && (
-              <Button 
-                icon={<EditOutlined />}
-                onClick={() => openModal('adjust')}
-              >
-                Adjust Stock
-              </Button>
-            )}
-            {canTransfer && (
-              <Button 
-                icon={<SwapOutlined />}
-                onClick={() => openModal('transfer')}
-              >
-                Transfer Stock
               </Button>
             )}
           </Space>

@@ -11,6 +11,8 @@ import Dashboard from './pages/Dashboard.jsx';
 import Inventory from './pages/Inventory.jsx';
 import Packages from './pages/Packages.jsx';
 import Items from './pages/Items.jsx';
+import InventoryAdjustments from './pages/InventoryAdjustments.jsx';
+import MoveOrders from './pages/MoveOrders.jsx';
 import Warehouses from './pages/Warehouses.jsx';
 import PurchaseOrders from './pages/PurchaseOrders.jsx';
 import SalesOrders from './pages/SalesOrders.jsx';
@@ -36,6 +38,8 @@ const ProtectedInventory = withPermission('inventory_view')(Inventory);
 const ProtectedPackages = withPermission('inventory_view')(Packages);
 const ProtectedItems = withPermission('item_view')(Items);
 const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
+const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(InventoryAdjustments);
+const ProtectedMoveOrders = withPermission('inventory_transfer')(MoveOrders);
 const ProtectedPurchaseOrders = withPermission('purchase_view')(PurchaseOrders);
 const ProtectedSalesOrders = withPermission('sales_view')(SalesOrders);
 const ProtectedUsers = withPermission('user_management')(Users);
@@ -52,8 +56,8 @@ function AppContent() {
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   
-  // Initialize session manager for authenticated users
-  useSessionManager();
+  // Session manager disabled - no automatic session expiration
+  // useSessionManager();
 
   // Handle responsive behavior
   useEffect(() => {
@@ -106,6 +110,8 @@ function AppContent() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<ProtectedInventory />} />
+            <Route path="/inventory/adjustments" element={<ProtectedInventoryAdjustments />} />
+            <Route path="/inventory/move-orders" element={<ProtectedMoveOrders />} />
             <Route path="/inventory/packages" element={<ProtectedPackages />} />
             <Route path="/items" element={<ProtectedItems />} />
             <Route path="/warehouses" element={<ProtectedWarehouses />} />

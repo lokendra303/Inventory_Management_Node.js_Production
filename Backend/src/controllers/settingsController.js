@@ -25,6 +25,17 @@ class SettingsController {
       res.json({ success: true, data: settings });
     } catch (error) {
       logger.error('Get institution settings error:', error);
+      
+      // If currency columns don't exist, return default values
+      if (error.code === 'ER_BAD_FIELD_ERROR') {
+        const settings = {
+          currency: 'USD',
+          currencySymbol: '$',
+          availableCurrencies: CurrencyService.getCurrencies()
+        };
+        return res.json({ success: true, data: settings });
+      }
+      
       res.status(500).json({ error: 'Failed to get settings' });
     }
   }
@@ -49,6 +60,14 @@ class SettingsController {
       res.json({ success: true, message: 'Settings updated successfully' });
     } catch (error) {
       logger.error('Update institution settings error:', error);
+      
+      // If currency columns don't exist, return error with helpful message
+      if (error.code === 'ER_BAD_FIELD_ERROR') {
+        return res.status(500).json({ 
+          error: 'Currency system not properly configured. Please run database migration.' 
+        });
+      }
+      
       res.status(500).json({ error: 'Failed to update settings' });
     }
   }

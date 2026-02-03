@@ -8,11 +8,16 @@ const CurrencySelector = () => {
   const currencies = getCurrencies();
 
   const handleCurrencyChange = async (newCurrency) => {
-    const success = await updateCurrency(newCurrency);
-    if (success) {
-      message.success('Currency updated');
-    } else {
-      message.error('Failed to update currency');
+    try {
+      const success = await updateCurrency(newCurrency);
+      if (success) {
+        message.success(`Currency updated to ${newCurrency}`);
+      } else {
+        message.error('Failed to update currency. Please try again.');
+      }
+    } catch (error) {
+      console.error('Currency change error:', error);
+      message.error('Failed to update currency. Please try again.');
     }
   };
 
@@ -24,11 +29,16 @@ const CurrencySelector = () => {
         loading={loading}
         style={{ width: '100%' }}
         size="small"
-        placeholder="Currency"
+        placeholder="Select Currency"
+        showSearch
+        optionFilterProp="children"
+        filterOption={(input, option) =>
+          option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+        }
       >
         {currencies.map(curr => (
           <Select.Option key={curr.code} value={curr.code}>
-            {curr.symbol} {curr.code}
+            {curr.symbol} {curr.code} - {curr.name}
           </Select.Option>
         ))}
       </Select>

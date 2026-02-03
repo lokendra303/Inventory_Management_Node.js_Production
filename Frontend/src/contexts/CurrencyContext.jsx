@@ -18,14 +18,18 @@ export const CurrencyProvider = ({ children }) => {
   const [exchangeRate, setExchangeRate] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Simple exchange rates (you can update these or fetch from API)
+  // Exchange rates matching backend currency service
   const exchangeRates = {
     'USD': 1,
     'EUR': 0.85,
     'GBP': 0.73,
-    'INR': 83.12,
-    'JPY': 110.0,
-    'CAD': 1.25
+    'INR': 83.50,
+    'JPY': 110.25,
+    'CAD': 1.25,
+    'AUD': 1.35,
+    'CNY': 6.45,
+    'SGD': 1.35,
+    'AED': 3.67
   };
 
   useEffect(() => {
@@ -37,15 +41,22 @@ export const CurrencyProvider = ({ children }) => {
   const fetchCurrency = async () => {
     try {
       const response = await apiService.get('/settings');
-      if (response.success) {
+      if (response.success && response.data) {
         const newCurrency = response.data.currency || 'USD';
         const newRate = exchangeRates[newCurrency] || 1;
         setCurrency(newCurrency);
         setExchangeRate(newRate);
         console.log('Currency loaded:', newCurrency, 'Rate:', newRate);
+      } else {
+        console.warn('No currency data received, using default USD');
+        setCurrency('USD');
+        setExchangeRate(1);
       }
     } catch (error) {
-      console.error('Failed to fetch currency');
+      console.error('Failed to fetch currency:', error);
+      // Set default values on error
+      setCurrency('USD');
+      setExchangeRate(1);
     }
   };
 
@@ -57,21 +68,39 @@ export const CurrencyProvider = ({ children }) => {
         const newRate = exchangeRates[newCurrency] || 1;
         setCurrency(newCurrency);
         setExchangeRate(newRate);
+        console.log('Currency updated to:', newCurrency, 'Rate:', newRate);
         return true;
+      } else {
+        console.error('Failed to update currency:', response.error || 'Unknown error');
+        return false;
       }
-      return false;
     } catch (error) {
-      console.error('Failed to update currency');
+      console.error('Failed to update currency:', error);
       return false;
     } finally {
       setLoading(false);
     }
   };
 
-  const formatCurrency = (amount) => {
-    const convertedAmount = (amount * exchangeRate).toFixed(2);
-    console.log('Converting:', amount, 'x', exchangeRate, '=', convertedAmount);
-    return `${currency} ${convertedAmount}`;
+  const formatCurrency = (amount, showSymbol = true) => {
+    if (!amount && amount !== 0) return '-';
+    
+    const convertedAmount = (parseFloat(amount) * exchangeRate).toFixed(2);
+    const formattedAmount = parseFloat(convertedAmount).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    
+    if (showSymbol) {
+      const symbols = {
+        'USD': '$', 'EUR': '€', 'GBP': '£', 'INR': '₹', 'JPY': '¥',
+        'CAD': 'C$', 'AUD': 'A$', 'CNY': '¥', 'SGD': 'S$', 'AED': 'د.إ'
+      };
+      const symbol = symbols[currency] || currency;
+      return `${symbol}${formattedAmount}`;
+    }
+    
+    return formattedAmount;
   };
 
   return (

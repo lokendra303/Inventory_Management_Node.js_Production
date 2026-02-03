@@ -12,13 +12,13 @@ const currencies = {
 };
 
 export const convertPrice = (amount, fromCurrency = 'USD', toCurrency = 'USD') => {
-  if (!amount || fromCurrency === toCurrency) return amount;
+  if (!amount || fromCurrency === toCurrency) return parseFloat(amount) || 0;
   
   const fromRate = currencies[fromCurrency]?.rate || 1;
   const toRate = currencies[toCurrency]?.rate || 1;
   
   // Convert to USD first, then to target currency
-  const usdAmount = amount / fromRate;
+  const usdAmount = parseFloat(amount) / fromRate;
   return usdAmount * toRate;
 };
 
@@ -45,4 +45,12 @@ export const getCurrencies = () => {
 
 export const getCurrencySymbol = (currency = 'USD') => {
   return currencies[currency]?.symbol || '$';
+};
+
+export const getCurrencyInfo = (currency = 'USD') => {
+  return currencies[currency] || currencies.USD;
+};
+
+export const isValidCurrency = (currency) => {
+  return currencies.hasOwnProperty(currency);
 };
