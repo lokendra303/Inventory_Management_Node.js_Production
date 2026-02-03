@@ -8,7 +8,7 @@ class InventoryController {
         return res.status(401).json({ success: false, error: 'User not authenticated' });
       }
 
-      const eventId = await inventoryService.receiveStock(req.tenantId, req.body, req.user.userId);
+      const eventId = await inventoryService.receiveStock(req.institutionId, req.body, req.user.userId);
       
       res.status(201).json({
         success: true,
@@ -18,7 +18,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Stock receipt failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user?.userId,
         data: req.body 
       });
@@ -41,7 +41,7 @@ class InventoryController {
   async reserveStock(req, res) {
     try {
       const eventId = await inventoryService.reserveStock(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -54,7 +54,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Stock reservation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId,
         data: req.body 
       });
@@ -68,7 +68,7 @@ class InventoryController {
   async shipStock(req, res) {
     try {
       const eventId = await inventoryService.shipStock(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -81,7 +81,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Stock shipment failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId,
         data: req.body 
       });
@@ -103,7 +103,7 @@ class InventoryController {
       }
 
       const eventId = await inventoryService.adjustStock(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -116,7 +116,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Stock adjustment failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user?.userId,
         data: req.body 
       });
@@ -138,7 +138,7 @@ class InventoryController {
       }
 
       const transferId = await inventoryService.transferStock(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -151,7 +151,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Stock transfer failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user?.userId,
         data: req.body 
       });
@@ -165,7 +165,7 @@ class InventoryController {
   async getInventoryHistory(req, res) {
     try {
       const { itemId, warehouseId } = req.params;
-      const history = await inventoryService.getInventoryHistory(req.tenantId, itemId, warehouseId);
+      const history = await inventoryService.getInventoryHistory(req.institutionId, itemId, warehouseId);
       
       res.json({
         success: true,
@@ -174,7 +174,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Failed to get inventory history', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         itemId: req.params.itemId,
         warehouseId: req.params.warehouseId 
       });
@@ -188,7 +188,7 @@ class InventoryController {
   async getCurrentStock(req, res) {
     try {
       const { itemId, warehouseId } = req.params;
-      const stock = await inventoryService.getCurrentStock(req.tenantId, itemId, warehouseId);
+      const stock = await inventoryService.getCurrentStock(req.institutionId, itemId, warehouseId);
       
       if (!stock) {
         return res.status(404).json({
@@ -204,7 +204,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Failed to get current stock', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         itemId: req.params.itemId,
         warehouseId: req.params.warehouseId 
       });
@@ -221,7 +221,7 @@ class InventoryController {
       
       // Check warehouse access
       const warehouseService = require('../services/warehouseService');
-      const hasAccess = await warehouseService.checkWarehouseAccess(req.tenantId, req.user.userId, warehouseId);
+      const hasAccess = await warehouseService.checkWarehouseAccess(req.institutionId, req.user.userId, warehouseId);
       
       if (!hasAccess) {
         return res.status(403).json({
@@ -230,7 +230,7 @@ class InventoryController {
         });
       }
       
-      const stock = await inventoryService.getWarehouseStock(req.tenantId, warehouseId);
+      const stock = await inventoryService.getWarehouseStock(req.institutionId, warehouseId);
       
       res.json({
         success: true,
@@ -240,7 +240,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Failed to get warehouse stock', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         warehouseId: req.params.warehouseId 
       });
       res.status(500).json({
@@ -250,7 +250,7 @@ class InventoryController {
     }
   }
 
-  async getTenantInventory(req, res) {
+  async getInstitutionInventory(req, res) {
     try {
       const limit = parseInt(req.query.limit) || 100;
       const offset = parseInt(req.query.offset) || 0;
@@ -258,12 +258,12 @@ class InventoryController {
       
       // Get user's accessible warehouses
       const warehouseService = require('../services/warehouseService');
-      const userWarehouses = await warehouseService.getUserWarehouses(req.tenantId, req.user.userId);
+      const userWarehouses = await warehouseService.getUserWarehouses(req.institutionId, req.user.userId);
       const accessibleWarehouseIds = userWarehouses.map(w => w.id);
       
       const projectionService = require('../projections/inventoryProjections');
-      const inventory = await projectionService.getTenantInventory(
-        req.tenantId, 
+      const inventory = await projectionService.getInstitutionInventory(
+        req.institutionId, 
         limit, 
         offset, 
         warehouseId, 
@@ -276,9 +276,9 @@ class InventoryController {
         pagination: { limit, offset, total: inventory.length }
       });
     } catch (error) {
-      logger.error('Failed to get tenant inventory', { 
+      logger.error('Failed to get institution inventory', { 
         error: error.message, 
-        tenantId: req.tenantId 
+        institutionId: req.institutionId 
       });
       res.status(500).json({
         success: false,
@@ -294,12 +294,12 @@ class InventoryController {
       
       // Get user's accessible warehouses
       const warehouseService = require('../services/warehouseService');
-      const userWarehouses = await warehouseService.getUserWarehouses(req.tenantId, req.user.userId);
+      const userWarehouses = await warehouseService.getUserWarehouses(req.institutionId, req.user.userId);
       const accessibleWarehouseIds = userWarehouses.map(w => w.id);
       
       const projectionService = require('../projections/inventoryProjections');
       const lowStockItems = await projectionService.getLowStockItems(
-        req.tenantId, 
+        req.institutionId, 
         threshold, 
         warehouseId, 
         accessibleWarehouseIds
@@ -312,7 +312,7 @@ class InventoryController {
     } catch (error) {
       logger.error('Failed to get low stock items', { 
         error: error.message, 
-        tenantId: req.tenantId 
+        institutionId: req.institutionId 
       });
       res.status(500).json({
         success: false,
@@ -324,19 +324,23 @@ class InventoryController {
   async getDashboardStats(req, res) {
     try {
       const projectionService = require('../projections/inventoryProjections');
-      const stats = await projectionService.getDashboardStats(req.tenantId);
+      const stats = await projectionService.getDashboardStats(req.institutionId);
       
       res.json({
         success: true,
         data: stats
       });
     } catch (error) {
-      logger.error('Failed to get dashboard stats', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get dashboard stats', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
       });
     }
+  }
+  // Backward compatibility
+  async getinstitutionInventory(req, res) {
+    return this.getInstitutionInventory(req, res);
   }
 }
 

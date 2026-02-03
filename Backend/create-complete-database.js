@@ -12,25 +12,39 @@ async function createCompleteDatabase() {
   try {
     console.log('Creating complete database schema...');
 
-    // 1. Tenants table
+    // 1. Institutions table
     await connection.execute(`
-      CREATE TABLE IF NOT EXISTS tenants (
+      CREATE TABLE IF NOT EXISTS institutions (
         id VARCHAR(36) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
-        status ENUM('active', 'inactive') DEFAULT 'active',
+        email VARCHAR(255) UNIQUE NOT NULL,
+        mobile VARCHAR(20),
+        address TEXT,
+        city VARCHAR(100),
+        state VARCHAR(100),
+        country VARCHAR(100),
+        postal_code VARCHAR(20),
+        institution_type ENUM('educational', 'corporate', 'government', 'healthcare', 'other') DEFAULT 'corporate',
+        registration_number VARCHAR(100),
+        tax_id VARCHAR(100),
+        website VARCHAR(255),
+        contact_person VARCHAR(255),
+        status ENUM('active', 'inactive', 'pending') DEFAULT 'active',
+        plan ENUM('starter', 'professional', 'enterprise') DEFAULT 'starter',
+        settings JSON,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
 
-    // 2. Users table
+    // 2. Institution Users table
     await connection.execute(`
-      CREATE TABLE IF NOT EXISTS users (
+      CREATE TABLE IF NOT EXISTS institution_institution_users (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         email VARCHAR(255) NOT NULL,
         mobile VARCHAR(20),
-        password VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
         first_name VARCHAR(100) NOT NULL,
         last_name VARCHAR(100) NOT NULL,
         address TEXT,
@@ -42,14 +56,18 @@ async function createCompleteDatabase() {
         gender ENUM('male', 'female', 'other'),
         department VARCHAR(100),
         designation VARCHAR(100),
+        employee_id VARCHAR(50),
         role VARCHAR(100) DEFAULT 'user',
         permissions JSON,
         warehouse_access JSON,
         status ENUM('active', 'inactive') DEFAULT 'active',
+        last_login TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_email (tenant_id, email),
-        INDEX idx_tenant_status (tenant_id, status)
+        created_by VARCHAR(36),
+        UNIQUE KEY unique_institution_email (institution_id, email),
+        FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
+        INDEX idx_institution_status (institution_id, status)
       )
     `);
 
@@ -57,15 +75,15 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS categories (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         name VARCHAR(255) NOT NULL,
         description TEXT,
         parent_id VARCHAR(36),
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_name (tenant_id, name),
-        INDEX idx_tenant_parent (tenant_id, parent_id)
+        UNIQUE KEY unique_institution_name (institution_id, name),
+        INDEX idx_institution_parent (institution_id, parent_id)
       )
     `);
 
@@ -73,11 +91,11 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS warehouse_types (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         name VARCHAR(255) NOT NULL,
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_name (tenant_id, name)
+        UNIQUE KEY unique_institution_name (institution_id, name)
       )
     `);
 
@@ -85,7 +103,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS warehouses (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         code VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
         type_id VARCHAR(36),
@@ -97,8 +115,8 @@ async function createCompleteDatabase() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_code (tenant_id, code),
-        INDEX idx_tenant_type (tenant_id, type_id)
+        UNIQUE KEY unique_institution_code (institution_id, code),
+        INDEX idx_institution_type (institution_id, type_id)
       )
     `);
 
@@ -106,7 +124,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS items (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         sku VARCHAR(100) NOT NULL,
         name VARCHAR(255) NOT NULL,
         description TEXT,
@@ -129,9 +147,9 @@ async function createCompleteDatabase() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_sku (tenant_id, sku),
-        INDEX idx_tenant_category (tenant_id, category),
-        INDEX idx_tenant_status (tenant_id, status)
+        UNIQUE KEY unique_institution_sku (institution_id, sku),
+        INDEX idx_institution_category (institution_id, category),
+        INDEX idx_institution_status (institution_id, status)
       )
     `);
 
@@ -139,7 +157,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS vendors (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         vendor_code VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
         contact_person VARCHAR(255),
@@ -152,8 +170,8 @@ async function createCompleteDatabase() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_code (tenant_id, vendor_code),
-        INDEX idx_tenant_status (tenant_id, status)
+        UNIQUE KEY unique_institution_code (institution_id, vendor_code),
+        INDEX idx_institution_status (institution_id, status)
       )
     `);
 
@@ -161,7 +179,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS customers (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         customer_code VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
         contact_person VARCHAR(255),
@@ -174,8 +192,8 @@ async function createCompleteDatabase() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_code (tenant_id, customer_code),
-        INDEX idx_tenant_status (tenant_id, status)
+        UNIQUE KEY unique_institution_code (institution_id, customer_code),
+        INDEX idx_institution_status (institution_id, status)
       )
     `);
 
@@ -183,7 +201,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS purchase_orders (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         po_number VARCHAR(100) NOT NULL,
         vendor_id VARCHAR(36),
         vendor_name VARCHAR(255) NOT NULL,
@@ -200,10 +218,10 @@ async function createCompleteDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
-        UNIQUE KEY unique_po_number (tenant_id, po_number),
-        INDEX idx_tenant_status (tenant_id, status),
-        INDEX idx_vendor (tenant_id, vendor_id),
-        INDEX idx_warehouse (tenant_id, warehouse_id)
+        UNIQUE KEY unique_po_number (institution_id, po_number),
+        INDEX idx_institution_status (institution_id, status),
+        INDEX idx_vendor (institution_id, vendor_id),
+        INDEX idx_warehouse (institution_id, warehouse_id)
       )
     `);
 
@@ -211,7 +229,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS purchase_order_lines (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         po_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         line_number INT NOT NULL,
@@ -224,9 +242,9 @@ async function createCompleteDatabase() {
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_tenant_po (tenant_id, po_id),
-        INDEX idx_item (tenant_id, item_id),
-        INDEX idx_status (tenant_id, status)
+        INDEX idx_institution_po (institution_id, po_id),
+        INDEX idx_item (institution_id, item_id),
+        INDEX idx_status (institution_id, status)
       )
     `);
 
@@ -234,7 +252,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS sales_orders (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         so_number VARCHAR(100) NOT NULL,
         customer_id VARCHAR(36),
         customer_name VARCHAR(255) NOT NULL,
@@ -253,10 +271,10 @@ async function createCompleteDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
-        UNIQUE KEY unique_so_number (tenant_id, so_number),
-        INDEX idx_tenant_status (tenant_id, status),
-        INDEX idx_customer (tenant_id, customer_id),
-        INDEX idx_warehouse (tenant_id, warehouse_id)
+        UNIQUE KEY unique_so_number (institution_id, so_number),
+        INDEX idx_institution_status (institution_id, status),
+        INDEX idx_customer (institution_id, customer_id),
+        INDEX idx_warehouse (institution_id, warehouse_id)
       )
     `);
 
@@ -264,7 +282,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS sales_order_lines (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         so_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         line_number INT NOT NULL,
@@ -275,9 +293,9 @@ async function createCompleteDatabase() {
         status ENUM('pending', 'reserved', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_tenant_so (tenant_id, so_id),
-        INDEX idx_item (tenant_id, item_id),
-        INDEX idx_status (tenant_id, status)
+        INDEX idx_institution_so (institution_id, so_id),
+        INDEX idx_item (institution_id, item_id),
+        INDEX idx_status (institution_id, status)
       )
     `);
 
@@ -285,7 +303,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS goods_receipt_notes (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         grn_number VARCHAR(100) NOT NULL,
         po_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
@@ -295,9 +313,9 @@ async function createCompleteDatabase() {
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_grn_number (tenant_id, grn_number),
-        INDEX idx_tenant_po (tenant_id, po_id),
-        INDEX idx_receipt_date (tenant_id, receipt_date)
+        UNIQUE KEY unique_grn_number (institution_id, grn_number),
+        INDEX idx_institution_po (institution_id, po_id),
+        INDEX idx_receipt_date (institution_id, receipt_date)
       )
     `);
 
@@ -305,7 +323,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS grn_lines (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         grn_id VARCHAR(36) NOT NULL,
         po_line_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
@@ -315,9 +333,9 @@ async function createCompleteDatabase() {
         quality_status ENUM('accepted', 'rejected', 'pending') DEFAULT 'accepted',
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_tenant_grn (tenant_id, grn_id),
-        INDEX idx_po_line (tenant_id, po_line_id),
-        INDEX idx_item (tenant_id, item_id)
+        INDEX idx_institution_grn (institution_id, grn_id),
+        INDEX idx_po_line (institution_id, po_line_id),
+        INDEX idx_item (institution_id, item_id)
       )
     `);
 
@@ -325,7 +343,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS inventory_projections (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
         quantity_on_hand DECIMAL(15,3) DEFAULT 0,
@@ -337,9 +355,9 @@ async function createCompleteDatabase() {
         version INT DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_item_warehouse (tenant_id, item_id, warehouse_id),
-        INDEX idx_tenant_warehouse (tenant_id, warehouse_id),
-        INDEX idx_tenant_item (tenant_id, item_id)
+        UNIQUE KEY unique_institution_item_warehouse (institution_id, item_id, warehouse_id),
+        INDEX idx_institution_warehouse (institution_id, warehouse_id),
+        INDEX idx_institution_item (institution_id, item_id)
       )
     `);
 
@@ -347,7 +365,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS event_store (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         aggregate_type VARCHAR(100) NOT NULL,
         aggregate_id VARCHAR(255) NOT NULL,
         aggregate_version INT NOT NULL,
@@ -357,10 +375,10 @@ async function createCompleteDatabase() {
         idempotency_key VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
-        UNIQUE KEY unique_aggregate_version (tenant_id, aggregate_type, aggregate_id, aggregate_version),
-        UNIQUE KEY unique_idempotency (tenant_id, idempotency_key),
-        INDEX idx_tenant_aggregate (tenant_id, aggregate_type, aggregate_id),
-        INDEX idx_tenant_event_type (tenant_id, event_type),
+        UNIQUE KEY unique_aggregate_version (institution_id, aggregate_type, aggregate_id, aggregate_version),
+        UNIQUE KEY unique_idempotency (institution_id, idempotency_key),
+        INDEX idx_institution_aggregate (institution_id, aggregate_type, aggregate_id),
+        INDEX idx_institution_event_type (institution_id, event_type),
         INDEX idx_created_at (created_at)
       )
     `);
@@ -369,7 +387,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS reorder_levels (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         warehouse_id VARCHAR(36) NOT NULL,
         min_level DECIMAL(15,3) NOT NULL,
@@ -379,8 +397,8 @@ async function createCompleteDatabase() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_tenant_item_warehouse (tenant_id, item_id, warehouse_id),
-        INDEX idx_tenant_warehouse (tenant_id, warehouse_id)
+        UNIQUE KEY unique_institution_item_warehouse (institution_id, item_id, warehouse_id),
+        INDEX idx_institution_warehouse (institution_id, warehouse_id)
       )
     `);
 
@@ -388,7 +406,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS api_keys (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         name VARCHAR(255) NOT NULL,
         api_key VARCHAR(255) NOT NULL,
         permissions JSON,
@@ -398,7 +416,7 @@ async function createCompleteDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
         UNIQUE KEY unique_api_key (api_key),
-        INDEX idx_tenant_status (tenant_id, status)
+        INDEX idx_institution_status (institution_id, status)
       )
     `);
 
@@ -406,7 +424,7 @@ async function createCompleteDatabase() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS bearer_tokens (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         name VARCHAR(255) NOT NULL,
         token VARCHAR(255) NOT NULL,
         permissions JSON,
@@ -416,7 +434,7 @@ async function createCompleteDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
         UNIQUE KEY unique_token (token),
-        INDEX idx_tenant_status (tenant_id, status)
+        INDEX idx_institution_status (institution_id, status)
       )
     `);
 

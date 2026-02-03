@@ -9,15 +9,15 @@ async function createWarehouseTypesTable() {
     await db.query(`
       CREATE TABLE IF NOT EXISTS warehouse_types (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         name VARCHAR(100) NOT NULL,
         description TEXT,
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_tenant_type (tenant_id, name),
-        INDEX idx_tenant (tenant_id)
+        FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_institution_type (institution_id, name),
+        INDEX idx_institution (institution_id)
       )
     `);
     

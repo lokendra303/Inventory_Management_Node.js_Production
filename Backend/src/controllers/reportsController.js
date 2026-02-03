@@ -10,14 +10,14 @@ class ReportsController {
         category: req.query.category
       };
       
-      const report = await reportsService.getInventoryReport(req.tenantId, filters);
+      const report = await reportsService.getInventoryReport(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate inventory report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate inventory report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -30,14 +30,14 @@ class ReportsController {
         itemId: req.query.itemId
       };
       
-      const report = await reportsService.getInventoryMovementReport(req.tenantId, filters);
+      const report = await reportsService.getInventoryMovementReport(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate inventory movement report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate inventory movement report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -52,14 +52,14 @@ class ReportsController {
         vendorId: req.query.vendorId
       };
       
-      const report = await reportsService.getPurchaseReport(req.tenantId, filters);
+      const report = await reportsService.getPurchaseReport(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate purchase report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate purchase report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -71,14 +71,14 @@ class ReportsController {
         endDate: req.query.endDate
       };
       
-      const report = await reportsService.getGRNReport(req.tenantId, filters);
+      const report = await reportsService.getGRNReport(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate GRN report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate GRN report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -92,14 +92,14 @@ class ReportsController {
         status: req.query.status
       };
       
-      const report = await reportsService.getSalesReport(req.tenantId, filters);
+      const report = await reportsService.getSalesReport(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate sales report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate sales report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -112,14 +112,14 @@ class ReportsController {
         endDate: req.query.endDate
       };
       
-      const report = await reportsService.getProfitLossReport(req.tenantId, filters);
+      const report = await reportsService.getProfitLossReport(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate P&L report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate P&L report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -130,14 +130,14 @@ class ReportsController {
         warehouseId: req.query.warehouseId
       };
       
-      const report = await reportsService.getInventoryValuationReport(req.tenantId, filters);
+      const report = await reportsService.getInventoryValuationReport(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate inventory valuation report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate inventory valuation report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -150,14 +150,14 @@ class ReportsController {
         endDate: req.query.endDate
       };
       
-      const report = await reportsService.getTopSellingItems(req.tenantId, filters);
+      const report = await reportsService.getTopSellingItems(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate top selling items report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate top selling items report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -165,14 +165,14 @@ class ReportsController {
   async getLowStockReport(req, res) {
     try {
       const threshold = parseInt(req.query.threshold) || 10;
-      const report = await reportsService.getLowStockReport(req.tenantId, threshold);
+      const report = await reportsService.getLowStockReport(req.institutionId, threshold);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate low stock report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate low stock report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -184,14 +184,14 @@ class ReportsController {
         endDate: req.query.endDate
       };
       
-      const report = await reportsService.getVendorPerformanceReport(req.tenantId, filters);
+      const report = await reportsService.getVendorPerformanceReport(req.institutionId, filters);
       
       res.json({
         success: true,
         data: report
       });
     } catch (error) {
-      logger.error('Failed to generate vendor performance report', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate vendor performance report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }
@@ -199,14 +199,14 @@ class ReportsController {
   // Dashboard
   async getDashboardSummary(req, res) {
     try {
-      const summary = await reportsService.getDashboardSummary(req.tenantId);
+      const summary = await reportsService.getDashboardSummary(req.institutionId);
       
       res.json({
         success: true,
         data: summary
       });
     } catch (error) {
-      logger.error('Failed to generate dashboard summary', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to generate dashboard summary', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate summary' });
     }
   }

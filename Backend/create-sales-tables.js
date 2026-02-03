@@ -14,7 +14,7 @@ async function createSalesTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS sales_orders (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         so_number VARCHAR(100) NOT NULL,
         customer_id VARCHAR(36),
         customer_name VARCHAR(255) NOT NULL,
@@ -31,10 +31,10 @@ async function createSalesTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
-        UNIQUE KEY unique_so_number (tenant_id, so_number),
-        INDEX idx_tenant_status (tenant_id, status),
-        INDEX idx_customer (tenant_id, customer_id),
-        INDEX idx_warehouse (tenant_id, warehouse_id)
+        UNIQUE KEY unique_so_number (institution_id, so_number),
+        INDEX idx_institution_status (institution_id, status),
+        INDEX idx_customer (institution_id, customer_id),
+        INDEX idx_warehouse (institution_id, warehouse_id)
       )
     `);
 
@@ -42,7 +42,7 @@ async function createSalesTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS sales_order_lines (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         so_id VARCHAR(36) NOT NULL,
         item_id VARCHAR(36) NOT NULL,
         line_number INT NOT NULL,
@@ -56,9 +56,9 @@ async function createSalesTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (so_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
-        INDEX idx_tenant_so (tenant_id, so_id),
-        INDEX idx_item (tenant_id, item_id),
-        INDEX idx_status (tenant_id, status)
+        INDEX idx_institution_so (institution_id, so_id),
+        INDEX idx_item (institution_id, item_id),
+        INDEX idx_status (institution_id, status)
       )
     `);
 
@@ -66,7 +66,7 @@ async function createSalesTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS customers (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         customer_code VARCHAR(50) NOT NULL,
         name VARCHAR(255) NOT NULL,
         contact_person VARCHAR(255),
@@ -78,8 +78,8 @@ async function createSalesTables() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_customer_code (tenant_id, customer_code),
-        INDEX idx_tenant_status (tenant_id, status)
+        UNIQUE KEY unique_customer_code (institution_id, customer_code),
+        INDEX idx_institution_status (institution_id, status)
       )
     `);
 

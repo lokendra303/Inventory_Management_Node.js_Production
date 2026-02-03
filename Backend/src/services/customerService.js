@@ -3,7 +3,7 @@ const db = require('../database/connection');
 const logger = require('../utils/logger');
 
 class CustomerService {
-  async createCustomer(tenantId, customerData, userId) {
+  async createCustomer(institutionId, customerData, userId) {
     return await db.transaction(async (connection) => {
       const customerId = uuidv4();
       const finalCustomerCode = customerData.customerCode || `CUS-${Date.now()}`;
@@ -11,11 +11,11 @@ class CustomerService {
       // Create customer record
       await connection.execute(
         `INSERT INTO customers 
-         (id, tenant_id, customer_code, display_name, company_name, salutation, first_name, 
+         (id, institution_id, customer_code, display_name, company_name, salutation, first_name, 
           last_name, email, work_phone, mobile_phone, pan, gstin, msme_registered, currency, 
           payment_terms, tds, website_url, department, designation, remarks, credit_limit, status) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-        [customerId, tenantId, finalCustomerCode, customerData.displayName, customerData.companyName, 
+        [customerId, institutionId, finalCustomerCode, customerData.displayName, customerData.companyName, 
          customerData.salutation, customerData.firstName, customerData.lastName, customerData.email, 
          customerData.workPhone, customerData.mobilePhone, customerData.pan, customerData.gstin, 
          customerData.msmeRegistered ? 1 : 0, customerData.currency, customerData.paymentTerms, 
@@ -55,12 +55,12 @@ class CustomerService {
         );
       }
       
-      logger.info('Customer created', { customerId, tenantId, displayName: customerData.displayName, userId });
+      logger.info('Customer created', { customerId, institutionId, displayName: customerData.displayName, userId });
       return customerId;
     });
   }
 
-  async updateCustomer(tenantId, customerId, updateData, userId) {
+  async updateCustomer(institutionId, customerId, updateData, userId) {
     return await db.transaction(async (connection) => {
       const updateFields = [];
       const updateValues = [];
@@ -96,10 +96,10 @@ class CustomerService {
 
       if (updateFields.length > 0) {
         updateFields.push('updated_at = NOW()');
-        updateValues.push(tenantId, customerId);
+        updateValues.push(institutionId, customerId);
 
         const [result] = await connection.execute(
-          `UPDATE customers SET ${updateFields.join(', ')} WHERE tenant_id = ? AND id = ?`,
+          `UPDATE customers SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
           updateValues
         );
 
@@ -144,14 +144,14 @@ class CustomerService {
         );
       }
       
-      logger.info('Customer updated', { customerId, tenantId, userId });
+      logger.info('Customer updated', { customerId, institutionId, userId });
       return true;
     });
   }
 
-  async getCustomers(tenantId, filters = {}) {
-    let query = 'SELECT * FROM customers WHERE tenant_id = ?';
-    const params = [tenantId];
+  async getCustomers(institutionId, filters = {}) {
+    let query = 'SELECT * FROM customers WHERE institution_id = ?';
+    const params = [institutionId];
 
     if (filters.status) {
       query += ' AND status = ?';
@@ -168,10 +168,10 @@ class CustomerService {
     return await db.query(query, params);
   }
 
-  async getCustomer(tenantId, customerId) {
+  async getCustomer(institutionId, customerId) {
     const customers = await db.query(
-      'SELECT * FROM customers WHERE tenant_id = ? AND id = ?',
-      [tenantId, customerId]
+      'SELECT * FROM customers WHERE institution_id = ? AND id = ?',
+      [institutionId, customerId]
     );
 
     if (!customers[0]) return null;
@@ -218,7 +218,7 @@ class CustomerService {
     return customer;
   }
 
-  async getCustomerPerformance(tenantId, customerId, startDate, endDate) {
+  async getCustomerPerformance(institutionId, customerId, startDate, endDate) {
     const performance = await db.query(
       `SELECT 
          COUNT(so.id) as total_orders,
@@ -227,9 +227,9 @@ class CustomerService {
          COUNT(so.id) as total_orders_count,
          SUM(so.total_amount) as total_value
        FROM sales_orders so
-       WHERE so.tenant_id = ? AND so.customer_id = ?
+       WHERE so.institution_id = ? AND so.customer_id = ?
          AND so.order_date BETWEEN ? AND ?`,
-      [tenantId, customerId, startDate, endDate]
+      [institutionId, customerId, startDate, endDate]
     );
 
     const result = performance[0];
@@ -241,58 +241,58 @@ class CustomerService {
   }
 
   // Bank Details Management
-  async addCustomerBankDetails(tenantId, customerId, bankData) {
+  async addCustomerBankDetails(institutionId, customerId, bankData) {
     const { bankName, accountHolderName, accountNumber, ifscCode, accountType, branchName, swiftCode, iban } = bankData;
     
     const bankDetailId = uuidv4();
 
     await db.query(
       `INSERT INTO customer_bank_details 
-       (id, tenant_id, customer_id, bank_name, account_holder_name, account_number, ifsc_code, account_type, branch_name, swift_code, iban, is_primary, status) 
+       (id, institution_id, customer_id, bank_name, account_holder_name, account_number, ifsc_code, account_type, branch_name, swift_code, iban, is_primary, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [bankDetailId, tenantId, customerId, bankName, accountHolderName, accountNumber, ifscCode || null, accountType || null, branchName || null, swiftCode || null, iban || null, bankData.isPrimary ? 1 : 0]
+      [bankDetailId, institutionId, customerId, bankName, accountHolderName, accountNumber, ifscCode || null, accountType || null, branchName || null, swiftCode || null, iban || null, bankData.isPrimary ? 1 : 0]
     );
 
-    logger.info('Customer bank details added', { bankDetailId, customerId, tenantId });
+    logger.info('Customer bank details added', { bankDetailId, customerId, institutionId });
     return bankDetailId;
   }
 
-  async getCustomerBankDetails(tenantId, customerId) {
+  async getCustomerBankDetails(institutionId, customerId) {
     return await db.query(
-      'SELECT * FROM customer_bank_details WHERE tenant_id = ? AND customer_id = ? ORDER BY is_primary DESC, created_at ASC',
-      [tenantId, customerId]
+      'SELECT * FROM customer_bank_details WHERE institution_id = ? AND customer_id = ? ORDER BY is_primary DESC, created_at ASC',
+      [institutionId, customerId]
     );
   }
 
-  async updateCustomerBankDetails(tenantId, bankDetailId, bankData) {
+  async updateCustomerBankDetails(institutionId, bankDetailId, bankData) {
     const { bankName, accountHolderName, accountNumber, ifscCode, accountType, branchName, swiftCode, iban } = bankData;
 
     const result = await db.query(
       `UPDATE customer_bank_details 
        SET bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, account_type = ?, branch_name = ?, swift_code = ?, iban = ?, is_primary = ?, updated_at = NOW()
-       WHERE id = ? AND tenant_id = ?`,
-      [bankName, accountHolderName, accountNumber, ifscCode || null, accountType || null, branchName || null, swiftCode || null, iban || null, bankData.isPrimary ? 1 : 0, bankDetailId, tenantId]
+       WHERE id = ? AND institution_id = ?`,
+      [bankName, accountHolderName, accountNumber, ifscCode || null, accountType || null, branchName || null, swiftCode || null, iban || null, bankData.isPrimary ? 1 : 0, bankDetailId, institutionId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Bank details not found');
     }
 
-    logger.info('Customer bank details updated', { bankDetailId, tenantId });
+    logger.info('Customer bank details updated', { bankDetailId, institutionId });
     return true;
   }
 
-  async deleteCustomerBankDetails(tenantId, bankDetailId) {
+  async deleteCustomerBankDetails(institutionId, bankDetailId) {
     const result = await db.query(
-      'DELETE FROM customer_bank_details WHERE id = ? AND tenant_id = ?',
-      [bankDetailId, tenantId]
+      'DELETE FROM customer_bank_details WHERE id = ? AND institution_id = ?',
+      [bankDetailId, institutionId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Bank details not found');
     }
 
-    logger.info('Customer bank details deleted', { bankDetailId, tenantId });
+    logger.info('Customer bank details deleted', { bankDetailId, institutionId });
     return true;
   }
 }

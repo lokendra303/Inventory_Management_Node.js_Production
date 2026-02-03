@@ -50,8 +50,8 @@ describe('IMS SEPCUNE API Tests', () => {
       expect(response.body.error).toBe('Validation error');
     });
 
-    test('POST /api/auth/register-tenant should create new tenant', async () => {
-      const tenantData = {
+    test('POST /api/auth/register-institution should create new institution', async () => {
+      const institutionData = {
         name: 'Test Company',
         subdomain: 'test-company-' + Date.now(),
         adminEmail: 'admin@test.com',
@@ -61,12 +61,12 @@ describe('IMS SEPCUNE API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/auth/register-tenant')
-        .send(tenantData)
+        .post('/api/auth/register-institution')
+        .send(institutionData)
         .expect(201);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.tenantId).toBeDefined();
+      expect(response.body.data.institutionId).toBeDefined();
       expect(response.body.data.userId).toBeDefined();
     });
   });
@@ -86,7 +86,7 @@ describe('IMS SEPCUNE API Tests', () => {
 // Event Store Tests
 describe('Event Store', () => {
   const eventStore = require('../src/events/eventStore');
-  const testTenantId = 'test-tenant-' + Date.now();
+  const testinstitutionId = 'test-institution-' + Date.now();
 
   test('should append and retrieve events', async () => {
     const eventData = {
@@ -97,7 +97,7 @@ describe('Event Store', () => {
     };
 
     const eventId = await eventStore.appendEvent(
-      testTenantId,
+      testinstitutionId,
       'inventory',
       'test-item:test-warehouse',
       'PurchaseReceived',
@@ -108,7 +108,7 @@ describe('Event Store', () => {
     expect(eventId).toBeDefined();
 
     const events = await eventStore.getEvents(
-      testTenantId,
+      testinstitutionId,
       'inventory',
       'test-item:test-warehouse'
     );
@@ -129,7 +129,7 @@ describe('Event Store', () => {
     const idempotencyKey = 'test-key-' + Date.now();
 
     const eventId1 = await eventStore.appendEvent(
-      testTenantId,
+      testinstitutionId,
       'inventory',
       'test-item-2:test-warehouse',
       'PurchaseReceived',
@@ -139,7 +139,7 @@ describe('Event Store', () => {
     );
 
     const eventId2 = await eventStore.appendEvent(
-      testTenantId,
+      testinstitutionId,
       'inventory',
       'test-item-2:test-warehouse',
       'PurchaseReceived',
@@ -155,7 +155,7 @@ describe('Event Store', () => {
 // Inventory Service Tests
 describe('Inventory Service', () => {
   const inventoryService = require('../src/services/inventoryService');
-  const testTenantId = 'test-tenant-inv-' + Date.now();
+  const testinstitutionId = 'test-institution-inv-' + Date.now();
 
   test('should receive stock and update projections', async () => {
     const stockData = {
@@ -169,7 +169,7 @@ describe('Inventory Service', () => {
     };
 
     const eventId = await inventoryService.receiveStock(
-      testTenantId,
+      testinstitutionId,
       stockData,
       'test-user'
     );
@@ -178,7 +178,7 @@ describe('Inventory Service', () => {
 
     // Check projection was updated
     const stock = await inventoryService.getCurrentStock(
-      testTenantId,
+      testinstitutionId,
       stockData.itemId,
       stockData.warehouseId
     );
@@ -199,7 +199,7 @@ describe('Inventory Service', () => {
     };
 
     await expect(
-      inventoryService.reserveStock(testTenantId, reserveData, 'test-user')
+      inventoryService.reserveStock(testinstitutionId, reserveData, 'test-user')
     ).rejects.toThrow('Insufficient stock');
   });
 });

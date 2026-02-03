@@ -1,6 +1,6 @@
 const express = require('express');
 const salesOrderController = require('../controllers/salesOrderController');
-const { requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
+const { requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 
 const router = express.Router();
@@ -15,7 +15,7 @@ router.get('/',
 router.post('/',
   validate(schemas.createSalesOrderSchema),
   requirePermission('sales_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('sales_order_created'),
   salesOrderController.createSalesOrder
 );
@@ -30,7 +30,7 @@ router.get('/:id',
 router.put('/:id/status',
   validate(schemas.updateSOStatusSchema),
   requirePermission('sales_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('sales_order_status_updated'),
   salesOrderController.updateSOStatus
 );

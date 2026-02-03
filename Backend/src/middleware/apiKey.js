@@ -21,7 +21,7 @@ const validateApiKey = async (req, res, next) => {
 
     // Check if API key exists and is active
     const keys = await db.query(
-      'SELECT ak.*, t.id as tenant_id, t.name as tenant_name FROM api_keys ak JOIN tenants t ON ak.tenant_id = t.id WHERE ak.key_value = ? AND ak.status = "active"',
+      'SELECT ak.*, t.id as institution_id, t.name as institution_name FROM api_keys ak JOIN institutions t ON ak.institution_id = t.id WHERE ak.key_value = ? AND ak.status = "active"',
       [apiKey]
     );
 
@@ -40,8 +40,8 @@ const validateApiKey = async (req, res, next) => {
       [keyData.id]
     );
 
-    // Set tenant context
-    req.tenantId = keyData.tenant_id;
+    // Set institution context
+    req.institutionId = keyData.institution_id;
     req.apiKey = {
       id: keyData.id,
       name: keyData.name,
@@ -50,7 +50,7 @@ const validateApiKey = async (req, res, next) => {
 
     logger.info('API key authenticated', {
       keyId: keyData.id,
-      tenantId: keyData.tenant_id,
+      institutionId: keyData.institution_id,
       path: req.path
     });
 

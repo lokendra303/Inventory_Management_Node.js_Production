@@ -5,7 +5,7 @@ class SalesOrderController {
   async createSalesOrder(req, res) {
     try {
       const soId = await salesOrderService.createSalesOrder(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -18,7 +18,7 @@ class SalesOrderController {
     } catch (error) {
       logger.error('SO creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -35,14 +35,14 @@ class SalesOrderController {
         customerId: req.query.customerId
       };
       
-      const sos = await salesOrderService.getSalesOrders(req.tenantId, filters);
+      const sos = await salesOrderService.getSalesOrders(req.institutionId, filters);
       
       res.json({
         success: true,
         data: sos
       });
     } catch (error) {
-      logger.error('Failed to get sales orders', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get sales orders', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -53,7 +53,7 @@ class SalesOrderController {
   async getSalesOrder(req, res) {
     try {
       const { id: soId } = req.params;
-      const so = await salesOrderService.getSalesOrder(req.tenantId, soId);
+      const so = await salesOrderService.getSalesOrder(req.institutionId, soId);
       
       if (!so) {
         return res.status(404).json({
@@ -69,7 +69,7 @@ class SalesOrderController {
     } catch (error) {
       logger.error('Failed to get sales order', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         soId: req.params.id 
       });
       res.status(500).json({
@@ -90,7 +90,7 @@ class SalesOrderController {
         });
       }
 
-      await salesOrderService.updateSOStatus(req.tenantId, soId, status, req.user.userId);
+      await salesOrderService.updateSOStatus(req.institutionId, soId, status, req.user.userId);
 
       res.json({
         success: true,
@@ -99,7 +99,7 @@ class SalesOrderController {
     } catch (error) {
       logger.error('Failed to update SO status', {
         error: error.message,
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         soId: req.params.id
       });
       res.status(400).json({

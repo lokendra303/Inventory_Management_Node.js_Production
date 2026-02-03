@@ -20,7 +20,7 @@ class UniversalAuthMiddleware {
         const decoded = await this.authService.verifyToken(token);
         
         req.user = decoded;
-        req.tenantId = decoded.tenantId;
+        req.institutionId = decoded.institutionId;
         
         next();
       } catch (error) {
@@ -95,7 +95,7 @@ class UniversalAuthMiddleware {
           const decoded = await this.authService.verifyToken(token);
           
           req.user = decoded;
-          req.tenantId = decoded.tenantId;
+          req.institutionId = decoded.institutionId;
         }
         
         next();
@@ -106,18 +106,18 @@ class UniversalAuthMiddleware {
     };
   }
 
-  // Tenant isolation middleware
-  requireTenant() {
+  // institution isolation middleware
+  requireinstitution() {
     return (req, res, next) => {
-      if (!req.tenantId && !req.body.tenantId && !req.query.tenantId) {
+      if (!req.institutionId && !req.body.institutionId && !req.query.institutionId) {
         return res.status(400).json({
           success: false,
-          error: 'Tenant context required'
+          error: 'institution context required'
         });
       }
 
-      // Set tenantId from various sources
-      req.tenantId = req.tenantId || req.body.tenantId || req.query.tenantId;
+      // Set institutionId from various sources
+      req.institutionId = req.institutionId || req.body.institutionId || req.query.institutionId;
       
       next();
     };

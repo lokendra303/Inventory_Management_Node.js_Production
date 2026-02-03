@@ -16,7 +16,7 @@ async function createItemFieldConfigTable() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS item_field_configs (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         item_type ENUM('simple', 'variant', 'composite', 'service') NOT NULL,
         field_name VARCHAR(100) NOT NULL,
         field_label VARCHAR(255) NOT NULL,
@@ -30,8 +30,8 @@ async function createItemFieldConfigTable() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
-        UNIQUE KEY unique_tenant_type_field (tenant_id, item_type, field_name),
-        INDEX idx_tenant_type (tenant_id, item_type),
+        UNIQUE KEY unique_institution_type_field (institution_id, item_type, field_name),
+        INDEX idx_institution_type (institution_id, item_type),
         INDEX idx_status (status)
       )
     `);
@@ -67,7 +67,7 @@ async function createItemFieldConfigTable() {
       const configId = require('uuid').v4();
       await connection.execute(`
         INSERT IGNORE INTO item_field_configs 
-        (id, tenant_id, item_type, field_name, field_label, field_type, is_required, 
+        (id, institution_id, item_type, field_name, field_label, field_type, is_required, 
          validation_rules, options, default_value, display_order, created_by)
         VALUES (?, 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'system')
       `, [configId, ...config]);

@@ -6,15 +6,15 @@ async function addCurrencySupport() {
     
     console.log('Adding currency support to database...');
     
-    // Add currency column to tenants table
+    // Add currency column to institutions table
     try {
-      await db.query(`ALTER TABLE tenants ADD COLUMN currency VARCHAR(3) DEFAULT 'USD'`);
+      await db.query(`ALTER TABLE institutions ADD COLUMN currency VARCHAR(3) DEFAULT 'USD'`);
     } catch (e) {
       if (!e.message.includes('Duplicate column name')) throw e;
     }
     
     try {
-      await db.query(`ALTER TABLE tenants ADD COLUMN currency_symbol VARCHAR(10) DEFAULT '$'`);
+      await db.query(`ALTER TABLE institutions ADD COLUMN currency_symbol VARCHAR(10) DEFAULT '$'`);
     } catch (e) {
       if (!e.message.includes('Duplicate column name')) throw e;
     }

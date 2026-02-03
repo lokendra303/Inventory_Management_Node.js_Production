@@ -1,9 +1,13 @@
 const express = require('express');
 const purchaseOrderController = require('../controllers/purchaseOrderController');
-const { requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
+const testController = require('../controllers/testController');
+const { requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 
 const router = express.Router();
+
+// Test endpoint
+router.get('/test', testController.testEndpoint);
 
 // GET /api/purchase-orders
 router.get('/',
@@ -15,7 +19,7 @@ router.get('/',
 router.post('/',
   validate(schemas.createPurchaseOrderSchema),
   requirePermission('purchase_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('purchase_order_created'),
   purchaseOrderController.createPurchaseOrder
 );
@@ -30,7 +34,7 @@ router.get('/:id',
 router.put('/:id/status',
   validate(schemas.updatePOStatusSchema),
   requirePermission('purchase_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('purchase_order_status_updated'),
   purchaseOrderController.updatePOStatus
 );

@@ -7,7 +7,7 @@ async function createCustomerBankDetailsTable() {
     await db.query(`
       CREATE TABLE IF NOT EXISTS customer_bank_details (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         customer_id VARCHAR(36) NOT NULL,
         bank_name VARCHAR(255),
         account_holder_name VARCHAR(255),
@@ -23,9 +23,9 @@ async function createCustomerBankDetailsTable() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
         updated_by VARCHAR(36),
-        INDEX idx_tenant_customer (tenant_id, customer_id),
+        INDEX idx_institution_customer (institution_id, customer_id),
         INDEX idx_customer (customer_id),
-        CONSTRAINT fk_customer_bank_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+        CONSTRAINT fk_customer_bank_institution FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
         CONSTRAINT fk_customer_bank_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
       )
     `);

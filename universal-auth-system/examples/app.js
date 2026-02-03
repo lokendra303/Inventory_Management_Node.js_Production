@@ -89,11 +89,11 @@ class IndependentApp {
     
     products.get('/', async (req, res) => {
       try {
-        const tenantFilter = req.tenantId ? 'WHERE tenant_id = ?' : '';
-        const params = req.tenantId ? [req.tenantId] : [];
+        const institutionFilter = req.institutionId ? 'WHERE institution_id = ?' : '';
+        const params = req.institutionId ? [req.institutionId] : [];
         
         const results = await this.db.query(
-          \`SELECT * FROM products \${tenantFilter} ORDER BY created_at DESC\`,
+          \`SELECT * FROM products \${institutionFilter} ORDER BY created_at DESC\`,
           params
         );
         
@@ -111,12 +111,12 @@ class IndependentApp {
       try {
         const { name, price, description } = req.body;
         const id = require('uuid').v4();
-        const tenantId = req.tenantId || 'default';
+        const institutionId = req.institutionId || 'default';
         const createdBy = req.user?.userId || 'system';
         
         await this.db.query(
-          'INSERT INTO products (id, tenant_id, name, price, description, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-          [id, tenantId, name, price, description, createdBy]
+          'INSERT INTO products (id, institution_id, name, price, description, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+          [id, institutionId, name, price, description, createdBy]
         );
         
         res.status(201).json({ 
@@ -137,11 +137,11 @@ class IndependentApp {
     
     orders.get('/', async (req, res) => {
       try {
-        const tenantFilter = req.tenantId ? 'WHERE tenant_id = ?' : '';
-        const params = req.tenantId ? [req.tenantId] : [];
+        const institutionFilter = req.institutionId ? 'WHERE institution_id = ?' : '';
+        const params = req.institutionId ? [req.institutionId] : [];
         
         const results = await this.db.query(
-          \`SELECT * FROM orders \${tenantFilter} ORDER BY created_at DESC\`,
+          \`SELECT * FROM orders \${institutionFilter} ORDER BY created_at DESC\`,
           params
         );
         
@@ -159,26 +159,26 @@ class IndependentApp {
     await this.db.query(\`
       CREATE TABLE IF NOT EXISTS products (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) DEFAULT 'default',
+        institution_id VARCHAR(36) DEFAULT 'default',
         name VARCHAR(255) NOT NULL,
         price DECIMAL(10,2),
         description TEXT,
         created_by VARCHAR(36) DEFAULT 'system',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_product_tenant (tenant_id)
+        INDEX idx_product_institution (institution_id)
       )
     \`);
     
     await this.db.query(\`
       CREATE TABLE IF NOT EXISTS orders (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) DEFAULT 'default',
+        institution_id VARCHAR(36) DEFAULT 'default',
         customer_name VARCHAR(255),
         total DECIMAL(10,2),
         status VARCHAR(50) DEFAULT 'pending',
         created_by VARCHAR(36) DEFAULT 'system',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_order_tenant (tenant_id)
+        INDEX idx_order_institution (institution_id)
       )
     \`);
     

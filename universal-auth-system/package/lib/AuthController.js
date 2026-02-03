@@ -3,15 +3,15 @@ class UniversalAuthController {
     this.authService = authService;
   }
 
-  // Register new tenant with admin user
-  async registerTenant(req, res) {
+  // Register new institution with admin user
+  async registerinstitution(req, res) {
     try {
-      const { tenantId, userId } = await this.authService.createTenant(req.body);
+      const { institutionId, userId } = await this.authService.createinstitution(req.body);
       
       res.status(201).json({
         success: true,
-        message: 'Tenant created successfully',
-        data: { tenantId, userId }
+        message: 'institution created successfully',
+        data: { institutionId, userId }
       });
     } catch (error) {
       res.status(400).json({
@@ -24,8 +24,8 @@ class UniversalAuthController {
   // User login
   async login(req, res) {
     try {
-      const { email, password, tenantId } = req.body;
-      const result = await this.authService.authenticateUser(email, password, tenantId);
+      const { email, password, institutionId } = req.body;
+      const result = await this.authService.authenticateUser(email, password, institutionId);
       
       res.json({
         success: true,
@@ -44,7 +44,7 @@ class UniversalAuthController {
   async createUser(req, res) {
     try {
       const userId = await this.authService.createUser(
-        req.tenantId || req.body.tenantId,
+        req.institutionId || req.body.institutionId,
         req.body
       );
       
@@ -66,9 +66,9 @@ class UniversalAuthController {
     try {
       const limit = parseInt(req.query.limit) || 50;
       const offset = parseInt(req.query.offset) || 0;
-      const tenantId = req.tenantId || req.query.tenantId;
+      const institutionId = req.institutionId || req.query.institutionId;
       
-      const users = await this.authService.getTenantUsers(tenantId, limit, offset);
+      const users = await this.authService.getinstitutionUsers(institutionId, limit, offset);
       
       res.json({
         success: true,
@@ -88,9 +88,9 @@ class UniversalAuthController {
     try {
       const { userId } = req.params;
       const { permissions, warehouseAccess, role } = req.body;
-      const tenantId = req.tenantId || req.body.tenantId;
+      const institutionId = req.institutionId || req.body.institutionId;
       
-      await this.authService.updateUserPermissions(tenantId, userId, permissions, warehouseAccess, role);
+      await this.authService.updateUserPermissions(institutionId, userId, permissions, warehouseAccess, role);
       
       res.json({
         success: true,
@@ -107,10 +107,10 @@ class UniversalAuthController {
   // Get user profile
   async getProfile(req, res) {
     try {
-      const tenantId = req.tenantId || req.user.tenantId;
+      const institutionId = req.institutionId || req.user.institutionId;
       const userId = req.user.userId;
       
-      const users = await this.authService.getTenantUsers(tenantId);
+      const users = await this.authService.getinstitutionUsers(institutionId);
       const userProfile = users.find(u => u.id === userId);
       
       if (!userProfile) {
@@ -125,7 +125,7 @@ class UniversalAuthController {
         data: {
           id: userProfile.id,
           userId: userId,
-          tenantId: tenantId,
+          institutionId: institutionId,
           email: userProfile.email,
           firstName: userProfile.first_name,
           lastName: userProfile.last_name,
@@ -173,9 +173,9 @@ class UniversalAuthController {
     try {
       const { currentPassword, newPassword } = req.body;
       const userId = req.user.userId;
-      const tenantId = req.tenantId || req.user.tenantId;
+      const institutionId = req.institutionId || req.user.institutionId;
 
-      await this.authService.changePassword(tenantId, userId, currentPassword, newPassword);
+      await this.authService.changePassword(institutionId, userId, currentPassword, newPassword);
 
       res.json({
         success: true,

@@ -1,7 +1,7 @@
 const migrations = {
-  // Create tenants table
-  createTenantsTable: `
-    CREATE TABLE IF NOT EXISTS tenants (
+  // Create institutions table
+  createinstitutionsTable: `
+    CREATE TABLE IF NOT EXISTS institutions (
       id VARCHAR(36) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
       plan VARCHAR(50) DEFAULT 'starter',
@@ -9,8 +9,8 @@ const migrations = {
       settings JSON,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_tenant_status (status),
-      INDEX idx_tenant_name (name)
+      INDEX idx_institution_status (status),
+      INDEX idx_institution_name (name)
     )
   `,
 
@@ -18,7 +18,7 @@ const migrations = {
   createUsersTable: `
     CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(36) PRIMARY KEY,
-      tenant_id VARCHAR(36) NOT NULL,
+      institution_id VARCHAR(36) NOT NULL,
       email VARCHAR(255) NOT NULL UNIQUE,
       mobile VARCHAR(20),
       password_hash VARCHAR(255) NOT NULL,
@@ -40,8 +40,8 @@ const migrations = {
       last_login TIMESTAMP NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-      INDEX idx_user_tenant (tenant_id),
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
+      INDEX idx_user_institution (institution_id),
       INDEX idx_user_email (email),
       INDEX idx_user_status (status),
       INDEX idx_user_role (role)
@@ -52,7 +52,7 @@ const migrations = {
   createTempAccessTokensTable: `
     CREATE TABLE IF NOT EXISTS temp_access_tokens (
       id VARCHAR(36) PRIMARY KEY,
-      tenant_id VARCHAR(36) NOT NULL,
+      institution_id VARCHAR(36) NOT NULL,
       target_user_id VARCHAR(36) NOT NULL,
       created_by VARCHAR(36) NOT NULL,
       temp_password VARCHAR(255) NOT NULL,
@@ -60,7 +60,7 @@ const migrations = {
       used_at TIMESTAMP NULL,
       is_active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+      FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
       FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
       INDEX idx_temp_token_user (target_user_id),
@@ -74,8 +74,8 @@ const migrations = {
     try {
       console.log('Running Universal Auth migrations...');
       
-      await database.query(this.createTenantsTable);
-      console.log('✓ Tenants table created');
+      await database.query(this.createinstitutionsTable);
+      console.log('✓ institutions table created');
       
       await database.query(this.createUsersTable);
       console.log('✓ Users table created');

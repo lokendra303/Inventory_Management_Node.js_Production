@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 const inventoryService = require('./inventoryService');
 
 class PurchaseOrderService {
-  async createPurchaseOrder(tenantId, poData, userId) {
+  async createPurchaseOrder(institutionId, poData, userId) {
     const {
       poNumber,
       vendorId,
@@ -26,10 +26,10 @@ class PurchaseOrderService {
         // Create PO header
         await connection.execute(
           `INSERT INTO purchase_orders 
-           (id, tenant_id, po_number, vendor_id, vendor_name, warehouse_id, currency, exchange_rate, 
+           (id, institution_id, po_number, vendor_id, vendor_name, warehouse_id, currency, exchange_rate, 
             order_date, expected_date, notes, created_by, status) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
-          [poId, tenantId, poNumber, vendorId || null, vendorName, warehouseId, currency, exchangeRate, 
+          [poId, institutionId, poNumber, vendorId || null, vendorName, warehouseId, currency, exchangeRate, 
            orderDate || null, expectedDate || null, notes || null, userId]
         );
 
@@ -42,9 +42,9 @@ class PurchaseOrderService {
 
           await connection.execute(
             `INSERT INTO purchase_order_lines 
-             (id, tenant_id, po_id, item_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
+             (id, institution_id, po_id, item_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, tenantId, poId, line.itemId, i + 1, line.quantity, line.unitCost, lineTotal, line.expectedDate || expectedDate || null]
+            [lineId, institutionId, poId, line.itemId, i + 1, line.quantity, line.unitCost, lineTotal, line.expectedDate || expectedDate || null]
           );
         }
 
@@ -55,17 +55,17 @@ class PurchaseOrderService {
         );
       });
 
-      logger.info('Purchase order created', { poId, tenantId, poNumber, userId });
+      logger.info('Purchase order created', { poId, institutionId, poNumber, userId });
       return poId;
     } catch (error) {
-      logger.error('Failed to create purchase order', { tenantId, poNumber, error: error.message });
+      logger.error('Failed to create purchase order', { institutionId, poNumber, error: error.message });
       throw error;
     }
   }
 
-  async createGRN(tenantId, grnData, userId) {
+  async createGRN(institutionId, grnData, userId) {
     console.log('=== GRN SERVICE DEBUG ===');
-    console.log('tenantId:', tenantId);
+    console.log('institutionId:', institutionId);
     console.log('grnData:', JSON.stringify(grnData, null, 2));
     console.log('userId:', userId);
     console.log('grnData.poId:', grnData.poId);
@@ -82,7 +82,7 @@ class PurchaseOrderService {
     } = grnData;
 
     // Validate required parameters
-    if (!tenantId) throw new Error('tenantId is required');
+    if (!institutionId) throw new Error('institutionId is required');
     if (!poId) throw new Error(`poId is required. Received: ${poId}`);
     if (!warehouseId) throw new Error(`warehouseId is required. Received: ${warehouseId}`);
     if (!userId) throw new Error('userId is required');
@@ -97,7 +97,7 @@ class PurchaseOrderService {
         // Create GRN header
         const grnParams = [
           grnId, 
-          tenantId, 
+          institutionId, 
           grnNumber || `GRN-${Date.now()}`, 
           poId, 
           warehouseId, 
@@ -118,7 +118,7 @@ class PurchaseOrderService {
         
         await connection.execute(
           `INSERT INTO goods_receipt_notes 
-           (id, tenant_id, grn_number, po_id, warehouse_id, receipt_date, received_by, notes, status) 
+           (id, institution_id, grn_number, po_id, warehouse_id, receipt_date, received_by, notes, status) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
           grnParams
         );
@@ -142,7 +142,7 @@ class PurchaseOrderService {
 
           const lineParams = [
             grnLineId, 
-            tenantId, 
+            institutionId, 
             grnId, 
             line.poLineId, 
             line.itemId, 
@@ -165,7 +165,7 @@ class PurchaseOrderService {
           // Create GRN line
           await connection.execute(
             `INSERT INTO grn_lines 
-             (id, tenant_id, grn_id, po_line_id, item_id, quantity_received, unit_cost, line_total, quality_status) 
+             (id, institution_id, grn_id, po_line_id, item_id, quantity_received, unit_cost, line_total, quality_status) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             lineParams
           );
@@ -186,7 +186,7 @@ class PurchaseOrderService {
 
           // Create inventory event for accepted items
           if (line.qualityStatus === 'accepted' || !line.qualityStatus) {
-            await inventoryService.receiveStock(tenantId, {
+            await inventoryService.receiveStock(institutionId, {
               itemId: line.itemId,
               warehouseId,
               quantity: line.quantityReceived,
@@ -227,17 +227,21 @@ class PurchaseOrderService {
         );
       });
 
-      logger.info('GRN created', { grnId, tenantId, grnNumber, poId, userId });
+      logger.info('GRN created', { grnId, institutionId, grnNumber, poId, userId });
       return grnId;
     } catch (error) {
-      logger.error('Failed to create GRN', { tenantId, grnNumber, poId, error: error.message });
+      logger.error('Failed to create GRN', { institutionId, grnNumber, poId, error: error.message });
       throw error;
     }
   }
 
-  async getPurchaseOrders(tenantId, filters = {}, limit = 100, offset = 0) {
+  async getPurchaseOrders(institutionId, filters = {}, limit = 100, offset = 0) {
+    console.log('=== DEBUG getPurchaseOrders ===');
+    console.log('institutionId:', institutionId);
+    console.log('filters:', filters);
+    
     let query = `
-      SELECT po.*, v.name as vendor_name, w.name as warehouse_name,
+      SELECT po.*, v.display_name as vendor_name, w.name as warehouse_name,
              COUNT(pol.id) as line_count,
              SUM(pol.quantity_ordered) as total_quantity_ordered,
              SUM(pol.quantity_received) as total_quantity_received
@@ -245,9 +249,9 @@ class PurchaseOrderService {
       LEFT JOIN vendors v ON po.vendor_id = v.id
       LEFT JOIN warehouses w ON po.warehouse_id = w.id
       LEFT JOIN purchase_order_lines pol ON po.id = pol.po_id
-      WHERE po.tenant_id = ?
+      WHERE po.institution_id = ?
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.status) {
       query += ' AND po.status = ?';
@@ -260,18 +264,28 @@ class PurchaseOrderService {
     }
 
     query += ' GROUP BY po.id ORDER BY po.created_at DESC';
+    
+    console.log('Final query:', query);
+    console.log('Params:', params);
 
-    return await db.query(query, params);
+    try {
+      const result = await db.query(query, params);
+      console.log('Query result count:', result.length);
+      return result;
+    } catch (error) {
+      console.error('Database query error:', error.message);
+      throw error;
+    }
   }
 
-  async getPurchaseOrder(tenantId, poId) {
+  async getPurchaseOrder(institutionId, poId) {
     const pos = await db.query(
       `SELECT po.*, COALESCE(v.name, po.vendor_name) as vendor_name, w.name as warehouse_name
        FROM purchase_orders po
        LEFT JOIN vendors v ON po.vendor_id = v.id
        LEFT JOIN warehouses w ON po.warehouse_id = w.id
-       WHERE po.tenant_id = ? AND po.id = ?`,
-      [tenantId, poId]
+       WHERE po.institution_id = ? AND po.id = ?`,
+      [institutionId, poId]
     );
 
     if (pos.length === 0) return null;
@@ -283,9 +297,9 @@ class PurchaseOrderService {
       `SELECT pol.*, i.sku, i.name as item_name, i.unit
        FROM purchase_order_lines pol
        JOIN items i ON pol.item_id = i.id
-       WHERE pol.tenant_id = ? AND pol.po_id = ?
+       WHERE pol.institution_id = ? AND pol.po_id = ?
        ORDER BY pol.line_number`,
-      [tenantId, poId]
+      [institutionId, poId]
     );
 
     // Get GRNs
@@ -293,23 +307,23 @@ class PurchaseOrderService {
       `SELECT grn.*, COUNT(gl.id) as line_count
        FROM goods_receipt_notes grn
        LEFT JOIN grn_lines gl ON grn.id = gl.grn_id
-       WHERE grn.tenant_id = ? AND grn.po_id = ?
+       WHERE grn.institution_id = ? AND grn.po_id = ?
        GROUP BY grn.id
        ORDER BY grn.receipt_date DESC`,
-      [tenantId, poId]
+      [institutionId, poId]
     );
 
     return { ...po, lines, grns };
   }
 
-  async getGRN(tenantId, grnId) {
+  async getGRN(institutionId, grnId) {
     const [grns] = await db.query(
       `SELECT grn.*, po.po_number, w.name as warehouse_name
        FROM goods_receipt_notes grn
        JOIN purchase_orders po ON grn.po_id = po.id
        LEFT JOIN warehouses w ON grn.warehouse_id = w.id
-       WHERE grn.tenant_id = ? AND grn.id = ?`,
-      [tenantId, grnId]
+       WHERE grn.institution_id = ? AND grn.id = ?`,
+      [institutionId, grnId]
     );
 
     if (grns.length === 0) return null;
@@ -322,38 +336,38 @@ class PurchaseOrderService {
        FROM grn_lines gl
        JOIN items i ON gl.item_id = i.id
        JOIN purchase_order_lines pol ON gl.po_line_id = pol.id
-       WHERE gl.tenant_id = ? AND gl.grn_id = ?`,
-      [tenantId, grnId]
+       WHERE gl.institution_id = ? AND gl.grn_id = ?`,
+      [institutionId, grnId]
     );
 
     return { ...grn, lines };
   }
 
-  async updatePOStatus(tenantId, poId, status, userId) {
+  async updatePOStatus(institutionId, poId, status, userId) {
     const result = await db.query(
-      'UPDATE purchase_orders SET status = ?, updated_at = NOW() WHERE tenant_id = ? AND id = ?',
-      [status, tenantId, poId]
+      'UPDATE purchase_orders SET status = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [status, institutionId, poId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Purchase order not found');
     }
 
-    logger.info('PO status updated', { poId, tenantId, status, userId });
+    logger.info('PO status updated', { poId, institutionId, status, userId });
   }
 
-  async getPendingReceipts(tenantId, warehouseId = null) {
+  async getPendingReceipts(institutionId, warehouseId = null) {
     let query = `
       SELECT pol.*, po.po_number, po.vendor_name, i.sku, i.name as item_name,
              (pol.quantity_ordered - pol.quantity_received) as pending_quantity
       FROM purchase_order_lines pol
       JOIN purchase_orders po ON pol.po_id = po.id
       JOIN items i ON pol.item_id = i.id
-      WHERE pol.tenant_id = ? 
+      WHERE pol.institution_id = ? 
         AND pol.status IN ('pending', 'partially_received')
         AND po.status IN ('sent', 'confirmed', 'partially_received')
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (warehouseId) {
       query += ' AND po.warehouse_id = ?';

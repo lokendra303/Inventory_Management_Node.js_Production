@@ -9,7 +9,7 @@ The Customer Bank Details feature allows you to store and manage multiple bank a
 ```sql
 CREATE TABLE IF NOT EXISTS customer_bank_details (
   id VARCHAR(36) PRIMARY KEY,
-  tenant_id VARCHAR(36) NOT NULL,
+  institution_id VARCHAR(36) NOT NULL,
   customer_id VARCHAR(36) NOT NULL,
   bank_name VARCHAR(255),
   account_holder_name VARCHAR(255),
@@ -25,9 +25,9 @@ CREATE TABLE IF NOT EXISTS customer_bank_details (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   created_by VARCHAR(36),
   updated_by VARCHAR(36),
-  INDEX idx_tenant_customer (tenant_id, customer_id),
+  INDEX idx_institution_customer (institution_id, customer_id),
   INDEX idx_customer (customer_id),
-  CONSTRAINT fk_customer_bank_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  CONSTRAINT fk_customer_bank_institution FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
   CONSTRAINT fk_customer_bank_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
 )
 ```
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS customer_bank_details (
   "data": [
     {
       "id": "uuid-string",
-      "tenantId": "uuid-string",
+      "institutionId": "uuid-string",
       "customerId": "uuid-string",
       "bankName": "HDFC Bank",
       "accountHolderName": "John Doe",
@@ -151,40 +151,40 @@ CREATE TABLE IF NOT EXISTS customer_bank_details (
 
 The `customerService.js` includes the following methods:
 
-### addCustomerBankDetails(tenantId, customerId, bankData)
+### addCustomerBankDetails(institutionId, customerId, bankData)
 Adds new bank details for a customer.
 
 **Parameters:**
-- `tenantId` (String): Tenant ID
+- `institutionId` (String): institution ID
 - `customerId` (String): Customer ID
 - `bankData` (Object): Bank details object
 
 **Returns:** Bank detail ID (UUID)
 
-### getCustomerBankDetails(tenantId, customerId)
+### getCustomerBankDetails(institutionId, customerId)
 Retrieves all bank details for a customer.
 
 **Parameters:**
-- `tenantId` (String): Tenant ID
+- `institutionId` (String): institution ID
 - `customerId` (String): Customer ID
 
 **Returns:** Array of bank detail objects
 
-### updateCustomerBankDetails(tenantId, bankDetailId, bankData)
+### updateCustomerBankDetails(institutionId, bankDetailId, bankData)
 Updates existing bank details.
 
 **Parameters:**
-- `tenantId` (String): Tenant ID
+- `institutionId` (String): institution ID
 - `bankDetailId` (String): Bank detail ID
 - `bankData` (Object): Updated bank details
 
 **Returns:** true on success
 
-### deleteCustomerBankDetails(tenantId, bankDetailId)
+### deleteCustomerBankDetails(institutionId, bankDetailId)
 Deletes bank details.
 
 **Parameters:**
-- `tenantId` (String): Tenant ID
+- `institutionId` (String): institution ID
 - `bankDetailId` (String): Bank detail ID
 
 **Returns:** true on success
@@ -306,7 +306,7 @@ All bank details operations are logged with:
 - Action type (created, updated, deleted)
 - User ID who performed the action
 - Timestamp
-- Tenant ID
+- institution ID
 - Customer ID
 
 Audit log events:
@@ -317,7 +317,7 @@ Audit log events:
 ## Security Considerations
 
 1. **Permission Checks**: All endpoints require appropriate permissions
-2. **Tenant Isolation**: Data is isolated by tenant_id
+2. **institution Isolation**: Data is isolated by institution_id
 3. **Sensitive Data**: Account numbers should be encrypted in production
 4. **Audit Trail**: All operations are logged for compliance
 

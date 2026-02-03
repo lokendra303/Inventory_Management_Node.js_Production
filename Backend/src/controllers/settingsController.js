@@ -3,35 +3,35 @@ const logger = require('../utils/logger');
 const CurrencyService = require('../utils/currencyService');
 
 class SettingsController {
-  async getTenantSettings(req, res) {
+  async getInstitutionSettings(req, res) {
     try {
-      const { tenantId } = req.user;
+      const { institutionId } = req.user;
       
-      const tenant = await db.query(
-        'SELECT currency, currency_symbol FROM tenants WHERE id = ?',
-        [tenantId]
+      const institution = await db.query(
+        'SELECT currency, currency_symbol FROM institutions WHERE id = ?',
+        [institutionId]
       );
       
-      if (tenant.length === 0) {
-        return res.status(404).json({ error: 'Tenant not found' });
+      if (institution.length === 0) {
+        return res.status(404).json({ error: 'Institution not found' });
       }
       
       const settings = {
-        currency: tenant[0].currency || 'USD',
-        currencySymbol: tenant[0].currency_symbol || '$',
+        currency: institution[0].currency || 'USD',
+        currencySymbol: institution[0].currency_symbol || '$',
         availableCurrencies: CurrencyService.getCurrencies()
       };
       
       res.json({ success: true, data: settings });
     } catch (error) {
-      logger.error('Get tenant settings error:', error);
+      logger.error('Get institution settings error:', error);
       res.status(500).json({ error: 'Failed to get settings' });
     }
   }
   
-  async updateTenantSettings(req, res) {
+  async updateInstitutionSettings(req, res) {
     try {
-      const { tenantId } = req.user;
+      const { institutionId } = req.user;
       const { currency } = req.body;
       
       if (!currency) {
@@ -41,16 +41,25 @@ class SettingsController {
       const currencySymbol = CurrencyService.getCurrencySymbol(currency);
       
       await db.query(
-        'UPDATE tenants SET currency = ?, currency_symbol = ? WHERE id = ?',
-        [currency, currencySymbol, tenantId]
+        'UPDATE institutions SET currency = ?, currency_symbol = ? WHERE id = ?',
+        [currency, currencySymbol, institutionId]
       );
       
-      logger.info('Tenant settings updated', { tenantId, currency });
+      logger.info('Institution settings updated', { institutionId, currency });
       res.json({ success: true, message: 'Settings updated successfully' });
     } catch (error) {
-      logger.error('Update tenant settings error:', error);
+      logger.error('Update institution settings error:', error);
       res.status(500).json({ error: 'Failed to update settings' });
     }
+  }
+
+  // Backward compatibility
+  async getinstitutionSettings(req, res) {
+    return this.getInstitutionSettings(req, res);
+  }
+  
+  async updateinstitutionSettings(req, res) {
+    return this.updateInstitutionSettings(req, res);
   }
 }
 

@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
  * Setup Test Data Script
  * 
  * This script creates essential test data for development and testing:
- * - Creates test tenant and admin user
+ * - Creates test institution and admin user
  * - Sets up basic database structure if missing
  * - Provides credentials for testing API endpoints
  * 
@@ -26,12 +26,12 @@ async function setupTestData() {
   try {
     console.log('Setting up test data...');
 
-    // Check if tenants table exists
-    const [tenantTables] = await connection.execute("SHOW TABLES LIKE 'tenants'");
-    if (tenantTables.length === 0) {
-      console.log('Creating tenants table...');
+    // Check if institutions table exists
+    const [institutionTables] = await connection.execute("SHOW TABLES LIKE 'institutions'");
+    if (institutionTables.length === 0) {
+      console.log('Creating institutions table...');
       await connection.execute(`
-        CREATE TABLE tenants (
+        CREATE TABLE institutions (
           id VARCHAR(36) PRIMARY KEY,
           name VARCHAR(255) NOT NULL,
           status ENUM('active', 'inactive') DEFAULT 'active',
@@ -48,7 +48,7 @@ async function setupTestData() {
       await connection.execute(`
         CREATE TABLE users (
           id VARCHAR(36) PRIMARY KEY,
-          tenant_id VARCHAR(36) NOT NULL,
+          institution_id VARCHAR(36) NOT NULL,
           email VARCHAR(255) NOT NULL,
           mobile VARCHAR(20),
           password_hash VARCHAR(255) NOT NULL,
@@ -59,31 +59,31 @@ async function setupTestData() {
           status ENUM('active', 'inactive') DEFAULT 'active',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          UNIQUE KEY unique_tenant_email (tenant_id, email)
+          UNIQUE KEY unique_institution_email (institution_id, email)
         )
       `);
     }
 
-    // Check if test tenant exists
-    const [tenants] = await connection.execute("SELECT * FROM tenants WHERE name = 'Test Tenant'");
-    let tenantId;
+    // Check if test institution exists
+    const [institutions] = await connection.execute("SELECT * FROM institutions WHERE name = 'Test institution'");
+    let institutionId;
     
-    if (tenants.length === 0) {
-      tenantId = uuidv4();
+    if (institutions.length === 0) {
+      institutionId = uuidv4();
       await connection.execute(
-        "INSERT INTO tenants (id, name, status) VALUES (?, ?, 'active')",
-        [tenantId, 'Test Tenant']
+        "INSERT INTO institutions (id, name, status) VALUES (?, ?, 'active')",
+        [institutionId, 'Test institution']
       );
-      console.log('✅ Test tenant created');
+      console.log('✅ Test institution created');
     } else {
-      tenantId = tenants[0].id;
-      console.log('✅ Test tenant already exists');
+      institutionId = institutions[0].id;
+      console.log('✅ Test institution already exists');
     }
 
     // Check if test user exists
     const [users] = await connection.execute(
-      "SELECT * FROM users WHERE tenant_id = ? AND email = 'test@example.com'",
-      [tenantId]
+      "SELECT * FROM users WHERE institution_id = ? AND email = 'test@example.com'",
+      [institutionId]
     );
 
     if (users.length === 0) {
@@ -92,11 +92,11 @@ async function setupTestData() {
       const simpleHash = 'hashed_password123';
       
       await connection.execute(`
-        INSERT INTO users (id, tenant_id, email, password_hash, first_name, last_name, role, permissions, status)
+        INSERT INTO users (id, institution_id, email, password_hash, first_name, last_name, role, permissions, status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
       `, [
         userId,
-        tenantId,
+        institutionId,
         'test@example.com',
         simpleHash,
         'Test',
@@ -115,7 +115,7 @@ async function setupTestData() {
     }
 
     console.log('\n=== TEST CREDENTIALS ===');
-    console.log(`Tenant ID: ${tenantId}`);
+    console.log(`institution ID: ${institutionId}`);
     console.log('Email: test@example.com');
     console.log('Password: password123');
     console.log('Role: admin');

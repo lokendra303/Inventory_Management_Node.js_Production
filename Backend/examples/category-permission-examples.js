@@ -5,7 +5,7 @@ const authService = require('../services/authService');
  */
 
 // Example 1: Create Manager with Category Management Permission
-async function createCategoryManager(tenantId) {
+async function createCategoryManager(institutionId) {
   const managerData = {
     email: "category.manager@company.com",
     password: "SecurePass123!",
@@ -24,7 +24,7 @@ async function createCategoryManager(tenantId) {
   };
 
   try {
-    const userId = await authService.createUser(tenantId, managerData, 'system');
+    const userId = await authService.createUser(institutionId, managerData, 'system');
     console.log('Category Manager created:', userId);
     return userId;
   } catch (error) {
@@ -33,7 +33,7 @@ async function createCategoryManager(tenantId) {
 }
 
 // Example 2: Create Regular User with View-Only Permission
-async function createViewOnlyUser(tenantId) {
+async function createViewOnlyUser(institutionId) {
   const userData = {
     email: "viewer@company.com",
     password: "SecurePass123!",
@@ -50,7 +50,7 @@ async function createViewOnlyUser(tenantId) {
   };
 
   try {
-    const userId = await authService.createUser(tenantId, userData, 'system');
+    const userId = await authService.createUser(institutionId, userData, 'system');
     console.log('View-only user created:', userId);
     return userId;
   } catch (error) {
@@ -59,7 +59,7 @@ async function createViewOnlyUser(tenantId) {
 }
 
 // Example 3: Update Existing User to Add Category Management Permission
-async function grantCategoryPermission(tenantId, userId) {
+async function grantCategoryPermission(institutionId, userId) {
   const newPermissions = {
     "category_management": true,
     "category_view": true,
@@ -69,7 +69,7 @@ async function grantCategoryPermission(tenantId, userId) {
   };
 
   try {
-    await authService.updateUserPermissions(tenantId, userId, newPermissions, []);
+    await authService.updateUserPermissions(institutionId, userId, newPermissions, []);
     console.log('Category permissions granted to user:', userId);
   } catch (error) {
     console.error('Error updating permissions:', error.message);
@@ -77,7 +77,7 @@ async function grantCategoryPermission(tenantId, userId) {
 }
 
 // Example 4: Remove Category Management Permission
-async function revokeCategoryPermission(tenantId, userId) {
+async function revokeCategoryPermission(institutionId, userId) {
   const newPermissions = {
     "category_view": true, // Keep view permission
     "inventory_view": true,
@@ -87,7 +87,7 @@ async function revokeCategoryPermission(tenantId, userId) {
   };
 
   try {
-    await authService.updateUserPermissions(tenantId, userId, newPermissions, []);
+    await authService.updateUserPermissions(institutionId, userId, newPermissions, []);
     console.log('Category management permission revoked from user:', userId);
   } catch (error) {
     console.error('Error updating permissions:', error.message);

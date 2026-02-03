@@ -6,13 +6,13 @@ const router = express.Router();
 
 // GET /api/settings
 router.get('/',
-  settingsController.getTenantSettings
+  settingsController.getInstitutionSettings
 );
 
 // PUT /api/settings
 router.put('/',
   auditLog('settings_updated'),
-  settingsController.updateTenantSettings
+  settingsController.updateInstitutionSettings
 );
 
 module.exports = router;

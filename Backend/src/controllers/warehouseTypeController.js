@@ -5,7 +5,7 @@ class WarehouseTypeController {
   async createWarehouseType(req, res) {
     try {
       const typeId = await warehouseTypeService.createWarehouseType(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -18,7 +18,7 @@ class WarehouseTypeController {
     } catch (error) {
       logger.error('Warehouse type creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -31,14 +31,14 @@ class WarehouseTypeController {
   async getWarehouseTypes(req, res) {
     try {
       const filters = { status: req.query.status };
-      const types = await warehouseTypeService.getWarehouseTypes(req.tenantId, filters);
+      const types = await warehouseTypeService.getWarehouseTypes(req.institutionId, filters);
       
       res.json({
         success: true,
         data: types
       });
     } catch (error) {
-      logger.error('Failed to get warehouse types', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get warehouse types', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -49,7 +49,7 @@ class WarehouseTypeController {
   async updateWarehouseType(req, res) {
     try {
       const { typeId } = req.params;
-      await warehouseTypeService.updateWarehouseType(req.tenantId, typeId, req.body, req.user.userId);
+      await warehouseTypeService.updateWarehouseType(req.institutionId, typeId, req.body, req.user.userId);
       
       res.json({
         success: true,
@@ -58,7 +58,7 @@ class WarehouseTypeController {
     } catch (error) {
       logger.error('Warehouse type update failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         typeId: req.params.typeId,
         userId: req.user.userId 
       });

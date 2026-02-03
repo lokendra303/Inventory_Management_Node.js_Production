@@ -6,13 +6,13 @@ async function setDefaultCurrency() {
     
     console.log('Setting default currency to INR...');
     
-    // Update all tenants to use INR
+    // Update all institutions to use INR
     const result = await db.query(`
-      UPDATE tenants 
+      UPDATE institutions 
       SET currency = 'INR', currency_symbol = '₹'
     `);
     
-    console.log(`Updated ${result.affectedRows} tenant(s) to use INR currency`);
+    console.log(`Updated ${result.affectedRows} institution(s) to use INR currency`);
   } catch (error) {
     console.error('Error setting currency:', error);
   } finally {

@@ -1,14 +1,15 @@
 {
   "name": "ims-sepcune",
   "version": "1.0.0",
-  "description": "Production-ready Multi-tenant Inventory Management System",
+  "description": "Production-ready Multi-institution Inventory Management System",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest",
     "migrate": "node src/database/migrate.js",
-    "seed": "node src/database/seed.js"
+    "seed": "node src/database/seed.js",
+    "debug": "node debug-session.js"
   },
   "dependencies": {
     "express": "^4.18.2",

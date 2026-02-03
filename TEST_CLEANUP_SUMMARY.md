@@ -19,7 +19,7 @@ The following test files were removed as they were either redundant, outdated, o
 
 ### Production-Ready Test Files:
 1. **`setup-test-data.js`** ✅ KEPT
-   - **Purpose**: Creates test tenant and admin user for development
+   - **Purpose**: Creates test institution and admin user for development
    - **Usage**: `node setup-test-data.js`
    - **Why Essential**: Required for setting up development environment
    - **Enhanced**: Added comprehensive documentation and better output formatting

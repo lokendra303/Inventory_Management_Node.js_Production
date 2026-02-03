@@ -6,7 +6,7 @@
 - **Sample data** created for testing
 
 ## 📊 CURRENT DATA SUMMARY
-- **Tenants**: 2 (including default)
+- **institutions**: 2 (including default)
 - **Users**: 2 (including admin)
 - **Items**: 2 (sample items)
 - **Warehouses**: 1 (Main Warehouse)
@@ -53,7 +53,7 @@
 - ✅ Composite Items (Bill of Materials)
 
 ### 6. **System Features**
-- ✅ Multi-Tenant Architecture
+- ✅ Multi-institution Architecture
 - ✅ User Management & Roles
 - ✅ Event Sourcing
 - ✅ API Key Management
@@ -64,18 +64,18 @@
 ## 🌐 API ENDPOINTS
 
 ### **Authentication**
-- `POST /api/auth/register-tenant` - Register new tenant
+- `POST /api/auth/register-institution` - Register new institution
 - `POST /api/auth/login` - User login
 - `GET /api/auth/profile` - Get user profile
 - `PUT /api/auth/profile` - Update profile
 
 ### **Data Management**
-- `GET /api/data/all-data?tenant_id=xxx` - Get all data from all tables
-- `GET /api/data/dashboard?tenant_id=xxx` - Get dashboard summary
+- `GET /api/data/all-data?institution_id=xxx` - Get all data from all tables
+- `GET /api/data/dashboard?institution_id=xxx` - Get dashboard summary
 - `POST /api/data/enable-features` - Enable all features
 
 ### **Inventory**
-- `GET /api/inventory` - Get tenant inventory
+- `GET /api/inventory` - Get institution inventory
 - `POST /api/inventory/receive` - Receive stock
 - `POST /api/inventory/adjust` - Adjust stock
 - `POST /api/inventory/transfer` - Transfer stock
@@ -123,12 +123,12 @@
 
 ### Get All Data
 ```bash
-curl "http://localhost:5000/api/data/all-data?tenant_id=9abbc135-3505-471d-b51e-007ea207b653"
+curl "http://localhost:5000/api/data/all-data?institution_id=9abbc135-3505-471d-b51e-007ea207b653"
 ```
 
 ### Get Dashboard Summary
 ```bash
-curl "http://localhost:5000/api/data/dashboard?tenant_id=9abbc135-3505-471d-b51e-007ea207b653"
+curl "http://localhost:5000/api/data/dashboard?institution_id=9abbc135-3505-471d-b51e-007ea207b653"
 ```
 
 ### Health Check
@@ -139,7 +139,7 @@ curl "http://localhost:5000/api/health"
 ## 🏗️ DATABASE SCHEMA
 
 ### **Core Tables**
-- `tenants` - Multi-tenant support
+- `institutions` - Multi-institution support
 - `users` - User management
 - `roles` - Role-based permissions
 - `event_store` - Event sourcing
@@ -180,7 +180,7 @@ curl "http://localhost:5000/api/health"
 5. **Customize**: Modify the system according to your specific needs
 
 ## 🔐 DEFAULT CREDENTIALS
-- **Tenant ID**: `9abbc135-3505-471d-b51e-007ea207b653`
+- **institution ID**: `9abbc135-3505-471d-b51e-007ea207b653`
 - **Admin Email**: `admin@company.com`
 - **Note**: Update the password hash in the users table
 

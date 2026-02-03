@@ -1,6 +1,6 @@
 const express = require('express');
 const reorderLevelController = require('../controllers/reorderLevelController');
-const { requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
+const { requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ router.get('/',
 // POST /api/reorder-levels
 router.post('/',
   requirePermission('inventory_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('reorder_level_set'),
   reorderLevelController.setReorderLevel
 );

@@ -1,6 +1,6 @@
 const express = require('express');
 const purchaseOrderController = require('../controllers/purchaseOrderController');
-const { requirePermission, validateTenantConsistency, auditLog } = require('../middleware/auth');
+const { requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ router.get('/',
 // POST /api/vendors
 router.post('/',
   requirePermission('vendor_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('vendor_created'),
   purchaseOrderController.createVendor
 );
@@ -27,7 +27,7 @@ router.get('/:id',
 // PUT /api/vendors/:id
 router.put('/:id',
   requirePermission('vendor_management'),
-  validateTenantConsistency,
+  validateInstitutionConsistency,
   auditLog('vendor_updated'),
   purchaseOrderController.updateVendor
 );

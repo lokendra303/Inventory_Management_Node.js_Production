@@ -7,8 +7,8 @@ async function fixBackendIssues() {
     console.log('✅ Database connected');
     
     // Test basic queries
-    const tenants = await db.query('SELECT COUNT(*) as count FROM tenants');
-    console.log(`✅ Tenants: ${tenants[0].count}`);
+    const institutions = await db.query('SELECT COUNT(*) as count FROM institutions');
+    console.log(`✅ institutions: ${institutions[0].count}`);
     
     const users = await db.query('SELECT COUNT(*) as count FROM users');
     console.log(`✅ Users: ${users[0].count}`);

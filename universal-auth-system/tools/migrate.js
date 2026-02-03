@@ -33,9 +33,9 @@ async function migrateExistingProject() {
 
     console.log('\n🎉 Migration completed successfully!');
     console.log('\n📋 What was done:');
-    console.log('✅ Created auth tables (tenants, users, temp_access_tokens)');
-    console.log('✅ Added tenant_id to existing tables');
-    console.log('✅ Migrated existing data to default tenant');
+    console.log('✅ Created auth tables (institutions, users, temp_access_tokens)');
+    console.log('✅ Added institution_id to existing tables');
+    console.log('✅ Migrated existing data to default institution');
     console.log('✅ Added missing fields for full auth support');
 
     console.log('\n🚀 Next steps:');

@@ -14,7 +14,7 @@ async function createCategoryTables() {
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS categories (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         name VARCHAR(255) NOT NULL,
         description TEXT,
         parent_id VARCHAR(36) DEFAULT NULL,
@@ -25,8 +25,8 @@ async function createCategoryTables() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         created_by VARCHAR(36),
         FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL,
-        UNIQUE KEY unique_category_name (tenant_id, name, parent_id),
-        INDEX idx_tenant_active (tenant_id, is_active),
+        UNIQUE KEY unique_category_name (institution_id, name, parent_id),
+        INDEX idx_institution_active (institution_id, is_active),
         INDEX idx_parent (parent_id)
       )
     `);

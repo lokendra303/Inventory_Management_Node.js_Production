@@ -112,4 +112,4 @@ const canViewCategories = user.permissions?.category_view || user.permissions?.a
 - All API endpoints are protected with permission middleware
 - Frontend permission checks are for UX only - backend enforces security
 - Permissions are validated on every API request
-- Tenant isolation ensures users can only manage categories in their tenant
+- institution isolation ensures users can only manage categories in their institution

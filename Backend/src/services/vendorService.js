@@ -20,7 +20,7 @@ class VendorService {
    * Create a new vendor with addresses and bank details
    * Uses database transaction to ensure data consistency
    */
-  async createVendor(tenantId, vendorData, userId) {
+  async createVendor(institutionId, vendorData, userId) {
     return await db.transaction(async (connection) => {
       const vendorId = uuidv4();
       const finalVendorCode = vendorData.vendorCode || `VEN-${Date.now()}`;
@@ -28,11 +28,11 @@ class VendorService {
       // Create core vendor record
       await connection.execute(
         `INSERT INTO vendors 
-         (id, tenant_id, vendor_code, display_name, company_name, salutation, first_name, 
+         (id, institution_id, vendor_code, display_name, company_name, salutation, first_name, 
           last_name, email, work_phone, mobile_phone, pan, gstin, msme_registered, currency, 
           payment_terms, tds, website_url, department, designation, remarks, status) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-        [vendorId, tenantId, finalVendorCode, vendorData.displayName, vendorData.companyName, 
+        [vendorId, institutionId, finalVendorCode, vendorData.displayName, vendorData.companyName, 
          vendorData.salutation, vendorData.firstName, vendorData.lastName, vendorData.email, 
          vendorData.workPhone, vendorData.mobilePhone, vendorData.pan, vendorData.gstin, 
          vendorData.msmeRegistered ? 1 : 0, vendorData.currency, vendorData.paymentTerms, 
@@ -73,7 +73,7 @@ class VendorService {
         );
       }
       
-      logger.info('Vendor created', { vendorId, tenantId, displayName: vendorData.displayName, userId });
+      logger.info('Vendor created', { vendorId, institutionId, displayName: vendorData.displayName, userId });
       return vendorId;
     });
   }
@@ -82,7 +82,7 @@ class VendorService {
    * Update vendor with addresses and bank details
    * Uses replace strategy: deletes existing addresses/bank details and recreates them
    */
-  async updateVendor(tenantId, vendorId, updateData, userId) {
+  async updateVendor(institutionId, vendorId, updateData, userId) {
     return await db.transaction(async (connection) => {
       const updateFields = [];
       const updateValues = [];
@@ -119,10 +119,10 @@ class VendorService {
       // Update core vendor fields if any changes
       if (updateFields.length > 0) {
         updateFields.push('updated_at = NOW()');
-        updateValues.push(tenantId, vendorId);
+        updateValues.push(institutionId, vendorId);
 
         const [result] = await connection.execute(
-          `UPDATE vendors SET ${updateFields.join(', ')} WHERE tenant_id = ? AND id = ?`,
+          `UPDATE vendors SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
           updateValues
         );
 
@@ -167,14 +167,14 @@ class VendorService {
         );
       }
       
-      logger.info('Vendor updated', { vendorId, tenantId, userId });
+      logger.info('Vendor updated', { vendorId, institutionId, userId });
       return true;
     });
   }
 
-  async getVendors(tenantId, filters = {}) {
-    let query = 'SELECT * FROM vendors WHERE tenant_id = ?';
-    const params = [tenantId];
+  async getVendors(institutionId, filters = {}) {
+    let query = 'SELECT * FROM vendors WHERE institution_id = ?';
+    const params = [institutionId];
 
     if (filters.status) {
       query += ' AND status = ?';
@@ -195,10 +195,10 @@ class VendorService {
    * Get vendor with addresses and bank details
    * Joins data from normalized tables and maps to frontend format
    */
-  async getVendor(tenantId, vendorId) {
+  async getVendor(institutionId, vendorId) {
     const vendors = await db.query(
-      'SELECT * FROM vendors WHERE tenant_id = ? AND id = ?',
-      [tenantId, vendorId]
+      'SELECT * FROM vendors WHERE institution_id = ? AND id = ?',
+      [institutionId, vendorId]
     );
 
     if (!vendors[0]) return null;
@@ -245,7 +245,7 @@ class VendorService {
     return vendor;
   }
 
-  async getVendorPerformance(tenantId, vendorId, startDate, endDate) {
+  async getVendorPerformance(institutionId, vendorId, startDate, endDate) {
     // Get delivery performance metrics
     const performance = await db.query(
       `SELECT 
@@ -257,9 +257,9 @@ class VendorService {
        FROM purchase_orders po
        LEFT JOIN goods_receipt_notes grn ON po.id = grn.po_id
        LEFT JOIN purchase_order_lines pol ON po.id = pol.po_id
-       WHERE po.tenant_id = ? AND po.vendor_id = ?
+       WHERE po.institution_id = ? AND po.vendor_id = ?
          AND po.order_date BETWEEN ? AND ?`,
-      [tenantId, vendorId, startDate, endDate]
+      [institutionId, vendorId, startDate, endDate]
     );
 
     const result = performance[0];
@@ -270,7 +270,7 @@ class VendorService {
     return result;
   }
 
-  async getVendorLeadTimes(tenantId, vendorId) {
+  async getVendorLeadTimes(institutionId, vendorId) {
     // Get historical lead times for forecasting
     return await db.query(
       `SELECT 
@@ -285,82 +285,82 @@ class VendorService {
        JOIN purchase_order_lines pol ON po.id = pol.po_id
        JOIN items i ON pol.item_id = i.id
        JOIN goods_receipt_notes grn ON po.id = grn.po_id
-       WHERE po.tenant_id = ? AND po.vendor_id = ?
+       WHERE po.institution_id = ? AND po.vendor_id = ?
          AND grn.status = 'confirmed'
          AND po.created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
        GROUP BY i.id, i.sku, i.name
        HAVING order_count >= 3
        ORDER BY i.name`,
-      [tenantId, vendorId]
+      [institutionId, vendorId]
     );
   }
 
-  async updateVendorLeadTime(tenantId, vendorId, leadTimeDays, userId) {
+  async updateVendorLeadTime(institutionId, vendorId, leadTimeDays, userId) {
     const result = await db.query(
-      'UPDATE vendors SET lead_time_days = ?, updated_at = NOW() WHERE tenant_id = ? AND id = ?',
-      [leadTimeDays, tenantId, vendorId]
+      'UPDATE vendors SET lead_time_days = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [leadTimeDays, institutionId, vendorId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Vendor not found');
     }
 
-    logger.info('Vendor lead time updated', { vendorId, tenantId, leadTimeDays, userId });
+    logger.info('Vendor lead time updated', { vendorId, institutionId, leadTimeDays, userId });
   }
 
   // Bank Details Management
-  async addVendorBankDetails(tenantId, vendorId, bankData) {
+  async addVendorBankDetails(institutionId, vendorId, bankData) {
     const { bankName, accountHolderName, accountNumber, ifscCode, accountType, branchName, swiftCode, iban } = bankData;
     
     const bankDetailId = uuidv4();
 
     await db.query(
       `INSERT INTO vendor_bank_details 
-       (id, tenant_id, vendor_id, bank_name, account_holder_name, account_number, ifsc_code, account_type, branch_name, swift_code, iban, is_primary, status) 
+       (id, institution_id, vendor_id, bank_name, account_holder_name, account_number, ifsc_code, account_type, branch_name, swift_code, iban, is_primary, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [bankDetailId, tenantId, vendorId, bankName, accountHolderName, accountNumber, ifscCode || null, accountType || null, branchName || null, swiftCode || null, iban || null, bankData.isPrimary ? 1 : 0]
+      [bankDetailId, institutionId, vendorId, bankName, accountHolderName, accountNumber, ifscCode || null, accountType || null, branchName || null, swiftCode || null, iban || null, bankData.isPrimary ? 1 : 0]
     );
 
-    logger.info('Vendor bank details added', { bankDetailId, vendorId, tenantId });
+    logger.info('Vendor bank details added', { bankDetailId, vendorId, institutionId });
     return bankDetailId;
   }
 
-  async getVendorBankDetails(tenantId, vendorId) {
+  async getVendorBankDetails(institutionId, vendorId) {
     return await db.query(
-      'SELECT * FROM vendor_bank_details WHERE tenant_id = ? AND vendor_id = ? ORDER BY is_primary DESC, created_at ASC',
-      [tenantId, vendorId]
+      'SELECT * FROM vendor_bank_details WHERE institution_id = ? AND vendor_id = ? ORDER BY is_primary DESC, created_at ASC',
+      [institutionId, vendorId]
     );
   }
 
-  async updateVendorBankDetails(tenantId, bankDetailId, bankData) {
+  async updateVendorBankDetails(institutionId, bankDetailId, bankData) {
     const { bankName, accountHolderName, accountNumber, ifscCode, accountType, branchName, swiftCode, iban } = bankData;
 
     const result = await db.query(
       `UPDATE vendor_bank_details 
        SET bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, account_type = ?, branch_name = ?, swift_code = ?, iban = ?, is_primary = ?, updated_at = NOW()
-       WHERE id = ? AND tenant_id = ?`,
-      [bankName, accountHolderName, accountNumber, ifscCode || null, accountType || null, branchName || null, swiftCode || null, iban || null, bankData.isPrimary ? 1 : 0, bankDetailId, tenantId]
+       WHERE id = ? AND institution_id = ?`,
+      [bankName, accountHolderName, accountNumber, ifscCode || null, accountType || null, branchName || null, swiftCode || null, iban || null, bankData.isPrimary ? 1 : 0, bankDetailId, institutionId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Bank details not found');
     }
 
-    logger.info('Vendor bank details updated', { bankDetailId, tenantId });
+    logger.info('Vendor bank details updated', { bankDetailId, institutionId });
     return true;
   }
 
-  async deleteVendorBankDetails(tenantId, bankDetailId) {
+  async deleteVendorBankDetails(institutionId, bankDetailId) {
     const result = await db.query(
-      'DELETE FROM vendor_bank_details WHERE id = ? AND tenant_id = ?',
-      [bankDetailId, tenantId]
+      'DELETE FROM vendor_bank_details WHERE id = ? AND institution_id = ?',
+      [bankDetailId, institutionId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Bank details not found');
     }
 
-    logger.info('Vendor bank details deleted', { bankDetailId, tenantId });
+    logger.info('Vendor bank details deleted', { bankDetailId, institutionId });
     return true;
   }
 

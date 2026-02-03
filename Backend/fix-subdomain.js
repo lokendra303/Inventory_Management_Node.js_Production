@@ -11,20 +11,20 @@ async function removeSubdomain() {
   try {
     // Check if subdomain column exists
     const [columns] = await connection.execute(
-      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'tenants' AND COLUMN_NAME = 'subdomain'"
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'institutions' AND COLUMN_NAME = 'subdomain'"
     );
 
     if (columns.length > 0) {
       // Remove subdomain column
-      await connection.execute('ALTER TABLE tenants DROP COLUMN subdomain');
+      await connection.execute('ALTER TABLE institutions DROP COLUMN subdomain');
       console.log('Subdomain column removed successfully');
     } else {
       console.log('Subdomain column does not exist');
     }
 
     // Show current table structure
-    const [structure] = await connection.execute('DESCRIBE tenants');
-    console.log('Current tenants table structure:');
+    const [structure] = await connection.execute('DESCRIBE institutions');
+    console.log('Current institutions table structure:');
     console.table(structure);
 
   } catch (error) {

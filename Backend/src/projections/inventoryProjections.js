@@ -3,35 +3,35 @@ const { INVENTORY_EVENTS } = require('../events/inventoryEvents');
 const logger = require('../utils/logger');
 
 class InventoryProjectionService {
-  async handleInventoryEvent(tenantId, eventType, eventData) {
+  async handleInventoryEvent(institutionId, eventType, eventData) {
     const { itemId, warehouseId } = eventData;
 
     try {
       switch (eventType) {
         case INVENTORY_EVENTS.PURCHASE_RECEIVED:
-          await this.handlePurchaseReceived(tenantId, eventData);
+          await this.handlePurchaseReceived(institutionId, eventData);
           break;
         case INVENTORY_EVENTS.SALE_RESERVED:
-          await this.handleSaleReserved(tenantId, eventData);
+          await this.handleSaleReserved(institutionId, eventData);
           break;
         case INVENTORY_EVENTS.SALE_SHIPPED:
-          await this.handleSaleShipped(tenantId, eventData);
+          await this.handleSaleShipped(institutionId, eventData);
           break;
         case INVENTORY_EVENTS.STOCK_ADJUSTED:
-          await this.handleStockAdjusted(tenantId, eventData);
+          await this.handleStockAdjusted(institutionId, eventData);
           break;
         case INVENTORY_EVENTS.TRANSFER_OUT:
-          await this.handleTransferOut(tenantId, eventData);
+          await this.handleTransferOut(institutionId, eventData);
           break;
         case INVENTORY_EVENTS.TRANSFER_IN:
-          await this.handleTransferIn(tenantId, eventData);
+          await this.handleTransferIn(institutionId, eventData);
           break;
         default:
-          logger.warn('Unhandled event type in projection', { eventType, tenantId });
+          logger.warn('Unhandled event type in projection', { eventType, institutionId });
       }
     } catch (error) {
       logger.error('Failed to update inventory projection', {
-        tenantId,
+        institutionId,
         eventType,
         itemId,
         warehouseId,
@@ -41,15 +41,15 @@ class InventoryProjectionService {
     }
   }
 
-  async handlePurchaseReceived(tenantId, eventData) {
+  async handlePurchaseReceived(institutionId, eventData) {
     const { itemId, warehouseId, quantity, unitCost } = eventData;
-    console.log('handlePurchaseReceived called:', { tenantId, itemId, warehouseId, quantity, unitCost });
+    console.log('handlePurchaseReceived called:', { institutionId, itemId, warehouseId, quantity, unitCost });
 
     try {
       // Get current projection using regular query
       const current = await db.query(
-        'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-        [tenantId, itemId, warehouseId]
+        'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+        [institutionId, itemId, warehouseId]
       );
       console.log('Current projection found:', current.length);
 
@@ -62,9 +62,9 @@ class InventoryProjectionService {
 
         const result = await db.query(
           `INSERT INTO inventory_projections 
-           (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
+           (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
            VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
-          [tenantId, itemId, warehouseId, newQuantityOnHand, newQuantityOnHand, newAverageCost, newTotalValue]
+          [institutionId, itemId, warehouseId, newQuantityOnHand, newQuantityOnHand, newAverageCost, newTotalValue]
         );
         console.log('Insert result:', result);
       } else {
@@ -84,22 +84,22 @@ class InventoryProjectionService {
           `UPDATE inventory_projections 
            SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?, 
                last_movement_date = NOW(), version = version + 1
-           WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [newQuantityOnHand, newQuantityAvailable, newAverageCost, newTotalValue, tenantId, itemId, warehouseId]
+           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+          [newQuantityOnHand, newQuantityAvailable, newAverageCost, newTotalValue, institutionId, itemId, warehouseId]
         );
         console.log('Update result:', result);
       }
       
       // Check for low stock alerts
       const reorderService = require('../services/reorderLevelService');
-      await reorderService.checkLowStock(tenantId, itemId, warehouseId);
+      await reorderService.checkLowStock(institutionId, itemId, warehouseId);
     } catch (error) {
       console.error('Error in handlePurchaseReceived:', error);
       throw error;
     }
   }
 
-  async handleSaleReserved(tenantId, eventData) {
+  async handleSaleReserved(institutionId, eventData) {
     const { itemId, warehouseId, quantity } = eventData;
 
     await db.query(
@@ -108,12 +108,12 @@ class InventoryProjectionService {
            quantity_available = quantity_available - ?,
            last_movement_date = NOW(),
            version = version + 1
-       WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, tenantId, itemId, warehouseId]
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+      [quantity, quantity, institutionId, itemId, warehouseId]
     );
   }
 
-  async handleSaleShipped(tenantId, eventData) {
+  async handleSaleShipped(institutionId, eventData) {
     const { itemId, warehouseId, quantity } = eventData;
 
     await db.query(
@@ -123,26 +123,26 @@ class InventoryProjectionService {
            total_value = quantity_on_hand * average_cost,
            last_movement_date = NOW(),
            version = version + 1
-       WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, tenantId, itemId, warehouseId]
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+      [quantity, quantity, institutionId, itemId, warehouseId]
     );
   }
 
-  async handleStockAdjusted(tenantId, eventData) {
+  async handleStockAdjusted(institutionId, eventData) {
     const { itemId, warehouseId, quantityChange } = eventData;
 
     const current = await db.query(
-      'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-      [tenantId, itemId, warehouseId]
+      'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+      [institutionId, itemId, warehouseId]
     );
 
     if (current.length === 0) {
       if (quantityChange > 0) {
         await db.query(
           `INSERT INTO inventory_projections 
-           (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+           (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
            VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
-          [tenantId, itemId, warehouseId, quantityChange, quantityChange]
+          [institutionId, itemId, warehouseId, quantityChange, quantityChange]
         );
       }
     } else {
@@ -155,13 +155,13 @@ class InventoryProjectionService {
         `UPDATE inventory_projections 
          SET quantity_on_hand = ?, quantity_available = ?, total_value = ?,
              last_movement_date = NOW(), version = version + 1
-         WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-        [newQuantityOnHand, newQuantityAvailable, newTotalValue, tenantId, itemId, warehouseId]
+         WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+        [newQuantityOnHand, newQuantityAvailable, newTotalValue, institutionId, itemId, warehouseId]
       );
     }
   }
 
-  async handleTransferOut(tenantId, eventData) {
+  async handleTransferOut(institutionId, eventData) {
     const { itemId, warehouseId, quantity } = eventData;
 
     await db.query(
@@ -171,25 +171,25 @@ class InventoryProjectionService {
            total_value = (quantity_on_hand - ?) * average_cost,
            last_movement_date = NOW(),
            version = version + 1
-       WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, quantity, tenantId, itemId, warehouseId]
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+      [quantity, quantity, quantity, institutionId, itemId, warehouseId]
     );
   }
 
-  async handleTransferIn(tenantId, eventData) {
+  async handleTransferIn(institutionId, eventData) {
     const { itemId, warehouseId, quantity } = eventData;
 
     const current = await db.query(
-      'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-      [tenantId, itemId, warehouseId]
+      'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+      [institutionId, itemId, warehouseId]
     );
 
     if (current.length === 0) {
       await db.query(
         `INSERT INTO inventory_projections 
-         (id, tenant_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+         (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
          VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
-        [tenantId, itemId, warehouseId, quantity, quantity]
+        [institutionId, itemId, warehouseId, quantity, quantity]
       );
     } else {
       await db.query(
@@ -199,38 +199,38 @@ class InventoryProjectionService {
              total_value = (quantity_on_hand + ?) * average_cost,
              last_movement_date = NOW(),
              version = version + 1
-         WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-        [quantity, quantity, quantity, tenantId, itemId, warehouseId]
+         WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+        [quantity, quantity, quantity, institutionId, itemId, warehouseId]
       );
     }
   }
 
-  async getInventoryProjection(tenantId, itemId, warehouseId) {
+  async getInventoryProjection(institutionId, itemId, warehouseId) {
     const result = await db.query(
-      'SELECT * FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-      [tenantId, itemId, warehouseId]
+      'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+      [institutionId, itemId, warehouseId]
     );
     return result[0] || null;
   }
 
-  async getWarehouseInventory(tenantId, warehouseId) {
+  async getWarehouseInventory(institutionId, warehouseId) {
     return await db.query(
       `SELECT ip.*, i.sku, i.name as item_name, i.unit
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
-       WHERE ip.tenant_id = ? AND ip.warehouse_id = ?
+       WHERE ip.institution_id = ? AND ip.warehouse_id = ?
        ORDER BY i.name`,
-      [tenantId, warehouseId]
+      [institutionId, warehouseId]
     );
   }
 
-  async getTenantInventory(tenantId, limit = 100, offset = 0, warehouseId = null, accessibleWarehouseIds = []) {
+  async getInstitutionInventory(institutionId, limit = 100, offset = 0, warehouseId = null, accessibleWarehouseIds = []) {
     let query = `SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
-       WHERE ip.tenant_id = ?`;
-    const params = [tenantId];
+       WHERE ip.institution_id = ?`;
+    const params = [institutionId];
 
     // Filter by specific warehouse if provided
     if (warehouseId) {
@@ -250,13 +250,13 @@ class InventoryProjectionService {
     return await db.query(query, params);
   }
 
-  async getLowStockItems(tenantId, threshold = 10, warehouseId = null, accessibleWarehouseIds = []) {
+  async getLowStockItems(institutionId, threshold = 10, warehouseId = null, accessibleWarehouseIds = []) {
     let query = `SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
-       WHERE ip.tenant_id = ? AND ip.quantity_available <= ?`;
-    const params = [tenantId, threshold];
+       WHERE ip.institution_id = ? AND ip.quantity_available <= ?`;
+    const params = [institutionId, threshold];
 
     // Filter by specific warehouse if provided
     if (warehouseId) {
@@ -276,19 +276,19 @@ class InventoryProjectionService {
     return await db.query(query, params);
   }
 
-  async getDashboardStats(tenantId) {
+  async getDashboardStats(institutionId) {
     const [totalValueResult, totalItemsResult, lowStockResult] = await Promise.all([
       db.query(
-        'SELECT SUM(total_value) as total_value FROM inventory_projections WHERE tenant_id = ?',
-        [tenantId]
+        'SELECT SUM(total_value) as total_value FROM inventory_projections WHERE institution_id = ?',
+        [institutionId]
       ),
       db.query(
-        'SELECT COUNT(*) as total_items FROM items WHERE tenant_id = ? AND status = "active"',
-        [tenantId]
+        'SELECT COUNT(*) as total_items FROM items WHERE institution_id = ? AND status = "active"',
+        [institutionId]
       ),
       db.query(
-        'SELECT COUNT(*) as low_stock_count FROM inventory_projections WHERE tenant_id = ? AND quantity_available <= 10',
-        [tenantId]
+        'SELECT COUNT(*) as low_stock_count FROM inventory_projections WHERE institution_id = ? AND quantity_available <= 10',
+        [institutionId]
       )
     ]);
 
@@ -299,25 +299,25 @@ class InventoryProjectionService {
     };
   }
 
-  async rebuildProjection(tenantId, itemId, warehouseId) {
+  async rebuildProjection(institutionId, itemId, warehouseId) {
     // This method rebuilds a projection from events - useful for data recovery
     const eventStore = require('../events/eventStore');
     const aggregateId = `${itemId}:${warehouseId}`;
     
-    const events = await eventStore.getEvents(tenantId, 'inventory', aggregateId);
+    const events = await eventStore.getEvents(institutionId, 'inventory', aggregateId);
     
     // Reset projection
     await db.query(
-      'DELETE FROM inventory_projections WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-      [tenantId, itemId, warehouseId]
+      'DELETE FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+      [institutionId, itemId, warehouseId]
     );
 
     // Replay events
     for (const event of events) {
-      await this.handleInventoryEvent(tenantId, event.event_type, event.event_data);
+      await this.handleInventoryEvent(institutionId, event.event_type, event.event_data);
     }
 
-    logger.info('Projection rebuilt', { tenantId, itemId, warehouseId, eventCount: events.length });
+    logger.info('Projection rebuilt', { institutionId, itemId, warehouseId, eventCount: events.length });
   }
 }
 

@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 const { Header: AntHeader } = Layout;
 const { Text } = Typography;
 
-const Header = ({ collapsed, setCollapsed, user }) => {
+const Header = ({ collapsed, setCollapsed, user, isMobile }) => {
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -31,7 +31,7 @@ const Header = ({ collapsed, setCollapsed, user }) => {
 
   return (
     <AntHeader style={{ 
-      padding: '0 24px', 
+      padding: isMobile ? '0 16px' : '0 24px', 
       background: '#fff',
       display: 'flex',
       alignItems: 'center',
@@ -54,37 +54,44 @@ const Header = ({ collapsed, setCollapsed, user }) => {
             justifyContent: 'center'
           }}
         />
+        {isMobile && (
+          <Text strong style={{ marginLeft: '12px', fontSize: '16px' }}>
+            IMS SEPCUNE
+          </Text>
+        )}
       </div>
       
-      <Space size="middle" align="center">
-        <div style={{ 
-          textAlign: 'right', 
-          lineHeight: '1.2',
-          marginRight: '8px'
-        }}>
+      <Space size={isMobile ? "small" : "middle"} align="center">
+        {!isMobile && (
           <div style={{ 
-            fontSize: '14px', 
-            fontWeight: '600', 
-            color: '#262626',
-            marginBottom: '2px'
+            textAlign: 'right', 
+            lineHeight: '1.2',
+            marginRight: '8px'
           }}>
-            {user?.firstName} {user?.lastName}
+            <div style={{ 
+              fontSize: '14px', 
+              fontWeight: '600', 
+              color: '#262626',
+              marginBottom: '2px'
+            }}>
+              {user?.firstName} {user?.lastName}
+            </div>
+            <div style={{ 
+              fontSize: '12px', 
+              color: '#8c8c8c',
+              textTransform: 'capitalize'
+            }}>
+              {user?.role}
+            </div>
           </div>
-          <div style={{ 
-            fontSize: '12px', 
-            color: '#8c8c8c',
-            textTransform: 'capitalize'
-          }}>
-            {user?.role}
-          </div>
-        </div>
+        )}
         <Dropdown 
           menu={{ items: userMenuItems }} 
           placement="bottomRight"
           trigger={['click']}
         >
           <Avatar 
-            size={40}
+            size={isMobile ? 32 : 40}
             icon={<UserOutlined />} 
             style={{ 
               cursor: 'pointer',

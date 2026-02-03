@@ -22,7 +22,7 @@ async function fixVendorsTable() {
     await connection.execute(`
       CREATE TABLE vendors (
         id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
+        institution_id VARCHAR(36) NOT NULL,
         vendor_code VARCHAR(50),
         display_name VARCHAR(255) NOT NULL,
         company_name VARCHAR(255),
@@ -60,8 +60,8 @@ async function fixVendorsTable() {
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_tenant_status (tenant_id, status),
-        INDEX idx_tenant_display_name (tenant_id, display_name)
+        INDEX idx_institution_status (institution_id, status),
+        INDEX idx_institution_display_name (institution_id, display_name)
       )
     `);
 

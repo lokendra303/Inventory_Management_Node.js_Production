@@ -5,7 +5,7 @@ class CategoryController {
   async createCategory(req, res) {
     try {
       const categoryId = await categoryService.createCategory(
-        req.tenantId,
+        req.institutionId,
         req.body,
         req.user.userId
       );
@@ -18,7 +18,7 @@ class CategoryController {
     } catch (error) {
       logger.error('Category creation failed', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         userId: req.user.userId 
       });
       res.status(400).json({
@@ -34,14 +34,14 @@ class CategoryController {
         parentId: req.query.parentId
       };
       
-      const categories = await categoryService.getCategories(req.tenantId, filters);
+      const categories = await categoryService.getCategories(req.institutionId, filters);
       
       res.json({
         success: true,
         data: categories
       });
     } catch (error) {
-      logger.error('Failed to get categories', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get categories', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -51,14 +51,14 @@ class CategoryController {
 
   async getCategoryTree(req, res) {
     try {
-      const tree = await categoryService.getCategoryTree(req.tenantId);
+      const tree = await categoryService.getCategoryTree(req.institutionId);
       
       res.json({
         success: true,
         data: tree
       });
     } catch (error) {
-      logger.error('Failed to get category tree', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get category tree', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -69,7 +69,7 @@ class CategoryController {
   async getCategory(req, res) {
     try {
       const { id } = req.params;
-      const category = await categoryService.getCategoryById(req.tenantId, id);
+      const category = await categoryService.getCategoryById(req.institutionId, id);
       
       if (!category) {
         return res.status(404).json({
@@ -83,7 +83,7 @@ class CategoryController {
         data: category
       });
     } catch (error) {
-      logger.error('Failed to get category', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get category', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -94,7 +94,7 @@ class CategoryController {
   async updateCategory(req, res) {
     try {
       const { categoryId } = req.params;
-      await categoryService.updateCategory(req.tenantId, categoryId, req.body, req.user.userId);
+      await categoryService.updateCategory(req.institutionId, categoryId, req.body, req.user.userId);
       
       res.json({
         success: true,
@@ -103,7 +103,7 @@ class CategoryController {
     } catch (error) {
       logger.error('Failed to update category', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         categoryId: req.params.categoryId 
       });
       res.status(400).json({
@@ -116,7 +116,7 @@ class CategoryController {
   async deleteCategory(req, res) {
     try {
       const { categoryId } = req.params;
-      await categoryService.deleteCategory(req.tenantId, categoryId, req.user.userId);
+      await categoryService.deleteCategory(req.institutionId, categoryId, req.user.userId);
       
       res.json({
         success: true,
@@ -125,7 +125,7 @@ class CategoryController {
     } catch (error) {
       logger.error('Failed to delete category', { 
         error: error.message, 
-        tenantId: req.tenantId,
+        institutionId: req.institutionId,
         categoryId: req.params.categoryId 
       });
       res.status(400).json({

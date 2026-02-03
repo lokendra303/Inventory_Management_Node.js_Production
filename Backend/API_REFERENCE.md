@@ -40,7 +40,7 @@ Authorization: Bearer <jwt_token>
 ### Authentication
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| POST | `/api/auth/register` | Register new tenant | No |
+| POST | `/api/auth/register` | Register new institution | No |
 | POST | `/api/auth/login` | User login | No |
 | POST | `/api/auth/refresh` | Refresh token | Yes |
 | POST | `/api/auth/temp-login` | Temporary access login | No |
@@ -158,12 +158,12 @@ Authorization: Bearer <jwt_token>
 ### Settings
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| GET | `/api/settings` | Get tenant settings | Yes |
-| PUT | `/api/settings` | Update tenant settings | Yes |
+| GET | `/api/settings` | Get institution settings | Yes |
+| PUT | `/api/settings` | Update institution settings | Yes |
 
 ## Request Examples
 
-### Register Tenant
+### Register institution
 ```http
 POST /api/auth/register
 Content-Type: application/json
@@ -235,7 +235,7 @@ Content-Type: application/json
 
 ## Rate Limits
 - 100 requests per 15 minutes (global)
-- 1000 requests per 15 minutes (per tenant)
+- 1000 requests per 15 minutes (per institution)
 - 10 requests per minute (auth endpoints)
 
 ## Pagination

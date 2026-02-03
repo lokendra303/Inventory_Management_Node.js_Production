@@ -96,7 +96,7 @@ paths:
     post:
       tags:
         - Authentication
-      summary: Register new tenant
+      summary: Register new institution
       security: []
       requestBody:
         required: true
@@ -126,7 +126,7 @@ paths:
                   type: string
       responses:
         '201':
-          description: Tenant created successfully
+          description: institution created successfully
           content:
             application/json:
               schema:

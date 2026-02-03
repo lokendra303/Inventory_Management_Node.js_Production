@@ -33,7 +33,7 @@ async function verifyTables() {
       // Show key columns
       const keyColumns = columns.filter(col => 
         col.Field === 'id' || 
-        col.Field === 'tenant_id' || 
+        col.Field === 'institution_id' || 
         col.Field.includes('_id') ||
         col.Key === 'PRI' ||
         col.Key === 'UNI'

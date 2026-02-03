@@ -16,7 +16,7 @@ async function fixAllVendorIssues() {
     console.log('1. Checking vendors table structure...');
     const [vendorColumns] = await connection.execute("DESCRIBE vendors");
     const requiredColumns = [
-      'id', 'tenant_id', 'vendor_code', 'display_name', 'company_name',
+      'id', 'institution_id', 'vendor_code', 'display_name', 'company_name',
       'salutation', 'first_name', 'last_name', 'email', 'work_phone',
       'mobile_phone', 'pan', 'gstin', 'msme_registered', 'currency',
       'payment_terms', 'tds', 'website_url', 'department', 'designation',
@@ -113,13 +113,13 @@ async function fixAllVendorIssues() {
 
     // 2. Check if we have test data
     console.log('\n2. Checking test data...');
-    const [tenants] = await connection.execute("SELECT id FROM tenants LIMIT 1");
-    if (tenants.length === 0) {
-      console.log('   ❌ No tenants found - please run setup-test-data.js first');
+    const [institutions] = await connection.execute("SELECT id FROM institutions LIMIT 1");
+    if (institutions.length === 0) {
+      console.log('   ❌ No institutions found - please run setup-test-data.js first');
       return;
     }
-    const tenantId = tenants[0].id;
-    console.log(`   ✅ Using tenant ID: ${tenantId}`);
+    const institutionId = institutions[0].id;
+    console.log(`   ✅ Using institution ID: ${institutionId}`);
 
     // 3. Test vendor creation
     console.log('\n3. Testing vendor creation...');
@@ -142,8 +142,8 @@ async function fixAllVendorIssues() {
 
     // Clean up any existing test vendor
     await connection.execute(
-      "DELETE FROM vendors WHERE tenant_id = ? AND display_name = ?",
-      [tenantId, testVendorData.displayName]
+      "DELETE FROM vendors WHERE institution_id = ? AND display_name = ?",
+      [institutionId, testVendorData.displayName]
     );
 
     // Test insert
@@ -152,13 +152,13 @@ async function fixAllVendorIssues() {
 
     await connection.execute(`
       INSERT INTO vendors (
-        id, tenant_id, vendor_code, display_name, company_name, salutation,
+        id, institution_id, vendor_code, display_name, company_name, salutation,
         first_name, last_name, email, work_phone, mobile_phone, currency,
         payment_terms, msme_registered, billing_city, billing_state,
         billing_country, status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
     `, [
-      testVendorId, tenantId, vendorCode, testVendorData.displayName,
+      testVendorId, institutionId, vendorCode, testVendorData.displayName,
       testVendorData.companyName, testVendorData.salutation,
       testVendorData.firstName, testVendorData.lastName, testVendorData.email,
       testVendorData.workPhone, testVendorData.mobilePhone, testVendorData.currency,
@@ -172,8 +172,8 @@ async function fixAllVendorIssues() {
     // 4. Test vendor retrieval
     console.log('\n4. Testing vendor retrieval...');
     const [vendors] = await connection.execute(
-      "SELECT * FROM vendors WHERE tenant_id = ? AND id = ?",
-      [tenantId, testVendorId]
+      "SELECT * FROM vendors WHERE institution_id = ? AND id = ?",
+      [institutionId, testVendorId]
     );
 
     if (vendors.length > 0) {
@@ -185,8 +185,8 @@ async function fixAllVendorIssues() {
 
     // 5. Clean up test data
     await connection.execute(
-      "DELETE FROM vendors WHERE tenant_id = ? AND id = ?",
-      [tenantId, testVendorId]
+      "DELETE FROM vendors WHERE institution_id = ? AND id = ?",
+      [institutionId, testVendorId]
     );
     console.log('   ✅ Test vendor cleaned up');
 

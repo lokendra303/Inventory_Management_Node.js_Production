@@ -5,7 +5,7 @@ class RoleController {
   async createRole(req, res) {
     try {
       const { name, permissions } = req.body;
-      const roleId = await roleService.createRole(req.tenantId, name, permissions);
+      const roleId = await roleService.createRole(req.institutionId, name, permissions);
       
       res.status(201).json({
         success: true,
@@ -13,7 +13,7 @@ class RoleController {
         data: { roleId }
       });
     } catch (error) {
-      logger.error('Role creation failed', { error: error.message, tenantId: req.tenantId });
+      logger.error('Role creation failed', { error: error.message, institutionId: req.institutionId });
       res.status(400).json({
         success: false,
         error: error.message
@@ -23,14 +23,14 @@ class RoleController {
 
   async getRoles(req, res) {
     try {
-      const roles = await roleService.getTenantRoles(req.tenantId);
+      const roles = await roleService.getinstitutionRoles(req.institutionId);
       
       res.json({
         success: true,
         data: roles
       });
     } catch (error) {
-      logger.error('Failed to get roles', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to get roles', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -43,14 +43,14 @@ class RoleController {
       const { roleId } = req.params;
       const { name, permissions } = req.body;
       
-      await roleService.updateRole(req.tenantId, roleId, name, permissions);
+      await roleService.updateRole(req.institutionId, roleId, name, permissions);
       
       res.json({
         success: true,
         message: 'Role updated successfully'
       });
     } catch (error) {
-      logger.error('Failed to update role', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to update role', { error: error.message, institutionId: req.institutionId });
       res.status(400).json({
         success: false,
         error: error.message
@@ -62,7 +62,7 @@ class RoleController {
     try {
       const { roleId } = req.params;
       
-      const newStatus = await roleService.toggleRoleStatus(req.tenantId, roleId);
+      const newStatus = await roleService.toggleRoleStatus(req.institutionId, roleId);
       
       res.json({
         success: true,
@@ -70,7 +70,7 @@ class RoleController {
         data: { status: newStatus }
       });
     } catch (error) {
-      logger.error('Failed to toggle role status', { error: error.message, tenantId: req.tenantId });
+      logger.error('Failed to toggle role status', { error: error.message, institutionId: req.institutionId });
       res.status(400).json({
         success: false,
         error: error.message

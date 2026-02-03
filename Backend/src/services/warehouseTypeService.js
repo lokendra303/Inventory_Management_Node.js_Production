@@ -3,23 +3,23 @@ const db = require('../database/connection');
 const logger = require('../utils/logger');
 
 class WarehouseTypeService {
-  async createWarehouseType(tenantId, typeData, userId) {
+  async createWarehouseType(institutionId, typeData, userId) {
     const { name, description } = typeData;
     const typeId = uuidv4();
 
     await db.query(
-      `INSERT INTO warehouse_types (id, tenant_id, name, description, status) 
+      `INSERT INTO warehouse_types (id, institution_id, name, description, status) 
        VALUES (?, ?, ?, ?, 'active')`,
-      [typeId, tenantId, name, description]
+      [typeId, institutionId, name, description]
     );
 
-    logger.info('Warehouse type created', { typeId, tenantId, name, userId });
+    logger.info('Warehouse type created', { typeId, institutionId, name, userId });
     return typeId;
   }
 
-  async getWarehouseTypes(tenantId, filters = {}) {
-    let query = 'SELECT * FROM warehouse_types WHERE tenant_id = ?';
-    const params = [tenantId];
+  async getWarehouseTypes(institutionId, filters = {}) {
+    let query = 'SELECT * FROM warehouse_types WHERE institution_id = ?';
+    const params = [institutionId];
 
     if (filters.status) {
       query += ' AND status = ?';
@@ -31,7 +31,7 @@ class WarehouseTypeService {
     return await db.query(query, params);
   }
 
-  async updateWarehouseType(tenantId, typeId, updateData, userId) {
+  async updateWarehouseType(institutionId, typeId, updateData, userId) {
     const { name, description, status } = updateData;
     const updateFields = [];
     const updateValues = [];
@@ -54,10 +54,10 @@ class WarehouseTypeService {
     }
 
     updateFields.push('updated_at = NOW()');
-    updateValues.push(tenantId, typeId);
+    updateValues.push(institutionId, typeId);
 
     const result = await db.query(
-      `UPDATE warehouse_types SET ${updateFields.join(', ')} WHERE tenant_id = ? AND id = ?`,
+      `UPDATE warehouse_types SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
       updateValues
     );
 
@@ -65,7 +65,7 @@ class WarehouseTypeService {
       throw new Error('Warehouse type not found');
     }
 
-    logger.info('Warehouse type updated', { typeId, tenantId, userId });
+    logger.info('Warehouse type updated', { typeId, institutionId, userId });
     return typeId;
   }
 }

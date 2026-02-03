@@ -1,10 +1,10 @@
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
 
-// Extract tenant context from request
-const extractTenantContext = async (req, res, next) => {
+// Extract institution context from request
+const extractInstitutionContext = async (req, res, next) => {
   try {
-    let tenantId = null;
+    let institutionId = null;
     let subdomain = null;
 
     // Method 1: From JWT token
@@ -13,7 +13,7 @@ const extractTenantContext = async (req, res, next) => {
       const token = authHeader.substring(7);
       try {
         const decoded = await authService.verifyToken(token);
-        tenantId = decoded.tenantId;
+        institutionId = decoded.institutionId;
         req.user = decoded;
       } catch (error) {
         // Check if token is expired
@@ -25,34 +25,34 @@ const extractTenantContext = async (req, res, next) => {
     }
 
     // Method 2: From subdomain
-    if (!tenantId) {
+    if (!institutionId) {
       const host = req.get('host');
       if (host) {
         const parts = host.split('.');
         if (parts.length > 2) {
           subdomain = parts[0];
-          const tenant = await authService.getTenantBySubdomain(subdomain);
-          if (tenant) {
-            tenantId = tenant.id;
-            req.tenant = tenant;
+          const institution = await authService.getInstitutionByEmail(subdomain);
+          if (institution) {
+            institutionId = institution.id;
+            req.institution = institution;
           }
         }
       }
     }
 
     // Method 3: From header
-    if (!tenantId) {
-      tenantId = req.headers['x-tenant-id'];
+    if (!institutionId) {
+      institutionId = req.headers['x-institution-id'];
     }
 
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant context required' });
+    if (!institutionId) {
+      return res.status(400).json({ error: 'Institution context required' });
     }
 
-    req.tenantId = tenantId;
+    req.institutionId = institutionId;
     next();
   } catch (error) {
-    logger.error('Error extracting tenant context', { error: error.message });
+    logger.error('Error extracting institution context', { error: error.message });
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -69,12 +69,12 @@ const requireAuth = async (req, res, next) => {
     const decoded = await authService.verifyToken(token);
     
     req.user = decoded;
-    req.tenantId = decoded.tenantId;
+    req.institutionId = decoded.institutionId;
     
     // Debug logging
     logger.info('Authentication successful', {
       userId: decoded.userId,
-      tenantId: decoded.tenantId,
+      institutionId: decoded.institutionId,
       path: req.path,
       method: req.method
     });
@@ -113,7 +113,7 @@ const requirePermission = (permission) => {
 
     logger.warn('Permission denied', {
       userId: req.user.userId,
-      tenantId: req.tenantId,
+      institutionId: req.institutionId,
       requiredPermission: permission,
       userPermissions: Object.keys(userPermissions),
       path: req.path,
@@ -151,47 +151,47 @@ const requireWarehouseAccess = (req, res, next) => {
   res.status(403).json({ error: 'Warehouse access denied' });
 };
 
-// Validate tenant consistency
-const validateTenantConsistency = (req, res, next) => {
-  // Ensure all tenant-related data in request matches the authenticated tenant
-  const authenticatedTenantId = req.tenantId;
+// Validate institution consistency
+const validateInstitutionConsistency = (req, res, next) => {
+  // Ensure all institution-related data in request matches the authenticated institution
+  const authenticatedInstitutionId = req.institutionId;
   
   // Check body
-  if (req.body && req.body.tenantId && req.body.tenantId !== authenticatedTenantId) {
-    return res.status(400).json({ error: 'Tenant ID mismatch' });
+  if (req.body && req.body.institutionId && req.body.institutionId !== authenticatedInstitutionId) {
+    return res.status(400).json({ error: 'Institution ID mismatch' });
   }
 
   // Check params
-  if (req.params && req.params.tenantId && req.params.tenantId !== authenticatedTenantId) {
-    return res.status(400).json({ error: 'Tenant ID mismatch' });
+  if (req.params && req.params.institutionId && req.params.institutionId !== authenticatedInstitutionId) {
+    return res.status(400).json({ error: 'Institution ID mismatch' });
   }
 
-  // Ensure tenant ID is set in request body for database operations
+  // Ensure institution ID is set in request body for database operations
   if (req.body && typeof req.body === 'object') {
-    req.body.tenantId = authenticatedTenantId;
+    req.body.institutionId = authenticatedInstitutionId;
   }
 
   next();
 };
 
-// Rate limiting per tenant
-const createTenantRateLimit = (windowMs, max) => {
+// Rate limiting per institution
+const createInstitutionRateLimit = (windowMs, max) => {
   const rateLimitStore = new Map();
 
   return (req, res, next) => {
-    const tenantId = req.tenantId;
-    if (!tenantId) {
+    const institutionId = req.institutionId;
+    if (!institutionId) {
       return next();
     }
 
     const now = Date.now();
     const windowStart = now - windowMs;
     
-    if (!rateLimitStore.has(tenantId)) {
-      rateLimitStore.set(tenantId, []);
+    if (!rateLimitStore.has(institutionId)) {
+      rateLimitStore.set(institutionId, []);
     }
 
-    const requests = rateLimitStore.get(tenantId);
+    const requests = rateLimitStore.get(institutionId);
     
     // Remove old requests
     const validRequests = requests.filter(timestamp => timestamp > windowStart);
@@ -204,7 +204,7 @@ const createTenantRateLimit = (windowMs, max) => {
     }
 
     validRequests.push(now);
-    rateLimitStore.set(tenantId, validRequests);
+    rateLimitStore.set(institutionId, validRequests);
     
     next();
   };
@@ -220,7 +220,7 @@ const auditLog = (action) => {
       setImmediate(() => {
         logger.info('Audit log', {
           action,
-          tenantId: req.tenantId,
+          institutionId: req.institutionId,
           userId: req.user?.userId,
           method: req.method,
           path: req.path,
@@ -238,11 +238,11 @@ const auditLog = (action) => {
 };
 
 module.exports = {
-  extractTenantContext,
+  extractInstitutionContext,
   requireAuth,
   requirePermission,
   requireWarehouseAccess,
-  validateTenantConsistency,
-  createTenantRateLimit,
+  validateInstitutionConsistency,
+  createInstitutionRateLimit,
   auditLog
 };

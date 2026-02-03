@@ -3,14 +3,14 @@ const db = require('../database/connection');
 const logger = require('../utils/logger');
 
 class ReorderLevelService {
-  async setReorderLevel(tenantId, data, userId) {
+  async setReorderLevel(institutionId, data, userId) {
     const { itemId, warehouseId, reorderLevel, reorderQuantity, maxStockLevel } = data;
     
     try {
       // Check if reorder level already exists
       const existing = await db.query(
-        'SELECT id FROM reorder_levels WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?',
-        [tenantId, itemId, warehouseId]
+        'SELECT id FROM reorder_levels WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+        [institutionId, itemId, warehouseId]
       );
 
       if (existing.length > 0) {
@@ -18,31 +18,31 @@ class ReorderLevelService {
         await db.query(
           `UPDATE reorder_levels 
            SET reorder_level = ?, reorder_quantity = ?, max_stock_level = ?, updated_at = NOW()
-           WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [reorderLevel, reorderQuantity, maxStockLevel, tenantId, itemId, warehouseId]
+           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+          [reorderLevel, reorderQuantity, maxStockLevel, institutionId, itemId, warehouseId]
         );
       } else {
         // Create new
         const id = uuidv4();
         await db.query(
           `INSERT INTO reorder_levels 
-           (id, tenant_id, item_id, warehouse_id, reorder_level, reorder_quantity, max_stock_level)
+           (id, institution_id, item_id, warehouse_id, reorder_level, reorder_quantity, max_stock_level)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [id, tenantId, itemId, warehouseId, reorderLevel, reorderQuantity, maxStockLevel]
+          [id, institutionId, itemId, warehouseId, reorderLevel, reorderQuantity, maxStockLevel]
         );
       }
 
       // Check if this creates a low stock alert
-      await this.checkLowStock(tenantId, itemId, warehouseId);
+      await this.checkLowStock(institutionId, itemId, warehouseId);
 
-      logger.info('Reorder level set', { tenantId, itemId, warehouseId, reorderLevel, userId });
+      logger.info('Reorder level set', { institutionId, itemId, warehouseId, reorderLevel, userId });
     } catch (error) {
-      logger.error('Failed to set reorder level', { tenantId, itemId, warehouseId, error: error.message });
+      logger.error('Failed to set reorder level', { institutionId, itemId, warehouseId, error: error.message });
       throw error;
     }
   }
 
-  async checkLowStock(tenantId, itemId, warehouseId) {
+  async checkLowStock(institutionId, itemId, warehouseId) {
     try {
       // Get current stock and reorder level
       const [stockData] = await db.query(
@@ -51,8 +51,8 @@ class ReorderLevelService {
          JOIN reorder_levels rl ON ip.item_id = rl.item_id AND ip.warehouse_id = rl.warehouse_id
          JOIN items i ON ip.item_id = i.id
          JOIN warehouses w ON ip.warehouse_id = w.id
-         WHERE ip.tenant_id = ? AND ip.item_id = ? AND ip.warehouse_id = ? AND rl.is_active = TRUE`,
-        [tenantId, itemId, warehouseId]
+         WHERE ip.institution_id = ? AND ip.item_id = ? AND ip.warehouse_id = ? AND rl.is_active = TRUE`,
+        [institutionId, itemId, warehouseId]
       );
 
       if (stockData.length > 0) {
@@ -61,8 +61,8 @@ class ReorderLevelService {
         if (quantity_available <= reorder_level) {
           // Check if alert already exists
           const existingAlert = await db.query(
-            'SELECT id FROM low_stock_alerts WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ? AND status = "active"',
-            [tenantId, itemId, warehouseId]
+            'SELECT id FROM low_stock_alerts WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND status = "active"',
+            [institutionId, itemId, warehouseId]
           );
 
           if (existingAlert.length === 0) {
@@ -70,56 +70,56 @@ class ReorderLevelService {
             const alertId = uuidv4();
             await db.query(
               `INSERT INTO low_stock_alerts 
-               (id, tenant_id, item_id, warehouse_id, current_stock, reorder_level)
+               (id, institution_id, item_id, warehouse_id, current_stock, reorder_level)
                VALUES (?, ?, ?, ?, ?, ?)`,
-              [alertId, tenantId, itemId, warehouseId, quantity_available, reorder_level]
+              [alertId, institutionId, itemId, warehouseId, quantity_available, reorder_level]
             );
 
             logger.warn('Low stock alert created', { 
-              tenantId, itemId, warehouseId, item_name, warehouse_name, 
+              institutionId, itemId, warehouseId, item_name, warehouse_name, 
               current_stock: quantity_available, reorder_level 
             });
           }
         } else {
           // Resolve existing alerts if stock is above reorder level
           await db.query(
-            'UPDATE low_stock_alerts SET status = "resolved", resolved_at = NOW() WHERE tenant_id = ? AND item_id = ? AND warehouse_id = ? AND status = "active"',
-            [tenantId, itemId, warehouseId]
+            'UPDATE low_stock_alerts SET status = "resolved", resolved_at = NOW() WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND status = "active"',
+            [institutionId, itemId, warehouseId]
           );
         }
       }
     } catch (error) {
-      logger.error('Failed to check low stock', { tenantId, itemId, warehouseId, error: error.message });
+      logger.error('Failed to check low stock', { institutionId, itemId, warehouseId, error: error.message });
     }
   }
 
-  async getLowStockAlerts(tenantId, status = 'active') {
+  async getLowStockAlerts(institutionId, status = 'active') {
     return await db.query(
       `SELECT lsa.*, i.sku, i.name as item_name, w.name as warehouse_name, rl.reorder_quantity
        FROM low_stock_alerts lsa
        JOIN items i ON lsa.item_id = i.id
        JOIN warehouses w ON lsa.warehouse_id = w.id
        LEFT JOIN reorder_levels rl ON lsa.item_id = rl.item_id AND lsa.warehouse_id = rl.warehouse_id
-       WHERE lsa.tenant_id = ? AND lsa.status = ?
+       WHERE lsa.institution_id = ? AND lsa.status = ?
        ORDER BY lsa.alert_date DESC`,
-      [tenantId, status]
+      [institutionId, status]
     );
   }
 
-  async acknowledgeAlert(tenantId, alertId, userId) {
+  async acknowledgeAlert(institutionId, alertId, userId) {
     const result = await db.query(
-      'UPDATE low_stock_alerts SET status = "acknowledged", acknowledged_by = ?, acknowledged_at = NOW() WHERE tenant_id = ? AND id = ?',
-      [userId, tenantId, alertId]
+      'UPDATE low_stock_alerts SET status = "acknowledged", acknowledged_by = ?, acknowledged_at = NOW() WHERE institution_id = ? AND id = ?',
+      [userId, institutionId, alertId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Alert not found');
     }
 
-    logger.info('Low stock alert acknowledged', { tenantId, alertId, userId });
+    logger.info('Low stock alert acknowledged', { institutionId, alertId, userId });
   }
 
-  async getReorderLevels(tenantId, filters = {}) {
+  async getReorderLevels(institutionId, filters = {}) {
     let query = `
       SELECT rl.*, i.sku, i.name as item_name, w.name as warehouse_name, 
              ip.quantity_available as current_stock,
@@ -128,9 +128,9 @@ class ReorderLevelService {
       JOIN items i ON rl.item_id = i.id
       JOIN warehouses w ON rl.warehouse_id = w.id
       LEFT JOIN inventory_projections ip ON rl.item_id = ip.item_id AND rl.warehouse_id = ip.warehouse_id
-      WHERE rl.tenant_id = ? AND rl.is_active = TRUE
+      WHERE rl.institution_id = ? AND rl.is_active = TRUE
     `;
-    const params = [tenantId];
+    const params = [institutionId];
 
     if (filters.itemId) {
       query += ' AND rl.item_id = ?';
@@ -151,7 +151,7 @@ class ReorderLevelService {
     return await db.query(query, params);
   }
 
-  async generateReorderSuggestions(tenantId) {
+  async generateReorderSuggestions(institutionId) {
     return await db.query(
       `SELECT rl.*, i.sku, i.name as item_name, w.name as warehouse_name,
               ip.quantity_available as current_stock,
@@ -168,12 +168,12 @@ class ReorderLevelService {
          FROM purchase_order_lines pol
          JOIN purchase_orders po ON pol.po_id = po.id
          JOIN vendors v ON po.vendor_id = v.id
-         WHERE po.tenant_id = ?
+         WHERE po.institution_id = ?
        ) v ON rl.item_id = v.item_id AND v.rn = 1
-       WHERE rl.tenant_id = ? AND rl.is_active = TRUE 
+       WHERE rl.institution_id = ? AND rl.is_active = TRUE 
          AND ip.quantity_available <= rl.reorder_level
        ORDER BY (rl.reorder_level - ip.quantity_available) DESC`,
-      [tenantId, tenantId]
+      [institutionId, institutionId]
     );
   }
 }
