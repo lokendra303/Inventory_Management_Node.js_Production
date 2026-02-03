@@ -23,7 +23,7 @@ const Dashboard = () => {
     recentMovements: [],
     stockTrend: []
   });
-
+  //useeffect test for git
   useEffect(() => {
     fetchDashboardData();
   }, []);
