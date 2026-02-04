@@ -1,13 +1,9 @@
 const express = require('express');
 const purchaseOrderController = require('../controllers/purchaseOrderController');
-const testController = require('../controllers/testController');
 const { requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 
 const router = express.Router();
-
-// Test endpoint
-router.get('/test', testController.testEndpoint);
 
 // GET /api/purchase-orders
 router.get('/',

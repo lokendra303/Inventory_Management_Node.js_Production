@@ -117,23 +117,24 @@ class PurchaseInvoiceController {
         params.push(dateTo);
       }
 
-      const offset = (page - 1) * limit;
+      // Validate and normalize pagination parameters (ensure integers)
+      const pageInt = Math.max(parseInt(page, 10) || 1, 1);
+      const limitInt = Math.max(Math.min(parseInt(limit, 10) || 50, 1000), 1);
+      const offset = (pageInt - 1) * limitInt;
 
       const invoices = await db.query(`
         SELECT 
           pi.*,
-          po.po_number,
-          grn.grn_number,
+          ANY_VALUE(po.po_number) as po_number,
           COUNT(pil.id) as line_count
         FROM purchase_invoices pi
-        LEFT JOIN purchase_orders po ON pi.po_id = po.id
-        LEFT JOIN grn ON pi.grn_id = grn.id
+        LEFT JOIN purchase_orders po ON CAST(pi.po_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(po.id AS CHAR) COLLATE utf8mb4_unicode_ci
         LEFT JOIN purchase_invoice_lines pil ON pi.id = pil.invoice_id
         ${whereClause}
         GROUP BY pi.id
         ORDER BY pi.created_at DESC
-        LIMIT ? OFFSET ?
-      `, [...params, parseInt(limit), offset]);
+        LIMIT ${limitInt} OFFSET ${offset}
+      `, params);
 
       const [countResult] = await db.query(`
         SELECT COUNT(DISTINCT pi.id) as total
@@ -146,10 +147,10 @@ class PurchaseInvoiceController {
         data: {
           invoices: invoices || [],
           pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit),
+            page: pageInt,
+            limit: limitInt,
             total: countResult?.total || 0,
-            pages: Math.ceil((countResult?.total || 0) / limit)
+            pages: Math.ceil((countResult?.total || 0) / limitInt)
           }
         }
       });
@@ -173,13 +174,11 @@ class PurchaseInvoiceController {
         SELECT 
           pi.*,
           po.po_number,
-          grn.grn_number,
           v.name as vendor_full_name,
           v.email as vendor_email,
           v.phone as vendor_phone
         FROM purchase_invoices pi
-        LEFT JOIN purchase_orders po ON pi.po_id = po.id
-        LEFT JOIN grn ON pi.grn_id = grn.id
+        LEFT JOIN purchase_orders po ON CAST(pi.po_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(po.id AS CHAR) COLLATE utf8mb4_unicode_ci
         LEFT JOIN vendors v ON pi.vendor_id = v.id
         WHERE pi.id = ? AND pi.institution_id = ?
       `, [id, institutionId]);

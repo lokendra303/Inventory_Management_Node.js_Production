@@ -84,8 +84,17 @@ class SalesInvoiceController {
   async getSalesInvoices(req, res) {
     try {
       const { institutionId } = req;
+      
+      if (!institutionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Institution ID is required'
+        });
+      }
+      
       const { status, customerId, dateFrom, dateTo, page = 1, limit = 50 } = req.query;
       
+      // Build WHERE clause
       let whereClause = 'WHERE si.institution_id = ?';
       const params = [institutionId];
 
@@ -109,24 +118,23 @@ class SalesInvoiceController {
         params.push(dateTo);
       }
 
-      const offset = (page - 1) * limit;
+      // Validate and normalize pagination parameters (ensure integers)
+      const pageInt = Math.max(parseInt(page, 10) || 1, 1);
+      const limitInt = Math.max(Math.min(parseInt(limit, 10) || 50, 1000), 1); // cap max limit to 1000
+      const offset = (pageInt - 1) * limitInt;
 
+      // Interpolate LIMIT/OFFSET after validation to avoid prepared-statement type issues
       const invoices = await db.query(`
         SELECT 
-          si.*,
-          so.so_number,
-          COUNT(sil.id) as line_count
+          si.*
         FROM sales_invoices si
-        LEFT JOIN sales_orders so ON si.so_id = so.id
-        LEFT JOIN sales_invoice_lines sil ON si.id = sil.invoice_id
         ${whereClause}
-        GROUP BY si.id
         ORDER BY si.created_at DESC
-        LIMIT ? OFFSET ?
-      `, [...params, parseInt(limit), offset]);
+        LIMIT ${limitInt} OFFSET ${offset}
+      `, params);
 
       const [countResult] = await db.query(`
-        SELECT COUNT(DISTINCT si.id) as total
+        SELECT COUNT(si.id) as total
         FROM sales_invoices si
         ${whereClause}
       `, params);
@@ -134,12 +142,12 @@ class SalesInvoiceController {
       res.json({
         success: true,
         data: {
-          invoices,
+          invoices: invoices || [],
           pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total: countResult.total,
-            pages: Math.ceil(countResult.total / limit)
+            page: pageInt,
+            limit: limitInt,
+            total: countResult?.total || 0,
+            pages: Math.ceil((countResult?.total || 0) / limitInt)
           }
         }
       });
@@ -167,7 +175,7 @@ class SalesInvoiceController {
           c.email as customer_email,
           c.phone as customer_phone
         FROM sales_invoices si
-        LEFT JOIN sales_orders so ON si.so_id = so.id
+        LEFT JOIN sales_orders so ON CAST(si.so_id AS CHAR) = CAST(so.id AS CHAR)
         LEFT JOIN customers c ON si.customer_id = c.id
         WHERE si.id = ? AND si.institution_id = ?
       `, [id, institutionId]);
