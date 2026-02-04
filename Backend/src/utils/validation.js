@@ -245,6 +245,70 @@ const createAutomationRuleSchema = Joi.object({
   isActive: Joi.boolean().default(true)
 });
 
+// Purchase Invoice schemas
+const createPurchaseInvoiceSchema = Joi.object({
+  invoiceNumber: Joi.string().max(100).required(),
+  vendorId: Joi.string().uuid().optional(),
+  vendorName: Joi.string().max(255).required(),
+  poId: Joi.string().uuid().optional(),
+  grnId: Joi.string().uuid().optional(),
+  invoiceDate: Joi.date().required(),
+  dueDate: Joi.date().optional(),
+  currency: Joi.string().length(3).default('USD'),
+  exchangeRate: Joi.number().positive().default(1.0),
+  reference: Joi.string().max(255).optional(),
+  notes: Joi.string().optional(),
+  lines: Joi.array().items(Joi.object({
+    poLineId: Joi.string().uuid().optional(),
+    grnLineId: Joi.string().uuid().optional(),
+    itemId: Joi.string().uuid().required(),
+    itemName: Joi.string().max(255).required(),
+    quantity: Joi.number().positive().required(),
+    unitCost: Joi.number().positive().required(),
+    taxRate: Joi.number().min(0).max(100).default(0),
+    discountRate: Joi.number().min(0).max(100).default(0)
+  })).min(1).required()
+}).unknown(true);
+
+// Sales Invoice schemas
+const createSalesInvoiceSchema = Joi.object({
+  invoiceNumber: Joi.string().max(100).required(),
+  customerId: Joi.string().uuid().optional(),
+  customerName: Joi.string().max(255).required(),
+  soId: Joi.string().uuid().optional(),
+  deliveryNoteId: Joi.string().uuid().optional(),
+  invoiceDate: Joi.date().required(),
+  dueDate: Joi.date().optional(),
+  currency: Joi.string().length(3).default('USD'),
+  exchangeRate: Joi.number().positive().default(1.0),
+  reference: Joi.string().max(255).optional(),
+  notes: Joi.string().optional(),
+  lines: Joi.array().items(Joi.object({
+    soLineId: Joi.string().uuid().optional(),
+    deliveryLineId: Joi.string().uuid().optional(),
+    itemId: Joi.string().uuid().required(),
+    itemName: Joi.string().max(255).required(),
+    quantity: Joi.number().positive().required(),
+    unitPrice: Joi.number().positive().required(),
+    taxRate: Joi.number().min(0).max(100).default(0),
+    discountRate: Joi.number().min(0).max(100).default(0)
+  })).min(1).required()
+}).unknown(true);
+
+// Invoice status update schemas
+const updateInvoiceStatusSchema = Joi.object({
+  status: Joi.string().valid('draft', 'posted', 'partially_paid', 'paid', 'cancelled').required()
+});
+
+// Invoice payment schemas
+const createInvoicePaymentSchema = Joi.object({
+  amount: Joi.number().positive().required(),
+  paymentDate: Joi.date().required(),
+  paymentMethod: Joi.string().max(50).optional(),
+  reference: Joi.string().max(255).optional(),
+  notes: Joi.string().optional()
+});
+
 // Validation middleware
 const validate = (schema) => {
   return (req, res, next) => {
@@ -284,6 +348,10 @@ module.exports = {
     updateSOStatusSchema,
     updateUserStatusSchema,
     updateUserPermissionsSchema,
-    createAutomationRuleSchema
+    createAutomationRuleSchema,
+    createPurchaseInvoiceSchema,
+    createSalesInvoiceSchema,
+    updateInvoiceStatusSchema,
+    createInvoicePaymentSchema
   }
 };

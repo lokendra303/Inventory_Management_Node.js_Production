@@ -28,6 +28,10 @@ import NewCustomer from './pages/NewCustomer.jsx';
 import ViewCustomer from './pages/ViewCustomer.jsx';
 import EditCustomer from './pages/EditCustomer.jsx';
 import ProfitLoss from './pages/ProfitLoss.jsx';
+import InvoiceDashboard from './pages/InvoiceDashboard.jsx';
+import PurchaseInvoices from './pages/PurchaseInvoices.jsx';
+import SalesInvoices from './pages/SalesInvoices.jsx';
+import OutstandingInvoices from './pages/OutstandingInvoices.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import Header from './components/Header.jsx';
 import './App.css';
@@ -51,6 +55,10 @@ const ProtectedCustomers = withPermission('sales_view')(Customers);
 const ProtectedNewCustomer = withPermission('sales_view')(NewCustomer);
 const ProtectedViewCustomer = withPermission('sales_view')(ViewCustomer);
 const ProtectedEditCustomer = withPermission('customer_management')(EditCustomer);
+const ProtectedInvoiceDashboard = withPermission('invoice_view')(InvoiceDashboard);
+const ProtectedPurchaseInvoices = withPermission('invoice_view')(PurchaseInvoices);
+const ProtectedSalesInvoices = withPermission('invoice_view')(SalesInvoices);
+const ProtectedOutstandingInvoices = withPermission('invoice_view')(OutstandingInvoices);
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -131,6 +139,12 @@ function AppContent() {
             <Route path="/sales/customers/new" element={<ProtectedNewCustomer />} />
             <Route path="/sales/customers/:id" element={<ProtectedViewCustomer />} />
             <Route path="/sales/customers/:id/edit" element={<ProtectedEditCustomer />} />
+            <Route path="/invoices/dashboard" element={<ProtectedInvoiceDashboard />} />
+            <Route path="/invoices/purchase" element={<ProtectedPurchaseInvoices />} />
+            <Route path="/invoices/sales" element={<ProtectedSalesInvoices />} />
+            <Route path="/invoices/outstanding" element={<ProtectedOutstandingInvoices />} />
+            <Route path="/purchase-invoices" element={<ProtectedPurchaseInvoices />} />
+            <Route path="/sales-invoices" element={<ProtectedSalesInvoices />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Content>

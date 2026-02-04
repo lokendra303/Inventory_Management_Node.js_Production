@@ -1,5 +1,6 @@
 const purchaseOrderService = require('../services/purchaseOrderService');
 const vendorService = require('../services/vendorService');
+const poConfirmationService = require('../services/poConfirmationService');
 const logger = require('../utils/logger');
 
 class PurchaseOrderController {
@@ -161,12 +162,28 @@ class PurchaseOrderController {
         });
       }
 
-      await purchaseOrderService.updatePOStatus(req.institutionId, poId, status, req.user.userId);
-
-      res.json({
-        success: true,
-        message: 'Purchase order status updated successfully'
-      });
+      // If status is being changed to 'confirmed', use the enhanced confirmation service
+      if (status === 'confirmed') {
+        const result = await poConfirmationService.processPOConfirmation(
+          req.institutionId, 
+          poId, 
+          req.user.userId
+        );
+        
+        res.json({
+          success: true,
+          message: 'Purchase order confirmed and inventory updated successfully',
+          data: result
+        });
+      } else {
+        // For other status updates, use the original service
+        await purchaseOrderService.updatePOStatus(req.institutionId, poId, status, req.user.userId);
+        
+        res.json({
+          success: true,
+          message: 'Purchase order status updated successfully'
+        });
+      }
     } catch (error) {
       logger.error('Failed to update PO status', {
         error: error.message,
@@ -176,6 +193,61 @@ class PurchaseOrderController {
       res.status(400).json({
         success: false,
         error: error.message
+      });
+    }
+  }
+
+  async confirmPurchaseOrder(req, res) {
+    try {
+      const { id: poId } = req.params;
+      
+      const result = await poConfirmationService.processPOConfirmation(
+        req.institutionId, 
+        poId, 
+        req.user.userId
+      );
+      
+      res.json({
+        success: true,
+        message: 'Purchase order confirmed successfully. Inventory has been updated automatically.',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Failed to confirm purchase order', {
+        error: error.message,
+        institutionId: req.institutionId,
+        poId: req.params.id,
+        userId: req.user.userId
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async getConfirmationSummary(req, res) {
+    try {
+      const { id: poId } = req.params;
+      
+      const summary = await poConfirmationService.getConfirmationSummary(
+        req.institutionId, 
+        poId
+      );
+      
+      res.json({
+        success: true,
+        data: summary
+      });
+    } catch (error) {
+      logger.error('Failed to get confirmation summary', {
+        error: error.message,
+        institutionId: req.institutionId,
+        poId: req.params.id
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
       });
     }
   }

@@ -13,7 +13,8 @@ import {
   BarChartOutlined,
   SettingOutlined,
   UserOutlined,
-  FileOutlined
+  FileOutlined,
+  DollarOutlined
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -76,7 +77,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       children: [
         { key: '/sales/customers', label: 'Customers' },
         { key: '/sales-orders', label: 'Sales Orders' },
-        { key: '/sales/invoices', label: 'Invoices' },
+        { key: '/sales-invoices', label: 'Sales Invoices' },
         { key: '/sales/delivery-challans', label: 'Delivery Challans' },
         { key: '/sales/payments-received', label: 'Payments Received' },
         { key: '/sales/returns', label: 'Sales Returns' },
@@ -90,10 +91,23 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       children: [
         { key: '/purchases/vendors', label: 'Vendors' },
         { key: '/purchase-orders', label: 'Purchase Orders' },
+        { key: '/purchase-invoices', label: 'Purchase Invoices' },
         { key: '/purchases/receives', label: 'Purchase Receives' },
         { key: '/purchases/bills', label: 'Bills' },
         { key: '/purchases/payments-made', label: 'Payments Made' },
         { key: '/purchases/vendor-credits', label: 'Vendor Credits' }
+      ]
+    },
+    hasPermission('invoice_view') && {
+      key: 'invoices',
+      icon: <DollarOutlined />,
+      label: 'Invoices',
+      children: [
+        { key: '/invoices/dashboard', label: 'Invoice Dashboard' },
+        { key: '/invoices/purchase', label: 'Purchase Invoices' },
+        { key: '/invoices/sales', label: 'Sales Invoices' },
+        { key: '/invoices/outstanding', label: 'Outstanding Invoices' },
+        { key: '/invoices/payments', label: 'Invoice Payments' }
       ]
     },
     hasPermission('user_management') && {

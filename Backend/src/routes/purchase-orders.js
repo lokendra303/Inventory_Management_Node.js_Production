@@ -39,4 +39,18 @@ router.put('/:id/status',
   purchaseOrderController.updatePOStatus
 );
 
+// POST /api/purchase-orders/:id/confirm - Enhanced confirmation endpoint
+router.post('/:id/confirm',
+  requirePermission('purchase_management'),
+  validateInstitutionConsistency,
+  auditLog('purchase_order_confirmed'),
+  purchaseOrderController.confirmPurchaseOrder
+);
+
+// GET /api/purchase-orders/:id/confirmation-summary
+router.get('/:id/confirmation-summary',
+  requirePermission('purchase_view'),
+  purchaseOrderController.getConfirmationSummary
+);
+
 module.exports = router;

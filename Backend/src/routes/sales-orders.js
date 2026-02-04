@@ -35,4 +35,18 @@ router.put('/:id/status',
   salesOrderController.updateSOStatus
 );
 
+// POST /api/sales-orders/:id/confirm - Enhanced confirmation endpoint
+router.post('/:id/confirm',
+  requirePermission('sales_management'),
+  validateInstitutionConsistency,
+  auditLog('sales_order_confirmed'),
+  salesOrderController.confirmSalesOrder
+);
+
+// GET /api/sales-orders/:id/confirmation-summary
+router.get('/:id/confirmation-summary',
+  requirePermission('sales_view'),
+  salesOrderController.getConfirmationSummary
+);
+
 module.exports = router;

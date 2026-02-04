@@ -182,51 +182,16 @@ class SalesOrderService {
     }
   }
   async updateSOStatus(institutionId, soId, status, userId) {
-    try {
-      // Get SO details for inventory operations
-      const so = await this.getSalesOrder(institutionId, soId);
-      if (!so) throw new Error('Sales order not found');
+    const result = await db.query(
+      'UPDATE sales_orders SET status = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [status, institutionId, soId]
+    );
 
-      // Handle inventory based on status
-      if (status === 'confirmed') {
-        await this.reserveStock(institutionId, {
-          soId,
-          warehouseId: so.warehouse_id,
-          lines: so.lines.map(line => ({
-            id: line.id,
-            itemId: line.item_id,
-            quantity: line.quantity_ordered,
-            unitPrice: line.unit_price
-          }))
-        }, userId);
-      } else if (status === 'shipped') {
-        await this.shipStock(institutionId, {
-          soId,
-          warehouseId: so.warehouse_id,
-          shipmentNumber: `SHIP-${Date.now()}`,
-          lines: so.lines.map(line => ({
-            id: line.id,
-            itemId: line.item_id,
-            quantityShipped: line.quantity_ordered - (line.quantity_shipped || 0),
-            unitPrice: line.unit_price
-          }))
-        }, userId);
-      }
-
-      const result = await db.query(
-        'UPDATE sales_orders SET status = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
-        [status, institutionId, soId]
-      );
-
-      if (result.affectedRows === 0) {
-        throw new Error('Sales order not found');
-      }
-
-      logger.info('SO status updated', { soId, institutionId, status, userId });
-    } catch (error) {
-      logger.error('Failed to update SO status', { soId, institutionId, status, error: error.message });
-      throw error;
+    if (result.affectedRows === 0) {
+      throw new Error('Sales order not found');
     }
+
+    logger.info('SO status updated', { soId, institutionId, status, userId });
   }
 }
 

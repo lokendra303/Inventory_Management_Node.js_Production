@@ -41,6 +41,10 @@ const PERMISSIONS = {
   SALES_VIEW: 'sales_view',
   SALES_MANAGEMENT: 'sales_management',
   
+  // Invoice Management
+  INVOICE_VIEW: 'invoice_view',
+  INVOICE_MANAGEMENT: 'invoice_management',
+  
   // Vendor Management
   VENDOR_VIEW: 'vendor_view',
   VENDOR_MANAGEMENT: 'vendor_management'
@@ -74,6 +78,8 @@ const ROLE_PERMISSIONS = {
     [PERMISSIONS.PURCHASE_MANAGEMENT]: true,
     [PERMISSIONS.SALES_VIEW]: true,
     [PERMISSIONS.SALES_MANAGEMENT]: true,
+    [PERMISSIONS.INVOICE_VIEW]: true,
+    [PERMISSIONS.INVOICE_MANAGEMENT]: true,
     [PERMISSIONS.VENDOR_VIEW]: true,
     [PERMISSIONS.VENDOR_MANAGEMENT]: true
   },
@@ -87,6 +93,7 @@ const ROLE_PERMISSIONS = {
     [PERMISSIONS.CATEGORY_MANAGEMENT]: true,
     [PERMISSIONS.PURCHASE_VIEW]: true,
     [PERMISSIONS.SALES_VIEW]: true,
+    [PERMISSIONS.INVOICE_VIEW]: true,
     [PERMISSIONS.VENDOR_VIEW]: true
   }
 };
@@ -136,6 +143,11 @@ const PERMISSION_GROUPS = {
   'Sales Management': [
     PERMISSIONS.SALES_VIEW,
     PERMISSIONS.SALES_MANAGEMENT
+  ],
+  
+  'Invoice Management': [
+    PERMISSIONS.INVOICE_VIEW,
+    PERMISSIONS.INVOICE_MANAGEMENT
   ]
 };
 

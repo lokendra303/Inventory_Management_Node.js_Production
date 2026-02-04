@@ -76,7 +76,9 @@ export const AuthProvider = ({ children }) => {
           sessionStorage.setItem('institutionId', response.data.institutionId);
         }
         
-        setUser(response.data);
+        // Include token in user object for API calls
+        const token = sessionStorage.getItem('token');
+        setUser({ ...response.data, token });
       } else {
         console.log('Profile fetch failed, removing token');
         sessionStorage.removeItem('token');
@@ -131,7 +133,8 @@ export const AuthProvider = ({ children }) => {
         }
         
         apiService.setAuthToken(token);
-        setUser(userData);
+        // Include token in user object for API calls
+        setUser({ ...userData, token });
         message.success('Login successful');
         return { success: true };
       } else {

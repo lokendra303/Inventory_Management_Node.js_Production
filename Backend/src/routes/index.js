@@ -12,6 +12,9 @@ const categoryController = require('../controllers/categoryController');
 const settingsController = require('../controllers/settingsController');
 const customerController = require('../controllers/customerController');
 const allDataRoutes = require('./all-data');
+const purchaseInvoiceRoutes = require('./purchase-invoices');
+const salesInvoiceRoutes = require('./sales-invoices');
+const invoiceRoutes = require('./invoices');
 const { requireAuth, requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 
@@ -448,6 +451,11 @@ router.put('/settings',
 
 // All Data and Features Management
 router.use('/data', allDataRoutes);
+
+// Invoice Management
+router.use('/purchase-invoices', purchaseInvoiceRoutes);
+router.use('/sales-invoices', salesInvoiceRoutes);
+router.use('/invoices', invoiceRoutes);
 
 // Error handling middleware
 router.use((error, req, res, next) => {

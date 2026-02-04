@@ -1,0 +1,469 @@
+const db = require('../database/connection');
+const logger = require('../utils/logger');
+
+class PurchaseInvoiceController {
+  // Create Purchase Invoice
+  async createPurchaseInvoice(req, res) {
+    try {
+      const { institutionId, user } = req;
+      const invoiceData = req.body;
+
+      const result = await db.transaction(async (connection) => {
+        // Calculate totals
+        let subtotal = 0;
+        let totalTaxAmount = 0;
+        let totalDiscountAmount = 0;
+
+        for (const line of invoiceData.lines) {
+          const lineTotal = line.quantity * line.unitCost;
+          const discountAmount = (lineTotal * (line.discountRate || 0)) / 100;
+          const taxableAmount = lineTotal - discountAmount;
+          const taxAmount = (taxableAmount * (line.taxRate || 0)) / 100;
+
+          subtotal += lineTotal;
+          totalDiscountAmount += discountAmount;
+          totalTaxAmount += taxAmount;
+        }
+
+        const totalAmount = subtotal - totalDiscountAmount + totalTaxAmount;
+
+        // Create invoice header
+        const [invoiceResult] = await connection.execute(`
+          INSERT INTO purchase_invoices (
+            institution_id, invoice_number, vendor_id, vendor_name, po_id, grn_id,
+            invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
+            discount_amount, total_amount, balance_amount, reference, notes, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          institutionId, invoiceData.invoiceNumber, invoiceData.vendorId, invoiceData.vendorName,
+          invoiceData.poId, invoiceData.grnId, invoiceData.invoiceDate, invoiceData.dueDate,
+          invoiceData.currency, invoiceData.exchangeRate, subtotal, totalTaxAmount,
+          totalDiscountAmount, totalAmount, totalAmount, invoiceData.reference, invoiceData.notes, user.userId
+        ]);
+
+        const invoiceId = invoiceResult.insertId;
+
+        // Create invoice lines
+        for (const line of invoiceData.lines) {
+          const lineTotal = line.quantity * line.unitCost;
+          const discountAmount = (lineTotal * (line.discountRate || 0)) / 100;
+          const taxableAmount = lineTotal - discountAmount;
+          const taxAmount = (taxableAmount * (line.taxRate || 0)) / 100;
+
+          await connection.execute(`
+            INSERT INTO purchase_invoice_lines (
+              invoice_id, po_line_id, grn_line_id, item_id, item_name, quantity,
+              unit_cost, line_total, tax_rate, tax_amount, discount_rate, discount_amount
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            invoiceId, line.poLineId, line.grnLineId, line.itemId, line.itemName,
+            line.quantity, line.unitCost, lineTotal, line.taxRate || 0, taxAmount,
+            line.discountRate || 0, discountAmount
+          ]);
+        }
+
+        return { invoiceId, totalAmount };
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Purchase invoice created successfully',
+        data: { invoiceId: result.invoiceId, totalAmount: result.totalAmount }
+      });
+
+    } catch (error) {
+      logger.error('Error creating purchase invoice:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create purchase invoice'
+      });
+    }
+  }
+
+  // Get Purchase Invoices
+  async getPurchaseInvoices(req, res) {
+    try {
+      const { institutionId } = req;
+      
+      if (!institutionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Institution ID is required'
+        });
+      }
+      
+      const { status, vendorId, dateFrom, dateTo, page = 1, limit = 50 } = req.query;
+      
+      let whereClause = 'WHERE pi.institution_id = ?';
+      const params = [institutionId];
+
+      if (status) {
+        whereClause += ' AND pi.status = ?';
+        params.push(status);
+      }
+
+      if (vendorId) {
+        whereClause += ' AND pi.vendor_id = ?';
+        params.push(vendorId);
+      }
+
+      if (dateFrom) {
+        whereClause += ' AND pi.invoice_date >= ?';
+        params.push(dateFrom);
+      }
+
+      if (dateTo) {
+        whereClause += ' AND pi.invoice_date <= ?';
+        params.push(dateTo);
+      }
+
+      const offset = (page - 1) * limit;
+
+      const invoices = await db.query(`
+        SELECT 
+          pi.*,
+          po.po_number,
+          grn.grn_number,
+          COUNT(pil.id) as line_count
+        FROM purchase_invoices pi
+        LEFT JOIN purchase_orders po ON pi.po_id = po.id
+        LEFT JOIN grn ON pi.grn_id = grn.id
+        LEFT JOIN purchase_invoice_lines pil ON pi.id = pil.invoice_id
+        ${whereClause}
+        GROUP BY pi.id
+        ORDER BY pi.created_at DESC
+        LIMIT ? OFFSET ?
+      `, [...params, parseInt(limit), offset]);
+
+      const [countResult] = await db.query(`
+        SELECT COUNT(DISTINCT pi.id) as total
+        FROM purchase_invoices pi
+        ${whereClause}
+      `, params);
+
+      res.json({
+        success: true,
+        data: {
+          invoices: invoices || [],
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: countResult?.total || 0,
+            pages: Math.ceil((countResult?.total || 0) / limit)
+          }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Error fetching purchase invoices:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch purchase invoices'
+      });
+    }
+  }
+
+  // Get Single Purchase Invoice
+  async getPurchaseInvoice(req, res) {
+    try {
+      const { institutionId } = req;
+      const { id } = req.params;
+
+      const [invoice] = await db.query(`
+        SELECT 
+          pi.*,
+          po.po_number,
+          grn.grn_number,
+          v.name as vendor_full_name,
+          v.email as vendor_email,
+          v.phone as vendor_phone
+        FROM purchase_invoices pi
+        LEFT JOIN purchase_orders po ON pi.po_id = po.id
+        LEFT JOIN grn ON pi.grn_id = grn.id
+        LEFT JOIN vendors v ON pi.vendor_id = v.id
+        WHERE pi.id = ? AND pi.institution_id = ?
+      `, [id, institutionId]);
+
+      if (!invoice) {
+        return res.status(404).json({
+          success: false,
+          error: 'Purchase invoice not found'
+        });
+      }
+
+      const lines = await db.query(`
+        SELECT 
+          pil.*,
+          i.sku,
+          i.unit
+        FROM purchase_invoice_lines pil
+        LEFT JOIN items i ON pil.item_id = i.id
+        WHERE pil.invoice_id = ?
+        ORDER BY pil.created_at
+      `, [id]);
+
+      const payments = await db.query(`
+        SELECT * FROM invoice_payments
+        WHERE invoice_id = ? AND invoice_type = 'purchase'
+        ORDER BY payment_date DESC
+      `, [id]);
+
+      res.json({
+        success: true,
+        data: {
+          invoice,
+          lines,
+          payments
+        }
+      });
+
+    } catch (error) {
+      logger.error('Error fetching purchase invoice:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch purchase invoice'
+      });
+    }
+  }
+
+  // Post Purchase Invoice (Create Accounting Entries)
+  async postPurchaseInvoice(req, res) {
+    try {
+      const { institutionId, user } = req;
+      const { id } = req.params;
+
+      const result = await db.transaction(async (connection) => {
+        // Get invoice details
+        const [invoice] = await connection.execute(`
+          SELECT * FROM purchase_invoices 
+          WHERE id = ? AND institution_id = ? AND status = 'draft'
+        `, [id, institutionId]);
+
+        if (!invoice) {
+          throw new Error('Invoice not found or already posted');
+        }
+
+        // Update invoice status
+        await connection.execute(`
+          UPDATE purchase_invoices 
+          SET status = 'posted', updated_by = ?, updated_at = NOW()
+          WHERE id = ?
+        `, [user.userId, id]);
+
+        // Create accounting entries
+        const entries = [
+          // Dr GRN Clearing / Purchase Expense
+          {
+            account_code: invoice.grn_id ? 'GRN_CLEARING' : 'PURCHASE_EXPENSE',
+            account_name: invoice.grn_id ? 'GRN Clearing Account' : 'Purchase Expense',
+            debit_amount: invoice.subtotal + invoice.discount_amount,
+            credit_amount: 0
+          },
+          // Dr Input Tax (if any)
+          ...(invoice.tax_amount > 0 ? [{
+            account_code: 'INPUT_TAX',
+            account_name: 'Input Tax / VAT Receivable',
+            debit_amount: invoice.tax_amount,
+            credit_amount: 0
+          }] : []),
+          // Cr Vendor Payable
+          {
+            account_code: 'VENDOR_PAYABLE',
+            account_name: 'Accounts Payable - Vendors',
+            debit_amount: 0,
+            credit_amount: invoice.total_amount
+          }
+        ];
+
+        for (const entry of entries) {
+          await connection.execute(`
+            INSERT INTO accounting_entries (
+              institution_id, entry_type, reference_id, reference_number,
+              entry_date, account_code, account_name, debit_amount, credit_amount,
+              description, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            institutionId, 'purchase_invoice', id, invoice.invoice_number,
+            invoice.invoice_date, entry.account_code, entry.account_name,
+            entry.debit_amount, entry.credit_amount,
+            `Purchase Invoice: ${invoice.invoice_number}`, user.userId
+          ]);
+        }
+
+        return invoice;
+      });
+
+      res.json({
+        success: true,
+        message: 'Purchase invoice posted successfully',
+        data: { invoiceId: id }
+      });
+
+    } catch (error) {
+      logger.error('Error posting purchase invoice:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to post purchase invoice'
+      });
+    }
+  }
+
+  // Update Invoice Status
+  async updateInvoiceStatus(req, res) {
+    try {
+      const { institutionId, user } = req;
+      const { id } = req.params;
+      const { status } = req.body;
+
+      await db.query(`
+        UPDATE purchase_invoices 
+        SET status = ?, updated_by = ?, updated_at = NOW()
+        WHERE id = ? AND institution_id = ?
+      `, [status, user.userId, id, institutionId]);
+
+      res.json({
+        success: true,
+        message: 'Invoice status updated successfully'
+      });
+
+    } catch (error) {
+      logger.error('Error updating invoice status:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update invoice status'
+      });
+    }
+  }
+
+  // Add Payment to Invoice
+  async addPayment(req, res) {
+    try {
+      const { institutionId, user } = req;
+      const { id } = req.params;
+      const paymentData = req.body;
+
+      const result = await db.transaction(async (connection) => {
+        // Get current invoice
+        const [invoice] = await connection.execute(`
+          SELECT * FROM purchase_invoices 
+          WHERE id = ? AND institution_id = ? AND status IN ('posted', 'partially_paid')
+        `, [id, institutionId]);
+
+        if (!invoice) {
+          throw new Error('Invoice not found or cannot accept payments');
+        }
+
+        if (paymentData.amount > invoice.balance_amount) {
+          throw new Error('Payment amount exceeds balance amount');
+        }
+
+        // Add payment record
+        await connection.execute(`
+          INSERT INTO invoice_payments (
+            institution_id, invoice_type, invoice_id, payment_date, amount,
+            payment_method, reference, notes, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          institutionId, 'purchase', id, paymentData.paymentDate, paymentData.amount,
+          paymentData.paymentMethod, paymentData.reference, paymentData.notes, user.userId
+        ]);
+
+        // Update invoice amounts
+        const newPaidAmount = parseFloat(invoice.paid_amount) + parseFloat(paymentData.amount);
+        const newBalanceAmount = parseFloat(invoice.total_amount) - newPaidAmount;
+        const newStatus = newBalanceAmount <= 0.01 ? 'paid' : 'partially_paid';
+
+        await connection.execute(`
+          UPDATE purchase_invoices 
+          SET paid_amount = ?, balance_amount = ?, status = ?, updated_by = ?, updated_at = NOW()
+          WHERE id = ?
+        `, [newPaidAmount, newBalanceAmount, newStatus, user.userId, id]);
+
+        return { newStatus, newBalanceAmount };
+      });
+
+      res.json({
+        success: true,
+        message: 'Payment added successfully',
+        data: result
+      });
+
+    } catch (error) {
+      logger.error('Error adding payment:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to add payment'
+      });
+    }
+  }
+
+  // Get 3-Way Matching Data
+  async getThreeWayMatching(req, res) {
+    try {
+      const { institutionId } = req;
+      const { poId, grnId } = req.query;
+
+      if (!poId && !grnId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Either PO ID or GRN ID is required'
+        });
+      }
+
+      let matchingData = {};
+
+      if (poId) {
+        // Get PO data
+        const [po] = await db.query(`
+          SELECT po.*, v.name as vendor_name
+          FROM purchase_orders po
+          LEFT JOIN vendors v ON po.vendor_id = v.id
+          WHERE po.id = ? AND po.institution_id = ?
+        `, [poId, institutionId]);
+
+        if (po) {
+          const poLines = await db.query(`
+            SELECT pol.*, i.name as item_name, i.sku
+            FROM purchase_order_lines pol
+            LEFT JOIN items i ON pol.item_id = i.id
+            WHERE pol.po_id = ?
+          `, [poId]);
+
+          matchingData.po = { ...po, lines: poLines };
+        }
+      }
+
+      if (grnId) {
+        // Get GRN data
+        const [grn] = await db.query(`
+          SELECT * FROM grn WHERE id = ? AND institution_id = ?
+        `, [grnId, institutionId]);
+
+        if (grn) {
+          const grnLines = await db.query(`
+            SELECT gl.*, i.name as item_name, i.sku
+            FROM grn_lines gl
+            LEFT JOIN items i ON gl.item_id = i.id
+            WHERE gl.grn_id = ?
+          `, [grnId]);
+
+          matchingData.grn = { ...grn, lines: grnLines };
+        }
+      }
+
+      res.json({
+        success: true,
+        data: matchingData
+      });
+
+    } catch (error) {
+      logger.error('Error fetching 3-way matching data:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch matching data'
+      });
+    }
+  }
+}
+
+module.exports = new PurchaseInvoiceController();

@@ -1,4 +1,5 @@
 const salesOrderService = require('../services/salesOrderService');
+const soConfirmationService = require('../services/soConfirmationService');
 const logger = require('../utils/logger');
 
 class SalesOrderController {
@@ -90,12 +91,27 @@ class SalesOrderController {
         });
       }
 
-      await salesOrderService.updateSOStatus(req.institutionId, soId, status, req.user.userId);
-
-      res.json({
-        success: true,
-        message: 'Sales order status updated successfully'
-      });
+      // If status is being changed to 'confirmed', use the enhanced confirmation service
+      if (status === 'confirmed') {
+        const result = await soConfirmationService.processSOConfirmation(
+          req.institutionId, 
+          soId, 
+          req.user.userId
+        );
+        
+        res.json({
+          success: true,
+          message: 'Sales order confirmed and inventory updated successfully',
+          data: result
+        });
+      } else {
+        await salesOrderService.updateSOStatus(req.institutionId, soId, status, req.user.userId);
+        
+        res.json({
+          success: true,
+          message: 'Sales order status updated successfully'
+        });
+      }
     } catch (error) {
       logger.error('Failed to update SO status', {
         error: error.message,
@@ -105,6 +121,61 @@ class SalesOrderController {
       res.status(400).json({
         success: false,
         error: error.message
+      });
+    }
+  }
+
+  async confirmSalesOrder(req, res) {
+    try {
+      const { id: soId } = req.params;
+      
+      const result = await soConfirmationService.processSOConfirmation(
+        req.institutionId, 
+        soId, 
+        req.user.userId
+      );
+      
+      res.json({
+        success: true,
+        message: 'Sales order confirmed successfully. Inventory has been updated automatically.',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Failed to confirm sales order', {
+        error: error.message,
+        institutionId: req.institutionId,
+        soId: req.params.id,
+        userId: req.user.userId
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async getConfirmationSummary(req, res) {
+    try {
+      const { id: soId } = req.params;
+      
+      const summary = await soConfirmationService.getConfirmationSummary(
+        req.institutionId, 
+        soId
+      );
+      
+      res.json({
+        success: true,
+        data: summary
+      });
+    } catch (error) {
+      logger.error('Failed to get SO confirmation summary', {
+        error: error.message,
+        institutionId: req.institutionId,
+        soId: req.params.id
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
       });
     }
   }
