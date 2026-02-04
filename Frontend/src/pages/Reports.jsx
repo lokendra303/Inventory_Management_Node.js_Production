@@ -3,20 +3,36 @@ import { Card, Table, Button, Space, DatePicker, Select, message, Tabs, Modal, D
 import { FileTextOutlined, EyeOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import { useCurrency } from '../contexts/CurrencyContext.jsx';
+import { useLocation } from 'react-router-dom';
+import { formatNumber } from '../utils/currency.js';
 
 const { RangePicker } = DatePicker;
 const { TabPane } = Tabs;
 
 const Reports = () => {
   const { formatCurrency, currency, exchangeRate } = useCurrency();
+  const location = useLocation();
   console.log('Reports - Currency:', currency, 'Rate:', exchangeRate);
   const [loading, setLoading] = useState(false);
   const [inventoryData, setInventoryData] = useState([]);
+  const [adjustmentData, setAdjustmentData] = useState([]);
+  const [transferData, setTransferData] = useState([]);
   const [purchaseData, setPurchaseData] = useState([]);
   const [salesData, setSalesData] = useState([]);
   const [dashboardData, setDashboardData] = useState({});
   const [activeTab, setActiveTab] = useState('inventory');
   const [viewModal, setViewModal] = useState({ visible: false, data: null, type: null });
+
+  // Determine initial tab based on URL
+  useEffect(() => {
+    if (location.pathname.includes('inventory-adjustments')) {
+      setActiveTab('adjustments');
+    } else if (location.pathname.includes('stock-transfers')) {
+      setActiveTab('transfers');
+    } else if (location.pathname.includes('inventory-valuation')) {
+      setActiveTab('valuation');
+    }
+  }, [location.pathname]);
 
   const fetchInventoryReport = async () => {
     try {
@@ -60,6 +76,34 @@ const Reports = () => {
     }
   };
 
+  const fetchAdjustmentReport = async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.get('/reports/inventory-adjustments');
+      if (response.success) {
+        setAdjustmentData(response.data);
+      }
+    } catch (error) {
+      message.error('Failed to fetch adjustment report');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTransferReport = async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.get('/reports/stock-transfers');
+      if (response.success) {
+        setTransferData(response.data);
+      }
+    } catch (error) {
+      message.error('Failed to fetch transfer report');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchDashboard = async () => {
     try {
       const response = await apiService.get('/reports/dashboard');
@@ -84,6 +128,10 @@ const Reports = () => {
       const refreshFunction = activeTab === 'sales' ? fetchSalesReport : fetchPurchaseReport;
       refreshFunction(); // Initial fetch
       interval = setInterval(refreshFunction, 30000); // Refresh every 30 seconds
+    } else if (activeTab === 'adjustments') {
+      fetchAdjustmentReport();
+    } else if (activeTab === 'transfers') {
+      fetchTransferReport();
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -153,6 +201,43 @@ const Reports = () => {
         </Button>
       )
     }
+  ];
+
+  const adjustmentColumns = [
+    { title: 'Date', dataIndex: 'created_at', key: 'created_at', render: (val) => new Date(val).toLocaleDateString() },
+    { title: 'Reference', dataIndex: 'reference_number', key: 'reference_number' },
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
+    { title: 'SKU', dataIndex: 'sku', key: 'sku' },
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
+    { title: 'Type', dataIndex: 'adjustment_type', key: 'adjustment_type', render: (val) => val?.toUpperCase() },
+    { 
+      title: 'Loss Type', 
+      dataIndex: 'loss_type', 
+      key: 'loss_type', 
+      render: (val) => {
+        const colors = {
+          'MISSING': '#ff4d4f',
+          'DAMAGED': '#faad14', 
+          'EXPIRED': '#ff7a45',
+          'MANUAL': '#52c41a',
+          'SYSTEM': '#1890ff'
+        };
+        return <span style={{ color: colors[val] || '#666' }}>{val}</span>;
+      }
+    },
+    { title: 'Quantity', dataIndex: 'quantity_change', key: 'quantity_change', render: (val) => formatNumber(Math.abs(val)) },
+    { title: 'Reason', dataIndex: 'reason', key: 'reason' },
+    { title: 'Adjusted By', key: 'adjusted_by', render: (_, record) => `${record.first_name || ''} ${record.last_name || ''}`.trim() || 'System' }
+  ];
+
+  const transferColumns = [
+    { title: 'Date', dataIndex: 'created_at', key: 'created_at', render: (val) => new Date(val).toLocaleDateString() },
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
+    { title: 'SKU', dataIndex: 'sku', key: 'sku' },
+    { title: 'From Warehouse', dataIndex: 'from_warehouse', key: 'from_warehouse' },
+    { title: 'To Warehouse', dataIndex: 'to_warehouse', key: 'to_warehouse' },
+    { title: 'Quantity', dataIndex: 'quantity', key: 'quantity', render: (val) => formatNumber(val) },
+    { title: 'Transfer ID', dataIndex: 'transfer_id', key: 'transfer_id' }
   ];
 
   return (
@@ -241,6 +326,67 @@ const Reports = () => {
               dataSource={salesData} 
               loading={loading}
               rowKey="id"
+            />
+          </Card>
+        </TabPane>
+
+        <TabPane tab="Inventory Adjustments" key="adjustments">
+          <Card>
+            <Space style={{ marginBottom: 16 }}>
+              <Button 
+                type="primary" 
+                icon={<FileTextOutlined />}
+                onClick={fetchAdjustmentReport}
+                loading={loading}
+              >
+                Refresh Report
+              </Button>
+              <Select 
+                placeholder="Filter by Loss Type"
+                style={{ width: 150 }}
+                allowClear
+                onChange={(value) => {
+                  // Filter adjustmentData by loss_type
+                  if (value) {
+                    const filtered = adjustmentData.filter(item => item.loss_type === value);
+                    setAdjustmentData(filtered);
+                  } else {
+                    fetchAdjustmentReport(); // Reload all data
+                  }
+                }}
+              >
+                <Select.Option value="MISSING">Missing Items</Select.Option>
+                <Select.Option value="DAMAGED">Damaged Items</Select.Option>
+                <Select.Option value="EXPIRED">Expired Items</Select.Option>
+                <Select.Option value="ADJUSTMENT">Manual Adjustments</Select.Option>
+              </Select>
+            </Space>
+            <Table 
+              columns={adjustmentColumns} 
+              dataSource={adjustmentData} 
+              loading={loading}
+              rowKey={(record) => `${record.created_at}-${record.item_name}`}
+            />
+          </Card>
+        </TabPane>
+
+        <TabPane tab="Stock Transfers" key="transfers">
+          <Card>
+            <Space style={{ marginBottom: 16 }}>
+              <Button 
+                type="primary" 
+                icon={<FileTextOutlined />}
+                onClick={fetchTransferReport}
+                loading={loading}
+              >
+                Refresh Report
+              </Button>
+            </Space>
+            <Table 
+              columns={transferColumns} 
+              dataSource={transferData} 
+              loading={loading}
+              rowKey={(record) => `${record.created_at}-${record.transfer_id}`}
             />
           </Card>
         </TabPane>

@@ -27,6 +27,7 @@ import Customers from './pages/Customers.jsx';
 import NewCustomer from './pages/NewCustomer.jsx';
 import ViewCustomer from './pages/ViewCustomer.jsx';
 import EditCustomer from './pages/EditCustomer.jsx';
+import ProfitLoss from './pages/ProfitLoss.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import Header from './components/Header.jsx';
 import './App.css';
@@ -119,6 +120,8 @@ function AppContent() {
             <Route path="/sales-orders" element={<ProtectedSalesOrders />} />
             <Route path="/users" element={<ProtectedUsers />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/reports/*" element={<Reports />} />
+            <Route path="/profit-loss" element={<ProfitLoss />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/documents" element={<Documents />} />
             <Route path="/purchases/vendors" element={<ProtectedVendors />} />

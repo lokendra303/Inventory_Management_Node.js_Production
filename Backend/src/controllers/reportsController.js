@@ -42,6 +42,47 @@ class ReportsController {
     }
   }
 
+  async getInventoryAdjustmentReport(req, res) {
+    try {
+      const filters = {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        warehouseId: req.query.warehouseId
+      };
+      
+      const report = await reportsService.getInventoryAdjustmentReport(req.institutionId, filters);
+      
+      res.json({
+        success: true,
+        data: report
+      });
+    } catch (error) {
+      logger.error('Failed to generate inventory adjustment report', { error: error.message, institutionId: req.institutionId });
+      res.status(500).json({ success: false, error: 'Failed to generate report' });
+    }
+  }
+
+  async getStockTransferReport(req, res) {
+    try {
+      const filters = {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        fromWarehouseId: req.query.fromWarehouseId,
+        toWarehouseId: req.query.toWarehouseId
+      };
+      
+      const report = await reportsService.getStockTransferReport(req.institutionId, filters);
+      
+      res.json({
+        success: true,
+        data: report
+      });
+    } catch (error) {
+      logger.error('Failed to generate stock transfer report', { error: error.message, institutionId: req.institutionId });
+      res.status(500).json({ success: false, error: 'Failed to generate report' });
+    }
+  }
+
   // Purchase Reports
   async getPurchaseReport(req, res) {
     try {
@@ -120,6 +161,46 @@ class ReportsController {
       });
     } catch (error) {
       logger.error('Failed to generate P&L report', { error: error.message, institutionId: req.institutionId });
+      res.status(500).json({ success: false, error: 'Failed to generate report' });
+    }
+  }
+
+  async getReceivablesReport(req, res) {
+    try {
+      const filters = {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        customerId: req.query.customerId
+      };
+      
+      const report = await reportsService.getReceivablesReport(req.institutionId, filters);
+      
+      res.json({
+        success: true,
+        data: report
+      });
+    } catch (error) {
+      logger.error('Failed to generate receivables report', { error: error.message, institutionId: req.institutionId });
+      res.status(500).json({ success: false, error: 'Failed to generate report' });
+    }
+  }
+
+  async getPaymentsReceivedReport(req, res) {
+    try {
+      const filters = {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        customerId: req.query.customerId
+      };
+      
+      const report = await reportsService.getPaymentsReceivedReport(req.institutionId, filters);
+      
+      res.json({
+        success: true,
+        data: report
+      });
+    } catch (error) {
+      logger.error('Failed to generate payments received report', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate report' });
     }
   }

@@ -178,30 +178,50 @@ class InventoryService {
     
     const normalizedQuantityChange = adjustmentType === 'decrease' ? -Math.abs(quantityChange) : Math.abs(quantityChange);
     
+    // Determine loss type based on reason
+    let lossType = 'MANUAL';
+    if (reason) {
+      const reasonLower = reason.toLowerCase();
+      if (reasonLower.includes('missing') || reasonLower.includes('lost')) lossType = 'MISSING';
+      else if (reasonLower.includes('damaged') || reasonLower.includes('broken')) lossType = 'DAMAGED';
+      else if (reasonLower.includes('expired') || reasonLower.includes('expiry')) lossType = 'EXPIRED';
+    }
+    
     try {
-      // Direct database update
-      const current = await db.query(
-        'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-        [institutionId, itemId, warehouseId]
-      );
+      await db.transaction(async (connection) => {
+        // Record in adjustments table
+        const adjustmentId = require('uuid').v4();
+        await connection.execute(
+          `INSERT INTO inventory_adjustments 
+           (id, institution_id, item_id, warehouse_id, adjustment_type, quantity_change, reason, loss_type, adjusted_by, reference_number)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [adjustmentId, institutionId, itemId, warehouseId, adjustmentType, Math.abs(quantityChange), reason, lossType, userId, `ADJ-${Date.now()}`]
+        );
 
-      if (current.length === 0 && normalizedQuantityChange > 0) {
-        await db.query(
-          `INSERT INTO inventory_projections 
-           (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
-           VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
-          [institutionId, itemId, warehouseId, normalizedQuantityChange, normalizedQuantityChange]
+        // Update inventory projections
+        const current = await connection.execute(
+          'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+          [institutionId, itemId, warehouseId]
         );
-      } else if (current.length > 0) {
-        await db.query(
-          `UPDATE inventory_projections 
-           SET quantity_on_hand = quantity_on_hand + ?,
-               quantity_available = quantity_available + ?,
-               last_movement_date = NOW()
-           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [normalizedQuantityChange, normalizedQuantityChange, institutionId, itemId, warehouseId]
-        );
-      }
+
+        if (current[0].length === 0 && normalizedQuantityChange > 0) {
+          await connection.execute(
+            `INSERT INTO inventory_projections 
+             (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+             VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
+            [institutionId, itemId, warehouseId, normalizedQuantityChange, normalizedQuantityChange]
+          );
+        } else if (current[0].length > 0) {
+          await connection.execute(
+            `UPDATE inventory_projections 
+             SET quantity_on_hand = quantity_on_hand + ?,
+                 quantity_available = quantity_available + ?,
+                 last_movement_date = NOW()
+             WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+            [normalizedQuantityChange, normalizedQuantityChange, institutionId, itemId, warehouseId]
+          );
+        }
+      });
 
       return 'success';
     } catch (error) {

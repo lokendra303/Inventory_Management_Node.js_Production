@@ -3,6 +3,7 @@ import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, me
 import { PlusOutlined, EditOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import { useAuth } from '../hooks/useAuth.jsx';
+import { formatNumber } from '../utils/currency.js';
 
 const Inventory = () => {
   const { user } = useAuth();
@@ -29,11 +30,11 @@ const Inventory = () => {
     { title: 'SKU', dataIndex: 'sku', key: 'sku' },
     { title: 'Unit', dataIndex: 'unit', key: 'unit' },
     { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
-    { title: 'On Hand', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand', render: (val) => val || 0 },
-    { title: 'Available', dataIndex: 'quantity_available', key: 'quantity_available', render: (val) => val || 0 },
-    { title: 'Reserved', dataIndex: 'quantity_reserved', key: 'quantity_reserved', render: (val) => val || 0 },
-    { title: 'Avg Cost', dataIndex: 'average_cost', key: 'average_cost', render: (val, record) => (val && !isNaN(Number(val))) ? `${record.currency || currency}${Number(val).toFixed(2)}` : '-' },
-    { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', render: (val, record) => (val && !isNaN(Number(val))) ? `${record.currency || currency}${Number(val).toFixed(2)}` : '-' },
+    { title: 'On Hand', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand', render: (val) => formatNumber(val || 0) },
+    { title: 'Available', dataIndex: 'quantity_available', key: 'quantity_available', render: (val) => formatNumber(val || 0) },
+    { title: 'Reserved', dataIndex: 'quantity_reserved', key: 'quantity_reserved', render: (val) => formatNumber(val || 0) },
+    { title: 'Avg Cost', dataIndex: 'average_cost', key: 'average_cost', render: (val, record) => (val && !isNaN(Number(val))) ? `${record.currency || currency}${formatNumber(val)}` : '-' },
+    { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', render: (val, record) => (val && !isNaN(Number(val))) ? `${record.currency || currency}${formatNumber(val)}` : '-' },
     {
       title: 'Actions',
       key: 'actions',

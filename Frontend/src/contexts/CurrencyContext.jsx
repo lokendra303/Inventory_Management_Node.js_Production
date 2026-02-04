@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiService from '../services/apiService';
 import { useAuth } from '../hooks/useAuth';
+import { formatNumber } from '../utils/currency';
 
 const CurrencyContext = createContext();
 
@@ -85,11 +86,8 @@ export const CurrencyProvider = ({ children }) => {
   const formatCurrency = (amount, showSymbol = true) => {
     if (!amount && amount !== 0) return '-';
     
-    const convertedAmount = (parseFloat(amount) * exchangeRate).toFixed(2);
-    const formattedAmount = parseFloat(convertedAmount).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
+    const convertedAmount = parseFloat(amount) * exchangeRate;
+    const formattedAmount = formatNumber(convertedAmount);
     
     if (showSymbol) {
       const symbols = {

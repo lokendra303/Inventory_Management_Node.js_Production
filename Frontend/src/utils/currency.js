@@ -28,12 +28,7 @@ export const formatPrice = (amount, currency = 'USD', baseCurrency = 'USD') => {
   const convertedAmount = convertPrice(amount, baseCurrency, currency);
   const currencyInfo = currencies[currency] || currencies.USD;
   
-  const formattedAmount = parseFloat(convertedAmount).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-  
-  return `${currencyInfo.symbol}${formattedAmount}`;
+  return `${currencyInfo.symbol}${formatNumber(convertedAmount)}`;
 };
 
 export const getCurrencies = () => {
@@ -53,4 +48,11 @@ export const getCurrencyInfo = (currency = 'USD') => {
 
 export const isValidCurrency = (currency) => {
   return currencies.hasOwnProperty(currency);
+};
+
+export const formatNumber = (value) => {
+  if (!value && value !== 0) return '-';
+  const num = Number(value);
+  if (isNaN(num)) return '-';
+  return num % 1 === 0 ? num.toString() : num.toFixed(2);
 };

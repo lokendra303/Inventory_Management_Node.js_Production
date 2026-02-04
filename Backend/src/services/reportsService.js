@@ -62,6 +62,76 @@ class ReportsService {
     return await db.query(query, params);
   }
 
+  async getInventoryAdjustmentReport(institutionId, filters = {}) {
+    let query = `
+      SELECT ia.adjustment_date as created_at, ia.adjustment_type, ia.quantity_change, ia.reason, ia.loss_type, ia.reference_number,
+             i.sku, i.name as item_name, w.name as warehouse_name,
+             u.first_name, u.last_name
+      FROM inventory_adjustments ia
+      JOIN items i ON ia.item_id = i.id
+      JOIN warehouses w ON ia.warehouse_id = w.id
+      LEFT JOIN users u ON ia.adjusted_by = u.id
+      WHERE ia.institution_id = ?
+    `;
+    const params = [institutionId];
+
+    if (filters.startDate) {
+      query += ' AND DATE(ia.adjustment_date) >= ?';
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      query += ' AND DATE(ia.adjustment_date) <= ?';
+      params.push(filters.endDate);
+    }
+    if (filters.warehouseId) {
+      query += ' AND ia.warehouse_id = ?';
+      params.push(filters.warehouseId);
+    }
+    if (filters.lossType) {
+      query += ' AND ia.loss_type = ?';
+      params.push(filters.lossType);
+    }
+
+    query += ' ORDER BY ia.adjustment_date DESC LIMIT 1000';
+    return await db.query(query, params);
+  }
+
+  async getStockTransferReport(institutionId, filters = {}) {
+    let query = `
+      SELECT es.created_at, es.event_data, es.metadata,
+             i.sku, i.name as item_name,
+             wf.name as from_warehouse, wt.name as to_warehouse,
+             JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.quantity')) as quantity,
+             JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.transferId')) as transfer_id
+      FROM event_store es
+      JOIN items i ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = i.id
+      LEFT JOIN warehouses wf ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.fromWarehouseId')) = wf.id
+      LEFT JOIN warehouses wt ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.toWarehouseId')) = wt.id
+      WHERE es.institution_id = ? AND es.event_type IN ('TRANSFER_OUT', 'TRANSFER_IN')
+    `;
+    const params = [institutionId];
+
+    if (filters.startDate) {
+      query += ' AND DATE(es.created_at) >= ?';
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      query += ' AND DATE(es.created_at) <= ?';
+      params.push(filters.endDate);
+    }
+    if (filters.fromWarehouseId) {
+      query += ' AND JSON_UNQUOTE(JSON_EXTRACT(es.event_data, "$.fromWarehouseId")) = ?';
+      params.push(filters.fromWarehouseId);
+    }
+    if (filters.toWarehouseId) {
+      query += ' AND JSON_UNQUOTE(JSON_EXTRACT(es.event_data, "$.toWarehouseId")) = ?';
+      params.push(filters.toWarehouseId);
+    }
+
+    query += ' ORDER BY es.created_at DESC LIMIT 1000';
+    return await db.query(query, params);
+  }
+
   // Purchase Reports
   async getPurchaseReport(institutionId, filters = {}) {
     let query = `
@@ -220,6 +290,61 @@ class ReportsService {
     const totalValue = items.reduce((sum, item) => sum + parseFloat(item.current_value), 0);
     
     return { items, totalValue };
+  }
+
+  async getReceivablesReport(institutionId, filters = {}) {
+    let query = `
+      SELECT so.id, so.so_number, so.customer_name, so.order_date, so.total_amount,
+             COALESCE(SUM(pr.amount), 0) as paid_amount,
+             (so.total_amount - COALESCE(SUM(pr.amount), 0)) as outstanding_amount,
+             DATEDIFF(NOW(), so.order_date) as days_outstanding
+      FROM sales_orders so
+      LEFT JOIN payment_records pr ON so.id = pr.so_id AND pr.type = 'received'
+      WHERE so.institution_id = ? AND so.status IN ('shipped', 'delivered')
+    `;
+    const params = [institutionId];
+
+    if (filters.startDate) {
+      query += ' AND so.order_date >= ?';
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      query += ' AND so.order_date <= ?';
+      params.push(filters.endDate);
+    }
+    if (filters.customerId) {
+      query += ' AND so.customer_id = ?';
+      params.push(filters.customerId);
+    }
+
+    query += ' GROUP BY so.id HAVING outstanding_amount > 0 ORDER BY days_outstanding DESC';
+    return await db.query(query, params);
+  }
+
+  async getPaymentsReceivedReport(institutionId, filters = {}) {
+    let query = `
+      SELECT pr.*, so.so_number, so.customer_name, so.order_date
+      FROM payment_records pr
+      JOIN sales_orders so ON pr.so_id = so.id
+      WHERE pr.institution_id = ? AND pr.type = 'received'
+    `;
+    const params = [institutionId];
+
+    if (filters.startDate) {
+      query += ' AND pr.payment_date >= ?';
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      query += ' AND pr.payment_date <= ?';
+      params.push(filters.endDate);
+    }
+    if (filters.customerId) {
+      query += ' AND so.customer_id = ?';
+      params.push(filters.customerId);
+    }
+
+    query += ' ORDER BY pr.payment_date DESC';
+    return await db.query(query, params);
   }
 
   // Analytics Reports

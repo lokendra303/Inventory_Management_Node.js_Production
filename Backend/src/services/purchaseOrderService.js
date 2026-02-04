@@ -363,6 +363,24 @@ class PurchaseOrderService {
       throw new Error('Purchase order not found');
     }
 
+    // Update inventory when PO is confirmed
+    if (status === 'confirmed') {
+      const po = await this.getPurchaseOrder(institutionId, poId);
+      if (po && po.lines) {
+        for (const line of po.lines) {
+          await inventoryService.receiveStock(institutionId, {
+            itemId: line.item_id,
+            warehouseId: po.warehouse_id,
+            quantity: line.quantity_ordered,
+            unitCost: line.unit_cost,
+            poId: poId,
+            poLineId: line.id,
+            grnNumber: `AUTO-${po.po_number}`
+          }, userId);
+        }
+      }
+    }
+
     logger.info('PO status updated', { poId, institutionId, status, userId });
   }
 
