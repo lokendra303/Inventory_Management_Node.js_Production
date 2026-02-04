@@ -26,7 +26,7 @@ module.exports = {
   
   jwt: {
     secret: process.env.JWT_SECRET || 'fallback-secret-change-in-production',
-    expiresIn: '365d' // Extended to 1 year - effectively no expiration
+    expiresIn: '999y' // No expiration
   },
   
   email: {

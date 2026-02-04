@@ -92,17 +92,27 @@ const Items = () => {
 
   const fetchDropdownOptions = async () => {
     try {
-      const [unitsRes, manufacturersRes, brandsRes] = await Promise.all([
-        apiService.get('/dropdown-options/units'),
-        apiService.get('/dropdown-options/manufacturers'), 
-        apiService.get('/dropdown-options/brands')
-      ]);
+      console.log('=== STARTING DROPDOWN FETCH ===');
       
-      if (unitsRes.success) setUnitOptions(unitsRes.data);
-      if (manufacturersRes.success) setManufacturerOptions(manufacturersRes.data);
-      if (brandsRes.success) setBrandOptions(brandsRes.data);
+      console.log('Fetching manufacturers...');
+      const manufacturersRes = await apiService.get('/manufacturers');
+      console.log('Manufacturers response:', manufacturersRes);
+      
+      console.log('Fetching brands...');
+      const brandsRes = await apiService.get('/brands');
+      console.log('Brands response:', brandsRes);
+      
+      console.log('Fetching units...');
+      const unitsRes = await apiService.get('/units');
+      console.log('Units response:', unitsRes);
+      
+      setUnitOptions(Array.isArray(unitsRes) ? unitsRes : []);
+      setManufacturerOptions(Array.isArray(manufacturersRes) ? manufacturersRes : []);
+      setBrandOptions(Array.isArray(brandsRes) ? brandsRes : []);
+      
+      console.log('=== DROPDOWN FETCH COMPLETE ===');
     } catch (error) {
-      console.log('Using empty options');
+      console.error('=== DROPDOWN FETCH ERROR ===', error);
     }
   };
 
@@ -235,16 +245,21 @@ const Items = () => {
     setModalVisible(true);
   };
 
-  const openCreateModal = () => {
+  const openCreateModal = async () => {
     setEditingItem(null);
     setPriceCurrency(currency);
     setImageUrl('');
     setImageFile(null);
     form.resetFields();
+    
+    // Fetch fresh dropdown data
+    await fetchDropdownOptions();
+    
     setModalVisible(true);
   };
 
   useEffect(() => {
+    console.log('Items component mounted, fetching data...');
     fetchItems();
     fetchDropdownOptions();
   }, []);
@@ -357,27 +372,47 @@ const Items = () => {
                               >
                                 + Add Category
                               </Button>
-                              <Button 
-                                type="link" 
-                                size="small"
-                                danger
-                                onClick={() => {
-                                  const optionToDelete = prompt('Enter category name to delete:');
-                                  if (optionToDelete) {
-                                    setCategories(categories.filter(c => c.name !== optionToDelete));
-                                    message.success('Category deleted');
-                                  }
-                                }}
-                              >
-                                - Delete Category
-                              </Button>
                             </div>
                           </div>
                         )}
                       >
                         {categories.map(category => (
                           <Select.Option key={category.id} value={category.name}>
-                            {category.name}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>{category.name}</span>
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCategories(categories.filter(c => c.id !== category.id));
+                                  message.success(`Category '${category.name}' deleted`);
+                                }}
+                                style={{ 
+                                  marginLeft: 8,
+                                  width: '18px',
+                                  height: '18px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#ff4d4f',
+                                  color: 'white',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  fontSize: '12px',
+                                  fontWeight: 'bold',
+                                  transition: 'all 0.2s'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.backgroundColor = '#d9363e';
+                                  e.target.style.transform = 'scale(1.1)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.backgroundColor = '#ff4d4f';
+                                  e.target.style.transform = 'scale(1)';
+                                }}
+                              >
+                                ×
+                              </span>
+                            </div>
                           </Select.Option>
                         ))}
                       </Select>
@@ -399,33 +434,55 @@ const Items = () => {
                               size="small"
                               onClick={() => {
                                 const newOption = prompt('Enter new unit:');
-                                if (newOption && !unitOptions.includes(newOption)) {
-                                  setUnitOptions([...unitOptions, newOption]);
+                                if (newOption && !unitOptions.find(u => u.name === newOption)) {
+                                  setUnitOptions([...unitOptions, { id: Date.now(), name: newOption, symbol: newOption }]);
                                 }
                               }}
                             >
                               + Add Unit
-                            </Button>
-                            <Button 
-                              type="link" 
-                              size="small"
-                              danger
-                              onClick={() => {
-                                const optionToDelete = prompt('Enter unit to delete:');
-                                if (optionToDelete && unitOptions.includes(optionToDelete)) {
-                                  setUnitOptions(unitOptions.filter(u => u !== optionToDelete));
-                                  message.success('Unit deleted');
-                                }
-                              }}
-                            >
-                              - Delete Unit
                             </Button>
                           </div>
                         </div>
                       )}
                     >
                       {unitOptions.map(unit => (
-                        <Select.Option key={unit} value={unit}>{unit.charAt(0).toUpperCase() + unit.slice(1)}</Select.Option>
+                        <Select.Option key={unit.id} value={unit.id}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{unit.name} ({unit.symbol})</span>
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setUnitOptions(unitOptions.filter(u => u.id !== unit.id));
+                                message.success(`Unit '${unit.name}' deleted`);
+                              }}
+                              style={{ 
+                                marginLeft: 8,
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                backgroundColor: '#ff4d4f',
+                                color: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                transition: 'all 0.2s'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = '#d9363e';
+                                e.target.style.transform = 'scale(1.1)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = '#ff4d4f';
+                                e.target.style.transform = 'scale(1)';
+                              }}
+                            >
+                              ×
+                            </span>
+                          </div>
+                        </Select.Option>
                       ))}
                     </Select>
                   </Form.Item>
@@ -529,47 +586,69 @@ const Items = () => {
             </Col>
             <Col span={8}>
               <Form.Item name="manufacturer" label="Manufacturer">
-                <Select 
-                  placeholder="Select or Add Manufacturer" 
-                  allowClear
-                  dropdownRender={(menu) => (
-                    <div>
-                      {menu}
-                      <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
-                        <Button 
-                          type="link" 
-                          size="small"
-                          onClick={() => {
-                            const newOption = prompt('Enter new manufacturer:');
-                            if (newOption && !manufacturerOptions.includes(newOption)) {
-                              setManufacturerOptions([...manufacturerOptions, newOption]);
-                            }
-                          }}
-                        >
-                          + Add Manufacturer
-                        </Button>
-                        <Button 
-                          type="link" 
-                          size="small"
-                          danger
-                          onClick={() => {
-                            const optionToDelete = prompt('Enter manufacturer to delete:');
-                            if (optionToDelete && manufacturerOptions.includes(optionToDelete)) {
-                              setManufacturerOptions(manufacturerOptions.filter(m => m !== optionToDelete));
-                              message.success('Manufacturer deleted');
-                            }
-                          }}
-                        >
-                          - Delete Manufacturer
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                >
-                  {manufacturerOptions.map(manufacturer => (
-                    <Select.Option key={manufacturer} value={manufacturer}>{manufacturer}</Select.Option>
-                  ))}
-                </Select>
+                    <Select 
+                      placeholder="Select or Add Manufacturer" 
+                      allowClear
+                      dropdownRender={(menu) => (
+                        <div>
+                          {menu}
+                          <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                            <Button 
+                              type="link" 
+                              size="small"
+                              onClick={() => {
+                                const newOption = prompt('Enter new manufacturer:');
+                                if (newOption && !manufacturerOptions.find(m => m.name === newOption)) {
+                                  setManufacturerOptions([...manufacturerOptions, { id: Date.now(), name: newOption }]);
+                                }
+                              }}
+                            >
+                              + Add Manufacturer
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    >
+                      {manufacturerOptions.map(manufacturer => (
+                        <Select.Option key={manufacturer.id} value={manufacturer.id}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{manufacturer.name}</span>
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setManufacturerOptions(manufacturerOptions.filter(m => m.id !== manufacturer.id));
+                                message.success(`Manufacturer '${manufacturer.name}' deleted`);
+                              }}
+                              style={{ 
+                                marginLeft: 8,
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                backgroundColor: '#ff4d4f',
+                                color: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                transition: 'all 0.2s'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = '#d9363e';
+                                e.target.style.transform = 'scale(1.1)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = '#ff4d4f';
+                                e.target.style.transform = 'scale(1)';
+                              }}
+                            >
+                              ×
+                            </span>
+                          </div>
+                        </Select.Option>
+                      ))}
+                    </Select>
               </Form.Item>
             </Col>
           </Row>
@@ -594,33 +673,55 @@ const Items = () => {
                           size="small"
                           onClick={() => {
                             const newOption = prompt('Enter new brand:');
-                            if (newOption && !brandOptions.includes(newOption)) {
-                              setBrandOptions([...brandOptions, newOption]);
+                            if (newOption && !brandOptions.find(b => b.name === newOption)) {
+                              setBrandOptions([...brandOptions, { id: Date.now(), name: newOption }]);
                             }
                           }}
                         >
                           + Add Brand
-                        </Button>
-                        <Button 
-                          type="link" 
-                          size="small"
-                          danger
-                          onClick={() => {
-                            const optionToDelete = prompt('Enter brand to delete:');
-                            if (optionToDelete && brandOptions.includes(optionToDelete)) {
-                              setBrandOptions(brandOptions.filter(b => b !== optionToDelete));
-                              message.success('Brand deleted');
-                            }
-                          }}
-                        >
-                          - Delete Brand
                         </Button>
                       </div>
                     </div>
                   )}
                 >
                   {brandOptions.map(brand => (
-                    <Select.Option key={brand} value={brand}>{brand}</Select.Option>
+                    <Select.Option key={brand.id} value={brand.id}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{brand.name}</span>
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBrandOptions(brandOptions.filter(b => b.id !== brand.id));
+                            message.success(`Brand '${brand.name}' deleted`);
+                          }}
+                          style={{ 
+                            marginLeft: 8,
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            backgroundColor: '#ff4d4f',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = '#d9363e';
+                            e.target.style.transform = 'scale(1.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = '#ff4d4f';
+                            e.target.style.transform = 'scale(1)';
+                          }}
+                        >
+                          ×
+                        </span>
+                      </div>
+                    </Select.Option>
                   ))}
                 </Select>
               </Form.Item>
