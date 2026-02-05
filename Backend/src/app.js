@@ -39,21 +39,14 @@ app.post('/api/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName, companyName } = req.body;
     
-    // Create institution first
-    const institutionId = require('uuid').v4();
-    
-    await require('./database/connection').query(
-      'INSERT INTO institutions (id, name, status) VALUES (?, ?, "active")',
-      [institutionId, companyName]
-    );
-    
-    // Create admin user
-    const userId = await require('./services/authService').createUser(institutionId, {
-      email,
-      password,
-      firstName,
-      lastName,
-      role: 'admin'
+    // Create institution using new service
+    const { institutionId, userId } = await require('./services/authService').createInstitution({
+      name: companyName,
+      email: `admin@${companyName.toLowerCase().replace(/\s+/g, '')}.com`,
+      adminEmail: email,
+      adminPassword: password,
+      adminFirstName: firstName,
+      adminLastName: lastName
     });
     
     res.status(201).json({

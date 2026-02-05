@@ -29,7 +29,7 @@ router.get('/health', (req, res) => {
 router.post('/auth/register-institution', 
   validate(schemas.registerinstitutionSchema),
   auditLog('institution_registration'),
-  authController.registerinstitution
+  authController.registerInstitution
 );
 
 router.post('/auth/login', 

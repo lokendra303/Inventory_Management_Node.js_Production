@@ -2,58 +2,58 @@ const authService = require('../services/authService');
 const logger = require('../utils/logger');
 
 class AuthController {
-  async registerUser(req, res) {
-    try {
-      const { email, password, firstName, lastName, companyName } = req.body;
-      
-      // Generate institution ID
-      const institutionId = require('uuid').v4();
-      
-      // Create institution first
-      await require('../database/connection').query(
-        'INSERT INTO institutions (id, name, status) VALUES (?, ?, "active")',
-        [institutionId, companyName]
-      );
-      
-      // Create admin user for the new institution
-      const userId = await authService.createUser(institutionId, {
-        email,
-        password,
-        firstName,
-        lastName,
-        role: 'admin'
-      });
-      
-      res.status(201).json({
-        success: true,
-        message: 'User registered successfully with new company',
-        data: { 
-          userId, 
-          institutionId,
-          companyName
-        }
-      });
-    } catch (error) {
-      logger.error('User registration failed', { error: error.message, body: req.body });
-      res.status(400).json({
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-  async registerinstitution(req, res) {
-    return this.registerInstitution(req, res);
-  }
-
+  // Register new institution (replaces registerUser/registerinstitution)
   async registerInstitution(req, res) {
     try {
-      const { institutionId, userId } = await authService.createInstitution(req.body);
+      const { 
+        // Institution details
+        institutionName, institutionEmail, institutionMobile, institutionAddress,
+        institutionCity, institutionState, institutionCountry, institutionPostalCode,
+        institutionType, registrationNumber, taxId, website, contactPerson,
+        // Admin user details
+        adminEmail, adminMobile, adminPassword, adminFirstName, adminLastName,
+        adminAddress, adminCity, adminState, adminCountry, adminPostalCode,
+        adminDateOfBirth, adminGender, adminDepartment, adminDesignation
+      } = req.body;
+      
+      const { institutionId, userId } = await authService.createInstitution({
+        name: institutionName,
+        email: institutionEmail,
+        mobile: institutionMobile,
+        address: institutionAddress,
+        city: institutionCity,
+        state: institutionState,
+        country: institutionCountry,
+        postalCode: institutionPostalCode,
+        institutionType,
+        registrationNumber,
+        taxId,
+        website,
+        contactPerson,
+        adminEmail,
+        adminMobile,
+        adminPassword,
+        adminFirstName,
+        adminLastName,
+        adminAddress,
+        adminCity,
+        adminState,
+        adminCountry,
+        adminPostalCode,
+        adminDateOfBirth,
+        adminGender,
+        adminDepartment,
+        adminDesignation
+      });
       
       res.status(201).json({
         success: true,
-        message: 'Institution created successfully',
-        data: { institutionId, userId }
+        message: 'Institution registered successfully',
+        data: { 
+          institutionId, 
+          userId,
+          institutionName
+        }
       });
     } catch (error) {
       logger.error('Institution registration failed', { error: error.message, body: req.body });
@@ -64,10 +64,31 @@ class AuthController {
     }
   }
 
+  // Backward compatibility - redirect to registerInstitution
+  async registerUser(req, res) {
+    const { email, password, firstName, lastName, companyName } = req.body;
+    
+    // Transform old format to new format
+    req.body = {
+      institutionName: companyName,
+      institutionEmail: `admin@${companyName.toLowerCase().replace(/\s+/g, '')}.com`,
+      adminEmail: email,
+      adminPassword: password,
+      adminFirstName: firstName,
+      adminLastName: lastName
+    };
+    
+    return this.registerInstitution(req, res);
+  }
+
+  async registerinstitution(req, res) {
+    return this.registerInstitution(req, res);
+  }
+
   async login(req, res) {
     try {
-      const { email, password } = req.body;
-      const result = await authService.authenticateUser(email, password);
+      const { email, password, institutionId } = req.body;
+      const result = await authService.authenticateUser(email, password, institutionId);
       
       res.json({
         success: true,
@@ -114,15 +135,15 @@ class AuthController {
       const limit = parseInt(req.query.limit) || 50;
       const offset = parseInt(req.query.offset) || 0;
       
-      const institution_users = await authService.getInstitutionUsers(req.institutionId, limit, offset);
+      const users = await authService.getInstitutionUsers(req.institutionId, limit, offset);
       
       res.json({
         success: true,
-        data: institution_users,
-        pagination: { limit, offset, total: institution_users.length }
+        data: users,
+        pagination: { limit, offset, total: users.length }
       });
     } catch (error) {
-      logger.error('Failed to get institution_users', { error: error.message, institutionId: req.institutionId });
+      logger.error('Failed to get users', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -146,8 +167,8 @@ class AuthController {
       });
       
       // Validate user exists first
-      const institution_users = await authService.getInstitutionUsers(req.institutionId);
-      const existingUser = institution_users.find(u => u.id === userId);
+      const users = await authService.getInstitutionUsers(req.institutionId);
+      const existingUser = users.find(u => u.id === userId);
       
       if (!existingUser) {
         logger.error('User not found for permissions update', { userId, institutionId: req.institutionId });
@@ -233,8 +254,8 @@ class AuthController {
   async getProfile(req, res) {
     try {
       // Get full user details from database
-      const institution_users = await authService.getInstitutionUsers(req.institutionId);
-      const userProfile = institution_users.find(u => u.id === req.user.userId);
+      const users = await authService.getInstitutionUsers(req.institutionId);
+      const userProfile = users.find(u => u.id === req.user.userId);
       
       if (!userProfile) {
         return res.status(404).json({
@@ -253,6 +274,9 @@ class AuthController {
           firstName: userProfile.first_name,
           lastName: userProfile.last_name,
           role: userProfile.role,
+          department: userProfile.department,
+          designation: userProfile.designation,
+          employeeId: userProfile.employee_id,
           permissions: typeof userProfile.permissions === 'string' ? JSON.parse(userProfile.permissions || '{}') : userProfile.permissions || {}
         }
       });
@@ -305,8 +329,8 @@ class AuthController {
       });
 
       // Fetch updated profile
-      const updatedUser = await authService.getInstitutionUsers(institutionId);
-      const userProfile = updatedUser.find(u => u.id === userId);
+      const updatedUsers = await authService.getInstitutionUsers(institutionId);
+      const userProfile = updatedUsers.find(u => u.id === userId);
 
       res.json({
         success: true,
@@ -340,6 +364,24 @@ class AuthController {
         message: 'Password changed successfully'
       });
     } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async extendSession(req, res) {
+    try {
+      const result = await authService.extendSession(req.user.userId, req.institutionId);
+      
+      res.json({
+        success: true,
+        message: 'Session extended successfully',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Session extension failed', { error: error.message, userId: req.user.userId });
       res.status(400).json({
         success: false,
         error: error.message
@@ -390,17 +432,60 @@ class AuthController {
     }
   }
 
-  async extendSession(req, res) {
+  // Institution management endpoints
+  async getInstitutionInfo(req, res) {
     try {
-      const result = await authService.extendSession(req.user.userId, req.institutionId);
+      const institution = await authService.getInstitutionByEmail(req.user.email);
       
+      if (!institution) {
+        return res.status(404).json({
+          success: false,
+          error: 'Institution not found'
+        });
+      }
+
       res.json({
         success: true,
-        message: 'Session extended successfully',
-        data: result
+        data: {
+          id: institution.id,
+          name: institution.name,
+          email: institution.email,
+          mobile: institution.mobile,
+          address: institution.address,
+          city: institution.city,
+          state: institution.state,
+          country: institution.country,
+          institutionType: institution.institution_type,
+          registrationNumber: institution.registration_number,
+          taxId: institution.tax_id,
+          website: institution.website,
+          contactPerson: institution.contact_person,
+          status: institution.status,
+          plan: institution.plan
+        }
       });
     } catch (error) {
-      logger.error('Session extension failed', { error: error.message, userId: req.user.userId });
+      logger.error('Failed to get institution info', { error: error.message });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  async updateInstitutionSettings(req, res) {
+    try {
+      const institutionId = req.institutionId;
+      const { settings } = req.body;
+
+      await authService.updateInstitutionSettings(institutionId, settings);
+
+      res.json({
+        success: true,
+        message: 'Institution settings updated successfully'
+      });
+    } catch (error) {
+      logger.error('Failed to update institution settings', { error: error.message });
       res.status(400).json({
         success: false,
         error: error.message
