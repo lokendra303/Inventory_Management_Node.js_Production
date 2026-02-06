@@ -311,6 +311,11 @@ class AuthService {
       throw new Error('User not found');
     }
     
+    // Prevent modifying super_admin permissions
+    if (checkUser[0].role === 'super_admin') {
+      throw new Error('Cannot modify super admin permissions');
+    }
+    
     let query = 'UPDATE institution_users SET permissions = ?, warehouse_access = ?';
     let params = [JSON.stringify(permissions), JSON.stringify(warehouseAccess)];
     

@@ -49,6 +49,27 @@ class RoleService {
       }
     }
 
+    // Check if the foreign key constraint is correct, if not fix it
+    try {
+      const constraints = await db.query(`
+        SELECT CONSTRAINT_NAME, REFERENCED_TABLE_NAME 
+        FROM information_schema.KEY_COLUMN_USAGE 
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'roles' 
+        AND COLUMN_NAME = 'institution_id'
+        AND REFERENCED_TABLE_NAME IS NOT NULL
+      `);
+      
+      if (constraints.length > 0 && constraints[0].REFERENCED_TABLE_NAME === 'tenants') {
+        // Drop the old constraint and add the correct one
+        await db.query(`ALTER TABLE roles DROP FOREIGN KEY ${constraints[0].CONSTRAINT_NAME}`);
+        await db.query(`ALTER TABLE roles ADD CONSTRAINT roles_institution_fk FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE`);
+        logger.info('Fixed roles table foreign key constraint');
+      }
+    } catch (error) {
+      logger.warn('Could not check/fix foreign key constraint', { error: error.message });
+    }
+
     const roles = await db.query(
       'SELECT id, name, permissions, status, created_at FROM roles WHERE institution_id = ? ORDER BY name',
       [institutionId]
@@ -63,6 +84,10 @@ class RoleService {
   }
 
   async updateRole(institutionId, roleId, name, permissions) {
+    if (!roleId) {
+      throw new Error('Role ID is required');
+    }
+    
     // Only prevent updating admin role
     if (roleId === 'admin') {
       throw new Error('Cannot update admin role');
@@ -123,6 +148,10 @@ class RoleService {
   }
 
   async toggleRoleStatus(institutionId, roleId) {
+    if (!roleId) {
+      throw new Error('Role ID is required');
+    }
+    
     if (roleId === 'admin') {
       throw new Error('Cannot disable admin role');
     }

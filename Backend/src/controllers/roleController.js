@@ -40,8 +40,15 @@ class RoleController {
 
   async updateRole(req, res) {
     try {
-      const { roleId } = req.params;
+      const { id: roleId } = req.params;
       const { name, permissions } = req.body;
+      
+      if (!roleId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Role ID is required'
+        });
+      }
       
       await roleService.updateRole(req.institutionId, roleId, name, permissions);
       
@@ -60,7 +67,14 @@ class RoleController {
 
   async toggleRoleStatus(req, res) {
     try {
-      const { roleId } = req.params;
+      const { id: roleId } = req.params;
+      
+      if (!roleId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Role ID is required'
+        });
+      }
       
       const newStatus = await roleService.toggleRoleStatus(req.institutionId, roleId);
       
