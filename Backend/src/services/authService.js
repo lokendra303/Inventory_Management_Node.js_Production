@@ -7,6 +7,11 @@ const logger = require('../utils/logger');
 const { ROLE_PERMISSIONS } = require('../constants/permissions');
 
 class AuthService {
+  // Helper function to convert undefined to null
+  _toNull(value) {
+    return value === undefined ? null : value;
+  }
+
   // Create new institution (replaces createinstitution)
   async createInstitution(institutionData) {
     const { 
@@ -17,10 +22,13 @@ class AuthService {
       adminDateOfBirth, adminGender, adminDepartment, adminDesignation 
     } = institutionData;
     
+    // If no institution email provided, generate one from name and admin email
+    const institutionEmail = email || `info@${name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`;
+    
     // Check if institution email already exists
     const existingInstitution = await db.query(
       'SELECT id FROM institutions WHERE email = ?',
-      [email]
+      [institutionEmail]
     );
 
     if (existingInstitution.length > 0) {
@@ -47,9 +55,22 @@ class AuthService {
         `INSERT INTO institutions (id, name, email, mobile, address, city, state, country, postal_code,
          institution_type, registration_number, tax_id, website, contact_person, status, plan, settings) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'starter', '{}')`,
-        [institutionId, name, email, mobile || null, address || null, city || null, 
-         state || null, country || null, postalCode || null, institutionType || 'corporate',
-         registrationNumber || null, taxId || null, website || null, contactPerson || null]
+        [
+          institutionId, 
+          this._toNull(name), 
+          institutionEmail, 
+          this._toNull(mobile), 
+          this._toNull(address), 
+          this._toNull(city), 
+          this._toNull(state), 
+          this._toNull(country), 
+          this._toNull(postalCode), 
+          this._toNull(institutionType),
+          this._toNull(registrationNumber), 
+          this._toNull(taxId), 
+          this._toNull(website), 
+          this._toNull(contactPerson)
+        ]
       );
 
       // Create admin user for the institution
@@ -57,11 +78,25 @@ class AuthService {
         `INSERT INTO institution_users (id, institution_id, email, mobile, password_hash, first_name, last_name, 
          address, city, state, country, postal_code, date_of_birth, gender, department, designation, 
          role, permissions, status) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', '{"all": true}', 'active')`,
-        [userId, institutionId, adminEmail, adminMobile || null, passwordHash, adminFirstName, adminLastName,
-         adminAddress || null, adminCity || null, adminState || null, adminCountry || null, 
-         adminPostalCode || null, adminDateOfBirth || null, adminGender || null, 
-         adminDepartment || null, adminDesignation || null]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'super_admin', '{"all": true}', 'active')`,
+        [
+          userId, 
+          institutionId, 
+          this._toNull(adminEmail), 
+          this._toNull(adminMobile), 
+          passwordHash, 
+          this._toNull(adminFirstName), 
+          this._toNull(adminLastName),
+          this._toNull(adminAddress), 
+          this._toNull(adminCity), 
+          this._toNull(adminState), 
+          this._toNull(adminCountry), 
+          this._toNull(adminPostalCode), 
+          this._toNull(adminDateOfBirth), 
+          this._toNull(adminGender), 
+          this._toNull(adminDepartment), 
+          this._toNull(adminDesignation)
+        ]
       );
     });
 
@@ -255,9 +290,9 @@ class AuthService {
        address, city, state, country, postal_code, date_of_birth, gender, department, designation, employee_id,
        role, permissions, warehouse_access, status, created_by) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-      [userId, institutionId, email, mobile || null, passwordHash, firstName, lastName,
-       address || null, city || null, state || null, country || null, postalCode || null, 
-       dateOfBirth || null, gender || null, department || null, designation || null, employeeId || null,
+      [userId, institutionId, email, this._toNull(mobile), passwordHash, firstName, lastName,
+       this._toNull(address), this._toNull(city), this._toNull(state), this._toNull(country), this._toNull(postalCode), 
+       this._toNull(dateOfBirth), this._toNull(gender), this._toNull(department), this._toNull(designation), this._toNull(employeeId),
        role, JSON.stringify(finalPermissions), JSON.stringify(warehouseAccess), createdBy]
     );
 
@@ -312,9 +347,9 @@ class AuthService {
       throw new Error('User not found');
     }
 
-    // Only prevent deactivating admin users
-    if (users[0].role === 'admin' && status === 'inactive') {
-      throw new Error('Admin users cannot be deactivated');
+    // Only prevent deactivating super_admin users
+    if (users[0].role === 'super_admin' && status === 'inactive') {
+      throw new Error('Institution owner cannot be deactivated');
     }
 
     // Update user status

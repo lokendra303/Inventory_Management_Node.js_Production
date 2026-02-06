@@ -7,17 +7,17 @@ class AuthController {
     try {
       const { 
         // Institution details
-        institutionName, institutionEmail, institutionMobile, institutionAddress,
+        name, institutionEmail, institutionMobile, institutionAddress,
         institutionCity, institutionState, institutionCountry, institutionPostalCode,
         institutionType, registrationNumber, taxId, website, contactPerson,
-        // Admin user details
+        // Institution owner details (super admin)
         adminEmail, adminMobile, adminPassword, adminFirstName, adminLastName,
         adminAddress, adminCity, adminState, adminCountry, adminPostalCode,
         adminDateOfBirth, adminGender, adminDepartment, adminDesignation
       } = req.body;
       
       const { institutionId, userId } = await authService.createInstitution({
-        name: institutionName,
+        name: name,
         email: institutionEmail,
         mobile: institutionMobile,
         address: institutionAddress,
@@ -52,7 +52,7 @@ class AuthController {
         data: { 
           institutionId, 
           userId,
-          institutionName
+          institutionName: name
         }
       });
     } catch (error) {

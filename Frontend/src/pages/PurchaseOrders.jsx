@@ -121,7 +121,21 @@ const PurchaseOrders = () => {
   const confirmPO = async (po) => {
     try {
       await apiService.put(`/purchase-orders/${po.id}/status`, { status: 'confirmed' });
-      message.success('Purchase order confirmed');
+      
+      // Auto-generate invoice after confirming PO
+      try {
+        const invoiceResponse = await apiService.post(`/purchase-invoices/generate-from-po/${po.id}`);
+        if (invoiceResponse.success) {
+          message.success(`Purchase order confirmed and invoice ${invoiceResponse.data.invoiceNumber} auto-generated`);
+        } else {
+          message.success('Purchase order confirmed');
+          message.warning('Auto-invoice generation failed - you can create manually');
+        }
+      } catch (invoiceError) {
+        message.success('Purchase order confirmed');
+        message.warning('Auto-invoice generation failed - you can create manually');
+      }
+      
       fetchData();
     } catch (error) {
       message.error('Failed to confirm purchase order');

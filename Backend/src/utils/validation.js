@@ -11,8 +11,20 @@ const unitPrice = Joi.number().positive().required();
 // Auth schemas
 const registerinstitutionSchema = Joi.object({
   name: Joi.string().min(2).max(255).required(),
+  email: Joi.string().max(255).optional(),
+  mobile: Joi.string().pattern(/^[0-9+\-\s()]{10,20}$/).optional(),
+  address: Joi.string().max(500).optional(),
+  city: Joi.string().max(100).optional(),
+  state: Joi.string().max(100).optional(),
+  country: Joi.string().max(100).optional(),
+  postalCode: Joi.string().max(20).optional(),
+  institutionType: Joi.string().max(100).optional(),
+  registrationNumber: Joi.string().max(100).optional(),
+  taxId: Joi.string().max(100).optional(),
+  website: Joi.string().max(255).optional(),
+  contactPerson: Joi.string().max(255).optional(),
   adminEmail: Joi.string().email().required(),
-  adminMobile: Joi.string().pattern(/^[0-9+\-\s()]{10,20}$/).required(),
+  adminMobile: Joi.string().pattern(/^[0-9+\-\s()]{10,20}$/).optional(),
   adminPassword: Joi.string().min(8).required(),
   adminFirstName: Joi.string().min(1).max(100).required(),
   adminLastName: Joi.string().min(1).max(100).required(),
@@ -25,7 +37,7 @@ const registerinstitutionSchema = Joi.object({
   adminGender: Joi.string().valid('male', 'female', 'other').optional(),
   adminDepartment: Joi.string().max(100).optional(),
   adminDesignation: Joi.string().max(100).optional()
-});
+}).unknown(true);
 
 const loginSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -312,7 +324,7 @@ const createInvoicePaymentSchema = Joi.object({
 // Validation middleware
 const validate = (schema) => {
   return (req, res, next) => {
-    const { error, value } = schema.validate(req.body);
+    const { error, value } = schema.validate(req.body, { stripUnknown: false });
     if (error) {
       return res.status(400).json({
         error: 'Validation error',
@@ -322,7 +334,21 @@ const validate = (schema) => {
         }))
       });
     }
-    req.body = value;
+    
+    // Recursively convert undefined to null
+    const convertUndefinedToNull = (obj) => {
+      if (obj === null || obj === undefined) return null;
+      if (typeof obj !== 'object') return obj;
+      if (Array.isArray(obj)) return obj.map(convertUndefinedToNull);
+      
+      const result = {};
+      for (const key in obj) {
+        result[key] = obj[key] === undefined ? null : convertUndefinedToNull(obj[key]);
+      }
+      return result;
+    };
+    
+    req.body = convertUndefinedToNull(value);
     next();
   };
 };
@@ -330,6 +356,7 @@ const validate = (schema) => {
 module.exports = {
   validate,
   schemas: {
+    registerInstitutionSchema: registerinstitutionSchema,
     registerinstitutionSchema,
     loginSchema,
     createUserSchema,

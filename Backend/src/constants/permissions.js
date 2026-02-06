@@ -52,8 +52,17 @@ const PERMISSIONS = {
 
 /**
  * Default role permissions
+ * Role hierarchy:
+ * - super_admin: Institution owner (created during registration) - has all permissions
+ * - admin: Can be assigned to users - has all permissions except user management of super_admin
+ * - manager: Has most operational permissions
+ * - user: Has basic view and limited operational permissions
  */
 const ROLE_PERMISSIONS = {
+  super_admin: {
+    [PERMISSIONS.ALL]: true
+  },
+  
   admin: {
     [PERMISSIONS.ALL]: true
   },
