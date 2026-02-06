@@ -22,8 +22,8 @@ class AuthService {
       adminDateOfBirth, adminGender, adminDepartment, adminDesignation 
     } = institutionData;
     
-    // If no institution email provided, generate one from name and admin email
-    const institutionEmail = email || `info@${name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`;
+    // Use admin email as institution email if not provided
+    const institutionEmail = email || adminEmail;
     
     // Check if institution email already exists
     const existingInstitution = await db.query(
@@ -32,17 +32,7 @@ class AuthService {
     );
 
     if (existingInstitution.length > 0) {
-      throw new Error('Institution email already registered');
-    }
-
-    // Check if admin email already exists
-    const existingUser = await db.query(
-      'SELECT id FROM institution_users WHERE email = ?',
-      [adminEmail]
-    );
-
-    if (existingUser.length > 0) {
-      throw new Error('Admin email already registered');
+      throw new Error('Email already registered');
     }
     
     const institutionId = uuidv4();
@@ -50,7 +40,7 @@ class AuthService {
     const passwordHash = await bcrypt.hash(adminPassword, 12);
 
     await db.transaction(async (connection) => {
-      // Create institution
+      // Create institution with owner as contact person
       await connection.execute(
         `INSERT INTO institutions (id, name, email, mobile, address, city, state, country, postal_code,
          institution_type, registration_number, tax_id, website, contact_person, status, plan, settings) 
@@ -59,7 +49,7 @@ class AuthService {
           institutionId, 
           this._toNull(name), 
           institutionEmail, 
-          this._toNull(mobile), 
+          this._toNull(adminMobile), 
           this._toNull(address), 
           this._toNull(city), 
           this._toNull(state), 
@@ -69,11 +59,11 @@ class AuthService {
           this._toNull(registrationNumber), 
           this._toNull(taxId), 
           this._toNull(website), 
-          this._toNull(contactPerson)
+          `${adminFirstName} ${adminLastName}`
         ]
       );
 
-      // Create admin user for the institution
+      // Create super admin user as institution owner
       await connection.execute(
         `INSERT INTO institution_users (id, institution_id, email, mobile, password_hash, first_name, last_name, 
          address, city, state, country, postal_code, date_of_birth, gender, department, designation, 
@@ -82,7 +72,7 @@ class AuthService {
         [
           userId, 
           institutionId, 
-          this._toNull(adminEmail), 
+          adminEmail, 
           this._toNull(adminMobile), 
           passwordHash, 
           this._toNull(adminFirstName), 
@@ -100,8 +90,8 @@ class AuthService {
       );
     });
 
-    logger.info('Institution created', { institutionId, adminEmail });
-    return { institutionId, userId };
+    logger.info('Institution created with owner', { institutionId, adminEmail });
+    return { institutionId, userId, needsAdditionalInfo: true };
   }
 
   async authenticateUser(email, password, institutionId = null) {
@@ -396,6 +386,21 @@ class AuthService {
     );
 
     logger.info('Institution settings updated', { institutionId });
+  }
+
+  async updateInstitutionDetails(institutionId, details) {
+    const { address, city, state, country, postalCode, institutionType, registrationNumber, taxId, website, contactPerson } = details;
+    
+    await db.query(
+      `UPDATE institutions SET address = ?, city = ?, state = ?, country = ?, postal_code = ?,
+       institution_type = ?, registration_number = ?, tax_id = ?, website = ?, contact_person = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [this._toNull(address), this._toNull(city), this._toNull(state), this._toNull(country), this._toNull(postalCode),
+       this._toNull(institutionType), this._toNull(registrationNumber), this._toNull(taxId), this._toNull(website), this._toNull(contactPerson),
+       institutionId]
+    );
+
+    logger.info('Institution details updated', { institutionId });
   }
 
   // Backward compatibility methods

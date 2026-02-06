@@ -52,7 +52,8 @@ class AuthController {
         data: { 
           institutionId, 
           userId,
-          institutionName: name
+          institutionName: name,
+          needsAdditionalInfo: true
         }
       });
     } catch (error) {
@@ -486,6 +487,31 @@ class AuthController {
       });
     } catch (error) {
       logger.error('Failed to update institution settings', { error: error.message });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async updateInstitutionDetails(req, res) {
+    try {
+      const { 
+        address, city, state, country, postalCode,
+        institutionType, registrationNumber, taxId, website, contactPerson
+      } = req.body;
+      
+      await authService.updateInstitutionDetails(req.institutionId, {
+        address, city, state, country, postalCode,
+        institutionType, registrationNumber, taxId, website, contactPerson
+      });
+      
+      res.json({
+        success: true,
+        message: 'Institution details updated successfully'
+      });
+    } catch (error) {
+      logger.error('Failed to update institution details', { error: error.message });
       res.status(400).json({
         success: false,
         error: error.message
