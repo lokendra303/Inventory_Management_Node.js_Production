@@ -470,6 +470,26 @@ class InventoryService {
     const warehouseService = require('./warehouseService');
     return await warehouseService.checkWarehouseAccess(institutionId, userId, warehouseId);
   }
+
+  async deleteInventory(institutionId, itemId, warehouseId, userId) {
+    try {
+      // Delete inventory projection
+      const result = await db.query(
+        'DELETE FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+        [institutionId, itemId, warehouseId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error('Inventory record not found');
+      }
+
+      logger.info('Inventory deleted', { itemId, warehouseId, institutionId, userId });
+      return true;
+    } catch (error) {
+      logger.error('Failed to delete inventory', { institutionId, itemId, warehouseId, error: error.message });
+      throw error;
+    }
+  }
 }
 
 module.exports = new InventoryService();

@@ -38,20 +38,31 @@ const Inventory = () => {
     {
       title: 'Actions',
       key: 'actions',
-      width: 100,
+      width: 150,
       fixed: 'right',
       render: (_, record) => (
-        showManualButtons ? (
-          <Button 
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => openEditModal(record)}
-          >
-            Edit
-          </Button>
-        ) : (
-          <span style={{ color: '#999' }}>View Only</span>
-        )
+        <Space>
+          {showManualButtons ? (
+            <>
+              <Button 
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => openEditModal(record)}
+              >
+                Edit
+              </Button>
+              <Button 
+                size="small"
+                danger
+                onClick={() => deleteInventory(record)}
+              >
+                Delete
+              </Button>
+            </>
+          ) : (
+            <span style={{ color: '#999' }}>View Only</span>
+          )}
+        </Space>
       )
     }
   ];
@@ -192,6 +203,26 @@ const Inventory = () => {
     form.resetFields();
   };
 
+  const deleteInventory = async (record) => {
+    Modal.confirm({
+      title: 'Delete Inventory',
+      content: `Are you sure you want to delete inventory for "${record.item_name}" in "${record.warehouse_name}"?`,
+      okText: 'Delete',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          const response = await apiService.delete(`/inventory/${record.item_id}/${record.warehouse_id}`);
+          if (response.success) {
+            message.success('Inventory deleted successfully');
+            fetchData();
+          }
+        } catch (error) {
+          message.error(error.response?.data?.error || 'Failed to delete inventory');
+        }
+      }
+    });
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -202,7 +233,7 @@ const Inventory = () => {
         <>
           <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
             <Select placeholder="Select item">
-              {items.map(item => (
+              {items.filter(item => item.status === 'active').map(item => (
                 <Select.Option key={item.id} value={item.id}>{item.name} ({item.sku})</Select.Option>
               ))}
             </Select>

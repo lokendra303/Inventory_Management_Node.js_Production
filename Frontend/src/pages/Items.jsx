@@ -85,6 +85,15 @@ const Items = () => {
               {record.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
           )}
+          {canManageItems && (
+            <Button 
+              size="small"
+              danger
+              onClick={() => deleteItem(record)}
+            >
+              Delete
+            </Button>
+          )}
         </Space>
       )
     }
@@ -215,6 +224,26 @@ const Items = () => {
     } catch (error) {
       message.error('Failed to update item status');
     }
+  };
+
+  const deleteItem = async (item) => {
+    Modal.confirm({
+      title: 'Delete Item',
+      content: `Are you sure you want to delete "${item.name}"?`,
+      okText: 'Delete',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          const response = await apiService.delete(`/items/${item.id}`);
+          if (response.success) {
+            message.success('Item deleted successfully');
+            fetchItems();
+          }
+        } catch (error) {
+          message.error(error.response?.data?.error || 'Failed to delete item');
+        }
+      }
+    });
   };
 
   const viewItem = (item) => {
@@ -502,7 +531,7 @@ const Items = () => {
                     rules={[{ required: true, message: 'Please select a warehouse!' }]}
                   >
                     <Select placeholder="Select warehouse">
-                      {warehouses.map(warehouse => (
+                      {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
                         <Select.Option key={warehouse.id} value={warehouse.id}>
                           {warehouse.name}
                         </Select.Option>

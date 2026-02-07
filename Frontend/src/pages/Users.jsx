@@ -518,7 +518,7 @@ const Users = () => {
               placeholder="Select warehouses (empty = all warehouses)"
               allowClear
             >
-              {warehouses.map(warehouse => (
+              {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
                 <Select.Option key={warehouse.id} value={warehouse.id}>
                   {warehouse.name}
                 </Select.Option>

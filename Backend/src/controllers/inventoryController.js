@@ -338,6 +338,30 @@ class InventoryController {
       });
     }
   }
+  async deleteInventory(req, res) {
+    try {
+      const { itemId, warehouseId } = req.params;
+      await inventoryService.deleteInventory(req.institutionId, itemId, warehouseId, req.user.userId);
+      
+      res.json({
+        success: true,
+        message: 'Inventory deleted successfully'
+      });
+    } catch (error) {
+      logger.error('Inventory deletion failed', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        itemId: req.params.itemId,
+        warehouseId: req.params.warehouseId,
+        userId: req.user.userId 
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
   // Backward compatibility
   async getinstitutionInventory(req, res) {
     return this.getInstitutionInventory(req, res);

@@ -74,12 +74,12 @@ const InventoryAdjustments = () => {
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
             <Select placeholder="Select item" loading={loading}>
-              {items.map(i => <Select.Option key={i.id} value={i.id}>{i.name} ({i.sku})</Select.Option>)}
+              {items.filter(i => i.status === 'active').map(i => <Select.Option key={i.id} value={i.id}>{i.name} ({i.sku})</Select.Option>)}
             </Select>
           </Form.Item>
           <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
             <Select placeholder="Select warehouse" loading={loading}>
-              {warehouses.map(w => <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>)}
+              {warehouses.filter(w => w.status === 'active').map(w => <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>)}
             </Select>
           </Form.Item>
           <Form.Item name="adjustmentType" label="Type" rules={[{ required: true }]}>

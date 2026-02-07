@@ -186,7 +186,7 @@ const SalesOrders = () => {
           
           <Form.Item name="customerId" label="Customer" rules={[{ required: true }]}>
             <Select placeholder="Select customer" showSearch optionFilterProp="children">
-              {customers.map(customer => (
+              {customers.filter(customer => customer.status === 'active').map(customer => (
                 <Select.Option key={customer.id} value={customer.id}>
                   {customer.display_name} {customer.company_name && `- ${customer.company_name}`}
                 </Select.Option>
@@ -196,7 +196,7 @@ const SalesOrders = () => {
           
           <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
             <Select placeholder="Select warehouse">
-              {warehouses.map(wh => (
+              {warehouses.filter(wh => wh.status === 'active').map(wh => (
                 <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
               ))}
             </Select>
@@ -239,7 +239,7 @@ const SalesOrders = () => {
                       rules={[{ required: true, message: 'Select item' }]}
                     >
                       <Select placeholder="Select item" style={{ width: 200 }}>
-                        {items.map(item => (
+                        {items.filter(item => item.status === 'active').map(item => (
                           <Select.Option key={item.id} value={item.id}>
                             {item.name} ({item.sku})
                           </Select.Option>

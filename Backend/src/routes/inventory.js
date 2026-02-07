@@ -81,4 +81,11 @@ router.post('/transfer',
   inventoryController.transferStock
 );
 
+// DELETE /api/inventory/:itemId/:warehouseId
+router.delete('/:itemId/:warehouseId',
+  requirePermission('inventory_adjust'),
+  auditLog('inventory_deleted'),
+  inventoryController.deleteInventory
+);
+
 module.exports = router;

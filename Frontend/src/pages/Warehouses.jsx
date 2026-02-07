@@ -79,6 +79,15 @@ const Warehouses = () => {
               {record.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
           )}
+          {canManageWarehouses && (
+            <Button 
+              size="small"
+              danger
+              onClick={() => deleteWarehouse(record)}
+            >
+              Delete
+            </Button>
+          )}
         </Space>
       )
     }
@@ -108,6 +117,26 @@ const Warehouses = () => {
     } catch (error) {
       message.error('Failed to update warehouse status');
     }
+  };
+
+  const deleteWarehouse = async (warehouse) => {
+    Modal.confirm({
+      title: 'Delete Warehouse',
+      content: `Are you sure you want to delete "${warehouse.name}"?`,
+      okText: 'Delete',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          const response = await apiService.delete(`/warehouses/${warehouse.id}`);
+          if (response.success) {
+            message.success('Warehouse deleted successfully');
+            fetchWarehouses();
+          }
+        } catch (error) {
+          message.error(error.response?.data?.error || 'Failed to delete warehouse');
+        }
+      }
+    });
   };
 
   const fetchWarehouses = async () => {

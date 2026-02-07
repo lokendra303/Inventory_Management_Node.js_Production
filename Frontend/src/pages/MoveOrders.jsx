@@ -72,17 +72,17 @@ const MoveOrders = () => {
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
             <Select placeholder="Select item" loading={loading}>
-              {items.map(i => <Select.Option key={i.id} value={i.id}>{i.name} ({i.sku})</Select.Option>)}
+              {items.filter(i => i.status === 'active').map(i => <Select.Option key={i.id} value={i.id}>{i.name} ({i.sku})</Select.Option>)}
             </Select>
           </Form.Item>
           <Form.Item name="fromWarehouseId" label="From Warehouse" rules={[{ required: true }]}>
             <Select placeholder="Select source" loading={loading}>
-              {warehouses.map(w => <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>)}
+              {warehouses.filter(w => w.status === 'active').map(w => <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>)}
             </Select>
           </Form.Item>
           <Form.Item name="toWarehouseId" label="To Warehouse" rules={[{ required: true }]}>
             <Select placeholder="Select destination" loading={loading}>
-              {warehouses.map(w => <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>)}
+              {warehouses.filter(w => w.status === 'active').map(w => <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>)}
             </Select>
           </Form.Item>
           <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}>
