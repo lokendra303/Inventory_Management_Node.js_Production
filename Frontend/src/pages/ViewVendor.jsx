@@ -38,8 +38,51 @@ const ViewVendor = () => {
       }
       
       if (vendorData) {
-        setVendor(vendorData);
-        console.log('Vendor loaded:', vendorData);
+        // Map snake_case to camelCase
+        const mappedVendor = {
+          displayName: vendorData.display_name || vendorData.displayName,
+          companyName: vendorData.company_name || vendorData.companyName,
+          status: vendorData.status,
+          email: vendorData.email,
+          firstName: vendorData.first_name || vendorData.firstName,
+          lastName: vendorData.last_name || vendorData.lastName,
+          workPhone: vendorData.work_phone || vendorData.workPhone,
+          mobilePhone: vendorData.mobile_phone || vendorData.mobilePhone,
+          pan: vendorData.pan,
+          gstin: vendorData.gstin,
+          msmeRegistered: vendorData.msme_registered || vendorData.msmeRegistered,
+          currency: vendorData.currency,
+          paymentTerms: vendorData.payment_terms || vendorData.paymentTerms,
+          tds: vendorData.tds,
+          websiteUrl: vendorData.website_url || vendorData.websiteUrl,
+          department: vendorData.department,
+          designation: vendorData.designation,
+          billingAttention: vendorData.billing_attention || vendorData.billingAttention,
+          billingCountry: vendorData.billing_country || vendorData.billingCountry,
+          billingAddress1: vendorData.billing_address1 || vendorData.billingAddress1,
+          billingAddress2: vendorData.billing_address2 || vendorData.billingAddress2,
+          billingCity: vendorData.billing_city || vendorData.billingCity,
+          billingState: vendorData.billing_state || vendorData.billingState,
+          billingPinCode: vendorData.billing_pin_code || vendorData.billingPinCode,
+          shippingAttention: vendorData.shipping_attention || vendorData.shippingAttention,
+          shippingCountry: vendorData.shipping_country || vendorData.shippingCountry,
+          shippingAddress1: vendorData.shipping_address1 || vendorData.shippingAddress1,
+          shippingAddress2: vendorData.shipping_address2 || vendorData.shippingAddress2,
+          shippingCity: vendorData.shipping_city || vendorData.shippingCity,
+          shippingState: vendorData.shipping_state || vendorData.shippingState,
+          shippingPinCode: vendorData.shipping_pin_code || vendorData.shippingPinCode,
+          bankName: vendorData.bank_name || vendorData.bankName,
+          accountHolderName: vendorData.account_holder_name || vendorData.accountHolderName,
+          accountNumber: vendorData.account_number || vendorData.accountNumber,
+          accountType: vendorData.account_type || vendorData.accountType,
+          ifscCode: vendorData.ifsc_code || vendorData.ifscCode,
+          branchName: vendorData.branch_name || vendorData.branchName,
+          swiftCode: vendorData.swift_code || vendorData.swiftCode,
+          iban: vendorData.iban,
+          remarks: vendorData.remarks
+        };
+        setVendor(mappedVendor);
+        console.log('Vendor loaded:', mappedVendor);
       } else {
         message.error('Invalid vendor data received');
       }
@@ -259,6 +302,40 @@ const ViewVendor = () => {
                     </Descriptions>
                   </Col>
                 </Row>
+              </Card>
+            )
+          },
+          {
+            key: 'bankDetails',
+            label: 'Bank Details',
+            children: (
+              <Card>
+                <Descriptions bordered column={2}>
+                  <Descriptions.Item label="Bank Name">
+                    {vendor.bankName || 'N/A'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Account Holder Name">
+                    {vendor.accountHolderName || 'N/A'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Account Number">
+                    {vendor.accountNumber || 'N/A'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Account Type">
+                    {vendor.accountType || 'N/A'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="IFSC Code">
+                    {vendor.ifscCode || 'N/A'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Branch Name">
+                    {vendor.branchName || 'N/A'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="SWIFT Code">
+                    {vendor.swiftCode || 'N/A'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="IBAN">
+                    {vendor.iban || 'N/A'}
+                  </Descriptions.Item>
+                </Descriptions>
               </Card>
             )
           },

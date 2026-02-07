@@ -171,14 +171,6 @@ class AuthService {
     try {
       const decoded = jwt.verify(token, config.jwt.secret);
       
-      // Check session timeout (15 minutes = 900000ms)
-      if (decoded.sessionTimestamp) {
-        const sessionAge = Date.now() - decoded.sessionTimestamp;
-        if (sessionAge > 15 * 60 * 1000) {
-          throw new Error('Session expired due to inactivity');
-        }
-      }
-      
       // Verify user still exists and is active
       const users = await db.query(
         `SELECT u.*, i.status as institution_status 

@@ -10,7 +10,7 @@ class WarehouseTypeService {
     await db.query(
       `INSERT INTO warehouse_types (id, institution_id, name, description, status) 
        VALUES (?, ?, ?, ?, 'active')`,
-      [typeId, institutionId, name, description]
+      [typeId, institutionId, name, description || null]
     );
 
     logger.info('Warehouse type created', { typeId, institutionId, name, userId });
@@ -26,7 +26,7 @@ class WarehouseTypeService {
       params.push(filters.status);
     }
 
-    query += ' ORDER BY name';
+    query += ' ORDER BY CASE WHEN status = "active" THEN 0 ELSE 1 END, name';
 
     return await db.query(query, params);
   }

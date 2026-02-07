@@ -18,7 +18,8 @@ class ManufacturerController {
           id, institution_id, name, code, description, contact_person, 
           email, phone, website, address, country
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, institution_id, name, code, description, contact_person, email, phone, website, address, country]);
+      `, [id, institution_id, name, code || null, description || null, contact_person || null, 
+           email || null, phone || null, website || null, address || null, country || null]);
 
       const manufacturer = await database.query(
         'SELECT * FROM manufacturers WHERE id = ?', [id]
@@ -36,15 +37,14 @@ class ManufacturerController {
   async getAll(req, res) {
     try {
       const institution_id = req.user.institutionId;
-      const { status = 'active' } = req.query;
 
       console.log('Fetching manufacturers for institution:', institution_id);
 
       const manufacturers = await database.query(`
         SELECT * FROM manufacturers 
-        WHERE institution_id = ? AND status = ?
+        WHERE institution_id = ?
         ORDER BY name
-      `, [institution_id, status]);
+      `, [institution_id]);
 
       console.log('Found manufacturers:', manufacturers.length);
       res.json(manufacturers);
@@ -85,7 +85,8 @@ class ManufacturerController {
           name = ?, code = ?, description = ?, contact_person = ?, 
           email = ?, phone = ?, website = ?, address = ?, country = ?, status = ?
         WHERE id = ? AND institution_id = ?
-      `, [name, code, description, contact_person, email, phone, website, address, country, status, id, institution_id]);
+      `, [name, code || null, description || null, contact_person || null, 
+          email || null, phone || null, website || null, address || null, country || null, status || 'active', id, institution_id]);
 
       if (result.affectedRows === 0) {
         return res.status(404).json({ error: 'Manufacturer not found' });

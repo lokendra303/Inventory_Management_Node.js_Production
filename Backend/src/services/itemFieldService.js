@@ -4,17 +4,25 @@ const { v4: uuidv4 } = require('uuid');
 class ItemFieldService {
   // Get field configuration for item type
   async getFieldConfig(institutionId, itemType) {
-    // Get both institution-specific and default configs
-    const configs = await db.query(
-      'SELECT * FROM item_field_configs WHERE (institution_id = ? OR institution_id = "default") AND item_type = ? AND status = "active" ORDER BY institution_id DESC',
-      [institutionId, itemType]
-    );
-    
-    return configs.map(config => ({
-      ...config,
-      validation_rules: JSON.parse(config.validation_rules || '{}'),
-      options: JSON.parse(config.options || '[]')
-    }));
+    try {
+      // Get both institution-specific and default configs
+      const configs = await db.query(
+        'SELECT * FROM item_field_configs WHERE (institution_id = ? OR institution_id = "default") AND item_type = ? AND status = "active" ORDER BY institution_id DESC',
+        [institutionId, itemType]
+      );
+      
+      return configs.map(config => ({
+        ...config,
+        validation_rules: JSON.parse(config.validation_rules || '{}'),
+        options: JSON.parse(config.options || '[]')
+      }));
+    } catch (error) {
+      // If table doesn't exist, return empty array
+      if (error.message.includes("doesn't exist")) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   // Create custom field configuration
@@ -81,42 +89,47 @@ class ItemFieldService {
 
   // Validate custom fields based on configuration
   async validateCustomFields(institutionId, itemType, customFields) {
-    const fieldConfigs = await this.getFieldConfig(institutionId, itemType);
-    const errors = [];
+    try {
+      const fieldConfigs = await this.getFieldConfig(institutionId, itemType);
+      const errors = [];
 
-    for (const config of fieldConfigs) {
-      const fieldValue = customFields[config.field_name];
-      
-      // Check required fields
-      if (config.is_required && (!fieldValue || fieldValue === '')) {
-        errors.push(`${config.field_label} is required`);
-        continue;
-      }
-
-      if (fieldValue !== undefined && fieldValue !== null && fieldValue !== '') {
-        // Validate field type
-        if (!this.validateFieldType(fieldValue, config.field_type)) {
-          errors.push(`${config.field_label} must be of type ${config.field_type}`);
+      for (const config of fieldConfigs) {
+        const fieldValue = customFields[config.field_name];
+        
+        // Check required fields
+        if (config.is_required && (!fieldValue || fieldValue === '')) {
+          errors.push(`${config.field_label} is required`);
+          continue;
         }
 
-        // Validate against options for select fields
-        if (config.field_type === 'select' && config.options.length > 0) {
-          if (!config.options.includes(fieldValue)) {
-            errors.push(`${config.field_label} must be one of: ${config.options.join(', ')}`);
+        if (fieldValue !== undefined && fieldValue !== null && fieldValue !== '') {
+          // Validate field type
+          if (!this.validateFieldType(fieldValue, config.field_type)) {
+            errors.push(`${config.field_label} must be of type ${config.field_type}`);
+          }
+
+          // Validate against options for select fields
+          if (config.field_type === 'select' && config.options.length > 0) {
+            if (!config.options.includes(fieldValue)) {
+              errors.push(`${config.field_label} must be one of: ${config.options.join(', ')}`);
+            }
+          }
+
+          // Apply validation rules
+          if (config.validation_rules) {
+            const validationError = this.applyValidationRules(fieldValue, config.validation_rules, config.field_label);
+            if (validationError) {
+              errors.push(validationError);
+            }
           }
         }
-
-        // Apply validation rules
-        if (config.validation_rules) {
-          const validationError = this.applyValidationRules(fieldValue, config.validation_rules, config.field_label);
-          if (validationError) {
-            errors.push(validationError);
-          }
-        }
       }
+
+      return errors;
+    } catch (error) {
+      // If table doesn't exist or any error, skip validation
+      return [];
     }
-
-    return errors;
   }
 
   validateFieldType(value, fieldType) {

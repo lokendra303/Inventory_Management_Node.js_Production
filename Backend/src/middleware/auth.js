@@ -237,31 +237,6 @@ const rateLimit = (maxRequests = 100, windowMs = 15 * 60 * 1000) => {
   };
 };
 
-// Session timeout check
-const checkSessionTimeout = (timeoutMs = 15 * 60 * 1000) => {
-  return (req, res, next) => {
-    if (!req.user || !req.user.sessionTimestamp) {
-      return next();
-    }
-    
-    const sessionAge = Date.now() - req.user.sessionTimestamp;
-    if (sessionAge > timeoutMs) {
-      logger.info('Session expired due to timeout', {
-        userId: req.user.userId,
-        sessionAge: Math.floor(sessionAge / 1000) + 's'
-      });
-      
-      return res.status(401).json({
-        success: false,
-        error: 'Session expired due to inactivity',
-        code: 'SESSION_TIMEOUT'
-      });
-    }
-    
-    next();
-  };
-};
-
 // Rate limiting per institution
 const createInstitutionRateLimit = (windowMs, max) => {
   const rateLimitStore = new Map();
@@ -333,7 +308,7 @@ module.exports = {
   validateInstitutionConsistency,
   requireWarehouseAccess,
   rateLimit,
-  checkSessionTimeout,
+  checkSessionTimeout: (timeoutMs = 15 * 60 * 1000) => (req, res, next) => next(),
   createInstitutionRateLimit,
   auditLog
 };

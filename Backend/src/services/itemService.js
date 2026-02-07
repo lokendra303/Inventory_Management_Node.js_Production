@@ -41,7 +41,8 @@ class ItemService {
       salesAccount,
       openingStock = 0,
       openingValue = 0,
-      asOfDate
+      asOfDate,
+      warehouseId
     } = itemData;
 
     // Validate custom fields based on item type
@@ -68,6 +69,23 @@ class ItemService {
        shelfLifeDays || null, storageConditions || null, itemGroup || null, purchaseAccount || null, salesAccount || null,
        openingStock, openingValue, asOfDate || null]
     );
+
+    // Create initial inventory projection if warehouse and opening stock provided
+    if (warehouseId && openingStock > 0) {
+      const averageCost = openingValue > 0 ? openingValue / openingStock : costPrice;
+      const totalValue = openingStock * averageCost;
+      
+      await db.query(
+        `INSERT INTO inventory_projections 
+         (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
+         VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
+        [institutionId, itemId, warehouseId, openingStock, openingStock, averageCost, totalValue]
+      );
+      
+      logger.info('Initial inventory created', { itemId, warehouseId, openingStock, institutionId });
+    } else if (openingStock > 0 && !warehouseId) {
+      logger.warn('Opening stock provided without warehouse', { itemId, openingStock, institutionId });
+    }
 
     logger.info('Item created', { itemId, institutionId, sku, userId });
     return itemId;
@@ -259,7 +277,7 @@ class ItemService {
       params.push(filters.status);
     }
 
-    query += ' ORDER BY name';
+    query += ' ORDER BY CASE WHEN status = "active" THEN 0 ELSE 1 END, name';
 
     const items = await db.query(query, params);
 

@@ -23,6 +23,7 @@ import Documents from './pages/Documents.jsx';
 import Vendors from './pages/Vendors.jsx';
 import NewVendor from './pages/NewVendor.jsx';
 import ViewVendor from './pages/ViewVendor.jsx';
+import EditVendor from './pages/EditVendor.jsx';
 import Customers from './pages/Customers.jsx';
 import NewCustomer from './pages/NewCustomer.jsx';
 import ViewCustomer from './pages/ViewCustomer.jsx';
@@ -51,6 +52,7 @@ const ProtectedUsers = withPermission('user_management')(Users);
 const ProtectedVendors = withPermission('purchase_view')(Vendors);
 const ProtectedNewVendor = withPermission('purchase_view')(NewVendor);
 const ProtectedViewVendor = withPermission('purchase_view')(ViewVendor);
+const ProtectedEditVendor = withPermission('vendor_management')(EditVendor);
 const ProtectedCustomers = withPermission('sales_view')(Customers);
 const ProtectedNewCustomer = withPermission('sales_view')(NewCustomer);
 const ProtectedViewCustomer = withPermission('sales_view')(ViewCustomer);
@@ -135,6 +137,7 @@ function AppContent() {
             <Route path="/purchases/vendors" element={<ProtectedVendors />} />
             <Route path="/purchases/vendors/new" element={<ProtectedNewVendor />} />
             <Route path="/purchases/vendors/:vendorId" element={<ProtectedViewVendor />} />
+            <Route path="/purchases/vendors/:vendorId/edit" element={<ProtectedEditVendor />} />
             <Route path="/sales/customers" element={<ProtectedCustomers />} />
             <Route path="/sales/customers/new" element={<ProtectedNewCustomer />} />
             <Route path="/sales/customers/:id" element={<ProtectedViewCustomer />} />

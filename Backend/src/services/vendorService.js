@@ -62,16 +62,14 @@ class VendorService {
         );
       }
       
-      // Create bank details if provided
-      if (vendorData.bankName || vendorData.accountNumber) {
-        await connection.execute(
-          `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['vendor', vendorId, vendorData.bankName, vendorData.accountHolderName, 
-           vendorData.accountNumber, vendorData.ifscCode, vendorData.branchName, 
-           vendorData.accountType, vendorData.swiftCode, vendorData.iban]
-        );
-      }
+      // Create bank details (always create, even if empty)
+      await connection.execute(
+        `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['vendor', vendorId, vendorData.bankName || null, vendorData.accountHolderName || null, 
+         vendorData.accountNumber || null, vendorData.ifscCode || null, vendorData.branchName || null, 
+         vendorData.accountType || null, vendorData.swiftCode || null, vendorData.iban || null]
+      );
       
       logger.info('Vendor created', { vendorId, institutionId, displayName: vendorData.displayName, userId });
       return vendorId;
@@ -154,18 +152,16 @@ class VendorService {
         );
       }
       
-      // Replace bank details (delete and recreate)
+      // Replace bank details (always create, even if empty)
       await connection.execute('DELETE FROM bank_details WHERE entity_type = ? AND entity_id = ?', ['vendor', vendorId]);
       
-      if (updateData.bankName || updateData.accountNumber) {
-        await connection.execute(
-          `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['vendor', vendorId, updateData.bankName, updateData.accountHolderName, 
-           updateData.accountNumber, updateData.ifscCode, updateData.branchName, 
-           updateData.accountType, updateData.swiftCode, updateData.iban]
-        );
-      }
+      await connection.execute(
+        `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['vendor', vendorId, updateData.bankName || null, updateData.accountHolderName || null, 
+         updateData.accountNumber || null, updateData.ifscCode || null, updateData.branchName || null, 
+         updateData.accountType || null, updateData.swiftCode || null, updateData.iban || null]
+      );
       
       logger.info('Vendor updated', { vendorId, institutionId, userId });
       return true;
@@ -186,7 +182,7 @@ class VendorService {
       params.push(`%${filters.search}%`, `%${filters.search}%`);
     }
 
-    query += ' ORDER BY display_name';
+    query += ' ORDER BY CASE WHEN status = "active" THEN 0 ELSE 1 END, display_name';
 
     return await db.query(query, params);
   }

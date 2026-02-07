@@ -194,7 +194,7 @@ class WarehouseService {
       params.push(filters.status);
     }
 
-    query += ' ORDER BY w.name';
+    query += ' ORDER BY CASE WHEN w.status = "active" THEN 0 ELSE 1 END, w.name';
 
     return await db.query(query, params);
   }

@@ -44,16 +44,14 @@ class CustomerService {
         );
       }
       
-      // Create bank details
-      if (customerData.bankName || customerData.accountNumber) {
-        await connection.execute(
-          `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['customer', customerId, customerData.bankName, customerData.accountHolderName, 
-           customerData.accountNumber, customerData.ifscCode, customerData.branchName, 
-           customerData.accountType, customerData.swiftCode, customerData.iban]
-        );
-      }
+      // Create bank details (always create, even if empty)
+      await connection.execute(
+        `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['customer', customerId, customerData.bankName || null, customerData.accountHolderName || null, 
+         customerData.accountNumber || null, customerData.ifscCode || null, customerData.branchName || null, 
+         customerData.accountType || null, customerData.swiftCode || null, customerData.iban || null]
+      );
       
       logger.info('Customer created', { customerId, institutionId, displayName: customerData.displayName, userId });
       return customerId;
@@ -131,18 +129,16 @@ class CustomerService {
         );
       }
       
-      // Update bank details
+      // Update bank details (always create, even if empty)
       await connection.execute('DELETE FROM bank_details WHERE entity_type = ? AND entity_id = ?', ['customer', customerId]);
       
-      if (updateData.bankName || updateData.accountNumber) {
-        await connection.execute(
-          `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['customer', customerId, updateData.bankName, updateData.accountHolderName, 
-           updateData.accountNumber, updateData.ifscCode, updateData.branchName, 
-           updateData.accountType, updateData.swiftCode, updateData.iban]
-        );
-      }
+      await connection.execute(
+        `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['customer', customerId, updateData.bankName || null, updateData.accountHolderName || null, 
+         updateData.accountNumber || null, updateData.ifscCode || null, updateData.branchName || null, 
+         updateData.accountType || null, updateData.swiftCode || null, updateData.iban || null]
+      );
       
       logger.info('Customer updated', { customerId, institutionId, userId });
       return true;
@@ -163,7 +159,7 @@ class CustomerService {
       params.push(`%${filters.search}%`, `%${filters.search}%`);
     }
 
-    query += ' ORDER BY display_name';
+    query += ' ORDER BY CASE WHEN status = "active" THEN 0 ELSE 1 END, display_name';
 
     return await db.query(query, params);
   }

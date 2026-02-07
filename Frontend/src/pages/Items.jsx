@@ -28,6 +28,8 @@ const Items = () => {
   const [unitOptions, setUnitOptions] = useState([]);
   const [manufacturerOptions, setManufacturerOptions] = useState([]);
   const [brandOptions, setBrandOptions] = useState([]);
+  const [vendorOptions, setVendorOptions] = useState([]);
+  const [showWarehouse, setShowWarehouse] = useState(false);
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -85,15 +87,6 @@ const Items = () => {
               {record.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
           )}
-          {canManageItems && (
-            <Button 
-              size="small"
-              danger
-              onClick={() => deleteItem(record)}
-            >
-              Delete
-            </Button>
-          )}
         </Space>
       )
     }
@@ -101,27 +94,27 @@ const Items = () => {
 
   const fetchDropdownOptions = async () => {
     try {
-      console.log('=== STARTING DROPDOWN FETCH ===');
-      
-      console.log('Fetching manufacturers...');
       const manufacturersRes = await apiService.get('/manufacturers');
-      console.log('Manufacturers response:', manufacturersRes);
-      
-      console.log('Fetching brands...');
       const brandsRes = await apiService.get('/brands');
-      console.log('Brands response:', brandsRes);
-      
-      console.log('Fetching units...');
       const unitsRes = await apiService.get('/units');
-      console.log('Units response:', unitsRes);
+      const vendorsRes = await apiService.get('/vendors');
       
-      setUnitOptions(Array.isArray(unitsRes) ? unitsRes : []);
-      setManufacturerOptions(Array.isArray(manufacturersRes) ? manufacturersRes : []);
-      setBrandOptions(Array.isArray(brandsRes) ? brandsRes : []);
+      const manufacturers = Array.isArray(manufacturersRes) ? manufacturersRes : (manufacturersRes?.data || []);
+      const brands = Array.isArray(brandsRes) ? brandsRes : (brandsRes?.data || []);
+      const units = Array.isArray(unitsRes) ? unitsRes : (unitsRes?.data || []);
+      const vendors = Array.isArray(vendorsRes) ? vendorsRes : (vendorsRes?.data || []);
       
-      console.log('=== DROPDOWN FETCH COMPLETE ===');
+      console.log('Manufacturers fetched:', manufacturers.length, manufacturers);
+      console.log('Brands fetched:', brands.length, brands);
+      console.log('Units fetched:', units.length, units);
+      console.log('Vendors fetched:', vendors.length, vendors);
+      
+      setManufacturerOptions(manufacturers);
+      setBrandOptions(brands);
+      setUnitOptions(units);
+      setVendorOptions(vendors);
     } catch (error) {
-      console.error('=== DROPDOWN FETCH ERROR ===', error);
+      console.error('Dropdown fetch error:', error);
     }
   };
 
@@ -176,7 +169,7 @@ const Items = () => {
         sku: values.sku,
         name: values.name,
         description: values.description,
-        image: imageUrl, // Store base64 image
+        image: imageUrl,
         type: values.type,
         category: values.category,
         unit: values.unit,
@@ -189,7 +182,8 @@ const Items = () => {
         manufacturer: values.manufacturer,
         minStockLevel: values.minStockLevel,
         maxStockLevel: values.maxStockLevel,
-        barcode: values.barcode
+        barcode: values.barcode,
+        openingStock: values.openingStock || 0
       };
       
       if (editingItem) {
@@ -226,35 +220,19 @@ const Items = () => {
     }
   };
 
-  const deleteItem = async (item) => {
-    Modal.confirm({
-      title: 'Delete Item',
-      content: `Are you sure you want to delete "${item.name}"?`,
-      okText: 'Delete',
-      okType: 'danger',
-      onOk: async () => {
-        try {
-          const response = await apiService.delete(`/items/${item.id}`);
-          if (response.success) {
-            message.success('Item deleted successfully');
-            fetchItems();
-          }
-        } catch (error) {
-          message.error(error.response?.data?.error || 'Failed to delete item');
-        }
-      }
-    });
-  };
-
-  const viewItem = (item) => {
+const viewItem = (item) => {
     setViewingItem(item);
     setViewModalVisible(true);
   };
 
-  const editItem = (item) => {
+  const editItem = async (item) => {
     setEditingItem(item);
     setPriceCurrency(currency);
     setImageUrl(item.image || ''); // Load existing image
+    
+    // Fetch fresh dropdown data
+    await fetchDropdownOptions();
+    
     form.setFieldsValue({
       sku: item.sku,
       name: item.name,
@@ -279,6 +257,7 @@ const Items = () => {
     setPriceCurrency(currency);
     setImageUrl('');
     setImageFile(null);
+    setShowWarehouse(false);
     form.resetFields();
     
     // Fetch fresh dropdown data
@@ -305,13 +284,6 @@ const Items = () => {
               onClick={openCreateModal}
             >
               Add Item
-            </Button>
-          )}
-          {canManageCategories && (
-            <Button 
-              onClick={() => setCategoryModalVisible(true)}
-            >
-              Manage Categories
             </Button>
           )}
         </Space>
@@ -461,10 +433,18 @@ const Items = () => {
                             <Button 
                               type="link" 
                               size="small"
-                              onClick={() => {
+                              onClick={async () => {
                                 const newOption = prompt('Enter new unit:');
                                 if (newOption && !unitOptions.find(u => u.name === newOption)) {
-                                  setUnitOptions([...unitOptions, { id: Date.now(), name: newOption, symbol: newOption }]);
+                                  try {
+                                    const response = await apiService.post('/units', { name: newOption, symbol: newOption });
+                                    if (response) {
+                                      await fetchDropdownOptions();
+                                      message.success('Unit added successfully');
+                                    }
+                                  } catch (error) {
+                                    message.error('Failed to add unit');
+                                  }
                                 }
                               }}
                             >
@@ -479,10 +459,15 @@ const Items = () => {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>{unit.name} ({unit.symbol})</span>
                             <span
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                setUnitOptions(unitOptions.filter(u => u.id !== unit.id));
-                                message.success(`Unit '${unit.name}' deleted`);
+                                try {
+                                  await apiService.delete(`/units/${unit.id}`);
+                                  await fetchDropdownOptions();
+                                  message.success(`Unit '${unit.name}' deleted`);
+                                } catch (error) {
+                                  message.error('Failed to delete unit');
+                                }
                               }}
                               style={{ 
                                 marginLeft: 8,
@@ -519,24 +504,9 @@ const Items = () => {
               </Row>
 
               <Row gutter={16}>
-                <Col span={12}>
+                <Col span={24}>
                   <Form.Item name="returnableItem" label="" valuePropName="checked">
                     <input type="checkbox" /> Returnable Item
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    name="warehouseId"
-                    label="Warehouse"
-                    rules={[{ required: true, message: 'Please select a warehouse!' }]}
-                  >
-                    <Select placeholder="Select warehouse">
-                      {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
-                        <Select.Option key={warehouse.id} value={warehouse.id}>
-                          {warehouse.name}
-                        </Select.Option>
-                      ))}
-                    </Select>
                   </Form.Item>
                 </Col>
               </Row>
@@ -625,10 +595,18 @@ const Items = () => {
                             <Button 
                               type="link" 
                               size="small"
-                              onClick={() => {
+                              onClick={async () => {
                                 const newOption = prompt('Enter new manufacturer:');
                                 if (newOption && !manufacturerOptions.find(m => m.name === newOption)) {
-                                  setManufacturerOptions([...manufacturerOptions, { id: Date.now(), name: newOption }]);
+                                  try {
+                                    const response = await apiService.post('/manufacturers', { name: newOption });
+                                    if (response) {
+                                      await fetchDropdownOptions();
+                                      message.success('Manufacturer added successfully');
+                                    }
+                                  } catch (error) {
+                                    message.error('Failed to add manufacturer');
+                                  }
                                 }
                               }}
                             >
@@ -643,10 +621,15 @@ const Items = () => {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>{manufacturer.name}</span>
                             <span
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                setManufacturerOptions(manufacturerOptions.filter(m => m.id !== manufacturer.id));
-                                message.success(`Manufacturer '${manufacturer.name}' deleted`);
+                                try {
+                                  await apiService.delete(`/manufacturers/${manufacturer.id}`);
+                                  await fetchDropdownOptions();
+                                  message.success(`Manufacturer '${manufacturer.name}' deleted`);
+                                } catch (error) {
+                                  message.error('Failed to delete manufacturer');
+                                }
                               }}
                               style={{ 
                                 marginLeft: 8,
@@ -700,10 +683,18 @@ const Items = () => {
                         <Button 
                           type="link" 
                           size="small"
-                          onClick={() => {
+                          onClick={async () => {
                             const newOption = prompt('Enter new brand:');
                             if (newOption && !brandOptions.find(b => b.name === newOption)) {
-                              setBrandOptions([...brandOptions, { id: Date.now(), name: newOption }]);
+                              try {
+                                const response = await apiService.post('/brands', { name: newOption });
+                                if (response) {
+                                  await fetchDropdownOptions();
+                                  message.success('Brand added successfully');
+                                }
+                              } catch (error) {
+                                message.error('Failed to add brand');
+                              }
                             }
                           }}
                         >
@@ -718,10 +709,15 @@ const Items = () => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span>{brand.name}</span>
                         <span
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            setBrandOptions(brandOptions.filter(b => b.id !== brand.id));
-                            message.success(`Brand '${brand.name}' deleted`);
+                            try {
+                              await apiService.delete(`/brands/${brand.id}`);
+                              await fetchDropdownOptions();
+                              message.success(`Brand '${brand.name}' deleted`);
+                            } catch (error) {
+                              message.error('Failed to delete brand');
+                            }
                           }}
                           style={{ 
                             marginLeft: 8,
@@ -837,7 +833,82 @@ const Items = () => {
             </Col>
             <Col span={12}>
               <Form.Item name="preferredVendor" label="Preferred Vendor">
-                <Input placeholder="Enter preferred vendor" />
+                <Select 
+                  placeholder="Select or Add Vendor" 
+                  allowClear
+                  dropdownRender={(menu) => (
+                    <div>
+                      {menu}
+                      <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                        <Button 
+                          type="link" 
+                          size="small"
+                          onClick={async () => {
+                            const newOption = prompt('Enter new vendor name:');
+                            if (newOption && !vendorOptions.find(v => v.name === newOption)) {
+                              try {
+                                const response = await apiService.post('/vendors', { name: newOption });
+                                if (response) {
+                                  await fetchDropdownOptions();
+                                  message.success('Vendor added successfully');
+                                }
+                              } catch (error) {
+                                message.error('Failed to add vendor');
+                              }
+                            }
+                          }}
+                        >
+                          + Add Vendor
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                >
+                  {vendorOptions.map(vendor => (
+                    <Select.Option key={vendor.id} value={vendor.id}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{vendor.name}</span>
+                        <span
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              await apiService.delete(`/vendors/${vendor.id}`);
+                              await fetchDropdownOptions();
+                              message.success(`Vendor '${vendor.name}' deleted`);
+                            } catch (error) {
+                              message.error('Failed to delete vendor');
+                            }
+                          }}
+                          style={{ 
+                            marginLeft: 8,
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            backgroundColor: '#ff4d4f',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = '#d9363e';
+                            e.target.style.transform = 'scale(1.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = '#ff4d4f';
+                            e.target.style.transform = 'scale(1)';
+                          }}
+                        >
+                          ×
+                        </span>
+                      </div>
+                    </Select.Option>
+                  ))}
+                </Select>
               </Form.Item>
             </Col>
           </Row>
@@ -858,9 +929,30 @@ const Items = () => {
             </Col>
             <Col span={8}>
               <Form.Item name="openingStock" label="Opening Stock">
-                <InputNumber min={0} style={{ width: '100%' }} placeholder="Enter opening stock" />
+                <InputNumber 
+                  min={0} 
+                  style={{ width: '100%' }} 
+                  placeholder="Enter opening stock"
+                  onChange={(value) => setShowWarehouse(value > 0)}
+                />
               </Form.Item>
             </Col>
+            {showWarehouse && (
+              <Col span={8}>
+                <Form.Item
+                  name="warehouseId"
+                  label="Warehouse (Optional)"
+                >
+                  <Select placeholder="Select warehouse" allowClear>
+                    {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
+                      <Select.Option key={warehouse.id} value={warehouse.id}>
+                        {warehouse.name}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+            )}
             <Col span={8}>
               <Form.Item name="valuationMethod" label="Inventory Valuation Method">
                 <Select placeholder="Select valuation method">
@@ -897,65 +989,7 @@ const Items = () => {
         </Form>
       </Modal>
 
-      {/* Category Modal - Only show if user has permission */}
-      {canManageCategories && (
-        <Modal
-          title="Add New Category"
-          open={categoryModalVisible}
-          onCancel={() => {
-            setCategoryModalVisible(false);
-            categoryForm.resetFields();
-          }}
-          footer={null}
-          width={400}
-        >
-          <Form
-            form={categoryForm}
-            layout="vertical"
-            onFinish={async (values) => {
-              try {
-                const response = await apiService.post('/categories', values);
-                if (response.success) {
-                  message.success('Category created successfully');
-                  setCategoryModalVisible(false);
-                  categoryForm.resetFields();
-                  fetchItems(); // Refresh categories
-                }
-              } catch (error) {
-                message.error('Failed to create category');
-              }
-            }}
-          >
-            <Form.Item
-              name="name"
-              label="Category Name"
-              rules={[{ required: true, message: 'Please input category name!' }]}
-            >
-              <Input placeholder="Enter category name" />
-            </Form.Item>
-            
-            <Form.Item name="description" label="Description">
-              <Input.TextArea placeholder="Enter description" rows={3} />
-            </Form.Item>
-            
-            <Form.Item>
-              <Space>
-                <Button type="primary" htmlType="submit">
-                  Create Category
-                </Button>
-                <Button onClick={() => {
-                  setCategoryModalVisible(false);
-                  categoryForm.resetFields();
-                }}>
-                  Cancel
-                </Button>
-              </Space>
-            </Form.Item>
-          </Form>
-        </Modal>
-      )}
-
-      {/* View Item Modal */}
+{/* View Item Modal */}
       <Modal
         title="View Item Details"
         open={viewModalVisible}

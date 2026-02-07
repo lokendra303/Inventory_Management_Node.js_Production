@@ -17,7 +17,7 @@ class BrandController {
         INSERT INTO brands (
           id, institution_id, manufacturer_id, name, code, description, logo_url
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [id, institution_id, manufacturer_id, name, code, description, logo_url]);
+      `, [id, institution_id, manufacturer_id || null, name, code || null, description || null, logo_url || null]);
 
       const brand = await database.query(`
         SELECT b.*, m.name as manufacturer_name 
@@ -38,7 +38,7 @@ class BrandController {
   async getAll(req, res) {
     try {
       const institution_id = req.user.institutionId;
-      const { status = 'active', manufacturer_id } = req.query;
+      const { status = 'active' } = req.query;
 
       console.log('Fetching brands for institution:', institution_id);
 
@@ -47,15 +47,14 @@ class BrandController {
         FROM brands b
         LEFT JOIN manufacturers m ON b.manufacturer_id = m.id
         WHERE b.institution_id = ? AND b.status = ?
+        ORDER BY CASE WHEN b.status = 'active' THEN 0 ELSE 1 END, b.name
       `;
       let params = [institution_id, status];
 
-      if (manufacturer_id) {
-        query += ' AND b.manufacturer_id = ?';
-        params.push(manufacturer_id);
+      if (req.query.manufacturer_id) {
+        query = query.replace('ORDER BY', 'AND b.manufacturer_id = ? ORDER BY');
+        params.splice(2, 0, req.query.manufacturer_id);
       }
-
-      query += ' ORDER BY b.name';
 
       const brands = await database.query(query, params);
       console.log('Found brands:', brands.length);
@@ -98,7 +97,7 @@ class BrandController {
         UPDATE brands SET 
           name = ?, code = ?, description = ?, manufacturer_id = ?, logo_url = ?, status = ?
         WHERE id = ? AND institution_id = ?
-      `, [name, code, description, manufacturer_id, logo_url, status, id, institution_id]);
+      `, [name, code || null, description || null, manufacturer_id || null, logo_url || null, status || 'active', id, institution_id]);
 
       if (result.affectedRows === 0) {
         return res.status(404).json({ error: 'Brand not found' });
