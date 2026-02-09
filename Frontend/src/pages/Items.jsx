@@ -604,8 +604,18 @@ const viewItem = (item) => {
 
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="dimensions" label="Dimensions">
-                <Input placeholder="Length x Width x Height" />
+              <Form.Item label="Dimensions (L × W × H)">
+                <Input.Group compact>
+                  <Form.Item name="length" noStyle>
+                    <InputNumber placeholder="Length" style={{ width: '33%' }} min={0} />
+                  </Form.Item>
+                  <Form.Item name="width" noStyle>
+                    <InputNumber placeholder="Width" style={{ width: '33%' }} min={0} />
+                  </Form.Item>
+                  <Form.Item name="height" noStyle>
+                    <InputNumber placeholder="Height" style={{ width: '34%' }} min={0} />
+                  </Form.Item>
+                </Input.Group>
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -810,6 +820,7 @@ const viewItem = (item) => {
                 <InputNumber 
                   min={0} 
                   step={0.01} 
+                  precision={2}
                   style={{ width: '100%' }} 
                   placeholder="Enter selling price"
                   parser={value => value.replace(/[^0-9.]/g, '')}
@@ -830,6 +841,7 @@ const viewItem = (item) => {
                   min={0} 
                   max={100} 
                   step={0.01} 
+                  precision={2}
                   style={{ width: '100%' }} 
                   placeholder="Enter tax rate"
                   parser={value => value.replace(/[^0-9.]/g, '')}
@@ -854,6 +866,7 @@ const viewItem = (item) => {
                 <InputNumber 
                   min={0} 
                   step={0.01} 
+                  precision={2}
                   style={{ width: '100%' }} 
                   placeholder="Enter cost price"
                   parser={value => value.replace(/[^0-9.]/g, '')}
@@ -861,7 +874,9 @@ const viewItem = (item) => {
                     // Auto-calculate opening value if opening stock exists
                     const openingStock = form.getFieldValue('openingStock');
                     if (openingStock > 0 && value > 0) {
-                      form.setFieldsValue({ openingValue: openingStock * value });
+                      const calculatedValue = openingStock * value;
+                      // Round to 2 decimal places to avoid floating point issues
+                      form.setFieldsValue({ openingValue: Math.round(calculatedValue * 100) / 100 });
                     }
                   }}
                 />
@@ -881,6 +896,7 @@ const viewItem = (item) => {
                   min={0} 
                   max={100} 
                   step={0.01} 
+                  precision={2}
                   style={{ width: '100%' }} 
                   placeholder="Enter tax rate"
                   parser={value => value.replace(/[^0-9.]/g, '')}
@@ -940,7 +956,9 @@ const viewItem = (item) => {
                     // Auto-calculate opening value
                     const costPrice = form.getFieldValue('costPrice');
                     if (value > 0 && costPrice > 0) {
-                      form.setFieldsValue({ openingValue: value * costPrice });
+                      const calculatedValue = value * costPrice;
+                      // Round to 2 decimal places to avoid floating point issues
+                      form.setFieldsValue({ openingValue: Math.round(calculatedValue * 100) / 100 });
                     }
                   }}
                 />
@@ -958,6 +976,7 @@ const viewItem = (item) => {
                     <InputNumber 
                       min={0} 
                       step={0.01}
+                      precision={2}
                       style={{ width: '100%' }} 
                       placeholder="Auto-calculated"
                       parser={value => value.replace(/[^0-9.]/g, '')}
