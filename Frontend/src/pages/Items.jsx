@@ -288,7 +288,19 @@ const viewItem = (item) => {
     console.log('Items component mounted, fetching data...');
     fetchItems();
     fetchDropdownOptions();
-  }, []);
+    
+    // Refresh vendor list when window regains focus (after adding vendor in new tab)
+    const handleFocus = () => {
+      if (modalVisible) {
+        fetchDropdownOptions();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [modalVisible]);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -794,8 +806,14 @@ const viewItem = (item) => {
           </div>
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="sellingPrice" label="Selling Price" rules={[{ required: true }]}>
-                <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="Enter selling price" />
+              <Form.Item name="sellingPrice" label="Selling Price" rules={[{ required: true, type: 'number', message: 'Please enter a valid number' }]}>
+                <InputNumber 
+                  min={0} 
+                  step={0.01} 
+                  style={{ width: '100%' }} 
+                  placeholder="Enter selling price"
+                  parser={value => value.replace(/[^0-9.]/g, '')}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -807,8 +825,15 @@ const viewItem = (item) => {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="taxRate" label="Tax Rate (%)">
-                <InputNumber min={0} max={100} step={0.01} style={{ width: '100%' }} placeholder="Enter tax rate" />
+              <Form.Item name="taxRate" label="Tax Rate (%)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+                <InputNumber 
+                  min={0} 
+                  max={100} 
+                  step={0.01} 
+                  style={{ width: '100%' }} 
+                  placeholder="Enter tax rate"
+                  parser={value => value.replace(/[^0-9.]/g, '')}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -825,8 +850,21 @@ const viewItem = (item) => {
           </div>
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="costPrice" label="Cost Price" rules={[{ required: true }]}>
-                <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="Enter cost price" />
+              <Form.Item name="costPrice" label="Cost Price" rules={[{ required: true, type: 'number', message: 'Please enter a valid number' }]}>
+                <InputNumber 
+                  min={0} 
+                  step={0.01} 
+                  style={{ width: '100%' }} 
+                  placeholder="Enter cost price"
+                  parser={value => value.replace(/[^0-9.]/g, '')}
+                  onChange={(value) => {
+                    // Auto-calculate opening value if opening stock exists
+                    const openingStock = form.getFieldValue('openingStock');
+                    if (openingStock > 0 && value > 0) {
+                      form.setFieldsValue({ openingValue: openingStock * value });
+                    }
+                  }}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -838,8 +876,15 @@ const viewItem = (item) => {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="purchaseTaxRate" label="Tax Rate (%)">
-                <InputNumber min={0} max={100} step={0.01} style={{ width: '100%' }} placeholder="Enter tax rate" />
+              <Form.Item name="purchaseTaxRate" label="Tax Rate (%)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+                <InputNumber 
+                  min={0} 
+                  max={100} 
+                  step={0.01} 
+                  style={{ width: '100%' }} 
+                  placeholder="Enter tax rate"
+                  parser={value => value.replace(/[^0-9.]/g, '')}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -852,78 +897,16 @@ const viewItem = (item) => {
             <Col span={12}>
               <Form.Item name="preferredVendor" label="Preferred Vendor">
                 <Select 
-                  placeholder="Select or Add Vendor" 
+                  placeholder="Select Vendor" 
                   allowClear
-                  dropdownRender={(menu) => (
-                    <div>
-                      {menu}
-                      <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
-                        <Button 
-                          type="link" 
-                          size="small"
-                          onClick={async () => {
-                            const newOption = prompt('Enter new vendor name:');
-                            if (newOption && !vendorOptions.find(v => v.name === newOption)) {
-                              try {
-                                const response = await apiService.post('/vendors', { name: newOption });
-                                if (response) {
-                                  await fetchDropdownOptions();
-                                  message.success('Vendor added successfully');
-                                }
-                              } catch (error) {
-                                message.error('Failed to add vendor');
-                              }
-                            }
-                          }}
-                        >
-                          + Add Vendor
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  showSearch
+                  filterOption={(input, option) =>
+                    option.children.toLowerCase().includes(input.toLowerCase())
+                  }
                 >
                   {vendorOptions.map(vendor => (
                     <Select.Option key={vendor.id} value={vendor.id}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>{vendor.name}</span>
-                        <span
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              await apiService.delete(`/vendors/${vendor.id}`);
-                              await fetchDropdownOptions();
-                              message.success(`Vendor '${vendor.name}' deleted`);
-                            } catch (error) {
-                              message.error('Failed to delete vendor');
-                            }
-                          }}
-                          style={{ 
-                            marginLeft: 8,
-                            width: '18px',
-                            height: '18px',
-                            borderRadius: '50%',
-                            backgroundColor: '#ff4d4f',
-                            color: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.target.style.backgroundColor = '#d9363e';
-                            e.target.style.transform = 'scale(1.1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.backgroundColor = '#ff4d4f';
-                            e.target.style.transform = 'scale(1)';
-                          }}
-                        >
-                          ×
-                        </span>
-                      </div>
+                      {vendor.display_name || vendor.name}
                     </Select.Option>
                   ))}
                 </Select>
@@ -946,24 +929,38 @@ const viewItem = (item) => {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="openingStock" label="Opening Stock">
+              <Form.Item name="openingStock" label="Opening Stock" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   style={{ width: '100%' }} 
                   placeholder="Enter opening stock"
-                  onChange={(value) => setShowWarehouse(value > 0)}
+                  parser={value => value.replace(/[^0-9.]/g, '')}
+                  onChange={(value) => {
+                    setShowWarehouse(value > 0);
+                    // Auto-calculate opening value
+                    const costPrice = form.getFieldValue('costPrice');
+                    if (value > 0 && costPrice > 0) {
+                      form.setFieldsValue({ openingValue: value * costPrice });
+                    }
+                  }}
                 />
               </Form.Item>
             </Col>
             {showWarehouse && (
               <>
                 <Col span={8}>
-                  <Form.Item name="openingValue" label="Opening Value">
+                  <Form.Item 
+                    name="openingValue" 
+                    label="Opening Value (Optional)"
+                    tooltip="Leave blank to auto-calculate from Cost Price × Opening Stock. Enter only if your opening stock was purchased at different prices."
+                    rules={[{ type: 'number', message: 'Please enter a valid number' }]}
+                  >
                     <InputNumber 
                       min={0} 
                       step={0.01}
                       style={{ width: '100%' }} 
-                      placeholder="Total value"
+                      placeholder="Auto-calculated"
+                      parser={value => value.replace(/[^0-9.]/g, '')}
                     />
                   </Form.Item>
                 </Col>
@@ -971,6 +968,7 @@ const viewItem = (item) => {
                   <Form.Item
                     name="warehouseId"
                     label="Warehouse"
+                    rules={[{ required: true, message: 'Warehouse is required for opening stock!' }]}
                   >
                     <Select placeholder="Select warehouse" allowClear>
                       {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (

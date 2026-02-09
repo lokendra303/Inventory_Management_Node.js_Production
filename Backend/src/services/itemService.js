@@ -72,7 +72,9 @@ class ItemService {
 
     // Create initial inventory projection if warehouse and opening stock provided
     if (warehouseId && openingStock > 0) {
-      const averageCost = openingValue > 0 ? openingValue / openingStock : costPrice;
+      // Auto-calculate opening value if not provided
+      const finalOpeningValue = openingValue > 0 ? openingValue : (openingStock * costPrice);
+      const averageCost = finalOpeningValue > 0 ? finalOpeningValue / openingStock : costPrice;
       const totalValue = openingStock * averageCost;
       
       await db.query(
@@ -82,7 +84,7 @@ class ItemService {
         [institutionId, itemId, warehouseId, openingStock, openingStock, averageCost, totalValue]
       );
       
-      logger.info('Initial inventory created', { itemId, warehouseId, openingStock, institutionId });
+      logger.info('Initial inventory created', { itemId, warehouseId, openingStock, averageCost, totalValue, institutionId });
     } else if (openingStock > 0 && !warehouseId) {
       logger.warn('Opening stock provided without warehouse', { itemId, openingStock, institutionId });
     }

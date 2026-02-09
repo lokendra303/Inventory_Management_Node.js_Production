@@ -215,9 +215,10 @@ class InventoryProjectionService {
 
   async getWarehouseInventory(institutionId, warehouseId) {
     return await db.query(
-      `SELECT ip.*, i.sku, i.name as item_name, i.unit, i.cost_price, i.selling_price, i.mrp
+      `SELECT ip.*, i.sku, i.name as item_name, u.name as unit, i.cost_price, i.selling_price, i.mrp
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
+       LEFT JOIN units u ON i.unit = u.id
        WHERE ip.institution_id = ? AND ip.warehouse_id = ?
        ORDER BY i.name`,
       [institutionId, warehouseId]
@@ -225,10 +226,11 @@ class InventoryProjectionService {
   }
 
   async getInstitutionInventory(institutionId, limit = 100, offset = 0, warehouseId = null, accessibleWarehouseIds = []) {
-    let query = `SELECT ip.*, i.sku, i.name as item_name, i.unit, i.cost_price, i.selling_price, i.mrp, w.name as warehouse_name
+    let query = `SELECT ip.*, i.sku, i.name as item_name, u.name as unit, i.cost_price, i.selling_price, i.mrp, w.name as warehouse_name
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
+       LEFT JOIN units u ON i.unit = u.id
        WHERE ip.institution_id = ?`;
     const params = [institutionId];
 
@@ -251,10 +253,11 @@ class InventoryProjectionService {
   }
 
   async getLowStockItems(institutionId, threshold = 10, warehouseId = null, accessibleWarehouseIds = []) {
-    let query = `SELECT ip.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
+    let query = `SELECT ip.*, i.sku, i.name as item_name, u.name as unit, w.name as warehouse_name
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
+       LEFT JOIN units u ON i.unit = u.id
        WHERE ip.institution_id = ? AND ip.quantity_available <= ?`;
     const params = [institutionId, threshold];
 
