@@ -38,19 +38,7 @@ class InvoiceTemplateService {
       const [institution] = await db.query(`
         SELECT 
           name as company_name,
-          address,
-          city,
-          state,
-          country,
-          postal_code,
-          phone,
-          email,
-          website,
-          tax_id,
-          registration_number,
-          logo_url,
-          stamp_url,
-          signature_url
+          email
         FROM institutions 
         WHERE id = ?
       `, [institutionId]);
@@ -59,25 +47,25 @@ class InvoiceTemplateService {
         return {
           companyName: institution.company_name || 'Your Company Name',
           address: {
-            line1: institution.address || '',
-            city: institution.city || '',
-            state: institution.state || '',
-            country: institution.country || '',
-            postalCode: institution.postal_code || ''
+            line1: '',
+            city: '',
+            state: '',
+            country: '',
+            postalCode: ''
           },
           contact: {
-            phone: institution.phone || '',
+            phone: '',
             email: institution.email || '',
-            website: institution.website || ''
+            website: ''
           },
           taxInfo: {
-            taxId: institution.tax_id || '',
-            registrationNumber: institution.registration_number || ''
+            taxId: '',
+            registrationNumber: ''
           },
           branding: {
-            logoUrl: institution.logo_url || '',
-            stampUrl: institution.stamp_url || '',
-            signatureUrl: institution.signature_url || ''
+            logoUrl: '',
+            stampUrl: '',
+            signatureUrl: ''
           }
         };
       }

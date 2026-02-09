@@ -155,6 +155,19 @@ const PurchaseInvoices = () => {
                 <p style={{ margin: '5px 0', fontSize: '12px', fontStyle: 'italic' }}>Amount in words: {data.totals.amountInWords}</p>
               </div>
 
+              {/* Bank Details */}
+              {(data.partyDetails.bankDetails?.bankName || data.partyDetails.bankDetails?.accountNumber) && (
+                <div style={{ marginTop: '30px', padding: '15px', backgroundColor: '#f9f9f9', border: '1px solid #ddd' }}>
+                  <h4 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Vendor Bank Details</h4>
+                  {data.partyDetails.bankDetails.bankName && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Bank Name:</strong> {data.partyDetails.bankDetails.bankName}</p>}
+                  {data.partyDetails.bankDetails.branchName && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Branch:</strong> {data.partyDetails.bankDetails.branchName}</p>}
+                  {data.partyDetails.bankDetails.accountNumber && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Account Number:</strong> {data.partyDetails.bankDetails.accountNumber}</p>}
+                  {data.partyDetails.bankDetails.accountType && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Account Type:</strong> {data.partyDetails.bankDetails.accountType}</p>}
+                  {data.partyDetails.bankDetails.ifscCode && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>IFSC Code:</strong> {data.partyDetails.bankDetails.ifscCode}</p>}
+                  {data.partyDetails.bankDetails.swiftCode && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>SWIFT Code:</strong> {data.partyDetails.bankDetails.swiftCode}</p>}
+                </div>
+              )}
+
               {/* Footer with Signature */}
               <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 {stampUrl && (
@@ -166,7 +179,10 @@ const PurchaseInvoices = () => {
                   {signatureUrl && (
                     <img src={signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginBottom: '5px' }} />
                   )}
-                  <p style={{ margin: '5px 0', fontSize: '12px', borderTop: '1px solid #333', paddingTop: '5px' }}>Authorized Signatory</p>
+                  <p style={{ margin: '5px 0', fontSize: '12px', borderTop: '1px solid #333', paddingTop: '5px', textAlign: 'left' }}>
+                    <strong>Name:</strong> {settings.authorized_signatory_name || 'N/A'}<br/>
+                    <strong>Designation:</strong> {settings.authorized_signatory_designation || 'N/A'}
+                  </p>
                 </div>
               </div>
             </div>

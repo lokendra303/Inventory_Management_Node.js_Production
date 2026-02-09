@@ -214,8 +214,34 @@ class InvoicePDFService {
         .text(footer.terms, 50, footerY + 75, { width: 500 });
     }
 
+    // Bank Details Section
+    if (companySettings?.bank_name || companySettings?.account_number) {
+      const bankY = footerY + 120;
+      doc
+        .fontSize(10)
+        .text('Bank Details:', 50, bankY, { underline: true })
+        .fontSize(9);
+      
+      let currentY = bankY + 15;
+      if (companySettings.bank_name) {
+        doc.text(`Bank Name: ${companySettings.bank_name}`, 50, currentY);
+        currentY += 12;
+      }
+      if (companySettings.account_number) {
+        doc.text(`Account Number: ${companySettings.account_number}`, 50, currentY);
+        currentY += 12;
+      }
+      if (companySettings.ifsc_code) {
+        doc.text(`IFSC Code: ${companySettings.ifsc_code}`, 50, currentY);
+        currentY += 12;
+      }
+      if (companySettings.swift_code) {
+        doc.text(`SWIFT Code: ${companySettings.swift_code}`, 50, currentY);
+      }
+    }
+
     // Authorized Signatory Section
-    const signatoryY = footerY + 100;
+    const signatoryY = doc.y + 40;
     doc
       .fontSize(10)
       .text('Authorized Signatory', 400, signatoryY);

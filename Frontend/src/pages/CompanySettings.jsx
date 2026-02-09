@@ -48,6 +48,10 @@ const CompanySettings = () => {
           address: response.data.address,
           phone: response.data.phone,
           email: response.data.email,
+          bankName: response.data.bank_name,
+          accountNumber: response.data.account_number,
+          ifscCode: response.data.ifsc_code,
+          swiftCode: response.data.swift_code,
           authorizedSignatoryName: response.data.authorized_signatory_name,
           authorizedSignatoryDesignation: response.data.authorized_signatory_designation
         });
@@ -207,6 +211,46 @@ const CompanySettings = () => {
                           label="Authorized Signatory Designation"
                         >
                           <Input placeholder="Enter designation (e.g., CEO, Director)" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+
+                    <Divider orientation="left">Bank Details</Divider>
+
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item
+                          name="bankName"
+                          label="Bank Name"
+                        >
+                          <Input placeholder="Enter bank name" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="accountNumber"
+                          label="Account Number"
+                        >
+                          <Input placeholder="Enter account number" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item
+                          name="ifscCode"
+                          label="IFSC Code"
+                        >
+                          <Input placeholder="Enter IFSC code" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="swiftCode"
+                          label="SWIFT Code"
+                        >
+                          <Input placeholder="Enter SWIFT code (for international)" />
                         </Form.Item>
                       </Col>
                     </Row>

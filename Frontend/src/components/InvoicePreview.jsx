@@ -60,6 +60,20 @@ const InvoicePreview = () => {
 
       <Divider />
 
+      {/* Bank Details */}
+      {(settings?.bank_name || settings?.account_number) && (
+        <>
+          <div style={{ backgroundColor: '#f0f2f5', padding: 16, borderRadius: 4, marginBottom: 20 }}>
+            <Title level={5} style={{ margin: '0 0 10px 0' }}>Bank Details</Title>
+            {settings.bank_name && <Text><strong>Bank Name:</strong> {settings.bank_name}</Text>}<br/>
+            {settings.account_number && <Text><strong>Account Number:</strong> {settings.account_number}</Text>}<br/>
+            {settings.ifsc_code && <Text><strong>IFSC Code:</strong> {settings.ifsc_code}</Text>}<br/>
+            {settings.swift_code && <Text><strong>SWIFT Code:</strong> {settings.swift_code}</Text>}
+          </div>
+          <Divider />
+        </>
+      )}
+
       {/* Invoice Info */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
