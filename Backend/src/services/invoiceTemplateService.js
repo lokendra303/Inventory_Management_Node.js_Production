@@ -47,30 +47,41 @@ class InvoiceTemplateService {
           email,
           website,
           tax_id,
-          registration_number
+          registration_number,
+          logo_url,
+          stamp_url,
+          signature_url
         FROM institutions 
         WHERE id = ?
       `, [institutionId]);
 
-      return {
-        companyName: institution?.company_name || 'Your Company Name',
-        address: {
-          line1: institution?.address || '',
-          city: institution?.city || '',
-          state: institution?.state || '',
-          country: institution?.country || '',
-          postalCode: institution?.postal_code || ''
-        },
-        contact: {
-          phone: institution?.phone || '',
-          email: institution?.email || '',
-          website: institution?.website || ''
-        },
-        taxInfo: {
-          taxId: institution?.tax_id || '',
-          registrationNumber: institution?.registration_number || ''
-        }
-      };
+      if (institution) {
+        return {
+          companyName: institution.company_name || 'Your Company Name',
+          address: {
+            line1: institution.address || '',
+            city: institution.city || '',
+            state: institution.state || '',
+            country: institution.country || '',
+            postalCode: institution.postal_code || ''
+          },
+          contact: {
+            phone: institution.phone || '',
+            email: institution.email || '',
+            website: institution.website || ''
+          },
+          taxInfo: {
+            taxId: institution.tax_id || '',
+            registrationNumber: institution.registration_number || ''
+          },
+          branding: {
+            logoUrl: institution.logo_url || '',
+            stampUrl: institution.stamp_url || '',
+            signatureUrl: institution.signature_url || ''
+          }
+        };
+      }
+      return this.getDefaultHeader();
     } catch (error) {
       logger.error('Error getting invoice header:', error);
       return this.getDefaultHeader();
@@ -103,10 +114,8 @@ class InvoiceTemplateService {
         return await this.getVendorDetails(institutionId, invoiceData.vendorId);
       } else if (type === 'sales' && invoiceData.customerId) {
         return await this.getCustomerDetails(institutionId, invoiceData.customerId);
-      } else {
-        // Return manual details if no ID provided
-        return this.getManualPartyDetails(invoiceData, type);
       }
+      return this.getManualPartyDetails(invoiceData, type);
     } catch (error) {
       logger.error('Error getting party details:', error);
       return this.getManualPartyDetails(invoiceData, type);
@@ -121,7 +130,8 @@ class InvoiceTemplateService {
       const vendor = await vendorService.getVendor(institutionId, vendorId);
       
       if (!vendor) {
-        throw new Error('Vendor not found');
+        logger.warn('Vendor not found', { vendorId, institutionId });
+        return { type: 'vendor', name: 'Unknown Vendor', contact: {}, billingAddress: {} };
       }
 
       return {
@@ -180,7 +190,7 @@ class InvoiceTemplateService {
       };
     } catch (error) {
       logger.error('Error getting vendor details:', error);
-      throw error;
+      return { type: 'vendor', name: 'Unknown Vendor', contact: {}, billingAddress: {} };
     }
   }
 
@@ -401,6 +411,11 @@ class InvoiceTemplateService {
       taxInfo: {
         taxId: '',
         registrationNumber: ''
+      },
+      branding: {
+        logoUrl: '',
+        stampUrl: '',
+        signatureUrl: ''
       }
     };
   }

@@ -144,9 +144,13 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       label: 'Documents'
     },
     {
-      key: '/settings',
+      key: 'settings-menu',
       icon: <SettingOutlined />,
-      label: 'Settings'
+      label: 'Settings',
+      children: [
+        { key: '/settings', label: 'General Settings' },
+        { key: '/company-settings', label: 'Company Settings' }
+      ]
     }
   ].filter(Boolean);
 

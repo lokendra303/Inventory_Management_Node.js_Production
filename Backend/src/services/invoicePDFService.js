@@ -2,9 +2,10 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const db = require('../database/connection');
 
 class InvoicePDFService {
-  async generateInvoicePDF(standardInvoice, outputPath = null) {
+  async generateInvoicePDF(standardInvoice, outputPath = null, institutionId = null) {
     try {
       const doc = new PDFDocument({ margin: 50 });
       
@@ -15,11 +16,21 @@ class InvoicePDFService {
         doc.pipe(fs.createWriteStream(outputPath));
       }
 
-      this.generateHeader(doc, standardInvoice.header);
+      // Get company settings for logo, stamp, signature
+      let companySettings = null;
+      if (institutionId) {
+        const [settings] = await db.query(
+          'SELECT * FROM company_settings WHERE institution_id = ?',
+          [institutionId]
+        );
+        companySettings = settings;
+      }
+
+      this.generateHeader(doc, standardInvoice.header, companySettings);
       this.generateInvoiceInfo(doc, standardInvoice.details, standardInvoice.partyDetails);
       this.generateTable(doc, standardInvoice.lineItems);
       this.generateTotals(doc, standardInvoice.totals);
-      this.generateFooter(doc, standardInvoice.footer);
+      this.generateFooter(doc, standardInvoice.footer, companySettings);
 
       doc.end();
 
@@ -39,14 +50,28 @@ class InvoicePDFService {
     }
   }
 
-  generateHeader(doc, header) {
+  generateHeader(doc, header, companySettings) {
+    let startY = 45;
+
+    // Add logo if available
+    if (companySettings && companySettings.logo_path) {
+      const logoPath = path.join(__dirname, '../../', companySettings.logo_path);
+      if (fs.existsSync(logoPath)) {
+        try {
+          doc.image(logoPath, 50, startY, { width: 80, height: 60, align: 'left' });
+        } catch (err) {
+          logger.error('Error loading logo:', err);
+        }
+      }
+    }
+
     doc
       .fontSize(20)
-      .text(header.companyName, 50, 45, { align: 'center' })
+      .text(header.companyName, 150, startY, { align: 'left' })
       .fontSize(10)
-      .text(header.address.line1, 50, 70, { align: 'center' })
-      .text(`${header.address.city}, ${header.address.state} ${header.address.postalCode}`, 50, 85, { align: 'center' })
-      .text(`Phone: ${header.contact.phone} | Email: ${header.contact.email}`, 50, 100, { align: 'center' })
+      .text(header.address.line1, 150, startY + 25, { align: 'left' })
+      .text(`${header.address.city}, ${header.address.state} ${header.address.postalCode}`, 150, startY + 40, { align: 'left' })
+      .text(`Phone: ${header.contact.phone} | Email: ${header.contact.email}`, 150, startY + 55, { align: 'left' })
       .moveDown();
 
     doc
@@ -166,7 +191,7 @@ class InvoicePDFService {
       .text(`Amount in Words: ${totals.amountInWords}`, 50, totalsStartY + 80, { width: 500 });
   }
 
-  generateFooter(doc, footer) {
+  generateFooter(doc, footer, companySettings) {
     const footerY = doc.y + 40;
 
     if (footer.notes) {
@@ -185,14 +210,44 @@ class InvoicePDFService {
         .text(footer.terms, 50, footerY + 75, { width: 500 });
     }
 
-    if (footer.authorizedSignatory) {
-      doc
-        .fontSize(10)
-        .text('Authorized Signatory', 400, footerY + 100)
-        .text(footer.authorizedSignatory.name || '', 400, footerY + 130)
-        .text(footer.authorizedSignatory.designation || '', 400, footerY + 145)
-        .text(`Date: ${footer.authorizedSignatory.date}`, 400, footerY + 160);
+    // Authorized Signatory Section
+    const signatoryY = footerY + 100;
+    doc
+      .fontSize(10)
+      .text('Authorized Signatory', 400, signatoryY);
+
+    // Add signature image if available
+    if (companySettings && companySettings.signature_path) {
+      const signaturePath = path.join(__dirname, '../../', companySettings.signature_path);
+      if (fs.existsSync(signaturePath)) {
+        try {
+          doc.image(signaturePath, 400, signatoryY + 15, { width: 100, height: 40 });
+        } catch (err) {
+          logger.error('Error loading signature:', err);
+        }
+      }
     }
+
+    // Add stamp image if available (overlapping signature)
+    if (companySettings && companySettings.stamp_path) {
+      const stampPath = path.join(__dirname, '../../', companySettings.stamp_path);
+      if (fs.existsSync(stampPath)) {
+        try {
+          doc.image(stampPath, 380, signatoryY + 20, { width: 60, height: 60 });
+        } catch (err) {
+          logger.error('Error loading stamp:', err);
+        }
+      }
+    }
+
+    const signatoryName = companySettings?.authorized_signatory_name || footer.authorizedSignatory?.name || '';
+    const signatoryDesignation = companySettings?.authorized_signatory_designation || footer.authorizedSignatory?.designation || '';
+
+    doc
+      .fontSize(10)
+      .text(signatoryName, 400, signatoryY + 60)
+      .text(signatoryDesignation, 400, signatoryY + 75)
+      .text(`Date: ${footer.authorizedSignatory?.date || new Date().toISOString().split('T')[0]}`, 400, signatoryY + 90);
   }
 
   generateFilename(invoiceNumber, type = 'purchase') {
@@ -201,7 +256,7 @@ class InvoicePDFService {
     return `${prefix}_${invoiceNumber}_${timestamp}.pdf`;
   }
 
-  async saveInvoicePDF(standardInvoice, invoiceNumber, type = 'purchase') {
+  async saveInvoicePDF(standardInvoice, invoiceNumber, type = 'purchase', institutionId = null) {
     try {
       const filename = this.generateFilename(invoiceNumber, type);
       const outputDir = path.join(__dirname, '../../temp/invoices');
@@ -211,7 +266,7 @@ class InvoicePDFService {
       }
 
       const outputPath = path.join(outputDir, filename);
-      await this.generateInvoicePDF(standardInvoice, outputPath);
+      await this.generateInvoicePDF(standardInvoice, outputPath, institutionId);
       
       return {
         filename,
@@ -224,9 +279,9 @@ class InvoicePDFService {
     }
   }
 
-  async generatePDFBuffer(standardInvoice) {
+  async generatePDFBuffer(standardInvoice, institutionId = null) {
     try {
-      return await this.generateInvoicePDF(standardInvoice);
+      return await this.generateInvoicePDF(standardInvoice, null, institutionId);
     } catch (error) {
       logger.error('Error generating PDF buffer:', error);
       throw error;

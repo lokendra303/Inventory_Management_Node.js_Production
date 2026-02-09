@@ -26,6 +26,14 @@ router.get('/:id',
   purchaseInvoiceController.getPurchaseInvoice
 );
 
+// PUT /api/purchase-invoices/:id
+router.put('/:id',
+  requirePermission('invoice_management'),
+  validateInstitutionConsistency,
+  auditLog('purchase_invoice_updated'),
+  purchaseInvoiceController.updatePurchaseInvoice
+);
+
 // PUT /api/purchase-invoices/:id/status
 router.put('/:id/status',
   validate(schemas.updateInvoiceStatusSchema),

@@ -22,14 +22,9 @@ class Server {
   setupMiddleware() {
     // Security middleware
     this.app.use(helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", "data:", "https:"],
-        },
-      },
+      crossOriginResourcePolicy: false,
+      crossOriginEmbedderPolicy: false,
+      contentSecurityPolicy: false
     }));
 
     // CORS
@@ -54,6 +49,9 @@ class Server {
     // Body parsing
     this.app.use(express.json({ limit: '10mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+    // Serve static uploads (BEFORE authentication)
+    this.app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
     // Request logging
     this.app.use((req, res, next) => {

@@ -259,7 +259,7 @@ const createAutomationRuleSchema = Joi.object({
 
 // Purchase Invoice schemas
 const createPurchaseInvoiceSchema = Joi.object({
-  invoiceNumber: Joi.string().max(100).required(),
+  invoiceNumber: Joi.string().max(100).allow('', null).optional(),
   vendorId: Joi.string().uuid().optional(),
   vendorName: Joi.string().max(255).required(),
   poId: Joi.string().uuid().optional(),
@@ -273,13 +273,14 @@ const createPurchaseInvoiceSchema = Joi.object({
   lines: Joi.array().items(Joi.object({
     poLineId: Joi.string().uuid().optional(),
     grnLineId: Joi.string().uuid().optional(),
-    itemId: Joi.string().uuid().required(),
+    itemId: Joi.string().uuid().allow(null).optional(),
     itemName: Joi.string().max(255).required(),
     quantity: Joi.number().positive().required(),
     unitCost: Joi.number().positive().required(),
     taxRate: Joi.number().min(0).max(100).default(0),
     discountRate: Joi.number().min(0).max(100).default(0)
-  })).min(1).required()
+  })).min(1).required(),
+  totals: Joi.object().optional()
 }).unknown(true);
 
 // Sales Invoice schemas

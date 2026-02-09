@@ -58,4 +58,10 @@ router.get('/analytics/summary',
   salesInvoiceController.getInvoiceAnalytics
 );
 
+// GET /api/sales-invoices/:id/download
+router.get('/:id/download',
+  requirePermission('invoice_view'),
+  salesInvoiceController.downloadInvoicePDF
+);
+
 module.exports = router;

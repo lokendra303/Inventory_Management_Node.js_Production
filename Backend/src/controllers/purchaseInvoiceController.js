@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const invoiceTemplateService = require('../services/invoiceTemplateService');
 const invoicePDFService = require('../services/invoicePDFService');
 const autoInvoiceService = require('../services/autoInvoiceService');
+const { v4: uuidv4 } = require('uuid');
 
 class PurchaseInvoiceController {
   // Create Purchase Invoice
@@ -27,7 +28,8 @@ class PurchaseInvoiceController {
       }
 
       const result = await db.transaction(async (connection) => {
-        // Generate invoice number if not provided
+        // Generate invoice ID and number
+        const invoiceId = uuidv4();
         const invoiceNumber = invoiceData.invoiceNumber || `PI${Date.now()}`;
         
         // Get vendor name if not provided
@@ -40,25 +42,34 @@ class PurchaseInvoiceController {
           vendorName = vendor ? (vendor.display_name || vendor.company_name) : 'Unknown Vendor';
         }
 
+        // Validate and format dates
+        const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
+          ? invoiceData.invoiceDate 
+          : new Date().toISOString().split('T')[0];
+        const dueDate = invoiceData.dueDate && typeof invoiceData.dueDate === 'string' && invoiceData.dueDate.trim() 
+          ? invoiceData.dueDate 
+          : null;
+
         // Calculate totals from frontend totals or recalculate
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
         
         // Create invoice header
-        const [invoiceResult] = await connection.execute(`
+        await connection.execute(`
           INSERT INTO purchase_invoices (
-            institution_id, invoice_number, vendor_id, vendor_name, po_id, grn_id,
+            id, institution_id, invoice_number, vendor_id, vendor_name, po_id, grn_id,
             invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
             discount_amount, total_amount, balance_amount, reference, notes, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
+          invoiceId,
           institutionId, 
           invoiceNumber, 
           invoiceData.vendorId, 
           vendorName,
           invoiceData.poId || null, 
           invoiceData.grnId || null, 
-          invoiceData.invoiceDate, 
-          invoiceData.dueDate,
+          invoiceDate, 
+          dueDate,
           invoiceData.currency || 'USD', 
           invoiceData.exchangeRate || 1, 
           totals.subtotal, 
@@ -70,8 +81,6 @@ class PurchaseInvoiceController {
           invoiceData.notes || null, 
           user?.userId || 1
         ]);
-
-        const invoiceId = invoiceResult.insertId;
 
         // Create invoice lines
         for (const line of invoiceData.lines) {
@@ -214,15 +223,9 @@ class PurchaseInvoiceController {
       const { id } = req.params;
 
       const [invoice] = await db.query(`
-        SELECT 
-          pi.*,
-          po.po_number,
-          v.name as vendor_full_name,
-          v.email as vendor_email,
-          v.phone as vendor_phone
+        SELECT pi.*, po.po_number
         FROM purchase_invoices pi
         LEFT JOIN purchase_orders po ON CAST(pi.po_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(po.id AS CHAR) COLLATE utf8mb4_unicode_ci
-        LEFT JOIN vendors v ON pi.vendor_id = v.id
         WHERE pi.id = ? AND pi.institution_id = ?
       `, [id, institutionId]);
 
@@ -239,7 +242,7 @@ class PurchaseInvoiceController {
           i.sku,
           i.unit
         FROM purchase_invoice_lines pil
-        LEFT JOIN items i ON pil.item_id = i.id
+        LEFT JOIN items i ON CAST(pil.item_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(i.id AS CHAR) COLLATE utf8mb4_unicode_ci
         WHERE pil.invoice_id = ?
         ORDER BY pil.created_at
       `, [id]);
@@ -264,6 +267,84 @@ class PurchaseInvoiceController {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch purchase invoice'
+      });
+    }
+  }
+
+  // Update Purchase Invoice
+  async updatePurchaseInvoice(req, res) {
+    try {
+      const { institutionId, user } = req;
+      const { id } = req.params;
+      const invoiceData = req.body;
+
+      if (!invoiceData.lines || invoiceData.lines.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invoice must have at least one line item'
+        });
+      }
+
+      const result = await db.transaction(async (connection) => {
+        const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
+          ? invoiceData.invoiceDate 
+          : new Date().toISOString().split('T')[0];
+        const dueDate = invoiceData.dueDate && typeof invoiceData.dueDate === 'string' && invoiceData.dueDate.trim() 
+          ? invoiceData.dueDate 
+          : null;
+
+        const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
+        
+        await connection.execute(`
+          UPDATE purchase_invoices SET
+            invoice_date = ?, due_date = ?, currency = ?, exchange_rate = ?,
+            subtotal = ?, tax_amount = ?, discount_amount = ?, total_amount = ?,
+            balance_amount = ?, reference = ?, notes = ?, updated_by = ?
+          WHERE id = ? AND institution_id = ?
+        `, [
+          invoiceDate, dueDate, invoiceData.currency || 'USD', invoiceData.exchangeRate || 1,
+          totals.subtotal, totals.totalTax, totals.totalDiscount, totals.grandTotal,
+          totals.grandTotal, invoiceData.reference || null, invoiceData.notes || null,
+          user?.userId || 1, id, institutionId
+        ]);
+
+        await connection.execute('DELETE FROM purchase_invoice_lines WHERE invoice_id = ?', [id]);
+
+        for (const line of invoiceData.lines) {
+          const quantity = line.quantity || 0;
+          const unitCost = line.unitCost || 0;
+          const lineTotal = quantity * unitCost;
+          const discountRate = line.discountRate || 0;
+          const taxRate = line.taxRate || 0;
+          const discountAmount = (lineTotal * discountRate) / 100;
+          const taxableAmount = lineTotal - discountAmount;
+          const taxAmount = (taxableAmount * taxRate) / 100;
+
+          await connection.execute(`
+            INSERT INTO purchase_invoice_lines (
+              invoice_id, item_id, item_name, quantity, unit_cost, line_total,
+              tax_rate, tax_amount, discount_rate, discount_amount
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            id, line.itemId || null, line.itemName, quantity, unitCost, lineTotal,
+            taxRate, taxAmount, discountRate, discountAmount
+          ]);
+        }
+
+        return { invoiceId: id, totalAmount: totals.grandTotal };
+      });
+
+      res.json({
+        success: true,
+        message: 'Purchase invoice updated successfully',
+        data: result
+      });
+
+    } catch (error) {
+      logger.error('Error updating purchase invoice:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to update purchase invoice'
       });
     }
   }
@@ -296,7 +377,7 @@ class PurchaseInvoiceController {
           i.unit,
           i.hsn_code
         FROM purchase_invoice_lines pil
-        LEFT JOIN items i ON pil.item_id = i.id
+        LEFT JOIN items i ON CAST(pil.item_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(i.id AS CHAR) COLLATE utf8mb4_unicode_ci
         WHERE pil.invoice_id = ?
         ORDER BY pil.created_at
       `, [id]);
@@ -654,7 +735,7 @@ class PurchaseInvoiceController {
           i.unit,
           i.hsn_code
         FROM purchase_invoice_lines pil
-        LEFT JOIN items i ON pil.item_id = i.id
+        LEFT JOIN items i ON CAST(pil.item_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(i.id AS CHAR) COLLATE utf8mb4_unicode_ci
         WHERE pil.invoice_id = ?
         ORDER BY pil.created_at
       `, [id]);
@@ -755,7 +836,7 @@ class PurchaseInvoiceController {
       if (poId) {
         // Get PO data
         const [po] = await db.query(`
-          SELECT po.*, v.name as vendor_name
+          SELECT po.*, v.display_name as vendor_name
           FROM purchase_orders po
           LEFT JOIN vendors v ON po.vendor_id = v.id
           WHERE po.id = ? AND po.institution_id = ?

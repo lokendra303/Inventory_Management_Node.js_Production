@@ -1,5 +1,6 @@
 const db = require('../database/connection');
 const logger = require('../utils/logger');
+const invoicePDFService = require('../services/invoicePDFService');
 
 class SalesInvoiceController {
   // Create Sales Invoice
@@ -419,6 +420,73 @@ class SalesInvoiceController {
         success: false,
         error: error.message || 'Failed to add payment'
       });
+    }
+  }
+
+  // Download Invoice PDF
+  async downloadInvoicePDF(req, res) {
+    try {
+      const { institutionId } = req;
+      const { id } = req.params;
+
+      const [invoice] = await db.query(`SELECT * FROM sales_invoices WHERE id = ? AND institution_id = ?`, [id, institutionId]);
+      if (!invoice) {
+        return res.status(404).json({ success: false, error: 'Invoice not found' });
+      }
+
+      const lines = await db.query(`SELECT * FROM sales_invoice_lines WHERE invoice_id = ?`, [id]);
+
+      const standardInvoice = {
+        header: {
+          companyName: 'Your Company',
+          address: { line1: '123 Street', city: 'City', state: 'State', postalCode: '12345' },
+          contact: { phone: '123-456-7890', email: 'info@company.com' }
+        },
+        details: {
+          invoiceNumber: invoice.invoice_number,
+          invoiceDate: invoice.invoice_date,
+          dueDate: invoice.due_date,
+          currency: invoice.currency,
+          reference: invoice.reference
+        },
+        partyDetails: {
+          type: 'customer',
+          name: invoice.customer_name,
+          companyName: invoice.customer_name,
+          billingAddress: { line1: '', city: '', state: '', country: '', postalCode: '' },
+          contact: { email: '', phone: '' }
+        },
+        lineItems: lines.map((line, idx) => ({
+          sno: idx + 1,
+          itemName: line.item_name,
+          sku: '',
+          quantity: line.quantity,
+          unitAmount: line.unit_price,
+          netAmount: line.line_total
+        })),
+        totals: {
+          subtotal: invoice.subtotal,
+          totalDiscountAmount: invoice.discount_amount,
+          totalTaxAmount: invoice.tax_amount,
+          grandTotal: invoice.total_amount,
+          amountInWords: 'Amount in words'
+        },
+        footer: {
+          notes: invoice.notes,
+          terms: '',
+          authorizedSignatory: { name: '', designation: '', date: new Date().toISOString().split('T')[0] }
+        }
+      };
+
+      const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice, institutionId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=invoice-${invoice.invoice_number}.pdf`);
+      res.send(pdfBuffer);
+
+    } catch (error) {
+      logger.error('Error downloading invoice PDF:', error);
+      res.status(500).json({ success: false, error: 'Failed to generate PDF' });
     }
   }
 

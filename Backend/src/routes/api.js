@@ -39,6 +39,7 @@ router.use('/reorder-levels', require('./reorder-levels'));
 router.use('/reports', require('./reports'));
 router.use('/profit-loss', require('./profit-loss'));
 router.use('/settings', require('./settings'));
+router.use('/company-settings', require('./company-settings'));
 
 // Error handling middleware
 router.use((error, req, res, next) => {

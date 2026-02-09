@@ -66,8 +66,94 @@ const PurchaseInvoices = () => {
       setLoading(true);
       const response = await apiService.get(`/purchase-invoices/${invoiceId}/standard-format`);
       if (response.success) {
-        message.success('Standard format generated successfully');
-        console.log('Standard Invoice Format:', response.data);
+        const data = response.data;
+        Modal.info({
+          title: 'Invoice Preview',
+          width: 900,
+          content: (
+            <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+              {/* Header */}
+              <div style={{ textAlign: 'center', borderBottom: '2px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
+                {data.header.branding?.logoUrl && (
+                  <img src={data.header.branding.logoUrl} alt="Logo" style={{ maxHeight: '60px', marginBottom: '10px' }} />
+                )}
+                <h2 style={{ margin: 0 }}>{data.header.companyName}</h2>
+                <p style={{ margin: '5px 0', fontSize: '12px' }}>
+                  {data.header.address.line1}, {data.header.address.city}, {data.header.address.state}<br/>
+                  {data.header.contact.phone} | {data.header.contact.email}
+                </p>
+                {data.header.taxInfo.taxId && (
+                  <p style={{ margin: '5px 0', fontSize: '11px' }}>Tax ID: {data.header.taxInfo.taxId}</p>
+                )}
+              </div>
+
+              {/* Invoice Details */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div>
+                  <h3 style={{ margin: '0 0 10px 0' }}>PURCHASE INVOICE</h3>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Invoice #:</strong> {data.details.invoiceNumber}</p>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Date:</strong> {new Date(data.details.invoiceDate).toLocaleDateString()}</p>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Due Date:</strong> {new Date(data.details.dueDate).toLocaleDateString()}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <h4 style={{ margin: '0 0 10px 0' }}>Vendor Details</h4>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>{data.partyDetails.name}</strong></p>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.line1}</p>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.city}, {data.partyDetails.billingAddress.state}</p>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.contact.phone}</p>
+                </div>
+              </div>
+
+              {/* Line Items */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f0f0f0' }}>
+                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>#</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>Item</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>Qty</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>Rate</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.lineItems.map((item) => (
+                    <tr key={item.sno}>
+                      <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.sno}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.itemName}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{parseFloat(item.quantity).toFixed(2)}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{parseFloat(item.unitAmount).toFixed(2)}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{item.netAmount.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Totals */}
+              <div style={{ textAlign: 'right', marginTop: '20px' }}>
+                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {data.details.currency} {data.totals.subtotal.toFixed(2)}</p>
+                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {data.details.currency} {data.totals.totalTaxAmount.toFixed(2)}</p>
+                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Discount:</strong> {data.details.currency} {data.totals.totalDiscountAmount.toFixed(2)}</p>
+                <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {data.details.currency} {data.totals.grandTotal.toFixed(2)}</h3>
+                <p style={{ margin: '5px 0', fontSize: '12px', fontStyle: 'italic' }}>Amount in words: {data.totals.amountInWords}</p>
+              </div>
+
+              {/* Footer with Signature */}
+              <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                {data.header.branding?.stampUrl && (
+                  <div>
+                    <img src={data.header.branding.stampUrl} alt="Stamp" style={{ maxHeight: '80px' }} />
+                  </div>
+                )}
+                <div style={{ textAlign: 'right' }}>
+                  {data.header.branding?.signatureUrl && (
+                    <img src={data.header.branding.signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginBottom: '5px' }} />
+                  )}
+                  <p style={{ margin: '5px 0', fontSize: '12px', borderTop: '1px solid #333', paddingTop: '5px' }}>Authorized Signatory</p>
+                </div>
+              </div>
+            </div>
+          )
+        });
       }
     } catch (error) {
       message.error('Failed to generate standard format');

@@ -20,6 +20,7 @@ import {
   DeleteOutlined,
   SaveOutlined
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import apiService from '../services/apiService';
 import { useCurrency } from '../contexts/CurrencyContext.jsx';
 import { formatPrice, getCurrencySymbol, getCurrencies } from '../utils/currency';
@@ -37,6 +38,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [invoiceLines, setInvoiceLines] = useState([{ key: 1 }]);
   const [invoiceCurrency, setInvoiceCurrency] = useState(currency || 'USD');
+  const [exchangeRate, setExchangeRate] = useState(1);
   const [totals, setTotals] = useState({
     subtotal: 0,
     totalDiscount: 0,
@@ -151,14 +153,15 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     });
 
     const grandTotal = subtotal - totalDiscount + totalTax;
+    const rate = exchangeRate || 1;
 
     setTotals({
-      subtotal: Math.round(subtotal * 100) / 100,
-      totalDiscount: Math.round(totalDiscount * 100) / 100,
-      totalTax: Math.round(totalTax * 100) / 100,
-      grandTotal: Math.round(grandTotal * 100) / 100
+      subtotal: Math.round(subtotal * rate * 100) / 100,
+      totalDiscount: Math.round(totalDiscount * rate * 100) / 100,
+      totalTax: Math.round(totalTax * rate * 100) / 100,
+      grandTotal: Math.round(grandTotal * rate * 100) / 100
     });
-  }, [invoiceLines]);
+  }, [invoiceLines, exchangeRate]);
 
   const handleSave = async () => {
     try {
@@ -200,6 +203,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
       const invoiceData = {
         ...values,
+        invoiceNumber: values.invoiceNumber?.trim() || `PI${Date.now()}`,
         invoiceDate: values.invoiceDate.format('YYYY-MM-DD'),
         dueDate: values.dueDate.format('YYYY-MM-DD'),
         lines: validLines.map(line => {
@@ -226,7 +230,9 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         : '/purchase-invoices';
       
       const method = invoiceId ? 'put' : 'post';
+      console.log('Request:', method, url);
       const response = await apiService[method](url, invoiceData);
+      console.log('Response:', response);
 
       if (response.success) {
         message.success(`Invoice ${invoiceId ? 'updated' : 'created'} successfully`);
@@ -239,6 +245,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       }
     } catch (error) {
       console.error('Error saving invoice:', error);
+      console.error('Error response:', error.response?.data);
       let errorMessage = 'Failed to save invoice';
       
       if (error.response?.data?.error) {
@@ -248,6 +255,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         } else {
           errorMessage = serverError;
         }
+      } else if (error.response?.data?.details) {
+        errorMessage = error.response.data.details.map(d => d.message).join(', ');
       } else if (error.response?.status === 500) {
         errorMessage = 'Server error occurred. Please try again or contact support.';
       } else if (error.message) {
@@ -263,7 +272,52 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   useEffect(() => {
     loadVendors();
     loadItems();
+    if (invoiceId) {
+      loadInvoiceData();
+    }
   }, []);
+
+  const loadInvoiceData = async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.get(`/purchase-invoices/${invoiceId}`);
+      if (response.success) {
+        const { invoice, lines } = response.data;
+        form.setFieldsValue({
+          invoiceNumber: invoice.invoice_number,
+          invoiceDate: invoice.invoice_date ? dayjs(invoice.invoice_date) : null,
+          dueDate: invoice.due_date ? dayjs(invoice.due_date) : null,
+          vendorId: invoice.vendor_id,
+          vendorName: invoice.vendor_name,
+          currency: invoice.currency || 'USD',
+          reference: invoice.reference,
+          notes: invoice.notes
+        });
+        setInvoiceCurrency(invoice.currency || 'USD');
+        if (invoice.vendor_id) {
+          loadVendorDetails(invoice.vendor_id);
+        }
+        if (lines && lines.length > 0) {
+          setInvoiceLines(lines.map((line, index) => ({
+            key: index + 1,
+            itemId: line.item_id,
+            itemName: line.item_name,
+            sku: line.sku,
+            unit: line.unit,
+            quantity: line.quantity,
+            unitCost: line.unit_cost,
+            discountRate: line.discount_rate || 0,
+            taxRate: line.tax_rate || 0
+          })));
+        }
+      }
+    } catch (error) {
+      console.error('Error loading invoice:', error);
+      message.error('Failed to load invoice data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     calculateTotals();
@@ -436,7 +490,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               </Form.Item>
               <Form.Item name="currency" label="Currency">
                 <Select 
-                  defaultValue={currency}
+                  value={invoiceCurrency}
                   onChange={(value) => setInvoiceCurrency(value)}
                 >
                   {getCurrencies().map(curr => (
@@ -448,6 +502,20 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               </Form.Item>
             </Col>
             <Col span={6}>
+              <Form.Item name="exchangeRate" label="Exchange Rate">
+                <InputNumber
+                  min={0}
+                  precision={4}
+                  placeholder="1.0000"
+                  style={{ width: '100%' }}
+                  onChange={(value) => setExchangeRate(value || 1)}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={24}>
               <Form.Item name="reference" label="Reference">
                 <Input placeholder="Reference number" />
               </Form.Item>

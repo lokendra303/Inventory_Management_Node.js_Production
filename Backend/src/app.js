@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 const config = require('./config');
 const logger = require('./utils/logger');
 const { requireAuth, validateInstitutionConsistency } = require('./middleware/auth');
@@ -11,7 +12,10 @@ const { validateBearerToken } = require('./middleware/bearerToken');
 const app = express();
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 app.use(cors());
 
 // Rate limiting
@@ -25,6 +29,9 @@ app.use(limiter);
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files for uploads (BEFORE authentication)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check
 app.get('/health', (req, res) => {
