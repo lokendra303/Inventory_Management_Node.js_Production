@@ -29,7 +29,7 @@ class CompanySettingsController {
   async updateSettings(req, res) {
     try {
       const { institutionId, user } = req;
-      const { companyName, authorizedSignatoryName, authorizedSignatoryDesignation } = req.body;
+      const { companyName, address, phone, email, authorizedSignatoryName, authorizedSignatoryDesignation } = req.body;
 
       const [existing] = await db.query(
         'SELECT id FROM company_settings WHERE institution_id = ?',
@@ -39,15 +39,15 @@ class CompanySettingsController {
       if (existing) {
         await db.query(
           `UPDATE company_settings 
-           SET company_name = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?
+           SET company_name = ?, address = ?, phone = ?, email = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?
            WHERE institution_id = ?`,
-          [companyName, authorizedSignatoryName, authorizedSignatoryDesignation, institutionId]
+          [companyName, address, phone, email, authorizedSignatoryName, authorizedSignatoryDesignation, institutionId]
         );
       } else {
         await db.query(
-          `INSERT INTO company_settings (institution_id, company_name, authorized_signatory_name, authorized_signatory_designation)
-           VALUES (?, ?, ?, ?)`,
-          [institutionId, companyName, authorizedSignatoryName, authorizedSignatoryDesignation]
+          `INSERT INTO company_settings (institution_id, company_name, address, phone, email, authorized_signatory_name, authorized_signatory_designation)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [institutionId, companyName, address, phone, email, authorizedSignatoryName, authorizedSignatoryDesignation]
         );
       }
 

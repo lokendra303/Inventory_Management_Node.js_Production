@@ -45,6 +45,9 @@ const CompanySettings = () => {
         setSettings(response.data);
         form.setFieldsValue({
           companyName: response.data.company_name,
+          address: response.data.address,
+          phone: response.data.phone,
+          email: response.data.email,
           authorizedSignatoryName: response.data.authorized_signatory_name,
           authorizedSignatoryDesignation: response.data.authorized_signatory_designation
         });
@@ -157,6 +160,34 @@ const CompanySettings = () => {
                           rules={[{ required: true, message: 'Please enter company name' }]}
                         >
                           <Input placeholder="Enter company name" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="email"
+                          label="Email"
+                          rules={[{ type: 'email', message: 'Please enter valid email' }]}
+                        >
+                          <Input placeholder="info@company.com" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item
+                          name="phone"
+                          label="Phone"
+                        >
+                          <Input placeholder="+1-000-000-0000" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="address"
+                          label="Address"
+                        >
+                          <Input placeholder="Company Address, City, State" />
                         </Form.Item>
                       </Col>
                     </Row>

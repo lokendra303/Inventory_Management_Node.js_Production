@@ -64,27 +64,45 @@ const PurchaseInvoices = () => {
   const handleViewStandardFormat = async (invoiceId) => {
     try {
       setLoading(true);
-      const response = await apiService.get(`/purchase-invoices/${invoiceId}/standard-format`);
-      if (response.success) {
-        const data = response.data;
+      const [invoiceResponse, settingsResponse] = await Promise.all([
+        apiService.get(`/purchase-invoices/${invoiceId}/standard-format`),
+        apiService.get('/company-settings')
+      ]);
+      
+      if (invoiceResponse.success) {
+        const data = invoiceResponse.data;
+        const settings = settingsResponse.data || {};
+        
+        const companyName = settings.company_name || data.header.companyName;
+        const address = settings.address || `${data.header.address.line1}, ${data.header.address.city}, ${data.header.address.state}`;
+        const phone = settings.phone || data.header.contact.phone;
+        const email = settings.email || data.header.contact.email;
+        const logoUrl = settings.logo_path ? `http://localhost:5000${settings.logo_path}` : data.header.branding?.logoUrl;
+        const stampUrl = settings.stamp_path ? `http://localhost:5000${settings.stamp_path}` : data.header.branding?.stampUrl;
+        const signatureUrl = settings.signature_path ? `http://localhost:5000${settings.signature_path}` : data.header.branding?.signatureUrl;
+        
         Modal.info({
           title: 'Invoice Preview',
           width: 900,
           content: (
             <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
               {/* Header */}
-              <div style={{ textAlign: 'center', borderBottom: '2px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
-                {data.header.branding?.logoUrl && (
-                  <img src={data.header.branding.logoUrl} alt="Logo" style={{ maxHeight: '60px', marginBottom: '10px' }} />
-                )}
-                <h2 style={{ margin: 0 }}>{data.header.companyName}</h2>
-                <p style={{ margin: '5px 0', fontSize: '12px' }}>
-                  {data.header.address.line1}, {data.header.address.city}, {data.header.address.state}<br/>
-                  {data.header.contact.phone} | {data.header.contact.email}
-                </p>
-                {data.header.taxInfo.taxId && (
-                  <p style={{ margin: '5px 0', fontSize: '11px' }}>Tax ID: {data.header.taxInfo.taxId}</p>
-                )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
+                <div>
+                  {logoUrl && (
+                    <img src={logoUrl} alt="Logo" style={{ maxHeight: '60px', marginBottom: '10px' }} />
+                  )}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <h2 style={{ margin: 0 }}>{companyName}</h2>
+                  <p style={{ margin: '5px 0', fontSize: '12px' }}>
+                    {address}<br/>
+                    {phone} | {email}
+                  </p>
+                  {data.header.taxInfo.taxId && (
+                    <p style={{ margin: '5px 0', fontSize: '11px' }}>Tax ID: {data.header.taxInfo.taxId}</p>
+                  )}
+                </div>
               </div>
 
               {/* Invoice Details */}
@@ -139,14 +157,14 @@ const PurchaseInvoices = () => {
 
               {/* Footer with Signature */}
               <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                {data.header.branding?.stampUrl && (
+                {stampUrl && (
                   <div>
-                    <img src={data.header.branding.stampUrl} alt="Stamp" style={{ maxHeight: '80px' }} />
+                    <img src={stampUrl} alt="Stamp" style={{ maxHeight: '80px' }} />
                   </div>
                 )}
                 <div style={{ textAlign: 'right' }}>
-                  {data.header.branding?.signatureUrl && (
-                    <img src={data.header.branding.signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginBottom: '5px' }} />
+                  {signatureUrl && (
+                    <img src={signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginBottom: '5px' }} />
                   )}
                   <p style={{ margin: '5px 0', fontSize: '12px', borderTop: '1px solid #333', paddingTop: '5px' }}>Authorized Signatory</p>
                 </div>

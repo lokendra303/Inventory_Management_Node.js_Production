@@ -65,13 +65,17 @@ class InvoicePDFService {
       }
     }
 
+    const companyName = companySettings?.company_name || header.companyName;
+    const address = companySettings?.address || `${header.address.line1}, ${header.address.city}, ${header.address.state} ${header.address.postalCode}`;
+    const phone = companySettings?.phone || header.contact.phone;
+    const email = companySettings?.email || header.contact.email;
+
     doc
       .fontSize(20)
-      .text(header.companyName, 150, startY, { align: 'left' })
+      .text(companyName, 150, startY, { align: 'left' })
       .fontSize(10)
-      .text(header.address.line1, 150, startY + 25, { align: 'left' })
-      .text(`${header.address.city}, ${header.address.state} ${header.address.postalCode}`, 150, startY + 40, { align: 'left' })
-      .text(`Phone: ${header.contact.phone} | Email: ${header.contact.email}`, 150, startY + 55, { align: 'left' })
+      .text(address, 150, startY + 25, { align: 'left' })
+      .text(`Phone: ${phone} | Email: ${email}`, 150, startY + 55, { align: 'left' })
       .moveDown();
 
     doc

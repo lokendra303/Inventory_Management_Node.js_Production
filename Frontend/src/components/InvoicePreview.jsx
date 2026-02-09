@@ -53,9 +53,8 @@ const InvoicePreview = () => {
           <Title level={4} style={{ margin: 0 }}>
             {settings?.company_name || 'Your Company Name'}
           </Title>
-          <Text type="secondary">123 Business Street</Text><br/>
-          <Text type="secondary">City, State 12345</Text><br/>
-          <Text type="secondary">Phone: (123) 456-7890 | Email: info@company.com</Text>
+          <Text type="secondary">{settings?.address || 'Company Address, City, State'}</Text><br/>
+          <Text type="secondary">Phone: {settings?.phone || '+1-000-000-0000'} | Email: {settings?.email || 'info@company.com'}</Text>
         </div>
       </div>
 
