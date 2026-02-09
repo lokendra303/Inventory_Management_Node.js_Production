@@ -21,18 +21,22 @@ import {
   SaveOutlined
 } from '@ant-design/icons';
 import apiService from '../services/apiService';
+import { useCurrency } from '../contexts/CurrencyContext.jsx';
+import { formatPrice, getCurrencySymbol, getCurrencies } from '../utils/currency';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 
 const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
+  const { currency } = useCurrency();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [vendors, setVendors] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [invoiceLines, setInvoiceLines] = useState([{ key: 1 }]);
+  const [invoiceCurrency, setInvoiceCurrency] = useState(currency || 'USD');
   const [totals, setTotals] = useState({
     subtotal: 0,
     totalDiscount: 0,
@@ -93,6 +97,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           vendorName: response.data.name,
           currency: response.data.businessInfo?.currency || 'USD'
         });
+        setInvoiceCurrency(response.data.businessInfo?.currency || 'USD');
       }
     } catch (error) {
       console.error('Error loading vendor details:', error);
@@ -346,7 +351,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         const quantity = record.quantity || 0;
         const unitCost = record.unitCost || 0;
         const lineTotal = quantity * unitCost;
-        return `$${lineTotal.toFixed(2)}`;
+        const symbol = getCurrencySymbol(invoiceCurrency);
+        return `${symbol}${lineTotal.toFixed(2)}`;
       }
     },
     {
@@ -429,10 +435,15 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 <Input />
               </Form.Item>
               <Form.Item name="currency" label="Currency">
-                <Select defaultValue="USD">
-                  <Option value="USD">USD</Option>
-                  <Option value="EUR">EUR</Option>
-                  <Option value="INR">INR</Option>
+                <Select 
+                  defaultValue={currency}
+                  onChange={(value) => setInvoiceCurrency(value)}
+                >
+                  {getCurrencies().map(curr => (
+                    <Option key={curr.code} value={curr.code}>
+                      {curr.symbol} {curr.code} - {curr.name}
+                    </Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -488,20 +499,20 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               <Card size="small">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <Text>Subtotal:</Text>
-                  <Text>${totals.subtotal.toFixed(2)}</Text>
+                  <Text>{getCurrencySymbol(invoiceCurrency)}{totals.subtotal.toFixed(2)}</Text>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <Text>Total Discount:</Text>
-                  <Text>-${totals.totalDiscount.toFixed(2)}</Text>
+                  <Text>-{getCurrencySymbol(invoiceCurrency)}{totals.totalDiscount.toFixed(2)}</Text>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <Text>Total Tax:</Text>
-                  <Text>${totals.totalTax.toFixed(2)}</Text>
+                  <Text>{getCurrencySymbol(invoiceCurrency)}{totals.totalTax.toFixed(2)}</Text>
                 </div>
                 <Divider style={{ margin: '8px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Text strong>Grand Total:</Text>
-                  <Text strong style={{ fontSize: '16px' }}>${totals.grandTotal.toFixed(2)}</Text>
+                  <Text strong style={{ fontSize: '16px' }}>{getCurrencySymbol(invoiceCurrency)}{totals.grandTotal.toFixed(2)}</Text>
                 </div>
               </Card>
             </Col>

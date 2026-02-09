@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
+import { useCurrency } from '../contexts/CurrencyContext.jsx';
+import { formatPrice } from '../utils/currency';
 
 const PurchaseOrders = () => {
+  const { currency } = useCurrency();
   const [pos, setPOs] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -36,7 +39,7 @@ const PurchaseOrders = () => {
         return <span style={{ color: colors[status] || 'black' }}>{status?.toUpperCase()}</span>;
       }
     },
-    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val, record) => `${record.currency || 'USD'} ${val || 0}` },
+    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val, record) => formatPrice(val, currency, record.currency || 'USD') },
     { title: 'Order Date', dataIndex: 'order_date', key: 'order_date' },
     {
       title: 'Actions',

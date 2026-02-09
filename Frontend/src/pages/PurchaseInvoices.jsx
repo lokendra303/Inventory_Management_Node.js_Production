@@ -3,10 +3,13 @@ import { Card, Typography, Button, Table, Space, Tag, message, Modal } from 'ant
 import { ShoppingCartOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import InvoiceForm from '../components/InvoiceForm';
+import { useCurrency } from '../contexts/CurrencyContext.jsx';
+import { formatPrice } from '../utils/currency';
 
 const { Title } = Typography;
 
 const PurchaseInvoices = () => {
+  const { currency } = useCurrency();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
@@ -138,7 +141,7 @@ const PurchaseInvoices = () => {
       title: 'Amount',
       dataIndex: 'total_amount',
       key: 'total_amount',
-      render: (amount) => `$${parseFloat(amount || 0).toFixed(2)}`,
+      render: (amount) => formatPrice(amount, currency, 'USD'),
     },
     {
       title: 'Status',
