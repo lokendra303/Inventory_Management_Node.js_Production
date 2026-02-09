@@ -44,7 +44,7 @@ class InvoicePDFService {
     ]);
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const doc = new PDFDocument({ margin:10,size: 'A4' });
       const chunks = [];
 
       doc.on('data', (chunk) => chunks.push(chunk));
@@ -56,7 +56,7 @@ class InvoicePDFService {
 
         // Header with Logo and Company Info
         if (logoBuffer) {
-          doc.image(logoBuffer, 50, y, { width: 80, height: 60 });
+          doc.image(logoBuffer, 50, y, { width: 80, height: 50 });
         }
         
         const companyName = companySettings?.company_name || standardInvoice.header?.companyName || 'Company Name';
@@ -78,7 +78,7 @@ class InvoicePDFService {
         y += 15;
 
         // Invoice Details and Vendor Info
-        doc.fontSize(14).font('Helvetica-Bold').text('PURCHASE INVOICE', 50, y);
+        doc.fontSize(12).font('Helvetica-Bold').text('PURCHASE INVOICE', 50, y);
         y += 25;
         
         doc.fontSize(9).font('Helvetica-Bold').text('Invoice #:', 50, y);
@@ -145,14 +145,43 @@ class InvoicePDFService {
         y += 30;
 
         // Bank Details
-        if (standardInvoice.partyDetails?.bankDetails?.bankName) {
-          doc.fontSize(9).font('Helvetica-Bold').text('Vendor Bank Details', 50, y);
+        if (standardInvoice.partyDetails?.bankDetails?.bankName || standardInvoice.partyDetails?.bankDetails?.accountNumber) {
+          doc.rect(50, y, 495, 1).fillAndStroke('#ddd', '#ddd');
+          y += 10;
+          doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Vendor Bank Details', 50, y);
           y += 15;
           doc.fontSize(8).font('Helvetica');
           const bank = standardInvoice.partyDetails.bankDetails;
-          if (bank.bankName) doc.text(`Bank: ${bank.bankName}`, 50, y), y += 12;
-          if (bank.accountNumber) doc.text(`Account: ${bank.accountNumber}`, 50, y), y += 12;
-          if (bank.ifscCode) doc.text(`IFSC: ${bank.ifscCode}`, 50, y), y += 12;
+          if (bank.bankName) {
+            doc.font('Helvetica-Bold').text('Bank Name: ', 50, y, { continued: true });
+            doc.font('Helvetica').text(bank.bankName);
+            y += 12;
+          }
+          if (bank.branchName) {
+            doc.font('Helvetica-Bold').text('Branch: ', 50, y, { continued: true });
+            doc.font('Helvetica').text(bank.branchName);
+            y += 12;
+          }
+          if (bank.accountNumber) {
+            doc.font('Helvetica-Bold').text('Account Number: ', 50, y, { continued: true });
+            doc.font('Helvetica').text(bank.accountNumber);
+            y += 12;
+          }
+          if (bank.accountType) {
+            doc.font('Helvetica-Bold').text('Account Type: ', 50, y, { continued: true });
+            doc.font('Helvetica').text(bank.accountType);
+            y += 12;
+          }
+          if (bank.ifscCode) {
+            doc.font('Helvetica-Bold').text('IFSC Code: ', 50, y, { continued: true });
+            doc.font('Helvetica').text(bank.ifscCode);
+            y += 12;
+          }
+          if (bank.swiftCode) {
+            doc.font('Helvetica-Bold').text('SWIFT Code: ', 50, y, { continued: true });
+            doc.font('Helvetica').text(bank.swiftCode);
+            y += 12;
+          }
           y += 10;
         }
 
