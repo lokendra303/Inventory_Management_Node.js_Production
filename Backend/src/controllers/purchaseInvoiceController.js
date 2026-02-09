@@ -774,18 +774,25 @@ class PurchaseInvoiceController {
 
       if (download === 'true') {
         try {
-          // Generate PDF buffer for download
-          const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice);
+          logger.info('Generating PDF for download', { invoiceId: id });
+          const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice, institutionId);
+          
+          if (!pdfBuffer || pdfBuffer.length === 0) {
+            throw new Error('Generated PDF buffer is empty');
+          }
+          
           const filename = invoicePDFService.generateFilename(invoice.invoice_number, 'purchase');
+          logger.info('PDF generated successfully', { filename, size: pdfBuffer.length });
           
           res.setHeader('Content-Type', 'application/pdf');
           res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-          res.send(pdfBuffer);
+          res.setHeader('Content-Length', pdfBuffer.length);
+          return res.send(pdfBuffer);
         } catch (pdfError) {
           logger.error('PDF generation error:', pdfError);
-          res.status(500).json({
+          return res.status(500).json({
             success: false,
-            error: 'PDF generation failed. Please install pdfkit: npm install pdfkit'
+            error: pdfError.message || 'PDF generation failed'
           });
         }
       } else {

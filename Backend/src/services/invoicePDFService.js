@@ -3,287 +3,185 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
 const db = require('../database/connection');
+const axios = require('axios');
 
 class InvoicePDFService {
-  async generateInvoicePDF(standardInvoice, outputPath = null, institutionId = null) {
+  async downloadImage(url) {
     try {
-      const doc = new PDFDocument({ margin: 50 });
-      
-      let buffers = [];
-      if (!outputPath) {
-        doc.on('data', buffers.push.bind(buffers));
-      } else {
-        doc.pipe(fs.createWriteStream(outputPath));
-      }
+      if (!url) return null;
+      const fullUrl = url.startsWith('http') ? url : `http://localhost:5000${url}`;
+      const response = await axios.get(fullUrl, { responseType: 'arraybuffer' });
+      return Buffer.from(response.data);
+    } catch (err) {
+      logger.warn('Could not download image:', url);
+      return null;
+    }
+  }
 
-      // Get company settings for logo, stamp, signature
-      let companySettings = null;
-      if (institutionId) {
+  async generatePDFBuffer(standardInvoice, institutionId = null) {
+    let companySettings = null;
+    if (institutionId) {
+      try {
         const [settings] = await db.query(
           'SELECT * FROM company_settings WHERE institution_id = ?',
           [institutionId]
         );
         companySettings = settings;
-      }
-
-      this.generateHeader(doc, standardInvoice.header, companySettings);
-      this.generateInvoiceInfo(doc, standardInvoice.details, standardInvoice.partyDetails);
-      this.generateTable(doc, standardInvoice.lineItems);
-      this.generateTotals(doc, standardInvoice.totals);
-      this.generateFooter(doc, standardInvoice.footer, companySettings);
-
-      doc.end();
-
-      if (!outputPath) {
-        return new Promise((resolve) => {
-          doc.on('end', () => {
-            const pdfBuffer = Buffer.concat(buffers);
-            resolve(pdfBuffer);
-          });
-        });
-      }
-
-      return outputPath;
-    } catch (error) {
-      logger.error('Error generating invoice PDF:', error);
-      throw error;
-    }
-  }
-
-  generateHeader(doc, header, companySettings) {
-    let startY = 45;
-
-    // Add logo if available
-    if (companySettings && companySettings.logo_path) {
-      const logoPath = path.join(__dirname, '../../', companySettings.logo_path);
-      if (fs.existsSync(logoPath)) {
-        try {
-          doc.image(logoPath, 50, startY, { width: 80, height: 60, align: 'left' });
-        } catch (err) {
-          logger.error('Error loading logo:', err);
-        }
+      } catch (err) {
+        logger.warn('Could not load company settings');
       }
     }
 
-    const companyName = companySettings?.company_name || header.companyName;
-    const address = companySettings?.address || `${header.address.line1}, ${header.address.city}, ${header.address.state} ${header.address.postalCode}`;
-    const phone = companySettings?.phone || header.contact.phone;
-    const email = companySettings?.email || header.contact.email;
-
-    doc
-      .fontSize(20)
-      .text(companyName, 150, startY, { align: 'left' })
-      .fontSize(10)
-      .text(address, 150, startY + 25, { align: 'left' })
-      .text(`Phone: ${phone} | Email: ${email}`, 150, startY + 55, { align: 'left' })
-      .moveDown();
-
-    doc
-      .strokeColor('#aaaaaa')
-      .lineWidth(1)
-      .moveTo(50, 125)
-      .lineTo(550, 125)
-      .stroke();
-  }
-
-  generateInvoiceInfo(doc, details, partyDetails) {
-    const startY = 150;
+    // Download images
+    const logoUrl = companySettings?.logo_path || standardInvoice.header?.branding?.logoUrl;
+    const stampUrl = companySettings?.stamp_path || standardInvoice.header?.branding?.stampUrl;
+    const signatureUrl = companySettings?.signature_path || standardInvoice.header?.branding?.signatureUrl;
     
-    doc
-      .fontSize(14)
-      .text('INVOICE', 50, startY, { underline: true })
-      .fontSize(10)
-      .text(`Invoice Number: ${details.invoiceNumber}`, 50, startY + 25)
-      .text(`Invoice Date: ${details.invoiceDate}`, 50, startY + 40)
-      .text(`Due Date: ${details.dueDate}`, 50, startY + 55)
-      .text(`Currency: ${details.currency}`, 50, startY + 70)
-      .text(`Reference: ${details.reference || 'N/A'}`, 50, startY + 85);
+    const [logoBuffer, stampBuffer, signatureBuffer] = await Promise.all([
+      this.downloadImage(logoUrl),
+      this.downloadImage(stampUrl),
+      this.downloadImage(signatureUrl)
+    ]);
 
-    const partyType = partyDetails.type === 'vendor' ? 'VENDOR DETAILS' : 'CUSTOMER DETAILS';
-    doc
-      .fontSize(14)
-      .text(partyType, 300, startY, { underline: true })
-      .fontSize(10)
-      .text(partyDetails.name, 300, startY + 25)
-      .text(partyDetails.companyName || '', 300, startY + 40)
-      .text(partyDetails.billingAddress.line1 || '', 300, startY + 55)
-      .text(`${partyDetails.billingAddress.city || ''}, ${partyDetails.billingAddress.state || ''}`, 300, startY + 70)
-      .text(`${partyDetails.billingAddress.country || ''} - ${partyDetails.billingAddress.postalCode || ''}`, 300, startY + 85)
-      .text(`Email: ${partyDetails.contact.email || 'N/A'}`, 300, startY + 100)
-      .text(`Phone: ${partyDetails.contact.phone || 'N/A'}`, 300, startY + 115);
-  }
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const chunks = [];
 
-  generateTable(doc, lineItems) {
-    const tableTop = 300;
-    const itemCodeX = 50;
-    const descriptionX = 120;
-    const quantityX = 280;
-    const unitPriceX = 330;
-    const totalX = 480;
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
 
-    doc
-      .fontSize(10)
-      .text('S.No', itemCodeX, tableTop, { width: 60, align: 'center' })
-      .text('Description', descriptionX, tableTop, { width: 150 })
-      .text('Qty', quantityX, tableTop, { width: 40, align: 'center' })
-      .text('Unit Price', unitPriceX, tableTop, { width: 45, align: 'right' })
-      .text('Total', totalX, tableTop, { width: 60, align: 'right' });
+      try {
+        let y = 50;
 
-    doc
-      .strokeColor('#aaaaaa')
-      .lineWidth(1)
-      .moveTo(itemCodeX, tableTop + 15)
-      .lineTo(totalX + 60, tableTop + 15)
-      .stroke();
+        // Header with Logo and Company Info
+        if (logoBuffer) {
+          doc.image(logoBuffer, 50, y, { width: 80, height: 60 });
+        }
+        
+        const companyName = companySettings?.company_name || standardInvoice.header?.companyName || 'Company Name';
+        const address = companySettings?.address || standardInvoice.header?.address?.line1 || '';
+        const city = companySettings?.city || standardInvoice.header?.address?.city || '';
+        const state = companySettings?.state || standardInvoice.header?.address?.state || '';
+        const phone = companySettings?.phone || standardInvoice.header?.contact?.phone || '';
+        const email = companySettings?.email || standardInvoice.header?.contact?.email || '';
+        const taxId = companySettings?.tax_id || standardInvoice.header?.taxInfo?.taxId || '';
 
-    let currentY = tableTop + 25;
-    lineItems.forEach((item, index) => {
-      if (currentY > 700) {
-        doc.addPage();
-        currentY = 50;
+        doc.fontSize(18).font('Helvetica-Bold').text(companyName, 350, y, { align: 'right' });
+        doc.fontSize(9).font('Helvetica').text(address, 350, y + 25, { align: 'right' });
+        doc.text(`${city}, ${state}`, 350, y + 38, { align: 'right' });
+        doc.text(`${phone} | ${email}`, 350, y + 51, { align: 'right' });
+        if (taxId) doc.fontSize(8).text(`Tax ID: ${taxId}`, 350, y + 64, { align: 'right' });
+
+        y = 120;
+        doc.moveTo(50, y).lineTo(545, y).stroke();
+        y += 15;
+
+        // Invoice Details and Vendor Info
+        doc.fontSize(14).font('Helvetica-Bold').text('PURCHASE INVOICE', 50, y);
+        y += 25;
+        
+        doc.fontSize(9).font('Helvetica-Bold').text('Invoice #:', 50, y);
+        doc.font('Helvetica').text(standardInvoice.details?.invoiceNumber || 'N/A', 120, y);
+        doc.font('Helvetica-Bold').text('Vendor Details', 350, y, { align: 'right' });
+        y += 15;
+        
+        doc.font('Helvetica-Bold').text('Date:', 50, y);
+        doc.font('Helvetica').text(new Date(standardInvoice.details?.invoiceDate).toLocaleDateString(), 120, y);
+        doc.font('Helvetica-Bold').text(standardInvoice.partyDetails?.name || 'N/A', 350, y, { align: 'right' });
+        y += 15;
+        
+        doc.font('Helvetica-Bold').text('Due Date:', 50, y);
+        doc.font('Helvetica').text(new Date(standardInvoice.details?.dueDate).toLocaleDateString(), 120, y);
+        doc.fontSize(8).font('Helvetica').text(standardInvoice.partyDetails?.billingAddress?.line1 || '', 350, y, { align: 'right' });
+        y += 12;
+        doc.text(`${standardInvoice.partyDetails?.billingAddress?.city || ''}, ${standardInvoice.partyDetails?.billingAddress?.state || ''}`, 350, y, { align: 'right' });
+        y += 12;
+        doc.text(standardInvoice.partyDetails?.contact?.phone || '', 350, y, { align: 'right' });
+        y += 25;
+
+        // Line Items Table
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.rect(50, y, 495, 20).fillAndStroke('#f0f0f0', '#000');
+        doc.fillColor('#000').text('#', 55, y + 6);
+        doc.text('Item', 80, y + 6);
+        doc.text('Qty', 320, y + 6, { width: 50, align: 'right' });
+        doc.text('Rate', 380, y + 6, { width: 60, align: 'right' });
+        doc.text('Amount', 450, y + 6, { width: 90, align: 'right' });
+        y += 20;
+
+        doc.font('Helvetica').fontSize(8);
+        (standardInvoice.lineItems || []).forEach((item) => {
+          doc.text(item.sno || '', 55, y + 4);
+          doc.text(item.itemName || '', 80, y + 4, { width: 230 });
+          doc.text(parseFloat(item.quantity || 0).toFixed(2), 320, y + 4, { width: 50, align: 'right' });
+          doc.text(parseFloat(item.unitAmount || 0).toFixed(2), 380, y + 4, { width: 60, align: 'right' });
+          doc.text(parseFloat(item.netAmount || 0).toFixed(2), 450, y + 4, { width: 90, align: 'right' });
+          y += 18;
+        });
+
+        doc.moveTo(50, y).lineTo(545, y).stroke();
+        y += 15;
+
+        // Totals
+        const currency = standardInvoice.details?.currency || 'USD';
+        doc.fontSize(9).font('Helvetica-Bold').text('Subtotal:', 380, y, { width: 60, align: 'right' });
+        doc.font('Helvetica').text(`${currency} ${parseFloat(standardInvoice.totals?.subtotal || 0).toFixed(2)}`, 450, y, { width: 90, align: 'right' });
+        y += 15;
+        
+        doc.font('Helvetica-Bold').text('Tax:', 380, y, { width: 60, align: 'right' });
+        doc.font('Helvetica').text(`${currency} ${parseFloat(standardInvoice.totals?.totalTaxAmount || 0).toFixed(2)}`, 450, y, { width: 90, align: 'right' });
+        y += 15;
+        
+        doc.font('Helvetica-Bold').text('Discount:', 380, y, { width: 60, align: 'right' });
+        doc.font('Helvetica').text(`${currency} ${parseFloat(standardInvoice.totals?.totalDiscountAmount || 0).toFixed(2)}`, 450, y, { width: 90, align: 'right' });
+        y += 15;
+        
+        doc.fontSize(11).font('Helvetica-Bold').text('Grand Total:', 380, y, { width: 60, align: 'right' });
+        doc.text(`${currency} ${parseFloat(standardInvoice.totals?.grandTotal || 0).toFixed(2)}`, 450, y, { width: 90, align: 'right' });
+        y += 20;
+        
+        doc.fontSize(8).font('Helvetica-Oblique').text(`Amount in words: ${standardInvoice.totals?.amountInWords || ''}`, 350, y, { align: 'right' });
+        y += 30;
+
+        // Bank Details
+        if (standardInvoice.partyDetails?.bankDetails?.bankName) {
+          doc.fontSize(9).font('Helvetica-Bold').text('Vendor Bank Details', 50, y);
+          y += 15;
+          doc.fontSize(8).font('Helvetica');
+          const bank = standardInvoice.partyDetails.bankDetails;
+          if (bank.bankName) doc.text(`Bank: ${bank.bankName}`, 50, y), y += 12;
+          if (bank.accountNumber) doc.text(`Account: ${bank.accountNumber}`, 50, y), y += 12;
+          if (bank.ifscCode) doc.text(`IFSC: ${bank.ifscCode}`, 50, y), y += 12;
+          y += 10;
+        }
+
+        // Footer with Stamp and Signature
+        const footerY = 700;
+        if (stampBuffer) {
+          doc.image(stampBuffer, 50, footerY, { width: 80, height: 80 });
+        }
+        
+        if (signatureBuffer) {
+          doc.image(signatureBuffer, 400, footerY, { width: 100, height: 60 });
+        }
+        
+        doc.fontSize(8).font('Helvetica').text('_____________________', 400, footerY + 65);
+        doc.text(companySettings?.authorized_signatory_name || 'Authorized Signatory', 400, footerY + 75);
+        doc.text(companySettings?.authorized_signatory_designation || '', 400, footerY + 85);
+
+        doc.end();
+      } catch (error) {
+        logger.error('PDF generation error:', error);
+        reject(error);
       }
-
-      doc
-        .fontSize(9)
-        .text(item.sno, itemCodeX, currentY, { width: 60, align: 'center' })
-        .text(`${item.itemName}${item.sku ? ` (${item.sku})` : ''}`, descriptionX, currentY, { width: 150 })
-        .text(item.quantity.toString(), quantityX, currentY, { width: 40, align: 'center' })
-        .text(`$${item.unitAmount.toFixed(2)}`, unitPriceX, currentY, { width: 45, align: 'right' })
-        .text(`$${item.netAmount.toFixed(2)}`, totalX, currentY, { width: 60, align: 'right' });
-
-      currentY += 20;
     });
-
-    doc
-      .strokeColor('#aaaaaa')
-      .lineWidth(1)
-      .moveTo(itemCodeX, currentY)
-      .lineTo(totalX + 60, currentY)
-      .stroke();
-
-    return currentY + 10;
-  }
-
-  generateTotals(doc, totals) {
-    const totalsStartY = doc.y + 20;
-    const labelX = 400;
-    const valueX = 500;
-
-    doc
-      .fontSize(10)
-      .text('Subtotal:', labelX, totalsStartY)
-      .text(`$${totals.subtotal.toFixed(2)}`, valueX, totalsStartY, { align: 'right' })
-      .text('Total Discount:', labelX, totalsStartY + 15)
-      .text(`-$${totals.totalDiscountAmount.toFixed(2)}`, valueX, totalsStartY + 15, { align: 'right' })
-      .text('Total Tax:', labelX, totalsStartY + 30)
-      .text(`$${totals.totalTaxAmount.toFixed(2)}`, valueX, totalsStartY + 30, { align: 'right' });
-
-    doc
-      .strokeColor('#aaaaaa')
-      .lineWidth(1)
-      .moveTo(labelX, totalsStartY + 45)
-      .lineTo(valueX + 50, totalsStartY + 45)
-      .stroke();
-
-    doc
-      .fontSize(12)
-      .text('Grand Total:', labelX, totalsStartY + 55, { underline: true })
-      .text(`$${totals.grandTotal.toFixed(2)}`, valueX, totalsStartY + 55, { align: 'right', underline: true });
-
-    doc
-      .fontSize(9)
-      .text(`Amount in Words: ${totals.amountInWords}`, 50, totalsStartY + 80, { width: 500 });
-  }
-
-  generateFooter(doc, footer, companySettings) {
-    const footerY = doc.y + 40;
-
-    if (footer.notes) {
-      doc
-        .fontSize(10)
-        .text('Notes:', 50, footerY, { underline: true })
-        .fontSize(9)
-        .text(footer.notes, 50, footerY + 15, { width: 500 });
-    }
-
-    if (footer.terms) {
-      doc
-        .fontSize(10)
-        .text('Terms & Conditions:', 50, footerY + 60, { underline: true })
-        .fontSize(9)
-        .text(footer.terms, 50, footerY + 75, { width: 500 });
-    }
-
-    // Bank Details Section
-    if (companySettings?.bank_name || companySettings?.account_number) {
-      const bankY = footerY + 120;
-      doc
-        .fontSize(10)
-        .text('Bank Details:', 50, bankY, { underline: true })
-        .fontSize(9);
-      
-      let currentY = bankY + 15;
-      if (companySettings.bank_name) {
-        doc.text(`Bank Name: ${companySettings.bank_name}`, 50, currentY);
-        currentY += 12;
-      }
-      if (companySettings.account_number) {
-        doc.text(`Account Number: ${companySettings.account_number}`, 50, currentY);
-        currentY += 12;
-      }
-      if (companySettings.ifsc_code) {
-        doc.text(`IFSC Code: ${companySettings.ifsc_code}`, 50, currentY);
-        currentY += 12;
-      }
-      if (companySettings.swift_code) {
-        doc.text(`SWIFT Code: ${companySettings.swift_code}`, 50, currentY);
-      }
-    }
-
-    // Authorized Signatory Section
-    const signatoryY = doc.y + 40;
-    doc
-      .fontSize(10)
-      .text('Authorized Signatory', 400, signatoryY);
-
-    // Add signature image if available
-    if (companySettings && companySettings.signature_path) {
-      const signaturePath = path.join(__dirname, '../../', companySettings.signature_path);
-      if (fs.existsSync(signaturePath)) {
-        try {
-          doc.image(signaturePath, 400, signatoryY + 15, { width: 100, height: 40 });
-        } catch (err) {
-          logger.error('Error loading signature:', err);
-        }
-      }
-    }
-
-    // Add stamp image if available (overlapping signature)
-    if (companySettings && companySettings.stamp_path) {
-      const stampPath = path.join(__dirname, '../../', companySettings.stamp_path);
-      if (fs.existsSync(stampPath)) {
-        try {
-          doc.image(stampPath, 380, signatoryY + 20, { width: 60, height: 60 });
-        } catch (err) {
-          logger.error('Error loading stamp:', err);
-        }
-      }
-    }
-
-    const signatoryName = companySettings?.authorized_signatory_name || footer.authorizedSignatory?.name || '';
-    const signatoryDesignation = companySettings?.authorized_signatory_designation || footer.authorizedSignatory?.designation || '';
-
-    doc
-      .fontSize(10)
-      .text(signatoryName, 400, signatoryY + 60)
-      .text(signatoryDesignation, 400, signatoryY + 75)
-      .text(`Date: ${footer.authorizedSignatory?.date || new Date().toISOString().split('T')[0]}`, 400, signatoryY + 90);
   }
 
   generateFilename(invoiceNumber, type = 'purchase') {
     const prefix = type === 'purchase' ? 'PI' : 'SI';
     const timestamp = new Date().toISOString().split('T')[0];
-    return `${prefix}_${invoiceNumber}_${timestamp}.pdf`;
+    return prefix + '_' + invoiceNumber + '_' + timestamp + '.pdf';
   }
 
   async saveInvoicePDF(standardInvoice, invoiceNumber, type = 'purchase', institutionId = null) {
@@ -295,25 +193,17 @@ class InvoicePDFService {
         fs.mkdirSync(outputDir, { recursive: true });
       }
 
+      const buffer = await this.generatePDFBuffer(standardInvoice, institutionId);
       const outputPath = path.join(outputDir, filename);
-      await this.generateInvoicePDF(standardInvoice, outputPath, institutionId);
+      fs.writeFileSync(outputPath, buffer);
       
       return {
         filename,
         path: outputPath,
-        url: `/temp/invoices/${filename}`
+        url: '/temp/invoices/' + filename
       };
     } catch (error) {
       logger.error('Error saving invoice PDF:', error);
-      throw error;
-    }
-  }
-
-  async generatePDFBuffer(standardInvoice, institutionId = null) {
-    try {
-      return await this.generateInvoicePDF(standardInvoice, null, institutionId);
-    } catch (error) {
-      logger.error('Error generating PDF buffer:', error);
       throw error;
     }
   }

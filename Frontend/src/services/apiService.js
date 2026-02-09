@@ -43,6 +43,10 @@ class ApiService {
     // Response interceptor
     this.api.interceptors.response.use(
       (response) => {
+        // For blob responses (like PDF downloads), return the full response
+        if (response.config.responseType === 'blob') {
+          return response;
+        }
         return response.data;
       },
       async (error) => {
