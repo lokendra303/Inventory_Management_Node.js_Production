@@ -41,10 +41,26 @@ const Items = () => {
   const columns = [
     { title: 'SKU', dataIndex: 'sku', key: 'sku' },
     { title: 'Name', dataIndex: 'name', key: 'name' },
-    { title: 'Brand', dataIndex: 'brand', key: 'brand' },
     { title: 'Type', dataIndex: 'type', key: 'type' },
     { title: 'Category', dataIndex: 'category', key: 'category' },
     { title: 'Unit', dataIndex: 'unit', key: 'unit' },
+    { 
+      title: 'On Hand Stock', 
+      dataIndex: 'current_stock', 
+      key: 'current_stock',
+      render: (val, record) => {
+        const stock = val || 0;
+        const displayValue = stock % 1 === 0 ? Math.floor(stock) : stock.toFixed(2);
+        return (
+          <span style={{ 
+            fontWeight: 'bold',
+            color: stock <= (record.min_stock_level || 0) ? '#ff4d4f' : '#52c41a'
+          }}>
+            {displayValue}
+          </span>
+        );
+      }
+    },
     { title: 'Cost Price', dataIndex: 'cost_price', key: 'cost_price', render: (val) => val ? formatPrice(val, currency, 'USD') : '-' },
     { title: 'Selling Price', dataIndex: 'selling_price', key: 'selling_price', render: (val) => val ? formatPrice(val, currency, 'USD') : '-' },
     { 
@@ -183,7 +199,9 @@ const Items = () => {
         minStockLevel: values.minStockLevel,
         maxStockLevel: values.maxStockLevel,
         barcode: values.barcode,
-        openingStock: values.openingStock || 0
+        openingStock: values.openingStock || 0,
+        openingValue: values.openingValue || 0,
+        valuationMethod: values.valuationMethod
       };
       
       if (editingItem) {
@@ -938,20 +956,32 @@ const viewItem = (item) => {
               </Form.Item>
             </Col>
             {showWarehouse && (
-              <Col span={8}>
-                <Form.Item
-                  name="warehouseId"
-                  label="Warehouse (Optional)"
-                >
-                  <Select placeholder="Select warehouse" allowClear>
-                    {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
-                      <Select.Option key={warehouse.id} value={warehouse.id}>
-                        {warehouse.name}
-                      </Select.Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Col>
+              <>
+                <Col span={8}>
+                  <Form.Item name="openingValue" label="Opening Value">
+                    <InputNumber 
+                      min={0} 
+                      step={0.01}
+                      style={{ width: '100%' }} 
+                      placeholder="Total value"
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="warehouseId"
+                    label="Warehouse"
+                  >
+                    <Select placeholder="Select warehouse" allowClear>
+                      {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
+                        <Select.Option key={warehouse.id} value={warehouse.id}>
+                          {warehouse.name}
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </>
             )}
             <Col span={8}>
               <Form.Item name="valuationMethod" label="Inventory Valuation Method">
@@ -1026,8 +1056,10 @@ const viewItem = (item) => {
                     <p><strong>Selling Price:</strong> {viewingItem.selling_price ? formatPrice(viewingItem.selling_price, currency, 'USD') : 'N/A'}</p>
                     <p><strong>MRP:</strong> {viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'}</p>
                     <p><strong>Tax Rate:</strong> {viewingItem.tax_rate ? `${viewingItem.tax_rate}%` : 'N/A'}</p>
+                    <p><strong>On Hand Stock:</strong> <span style={{ fontWeight: 'bold', color: (viewingItem.current_stock || 0) <= (viewingItem.min_stock_level || 0) ? '#ff4d4f' : '#52c41a' }}>{(() => { const stock = viewingItem.current_stock || 0; return stock % 1 === 0 ? Math.floor(stock) : stock.toFixed(2); })()}</span></p>
                     <p><strong>Min Stock Level:</strong> {viewingItem.min_stock_level || 'N/A'}</p>
                     <p><strong>Max Stock Level:</strong> {viewingItem.max_stock_level || 'N/A'}</p>
+                    <p><strong>Opening Stock:</strong> {viewingItem.opening_stock || 'N/A'}</p>
                     <p><strong>Status:</strong> <span style={{ color: viewingItem.status === 'active' ? '#52c41a' : '#ff4d4f' }}>{viewingItem.status}</span></p>
                   </Col>
                 </Row>

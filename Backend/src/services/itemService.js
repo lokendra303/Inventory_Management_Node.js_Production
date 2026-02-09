@@ -236,7 +236,18 @@ class ItemService {
 
   async getItem(institutionId, itemId) {
     const items = await db.query(
-      'SELECT * FROM items WHERE institution_id = ? AND id = ?',
+      `SELECT i.*, 
+       COALESCE(SUM(ip.quantity_on_hand), 0) as current_stock,
+       b.name as brand_name,
+       m.name as manufacturer_name,
+       u.name as unit_name
+       FROM items i
+       LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
+       LEFT JOIN brands b ON i.brand = b.id
+       LEFT JOIN manufacturers m ON i.manufacturer = m.id
+       LEFT JOIN units u ON i.unit = u.id
+       WHERE i.institution_id = ? AND i.id = ?
+       GROUP BY i.id`,
       [institutionId, itemId]
     );
 
@@ -247,6 +258,9 @@ class ItemService {
     const item = items[0];
     return {
       ...item,
+      brand: item.brand_name || item.brand,
+      manufacturer: item.manufacturer_name || item.manufacturer,
+      unit: item.unit_name || item.unit,
       custom_fields: JSON.parse(item.custom_fields || '{}')
     };
   }
@@ -269,15 +283,25 @@ class ItemService {
   }
 
   async getItems(institutionId, filters = {}) {
-    let query = 'SELECT * FROM items WHERE institution_id = ?';
+    let query = `SELECT i.*, 
+                 COALESCE(SUM(ip.quantity_on_hand), 0) as current_stock,
+                 b.name as brand_name,
+                 m.name as manufacturer_name,
+                 u.name as unit_name
+                 FROM items i
+                 LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
+                 LEFT JOIN brands b ON i.brand = b.id
+                 LEFT JOIN manufacturers m ON i.manufacturer = m.id
+                 LEFT JOIN units u ON i.unit = u.id
+                 WHERE i.institution_id = ?`;
     const params = [institutionId];
 
     if (filters.status) {
-      query += ' AND status = ?';
+      query += ' AND i.status = ?';
       params.push(filters.status);
     }
 
-    query += ' ORDER BY CASE WHEN status = "active" THEN 0 ELSE 1 END, name';
+    query += ' GROUP BY i.id ORDER BY CASE WHEN i.status = "active" THEN 0 ELSE 1 END, i.name';
 
     const items = await db.query(query, params);
 
@@ -285,11 +309,17 @@ class ItemService {
       try {
         return {
           ...item,
+          brand: item.brand_name || item.brand,
+          manufacturer: item.manufacturer_name || item.manufacturer,
+          unit: item.unit_name || item.unit,
           custom_fields: item.custom_fields ? JSON.parse(item.custom_fields) : {}
         };
       } catch (e) {
         return {
           ...item,
+          brand: item.brand_name || item.brand,
+          manufacturer: item.manufacturer_name || item.manufacturer,
+          unit: item.unit_name || item.unit,
           custom_fields: {}
         };
       }
