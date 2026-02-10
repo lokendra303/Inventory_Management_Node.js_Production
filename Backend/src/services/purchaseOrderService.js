@@ -29,6 +29,40 @@ class PurchaseOrderService {
         if (!vendorName) throw new Error('vendorName is required');
         if (!warehouseId) throw new Error('warehouseId is required');
         
+        // Validate and format dates
+        let formattedOrderDate = orderDate;
+        let formattedExpectedDate = expectedDate;
+        
+        // If orderDate is missing or invalid, use current date
+        if (!orderDate || typeof orderDate === 'object' || orderDate === '{}') {
+          formattedOrderDate = new Date().toISOString().split('T')[0];
+        } else if (orderDate instanceof Date) {
+          formattedOrderDate = orderDate.toISOString().split('T')[0];
+        } else if (typeof orderDate === 'string' && orderDate.trim()) {
+          // Validate date format
+          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+          if (!dateRegex.test(orderDate)) {
+            throw new Error('orderDate must be in YYYY-MM-DD format');
+          }
+          formattedOrderDate = orderDate;
+        } else {
+          formattedOrderDate = new Date().toISOString().split('T')[0];
+        }
+        
+        // Format expected date if provided
+        if (expectedDate && typeof expectedDate === 'object' && expectedDate !== null) {
+          formattedExpectedDate = null;
+        } else if (expectedDate instanceof Date) {
+          formattedExpectedDate = expectedDate.toISOString().split('T')[0];
+        } else if (typeof expectedDate === 'string' && expectedDate.trim()) {
+          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+          if (!dateRegex.test(expectedDate)) {
+            formattedExpectedDate = null;
+          } else {
+            formattedExpectedDate = expectedDate;
+          }
+        }
+        
         // Create PO header with null created_by if userId is invalid
         const createdBy = userId || null;
         
@@ -38,7 +72,7 @@ class PurchaseOrderService {
             order_date, expected_date, notes, created_by, status) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
           [poId, institutionId, poNumber, vendorId || null, vendorName, warehouseId, currency, exchangeRate, 
-           orderDate || null, expectedDate || null, notes || null, createdBy]
+           formattedOrderDate, formattedExpectedDate, notes || null, createdBy]
         );
 
         // Create PO lines
@@ -48,11 +82,17 @@ class PurchaseOrderService {
           const lineTotal = line.quantity * line.unitCost;
           subtotal += lineTotal;
 
+          // Format line expected date
+          let lineExpectedDate = line.expectedDate || formattedExpectedDate || null;
+          if (lineExpectedDate && typeof lineExpectedDate === 'object') {
+            lineExpectedDate = null;
+          }
+          
           await connection.execute(
             `INSERT INTO purchase_order_lines 
              (id, institution_id, po_id, item_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, poId, line.itemId, i + 1, line.quantity, line.unitCost, lineTotal, line.expectedDate || expectedDate || null]
+            [lineId, institutionId, poId, line.itemId, i + 1, line.quantity, line.unitCost, lineTotal, lineExpectedDate]
           );
         }
 
@@ -97,6 +137,18 @@ class PurchaseOrderService {
       throw new Error('lines array is required and must not be empty');
     }
     
+    // Validate and format receipt date
+    let formattedReceiptDate = receiptDate;
+    if (!receiptDate || typeof receiptDate === 'object' || receiptDate === '{}') {
+      formattedReceiptDate = new Date().toISOString().split('T')[0];
+    } else if (receiptDate instanceof Date) {
+      formattedReceiptDate = receiptDate.toISOString().split('T')[0];
+    } else if (typeof receiptDate === 'string' && receiptDate.trim()) {
+      formattedReceiptDate = receiptDate;
+    } else {
+      formattedReceiptDate = new Date().toISOString().split('T')[0];
+    }
+    
     // userId can be null, but we'll use it if provided
     const receivedBy = userId || null;
 
@@ -111,7 +163,7 @@ class PurchaseOrderService {
           grnNumber || `GRN-${Date.now()}`, 
           poId, 
           warehouseId, 
-          receiptDate || new Date().toISOString().split('T')[0], 
+          formattedReceiptDate, 
           receivedBy, 
           notes || null
         ];
@@ -199,8 +251,8 @@ class PurchaseOrderService {
             await inventoryService.receiveStock(institutionId, {
               itemId: line.itemId,
               warehouseId,
-              quantity: line.quantityReceived,
-              unitCost: line.unitCost,
+              quantity: Number(line.quantityReceived),
+              unitCost: Number(line.unitCost),
               poId,
               poLineId: line.poLineId,
               grnNumber: grnNumber || `GRN-${Date.now()}`

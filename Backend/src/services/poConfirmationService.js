@@ -86,8 +86,8 @@ class POConfirmationService {
           await inventoryService.receiveStock(institutionId, {
             itemId: line.item_id,
             warehouseId: po.warehouse_id,
-            quantity: line.quantity_ordered,
-            unitCost: line.unit_cost,
+            quantity: Number(line.quantity_ordered),
+            unitCost: Number(line.unit_cost),
             poId: poId,
             poLineId: line.id,
             grnNumber: grnNumber

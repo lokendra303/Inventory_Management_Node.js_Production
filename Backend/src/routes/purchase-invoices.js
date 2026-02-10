@@ -5,6 +5,37 @@ const { validate, schemas } = require('../utils/validation');
 
 const router = express.Router();
 
+// POST /api/purchase-invoices/generate-from-po/:poId (MUST be before /:id routes)
+router.post('/generate-from-po/:poId',
+  requirePermission('invoice_management'),
+  validateInstitutionConsistency,
+  auditLog('invoice_auto_generated'),
+  purchaseInvoiceController.generateInvoiceFromPO
+);
+
+// GET /api/purchase-invoices/items/list
+router.get('/items/list',
+  purchaseInvoiceController.getItemsList
+);
+
+// GET /api/purchase-invoices/vendors/list
+router.get('/vendors/list',
+  requirePermission('invoice_view'),
+  purchaseInvoiceController.getVendorList
+);
+
+// GET /api/purchase-invoices/vendors/:vendorId/details
+router.get('/vendors/:vendorId/details',
+  requirePermission('invoice_view'),
+  purchaseInvoiceController.getVendorDetailsForInvoice
+);
+
+// GET /api/purchase-invoices/matching/three-way
+router.get('/matching/three-way',
+  requirePermission('invoice_view'),
+  purchaseInvoiceController.getThreeWayMatching
+);
+
 // GET /api/purchase-invoices
 router.get('/',
   requirePermission('invoice_view'),

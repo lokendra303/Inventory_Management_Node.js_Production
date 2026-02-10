@@ -28,9 +28,26 @@ class PurchaseInvoiceController {
       }
 
       const result = await db.transaction(async (connection) => {
-        // Generate invoice ID and number
+        // Generate invoice ID
         const invoiceId = uuidv4();
-        const invoiceNumber = invoiceData.invoiceNumber || `PI${Date.now()}`;
+        
+        // Generate unique invoice number
+        let invoiceNumber = invoiceData.invoiceNumber;
+        if (!invoiceNumber) {
+          // Get the next invoice number
+          const [lastInvoice] = await connection.execute(
+            'SELECT invoice_number FROM purchase_invoices WHERE institution_id = ? ORDER BY created_at DESC LIMIT 1',
+            [institutionId]
+          );
+          
+          if (lastInvoice && lastInvoice.invoice_number) {
+            const match = lastInvoice.invoice_number.match(/\d+$/);
+            const nextNum = match ? parseInt(match[0]) + 1 : 1;
+            invoiceNumber = `PI${String(nextNum).padStart(6, '0')}`;
+          } else {
+            invoiceNumber = 'PI000001';
+          }
+        }
         
         // Get vendor name if not provided
         let vendorName = invoiceData.vendorName;
