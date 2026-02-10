@@ -120,11 +120,11 @@ class InventoryProjectionService {
       `UPDATE inventory_projections 
        SET quantity_on_hand = quantity_on_hand - ?,
            quantity_reserved = quantity_reserved - ?,
-           total_value = quantity_on_hand * average_cost,
+           total_value = (quantity_on_hand - ?) * average_cost,
            last_movement_date = NOW(),
            version = version + 1
        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, institutionId, itemId, warehouseId]
+      [quantity, quantity, quantity, institutionId, itemId, warehouseId]
     );
   }
 
