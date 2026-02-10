@@ -33,9 +33,9 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   const { currency } = useCurrency();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [vendors, setVendors] = useState([]);
+  const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
-  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [selectedParty, setSelectedParty] = useState(null);
   const [invoiceLines, setInvoiceLines] = useState([{ key: 1 }]);
   const [invoiceCurrency, setInvoiceCurrency] = useState(currency || 'USD');
   const [exchangeRate, setExchangeRate] = useState(1);
@@ -46,22 +46,28 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     grandTotal: 0
   });
 
-  const loadVendors = async (search = '') => {
+  const loadParties = async (search = '') => {
     try {
-      const response = await apiService.get('/purchase-invoices/vendors/list', {
+      const endpoint = type === 'purchase' 
+        ? '/purchase-invoices/vendors/list'
+        : '/sales-invoices/customers/list';
+      const response = await apiService.get(endpoint, {
         params: { search }
       });
       if (response.success) {
-        setVendors(response.data || []);
+        setParties(response.data || []);
       }
     } catch (error) {
-      console.error('Error loading vendors:', error);
+      console.error(`Error loading ${type === 'purchase' ? 'vendors' : 'customers'}:`, error);
     }
   };
 
   const loadItems = async (search = '') => {
     try {
-      const response = await apiService.get('/purchase-invoices/items/list', {
+      const endpoint = type === 'purchase'
+        ? '/purchase-invoices/items/list'
+        : '/sales-invoices/items/list';
+      const response = await apiService.get(endpoint, {
         params: { search, limit: 50 }
       });
       if (response.success) {
@@ -76,12 +82,14 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     const item = items.find(i => i.id === itemId);
     console.log('Selected item:', item);
     if (item) {
+      const priceField = type === 'purchase' ? 'cost_price' : 'selling_price';
+      const unitPriceKey = type === 'purchase' ? 'unitCost' : 'unitPrice';
       setInvoiceLines(invoiceLines.map(line => 
         line.key === key ? {
           ...line,
           itemId: item.id,
           itemName: item.name,
-          unitCost: item.cost_price || 0,
+          [unitPriceKey]: item[priceField] || 0,
           sku: item.sku,
           unit: item.unit
         } : line
@@ -90,27 +98,31 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     }
   };
 
-  const loadVendorDetails = async (vendorId) => {
+  const loadPartyDetails = async (partyId) => {
     try {
-      const response = await apiService.get(`/purchase-invoices/vendors/${vendorId}/details`);
+      const endpoint = type === 'purchase'
+        ? `/purchase-invoices/vendors/${partyId}/details`
+        : `/sales-invoices/customers/${partyId}/details`;
+      const response = await apiService.get(endpoint);
       if (response.success) {
-        setSelectedVendor(response.data);
+        setSelectedParty(response.data);
+        const nameField = type === 'purchase' ? 'vendorName' : 'customerName';
         form.setFieldsValue({
-          vendorName: response.data.name,
+          [nameField]: response.data.name,
           currency: response.data.businessInfo?.currency || 'USD'
         });
         setInvoiceCurrency(response.data.businessInfo?.currency || 'USD');
       }
     } catch (error) {
-      console.error('Error loading vendor details:', error);
-      message.error('Failed to load vendor details');
+      console.error(`Error loading ${type === 'purchase' ? 'vendor' : 'customer'} details:`, error);
+      message.error(`Failed to load ${type === 'purchase' ? 'vendor' : 'customer'} details`);
     }
   };
 
-  const handleVendorSelect = (vendorId) => {
-    const vendor = vendors.find(v => v.id === vendorId);
-    if (vendor) {
-      loadVendorDetails(vendorId);
+  const handlePartySelect = (partyId) => {
+    const party = parties.find(p => p.id === partyId);
+    if (party) {
+      loadPartyDetails(partyId);
     }
   };
 
@@ -138,11 +150,11 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
     invoiceLines.forEach(line => {
       const quantity = line.quantity || 0;
-      const unitCost = line.unitCost || 0;
+      const unitPrice = type === 'purchase' ? (line.unitCost || 0) : (line.unitPrice || 0);
       const discountRate = line.discountRate || 0;
       const taxRate = line.taxRate || 0;
 
-      const lineTotal = quantity * unitCost;
+      const lineTotal = quantity * unitPrice;
       const discountAmount = (lineTotal * discountRate) / 100;
       const taxableAmount = lineTotal - discountAmount;
       const taxAmount = (taxableAmount * taxRate) / 100;
@@ -161,7 +173,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       totalTax: Math.round(totalTax * rate * 100) / 100,
       grandTotal: Math.round(grandTotal * rate * 100) / 100
     });
-  }, [invoiceLines, exchangeRate]);
+  }, [invoiceLines, exchangeRate, type]);
 
   const handleSave = async () => {
     try {
@@ -172,48 +184,40 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       
       // More lenient validation - check if we have basic line data
       const validLines = invoiceLines.filter(line => {
-        const hasValidItem = !!(line.itemId && !line.itemId.includes('manual_'));
-        const hasManualItem = !!(line.itemName && !line.itemId);
-        const hasItem = hasValidItem || hasManualItem;
+        const hasItem = !!(line.itemName && line.itemName.trim());
         const hasQuantity = !!(line.quantity && line.quantity > 0);
-        const hasCost = !!(line.unitCost && line.unitCost > 0);
-        const isValid = hasItem && hasQuantity && hasCost;
-        
-        console.log('Line validation:', {
-          line,
-          hasValidItem,
-          hasManualItem,
-          hasItem,
-          hasQuantity,
-          hasCost,
-          isValid
-        });
-        
-        return isValid;
+        const unitPriceKey = type === 'purchase' ? 'unitCost' : 'unitPrice';
+        const hasPrice = !!(line[unitPriceKey] && line[unitPriceKey] > 0);
+        return hasItem && hasQuantity && hasPrice;
       });
       
       console.log('Valid lines:', validLines);
       
       if (validLines.length === 0) {
-        message.error('Please select an item from the dropdown for at least one line');
+        message.error('Please add at least one line item with name, quantity, and price');
         return;
       }
       
       setLoading(true);
 
+      const prefix = type === 'purchase' ? 'PI' : 'SI';
       const invoiceData = {
         ...values,
-        invoiceNumber: values.invoiceNumber?.trim() || `PI${Date.now()}`,
+        invoiceNumber: values.invoiceNumber?.trim() || `${prefix}${Date.now()}`,
         invoiceDate: values.invoiceDate.format('YYYY-MM-DD'),
         dueDate: values.dueDate.format('YYYY-MM-DD'),
         lines: validLines.map(line => {
           const lineData = {
             itemName: line.itemName,
-            quantity: Number(line.quantity),
-            unitCost: Number(line.unitCost)
+            quantity: Number(line.quantity)
           };
           
-          // Only include itemId if it's a valid GUID (from dropdown selection)
+          if (type === 'purchase') {
+            lineData.unitCost = Number(line.unitCost || 0);
+          } else {
+            lineData.unitPrice = Number(line.unitPrice || 0);
+          }
+          
           if (line.itemId && !line.itemId.includes('manual_')) {
             lineData.itemId = line.itemId;
           }
@@ -225,10 +229,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
       console.log('Sending invoice data:', invoiceData);
 
-      const url = invoiceId 
-        ? `/purchase-invoices/${invoiceId}`
-        : '/purchase-invoices';
-      
+      const baseUrl = type === 'purchase' ? '/purchase-invoices' : '/sales-invoices';
+      const url = invoiceId ? `${baseUrl}/${invoiceId}` : baseUrl;
       const method = invoiceId ? 'put' : 'post';
       console.log('Request:', method, url);
       const response = await apiService[method](url, invoiceData);
@@ -270,7 +272,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   };
 
   useEffect(() => {
-    loadVendors();
+    loadParties();
     loadItems();
     if (invoiceId) {
       loadInvoiceData();
@@ -280,35 +282,48 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   const loadInvoiceData = async () => {
     try {
       setLoading(true);
-      const response = await apiService.get(`/purchase-invoices/${invoiceId}`);
+      const baseUrl = type === 'purchase' ? '/purchase-invoices' : '/sales-invoices';
+      const response = await apiService.get(`${baseUrl}/${invoiceId}`);
       if (response.success) {
         const { invoice, lines } = response.data;
+        const partyIdField = type === 'purchase' ? 'vendor_id' : 'customer_id';
+        const partyNameField = type === 'purchase' ? 'vendor_name' : 'customer_name';
+        const formPartyIdField = type === 'purchase' ? 'vendorId' : 'customerId';
+        const formPartyNameField = type === 'purchase' ? 'vendorName' : 'customerName';
+        
         form.setFieldsValue({
           invoiceNumber: invoice.invoice_number,
           invoiceDate: invoice.invoice_date ? dayjs(invoice.invoice_date) : null,
           dueDate: invoice.due_date ? dayjs(invoice.due_date) : null,
-          vendorId: invoice.vendor_id,
-          vendorName: invoice.vendor_name,
+          [formPartyIdField]: invoice[partyIdField],
+          [formPartyNameField]: invoice[partyNameField],
           currency: invoice.currency || 'USD',
           reference: invoice.reference,
           notes: invoice.notes
         });
         setInvoiceCurrency(invoice.currency || 'USD');
-        if (invoice.vendor_id) {
-          loadVendorDetails(invoice.vendor_id);
+        if (invoice[partyIdField]) {
+          loadPartyDetails(invoice[partyIdField]);
         }
         if (lines && lines.length > 0) {
-          setInvoiceLines(lines.map((line, index) => ({
-            key: index + 1,
-            itemId: line.item_id,
-            itemName: line.item_name,
-            sku: line.sku,
-            unit: line.unit,
-            quantity: line.quantity,
-            unitCost: line.unit_cost,
-            discountRate: line.discount_rate || 0,
-            taxRate: line.tax_rate || 0
-          })));
+          setInvoiceLines(lines.map((line, index) => {
+            const lineData = {
+              key: index + 1,
+              itemId: line.item_id,
+              itemName: line.item_name,
+              sku: line.sku,
+              unit: line.unit,
+              quantity: line.quantity,
+              discountRate: line.discount_rate || 0,
+              taxRate: line.tax_rate || 0
+            };
+            if (type === 'purchase') {
+              lineData.unitCost = line.unit_cost;
+            } else {
+              lineData.unitPrice = line.unit_price;
+            }
+            return lineData;
+          }));
         }
       }
     } catch (error) {
@@ -386,15 +401,15 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       )
     },
     {
-      title: 'Unit Cost',
-      dataIndex: 'unitCost',
+      title: type === 'purchase' ? 'Unit Cost' : 'Unit Price',
+      dataIndex: type === 'purchase' ? 'unitCost' : 'unitPrice',
       width: 120,
       render: (value, record) => (
         <InputNumber
-          value={value}
+          value={type === 'purchase' ? record.unitCost : record.unitPrice}
           min={0}
           precision={2}
-          onChange={(val) => updateInvoiceLine(record.key, 'unitCost', val)}
+          onChange={(val) => updateInvoiceLine(record.key, type === 'purchase' ? 'unitCost' : 'unitPrice', val)}
         />
       )
     },
@@ -403,8 +418,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       width: 120,
       render: (_, record) => {
         const quantity = record.quantity || 0;
-        const unitCost = record.unitCost || 0;
-        const lineTotal = quantity * unitCost;
+        const unitPrice = type === 'purchase' ? (record.unitCost || 0) : (record.unitPrice || 0);
+        const lineTotal = quantity * unitPrice;
         const symbol = getCurrencySymbol(invoiceCurrency);
         return `${symbol}${lineTotal.toFixed(2)}`;
       }
@@ -465,27 +480,27 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="vendorId"
-                label="Vendor"
-                rules={[{ required: true, message: 'Please select vendor' }]}
+                name={type === 'purchase' ? 'vendorId' : 'customerId'}
+                label={type === 'purchase' ? 'Vendor' : 'Customer'}
+                rules={[{ required: true, message: `Please select ${type === 'purchase' ? 'vendor' : 'customer'}` }]}
               >
                 <Select
                   showSearch
-                  placeholder="Select vendor"
+                  placeholder={`Select ${type === 'purchase' ? 'vendor' : 'customer'}`}
                   optionFilterProp="children"
-                  onSelect={handleVendorSelect}
+                  onSelect={handlePartySelect}
                   filterOption={false}
                 >
-                  {vendors.map(vendor => (
-                    <Option key={vendor.id} value={vendor.id}>
-                      {vendor.displayText}
+                  {parties.map(party => (
+                    <Option key={party.id} value={party.id}>
+                      {party.displayText}
                     </Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
             <Col span={6}>
-              <Form.Item name="vendorName" label="Vendor Name" style={{ display: 'none' }}>
+              <Form.Item name={type === 'purchase' ? 'vendorName' : 'customerName'} label={`${type === 'purchase' ? 'Vendor' : 'Customer'} Name`} style={{ display: 'none' }}>
                 <Input />
               </Form.Item>
               <Form.Item name="currency" label="Currency">
@@ -522,21 +537,21 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             </Col>
           </Row>
 
-          {selectedVendor && (
+          {selectedParty && (
             <Card size="small" style={{ marginBottom: 16, backgroundColor: '#f9f9f9' }}>
-              <Title level={5}>Vendor Details</Title>
+              <Title level={5}>{type === 'purchase' ? 'Vendor' : 'Customer'} Details</Title>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Text strong>Company:</Text> {selectedVendor.companyName}<br/>
-                  <Text strong>Contact:</Text> {selectedVendor.contact.person}<br/>
-                  <Text strong>Email:</Text> {selectedVendor.contact.email}<br/>
-                  <Text strong>Phone:</Text> {selectedVendor.contact.phone}
+                  <Text strong>Company:</Text> {selectedParty.companyName}<br/>
+                  <Text strong>Contact:</Text> {selectedParty.contact.person}<br/>
+                  <Text strong>Email:</Text> {selectedParty.contact.email}<br/>
+                  <Text strong>Phone:</Text> {selectedParty.contact.phone}
                 </Col>
                 <Col span={12}>
                   <Text strong>Billing Address:</Text><br/>
-                  {selectedVendor.billingAddress.line1}<br/>
-                  {selectedVendor.billingAddress.city}, {selectedVendor.billingAddress.state}<br/>
-                  {selectedVendor.billingAddress.country} - {selectedVendor.billingAddress.postalCode}
+                  {selectedParty.billingAddress.line1}<br/>
+                  {selectedParty.billingAddress.city}, {selectedParty.billingAddress.state}<br/>
+                  {selectedParty.billingAddress.country} - {selectedParty.billingAddress.postalCode}
                 </Col>
               </Row>
             </Card>

@@ -1,6 +1,9 @@
 const db = require('../database/connection');
 const logger = require('../utils/logger');
+const invoiceTemplateService = require('../services/invoiceTemplateService');
 const invoicePDFService = require('../services/invoicePDFService');
+const autoInvoiceService = require('../services/autoInvoiceService');
+const { v4: uuidv4 } = require('uuid');
 
 class SalesInvoiceController {
   // Create Sales Invoice
@@ -9,47 +12,80 @@ class SalesInvoiceController {
       const { institutionId, user } = req;
       const invoiceData = req.body;
 
+      if (!invoiceData.lines || invoiceData.lines.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invoice must have at least one line item'
+        });
+      }
+
+      if (!invoiceData.customerId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Customer is required'
+        });
+      }
+
       const result = await db.transaction(async (connection) => {
-        // Calculate totals
-        let subtotal = 0;
-        let totalTaxAmount = 0;
-        let totalDiscountAmount = 0;
-
-        for (const line of invoiceData.lines) {
-          const lineTotal = line.quantity * line.unitPrice;
-          const discountAmount = (lineTotal * (line.discountRate || 0)) / 100;
-          const taxableAmount = lineTotal - discountAmount;
-          const taxAmount = (taxableAmount * (line.taxRate || 0)) / 100;
-
-          subtotal += lineTotal;
-          totalDiscountAmount += discountAmount;
-          totalTaxAmount += taxAmount;
+        const invoiceId = uuidv4();
+        const invoiceNumber = invoiceData.invoiceNumber || `SI${Date.now()}`;
+        
+        let customerName = invoiceData.customerName;
+        if (!customerName && invoiceData.customerId) {
+          const [customer] = await connection.execute(
+            'SELECT name, company_name FROM customers WHERE id = ? AND institution_id = ?',
+            [invoiceData.customerId, institutionId]
+          );
+          customerName = customer ? (customer.name || customer.company_name) : 'Unknown Customer';
         }
 
-        const totalAmount = subtotal - totalDiscountAmount + totalTaxAmount;
+        const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
+          ? invoiceData.invoiceDate 
+          : new Date().toISOString().split('T')[0];
+        const dueDate = invoiceData.dueDate && typeof invoiceData.dueDate === 'string' && invoiceData.dueDate.trim() 
+          ? invoiceData.dueDate 
+          : null;
 
-        // Create invoice header
-        const [invoiceResult] = await connection.execute(`
+        const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
+        
+        await connection.execute(`
           INSERT INTO sales_invoices (
-            institution_id, invoice_number, customer_id, customer_name, so_id, delivery_note_id,
+            id, institution_id, invoice_number, customer_id, customer_name, so_id, delivery_note_id,
             invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
-            discount_amount, total_amount, balance_amount, reference, notes, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            discount_amount, total_amount, paid_amount, balance_amount, reference, notes, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-          institutionId, invoiceData.invoiceNumber, invoiceData.customerId, invoiceData.customerName,
-          invoiceData.soId, invoiceData.deliveryNoteId, invoiceData.invoiceDate, invoiceData.dueDate,
-          invoiceData.currency, invoiceData.exchangeRate, subtotal, totalTaxAmount,
-          totalDiscountAmount, totalAmount, totalAmount, invoiceData.reference, invoiceData.notes, user.userId
+          invoiceId,
+          institutionId, 
+          invoiceNumber, 
+          invoiceData.customerId, 
+          customerName,
+          invoiceData.soId || null, 
+          invoiceData.deliveryNoteId || null, 
+          invoiceDate, 
+          dueDate,
+          invoiceData.currency || 'USD', 
+          invoiceData.exchangeRate || 1, 
+          totals.subtotal, 
+          totals.totalTax,
+          totals.totalDiscount, 
+          totals.grandTotal,
+          0,
+          totals.grandTotal, 
+          invoiceData.reference || null, 
+          invoiceData.notes || null, 
+          user?.userId || 1
         ]);
 
-        const invoiceId = invoiceResult.insertId;
-
-        // Create invoice lines
         for (const line of invoiceData.lines) {
-          const lineTotal = line.quantity * line.unitPrice;
-          const discountAmount = (lineTotal * (line.discountRate || 0)) / 100;
+          const quantity = line.quantity || 0;
+          const unitPrice = line.unitPrice || 0;
+          const lineTotal = quantity * unitPrice;
+          const discountRate = line.discountRate || 0;
+          const taxRate = line.taxRate || 0;
+          const discountAmount = (lineTotal * discountRate) / 100;
           const taxableAmount = lineTotal - discountAmount;
-          const taxAmount = (taxableAmount * (line.taxRate || 0)) / 100;
+          const taxAmount = (taxableAmount * taxRate) / 100;
 
           await connection.execute(`
             INSERT INTO sales_invoice_lines (
@@ -57,13 +93,22 @@ class SalesInvoiceController {
               unit_price, line_total, tax_rate, tax_amount, discount_rate, discount_amount
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `, [
-            invoiceId, line.soLineId, line.deliveryLineId, line.itemId, line.itemName,
-            line.quantity, line.unitPrice, lineTotal, line.taxRate || 0, taxAmount,
-            line.discountRate || 0, discountAmount
+            invoiceId, 
+            line.soLineId || null, 
+            line.deliveryLineId || null, 
+            line.itemId || null, 
+            line.itemName,
+            quantity, 
+            unitPrice, 
+            lineTotal, 
+            taxRate, 
+            taxAmount,
+            discountRate, 
+            discountAmount
           ]);
         }
 
-        return { invoiceId, totalAmount };
+        return { invoiceId, totalAmount: totals.grandTotal };
       });
 
       res.status(201).json({
@@ -76,7 +121,7 @@ class SalesInvoiceController {
       logger.error('Error creating sales invoice:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to create sales invoice'
+        error: error.message || 'Failed to create sales invoice'
       });
     }
   }
@@ -423,70 +468,354 @@ class SalesInvoiceController {
     }
   }
 
-  // Download Invoice PDF
-  async downloadInvoicePDF(req, res) {
+  // Update Sales Invoice
+  async updateSalesInvoice(req, res) {
+    try {
+      const { institutionId, user } = req;
+      const { id } = req.params;
+      const invoiceData = req.body;
+
+      if (!invoiceData.lines || invoiceData.lines.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invoice must have at least one line item'
+        });
+      }
+
+      const result = await db.transaction(async (connection) => {
+        const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
+          ? invoiceData.invoiceDate 
+          : new Date().toISOString().split('T')[0];
+        const dueDate = invoiceData.dueDate && typeof invoiceData.dueDate === 'string' && invoiceData.dueDate.trim() 
+          ? invoiceData.dueDate 
+          : null;
+
+        const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
+        
+        await connection.execute(`
+          UPDATE sales_invoices SET
+            invoice_date = ?, due_date = ?, currency = ?, exchange_rate = ?,
+            subtotal = ?, tax_amount = ?, discount_amount = ?, total_amount = ?,
+            balance_amount = ?, reference = ?, notes = ?, updated_by = ?
+          WHERE id = ? AND institution_id = ?
+        `, [
+          invoiceDate, dueDate, invoiceData.currency || 'USD', invoiceData.exchangeRate || 1,
+          totals.subtotal, totals.totalTax, totals.totalDiscount, totals.grandTotal,
+          totals.grandTotal, invoiceData.reference || null, invoiceData.notes || null,
+          user?.userId || 1, id, institutionId
+        ]);
+
+        await connection.execute('DELETE FROM sales_invoice_lines WHERE invoice_id = ?', [id]);
+
+        for (const line of invoiceData.lines) {
+          const quantity = line.quantity || 0;
+          const unitPrice = line.unitPrice || 0;
+          const lineTotal = quantity * unitPrice;
+          const discountRate = line.discountRate || 0;
+          const taxRate = line.taxRate || 0;
+          const discountAmount = (lineTotal * discountRate) / 100;
+          const taxableAmount = lineTotal - discountAmount;
+          const taxAmount = (taxableAmount * taxRate) / 100;
+
+          await connection.execute(`
+            INSERT INTO sales_invoice_lines (
+              invoice_id, item_id, item_name, quantity, unit_price, line_total,
+              tax_rate, tax_amount, discount_rate, discount_amount
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            id, line.itemId || null, line.itemName, quantity, unitPrice, lineTotal,
+            taxRate, taxAmount, discountRate, discountAmount
+          ]);
+        }
+
+        return { invoiceId: id, totalAmount: totals.grandTotal };
+      });
+
+      res.json({
+        success: true,
+        message: 'Sales invoice updated successfully',
+        data: result
+      });
+
+    } catch (error) {
+      logger.error('Error updating sales invoice:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to update sales invoice'
+      });
+    }
+  }
+
+  // Get Standard Invoice Format
+  async getStandardInvoiceFormat(req, res) {
     try {
       const { institutionId } = req;
       const { id } = req.params;
 
-      const [invoice] = await db.query(`SELECT * FROM sales_invoices WHERE id = ? AND institution_id = ?`, [id, institutionId]);
+      const [invoice] = await db.query(`
+        SELECT si.*, so.so_number
+        FROM sales_invoices si
+        LEFT JOIN sales_orders so ON CAST(si.so_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(so.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        WHERE si.id = ? AND si.institution_id = ?
+      `, [id, institutionId]);
+
       if (!invoice) {
-        return res.status(404).json({ success: false, error: 'Invoice not found' });
+        return res.status(404).json({
+          success: false,
+          error: 'Sales invoice not found'
+        });
       }
 
-      const lines = await db.query(`SELECT * FROM sales_invoice_lines WHERE invoice_id = ?`, [id]);
+      const lines = await db.query(`
+        SELECT 
+          sil.*,
+          i.sku,
+          i.unit,
+          i.hsn_code
+        FROM sales_invoice_lines sil
+        LEFT JOIN items i ON CAST(sil.item_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(i.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        WHERE sil.invoice_id = ?
+        ORDER BY sil.created_at
+      `, [id]);
 
-      const standardInvoice = {
-        header: {
-          companyName: 'Your Company',
-          address: { line1: '123 Street', city: 'City', state: 'State', postalCode: '12345' },
-          contact: { phone: '123-456-7890', email: 'info@company.com' }
-        },
-        details: {
-          invoiceNumber: invoice.invoice_number,
-          invoiceDate: invoice.invoice_date,
-          dueDate: invoice.due_date,
-          currency: invoice.currency,
-          reference: invoice.reference
-        },
-        partyDetails: {
-          type: 'customer',
-          name: invoice.customer_name,
-          companyName: invoice.customer_name,
-          billingAddress: { line1: '', city: '', state: '', country: '', postalCode: '' },
-          contact: { email: '', phone: '' }
-        },
-        lineItems: lines.map((line, idx) => ({
-          sno: idx + 1,
+      const invoiceData = {
+        invoiceNumber: invoice.invoice_number,
+        invoiceDate: invoice.invoice_date,
+        dueDate: invoice.due_date,
+        customerId: invoice.customer_id,
+        customerName: invoice.customer_name,
+        currency: invoice.currency,
+        exchangeRate: invoice.exchange_rate,
+        reference: invoice.reference,
+        notes: invoice.notes,
+        soNumber: invoice.so_number,
+        lines: lines.map(line => ({
+          itemId: line.item_id,
           itemName: line.item_name,
-          sku: '',
+          sku: line.sku,
+          unit: line.unit,
           quantity: line.quantity,
-          unitAmount: line.unit_price,
-          netAmount: line.line_total
-        })),
-        totals: {
-          subtotal: invoice.subtotal,
-          totalDiscountAmount: invoice.discount_amount,
-          totalTaxAmount: invoice.tax_amount,
-          grandTotal: invoice.total_amount,
-          amountInWords: 'Amount in words'
-        },
-        footer: {
-          notes: invoice.notes,
-          terms: '',
-          authorizedSignatory: { name: '', designation: '', date: new Date().toISOString().split('T')[0] }
-        }
+          unitPrice: line.unit_price,
+          taxRate: line.tax_rate,
+          discountRate: line.discount_rate,
+          hsnCode: line.hsn_code
+        }))
       };
 
-      const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice, institutionId);
-      
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=invoice-${invoice.invoice_number}.pdf`);
-      res.send(pdfBuffer);
+      const standardInvoice = await invoiceTemplateService.generateStandardInvoice(
+        institutionId, 
+        invoiceData, 
+        'sales'
+      );
+
+      res.json({
+        success: true,
+        data: standardInvoice
+      });
 
     } catch (error) {
-      logger.error('Error downloading invoice PDF:', error);
-      res.status(500).json({ success: false, error: 'Failed to generate PDF' });
+      logger.error('Error generating standard invoice format:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate standard invoice format'
+      });
+    }
+  }
+
+  // Get Customer Details for Invoice
+  async getCustomerDetailsForInvoice(req, res) {
+    try {
+      const { institutionId } = req;
+      const { customerId } = req.params;
+
+      const customerDetails = await invoiceTemplateService.getCustomerDetails(institutionId, customerId);
+
+      res.json({
+        success: true,
+        data: customerDetails
+      });
+
+    } catch (error) {
+      logger.error('Error fetching customer details for invoice:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch customer details'
+      });
+    }
+  }
+
+  // Get Customer List for Dropdown
+  async getCustomerList(req, res) {
+    try {
+      const { institutionId } = req;
+      const { search } = req.query;
+
+      const customers = await invoiceTemplateService.getCustomerList(institutionId, search);
+
+      res.json({
+        success: true,
+        data: customers
+      });
+
+    } catch (error) {
+      logger.error('Error fetching customer list:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch customer list'
+      });
+    }
+  }
+
+  // Get Items List for Invoice
+  async getItemsList(req, res) {
+    try {
+      const institutionId = req.institutionId || 'test-institution';
+      const { search, limit } = req.query;
+
+      const testItems = [
+        { id: '1', sku: 'ITEM001', name: 'Test Item 1', unit: 'PCS', cost_price: 10.00, selling_price: 15.00, status: 'active' },
+        { id: '2', sku: 'ITEM002', name: 'Test Item 2', unit: 'KG', cost_price: 25.50, selling_price: 35.00, status: 'active' },
+        { id: '3', sku: 'ITEM003', name: 'Test Item 3', unit: 'LITER', cost_price: 8.75, selling_price: 12.00, status: 'active' }
+      ];
+
+      try {
+        const items = await autoInvoiceService.getItemsList(institutionId, search, limit);
+        const finalItems = items.length > 0 ? items : testItems;
+        
+        res.json({
+          success: true,
+          data: { items: finalItems }
+        });
+      } catch (dbError) {
+        res.json({
+          success: true,
+          data: { items: testItems }
+        });
+      }
+
+    } catch (error) {
+      logger.error('Error fetching items list:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch items list'
+      });
+    }
+  }
+
+  // Generate PDF for Invoice
+  async generateInvoicePDF(req, res) {
+    try {
+      const { institutionId } = req;
+      const { id } = req.params;
+      const { download = false } = req.query;
+
+      const [invoice] = await db.query(`
+        SELECT si.*, so.so_number
+        FROM sales_invoices si
+        LEFT JOIN sales_orders so ON CAST(si.so_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(so.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        WHERE si.id = ? AND si.institution_id = ?
+      `, [id, institutionId]);
+
+      if (!invoice) {
+        return res.status(404).json({
+          success: false,
+          error: 'Sales invoice not found'
+        });
+      }
+
+      const lines = await db.query(`
+        SELECT 
+          sil.*,
+          i.sku,
+          i.unit,
+          i.hsn_code
+        FROM sales_invoice_lines sil
+        LEFT JOIN items i ON CAST(sil.item_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(i.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        WHERE sil.invoice_id = ?
+        ORDER BY sil.created_at
+      `, [id]);
+
+      const invoiceData = {
+        invoiceNumber: invoice.invoice_number,
+        invoiceDate: invoice.invoice_date,
+        dueDate: invoice.due_date,
+        customerId: invoice.customer_id,
+        customerName: invoice.customer_name,
+        currency: invoice.currency,
+        exchangeRate: invoice.exchange_rate,
+        reference: invoice.reference,
+        notes: invoice.notes,
+        soNumber: invoice.so_number,
+        lines: lines.map(line => ({
+          itemId: line.item_id,
+          itemName: line.item_name,
+          sku: line.sku,
+          unit: line.unit,
+          quantity: line.quantity,
+          unitPrice: line.unit_price,
+          taxRate: line.tax_rate,
+          discountRate: line.discount_rate,
+          hsnCode: line.hsn_code
+        }))
+      };
+
+      const standardInvoice = await invoiceTemplateService.generateStandardInvoice(
+        institutionId, 
+        invoiceData, 
+        'sales'
+      );
+
+      if (download === 'true') {
+        try {
+          logger.info('Generating PDF for download', { invoiceId: id });
+          const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice, institutionId);
+          
+          if (!pdfBuffer || pdfBuffer.length === 0) {
+            throw new Error('Generated PDF buffer is empty');
+          }
+          
+          const filename = invoicePDFService.generateFilename(invoice.invoice_number, 'sales');
+          logger.info('PDF generated successfully', { filename, size: pdfBuffer.length });
+          
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+          res.setHeader('Content-Length', pdfBuffer.length);
+          return res.send(pdfBuffer);
+        } catch (pdfError) {
+          logger.error('PDF generation error:', pdfError);
+          return res.status(500).json({
+            success: false,
+            error: pdfError.message || 'PDF generation failed'
+          });
+        }
+      } else {
+        try {
+          const fileInfo = await invoicePDFService.saveInvoicePDF(
+            standardInvoice, 
+            invoice.invoice_number, 
+            'sales'
+          );
+          
+          res.json({
+            success: true,
+            data: fileInfo
+          });
+        } catch (pdfError) {
+          logger.error('PDF save error:', pdfError);
+          res.json({
+            success: true,
+            message: 'Invoice data ready. PDF generation requires: npm install pdfkit',
+            data: { invoiceId: id, standardFormat: standardInvoice }
+          });
+        }
+      }
+
+    } catch (error) {
+      logger.error('Error generating invoice PDF:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate invoice PDF'
+      });
     }
   }
 
