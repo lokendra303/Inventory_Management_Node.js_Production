@@ -108,21 +108,39 @@ class InvoicePDFService {
         const col3 = 320;
         const col4 = 380;
         const col5 = 450;
-        const rowHeight = 18;
+        
+        // Dynamic sizing based on number of items
+        const itemCount = (standardInvoice.lineItems || []).length;
+        const rowHeight = itemCount > 30 ? 14 : itemCount > 20 ? 16 : 18;
+        const fontSize = itemCount > 30 ? 7 : itemCount > 20 ? 7.5 : 8;
+        const headerFontSize = itemCount > 30 ? 8 : 9;
+        
+        // Helper function to draw table header
+        const drawTableHeader = (yPos) => {
+          doc.fontSize(headerFontSize).font('Helvetica-Bold');
+          doc.rect(col1, yPos, 495, 20).fillAndStroke('#f0f0f0', '#000');
+          doc.fillColor('#000').text('#', col1 + 5, yPos + 6);
+          doc.text('Item', col2, yPos + 6);
+          doc.text('Qty', col3, yPos + 6, { width: 50, align: 'right' });
+          doc.text('Rate', col4, yPos + 6, { width: 60, align: 'right' });
+          doc.text('Amount', col5, yPos + 6, { width: 90, align: 'right' });
+          return yPos + 20;
+        };
         
         // Table Header
-        doc.fontSize(9).font('Helvetica-Bold');
-        doc.rect(col1, y, 495, 20).fillAndStroke('#f0f0f0', '#000');
-        doc.fillColor('#000').text('#', col1 + 5, y + 6);
-        doc.text('Item', col2, y + 6);
-        doc.text('Qty', col3, y + 6, { width: 50, align: 'right' });
-        doc.text('Rate', col4, y + 6, { width: 60, align: 'right' });
-        doc.text('Amount', col5, y + 6, { width: 90, align: 'right' });
-        y += 20;
+        y = drawTableHeader(y);
 
-        // Table Rows with borders
-        doc.font('Helvetica').fontSize(8);
-        (standardInvoice.lineItems || []).forEach((item) => {
+        // Table Rows with borders and pagination
+        doc.font('Helvetica').fontSize(fontSize);
+        (standardInvoice.lineItems || []).forEach((item, index) => {
+          // Check if we need a new page (leave 150px for totals and footer)
+          if (y > 680) {
+            doc.addPage();
+            y = 50;
+            y = drawTableHeader(y);
+            doc.font('Helvetica').fontSize(fontSize);
+          }
+          
           const rowY = y;
           
           // Draw cell borders
@@ -132,12 +150,16 @@ class InvoicePDFService {
           doc.rect(col4, rowY, 70, rowHeight).stroke();
           doc.rect(col5, rowY, 95, rowHeight).stroke();
           
-          // Cell content
-          doc.text(item.sno || '', col1 + 5, rowY + 5);
-          doc.text(item.itemName || '', col2 + 5, rowY + 5, { width: 230 });
-          doc.text(parseFloat(item.quantity || 0).toFixed(2), col3, rowY + 5, { width: 50, align: 'right' });
-          doc.text(parseFloat(item.unitAmount || 0).toFixed(2), col4, rowY + 5, { width: 60, align: 'right' });
-          doc.text(parseFloat(item.netAmount || 0).toFixed(2), col5, rowY + 5, { width: 90, align: 'right' });
+          // Cell content with truncation for long names
+          const itemName = (item.itemName || '').length > 45 
+            ? (item.itemName || '').substring(0, 42) + '...' 
+            : (item.itemName || '');
+          
+          doc.text(item.sno || '', col1 + 5, rowY + 4);
+          doc.text(itemName, col2 + 5, rowY + 4, { width: 230 });
+          doc.text(parseFloat(item.quantity || 0).toFixed(2), col3, rowY + 4, { width: 50, align: 'right' });
+          doc.text(parseFloat(item.unitAmount || 0).toFixed(2), col4, rowY + 4, { width: 60, align: 'right' });
+          doc.text(parseFloat(item.netAmount || 0).toFixed(2), col5, rowY + 4, { width: 90, align: 'right' });
           y += rowHeight;
         });
 
