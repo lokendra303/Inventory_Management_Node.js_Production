@@ -108,17 +108,17 @@ const PurchaseInvoices = () => {
               {/* Invoice Details */}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                 <div>
-                  <h3 style={{ margin: '0 0 10px 0' }}>PURCHASE INVOICE</h3>
-                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Invoice #:</strong> {data.details.invoiceNumber}</p>
-                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Date:</strong> {new Date(data.details.invoiceDate).toLocaleDateString()}</p>
-                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Due Date:</strong> {new Date(data.details.dueDate).toLocaleDateString()}</p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
                   <h4 style={{ margin: '0 0 10px 0' }}>Vendor Details</h4>
                   <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>{data.partyDetails.name}</strong></p>
                   <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.line1}</p>
                   <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.city}, {data.partyDetails.billingAddress.state}</p>
                   <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.contact.phone}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <h3 style={{ margin: '0 0 10px 0' }}>PURCHASE INVOICE</h3>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Invoice #:</strong> {data.details.invoiceNumber}</p>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Date:</strong> {new Date(data.details.invoiceDate).toLocaleDateString()}</p>
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Due Date:</strong> {new Date(data.details.dueDate).toLocaleDateString()}</p>
                 </div>
               </div>
 
