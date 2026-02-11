@@ -29,7 +29,6 @@ const Items = () => {
   const [manufacturerOptions, setManufacturerOptions] = useState([]);
   const [brandOptions, setBrandOptions] = useState([]);
   const [vendorOptions, setVendorOptions] = useState([]);
-  const [showWarehouse, setShowWarehouse] = useState(false);
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -181,6 +180,13 @@ const Items = () => {
     try {
       console.log('Form values:', values);
       
+      // Build dimensions object if any dimension value exists
+      const dimensions = (values.length || values.width || values.height) ? {
+        length: values.length || 0,
+        width: values.width || 0,
+        height: values.height || 0
+      } : null;
+      
       const itemData = {
         sku: values.sku,
         name: values.name,
@@ -192,7 +198,7 @@ const Items = () => {
         warehouseId: values.warehouseId,
         costPrice: convertPrice(values.costPrice, priceCurrency, 'USD'),
         sellingPrice: convertPrice(values.sellingPrice, priceCurrency, 'USD'),
-        mrp: convertPrice(values.mrp, priceCurrency, 'USD'),
+        mrp: values.mrp ? convertPrice(values.mrp, priceCurrency, 'USD') : null,
         taxRate: values.taxRate,
         brand: values.brand,
         manufacturer: values.manufacturer,
@@ -201,7 +207,13 @@ const Items = () => {
         barcode: values.barcode,
         openingStock: values.openingStock || 0,
         openingValue: values.openingValue || 0,
-        valuationMethod: values.valuationMethod
+        valuationMethod: values.valuationMethod,
+        weight: values.weight,
+        dimensions: dimensions,
+        upc: values.upc,
+        ean: values.ean,
+        isbn: values.isbn,
+        mpn: values.mpn
       };
       
       if (editingItem) {
@@ -246,26 +258,52 @@ const viewItem = (item) => {
   const editItem = async (item) => {
     setEditingItem(item);
     setPriceCurrency(currency);
-    setImageUrl(item.image || ''); // Load existing image
+    setImageUrl(item.image || '');
     
-    // Fetch fresh dropdown data
     await fetchDropdownOptions();
     
+    let fullItem = item;
+    try {
+      const itemResponse = await apiService.get(`/items/${item.id}`);
+      if (itemResponse.success) {
+        fullItem = itemResponse.data;
+      }
+    } catch (error) {
+      console.error('Failed to fetch full item details:', error);
+    }
+    
+    const warehouseId = fullItem.warehouse_ids && fullItem.warehouse_ids.length > 0 
+      ? fullItem.warehouse_ids[0] 
+      : null;
+    
     form.setFieldsValue({
-      sku: item.sku,
-      name: item.name,
-      description: item.description,
-      type: item.type,
-      category: item.category,
-      unit: item.unit,
-      costPrice: convertPrice(item.cost_price, 'USD', currency),
-      sellingPrice: convertPrice(item.selling_price, 'USD', currency),
-      mrp: convertPrice(item.mrp, 'USD', currency),
-      taxRate: item.tax_rate,
-      brand: item.brand,
-      manufacturer: item.manufacturer,
-      minStockLevel: item.min_stock_level,
-      maxStockLevel: item.max_stock_level
+      sku: fullItem.sku,
+      name: fullItem.name,
+      description: fullItem.description,
+      type: fullItem.type,
+      category: fullItem.category,
+      unit: fullItem.unit,
+      costPrice: convertPrice(fullItem.cost_price, 'USD', currency),
+      sellingPrice: convertPrice(fullItem.selling_price, 'USD', currency),
+      mrp: convertPrice(fullItem.mrp, 'USD', currency),
+      taxRate: fullItem.tax_rate,
+      brand: fullItem.brand,
+      manufacturer: fullItem.manufacturer,
+      minStockLevel: fullItem.min_stock_level,
+      maxStockLevel: fullItem.max_stock_level,
+      barcode: fullItem.barcode,
+      openingStock: fullItem.opening_stock,
+      openingValue: fullItem.opening_value,
+      valuationMethod: fullItem.valuation_method,
+      warehouseId: warehouseId,
+      weight: fullItem.weight,
+      length: fullItem.dimensions?.length,
+      width: fullItem.dimensions?.width,
+      height: fullItem.dimensions?.height,
+      upc: fullItem.upc,
+      ean: fullItem.ean,
+      isbn: fullItem.isbn,
+      mpn: fullItem.mpn
     });
     setModalVisible(true);
   };
@@ -275,10 +313,8 @@ const viewItem = (item) => {
     setPriceCurrency(currency);
     setImageUrl('');
     setImageFile(null);
-    setShowWarehouse(false);
     form.resetFields();
     
-    // Fetch fresh dropdown data
     await fetchDropdownOptions();
     
     setModalVisible(true);
@@ -809,6 +845,11 @@ const viewItem = (item) => {
                 <Input placeholder="Enter ISBN" />
               </Form.Item>
             </Col>
+            <Col span={8}>
+              <Form.Item name="barcode" label="Barcode">
+                <Input placeholder="Enter Barcode" />
+              </Form.Item>
+            </Col>
           </Row>
 
           <div style={{ marginTop: 24, marginBottom: 16 }}>
@@ -828,6 +869,18 @@ const viewItem = (item) => {
               </Form.Item>
             </Col>
             <Col span={8}>
+              <Form.Item name="mrp" label="MRP" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+                <InputNumber 
+                  min={0} 
+                  step={0.01} 
+                  precision={2}
+                  style={{ width: '100%' }} 
+                  placeholder="Enter MRP"
+                  parser={value => value.replace(/[^0-9.]/g, '')}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
               <Form.Item name="account" label="Account">
                 <Select placeholder="Select account">
                   <Select.Option value="sales">Sales</Select.Option>
@@ -835,6 +888,8 @@ const viewItem = (item) => {
                 </Select>
               </Form.Item>
             </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="taxRate" label="Tax Rate (%)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
@@ -848,9 +903,7 @@ const viewItem = (item) => {
                 />
               </Form.Item>
             </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={24}>
+            <Col span={16}>
               <Form.Item name="salesDescription" label="Description">
                 <Input.TextArea placeholder="Sales description" rows={2} />
               </Form.Item>
@@ -945,61 +998,77 @@ const viewItem = (item) => {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="openingStock" label="Opening Stock" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="minStockLevel" label="Min Stock Level">
+                <InputNumber 
+                  min={0} 
+                  style={{ width: '100%' }} 
+                  placeholder="Enter min stock level"
+                  parser={value => value.replace(/[^0-9.]/g, '')}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="maxStockLevel" label="Max Stock Level">
+                <InputNumber 
+                  min={0} 
+                  style={{ width: '100%' }} 
+                  placeholder="Enter max stock level"
+                  parser={value => value.replace(/[^0-9.]/g, '')}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="openingStock" label="Opening Stock">
                 <InputNumber 
                   min={0} 
                   style={{ width: '100%' }} 
                   placeholder="Enter opening stock"
                   parser={value => value.replace(/[^0-9.]/g, '')}
                   onChange={(value) => {
-                    setShowWarehouse(value > 0);
                     // Auto-calculate opening value
                     const costPrice = form.getFieldValue('costPrice');
                     if (value > 0 && costPrice > 0) {
                       const calculatedValue = value * costPrice;
-                      // Round to 2 decimal places to avoid floating point issues
                       form.setFieldsValue({ openingValue: Math.round(calculatedValue * 100) / 100 });
                     }
                   }}
                 />
               </Form.Item>
             </Col>
-            {showWarehouse && (
-              <>
-                <Col span={8}>
-                  <Form.Item 
-                    name="openingValue" 
-                    label="Opening Value (Optional)"
-                    tooltip="Leave blank to auto-calculate from Cost Price × Opening Stock. Enter only if your opening stock was purchased at different prices."
-                    rules={[{ type: 'number', message: 'Please enter a valid number' }]}
-                  >
-                    <InputNumber 
-                      min={0} 
-                      step={0.01}
-                      precision={2}
-                      style={{ width: '100%' }} 
-                      placeholder="Auto-calculated"
-                      parser={value => value.replace(/[^0-9.]/g, '')}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={8}>
-                  <Form.Item
-                    name="warehouseId"
-                    label="Warehouse"
-                    rules={[{ required: true, message: 'Warehouse is required for opening stock!' }]}
-                  >
-                    <Select placeholder="Select warehouse" allowClear>
-                      {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
-                        <Select.Option key={warehouse.id} value={warehouse.id}>
-                          {warehouse.name}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </>
-            )}
+            <Col span={8}>
+              <Form.Item 
+                name="openingValue" 
+                label="Opening Value (Auto-calculated)"
+              >
+                <InputNumber 
+                  disabled
+                  min={0} 
+                  step={0.01}
+                  precision={2}
+                  style={{ width: '100%' }} 
+                  placeholder="Auto-calculated"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="warehouseId"
+                label="Warehouse"
+                rules={[{ required: true, message: 'Please select a warehouse!' }]}
+              >
+                <Select placeholder="Select warehouse" allowClear>
+                  {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
+                    <Select.Option key={warehouse.id} value={warehouse.id}>
+                      {warehouse.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="valuationMethod" label="Inventory Valuation Method">
                 <Select placeholder="Select valuation method">

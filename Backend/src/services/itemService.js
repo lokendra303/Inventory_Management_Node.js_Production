@@ -72,9 +72,9 @@ class ItemService {
 
     // Create initial inventory projection if warehouse and opening stock provided
     if (warehouseId && openingStock > 0) {
-      // Auto-calculate opening value if not provided
-      const finalOpeningValue = openingValue > 0 ? openingValue : (openingStock * costPrice);
-      const averageCost = finalOpeningValue > 0 ? finalOpeningValue / openingStock : costPrice;
+      // Always auto-calculate opening value from cost price
+      const finalOpeningValue = openingStock * costPrice;
+      const averageCost = costPrice;
       const totalValue = openingStock * averageCost;
       
       await db.query(
@@ -116,7 +116,15 @@ class ItemService {
       minStockLevel,
       maxStockLevel,
       warehouseId,
-      type
+      type,
+      weight,
+      dimensions,
+      upc,
+      ean,
+      isbn,
+      mpn,
+      openingStock,
+      openingValue
     } = updateData;
 
     const updateFields = [];
@@ -206,6 +214,38 @@ class ItemService {
       updateFields.push('type = ?');
       updateValues.push(type);
     }
+    if (weight !== undefined) {
+      updateFields.push('weight = ?');
+      updateValues.push(weight);
+    }
+    if (dimensions !== undefined) {
+      updateFields.push('dimensions = ?');
+      updateValues.push(typeof dimensions === 'object' ? JSON.stringify(dimensions) : dimensions);
+    }
+    if (upc !== undefined) {
+      updateFields.push('upc = ?');
+      updateValues.push(upc);
+    }
+    if (ean !== undefined) {
+      updateFields.push('ean = ?');
+      updateValues.push(ean);
+    }
+    if (isbn !== undefined) {
+      updateFields.push('isbn = ?');
+      updateValues.push(isbn);
+    }
+    if (mpn !== undefined) {
+      updateFields.push('mpn = ?');
+      updateValues.push(mpn);
+    }
+    if (openingStock !== undefined) {
+      updateFields.push('opening_stock = ?');
+      updateValues.push(openingStock);
+    }
+    if (openingValue !== undefined) {
+      updateFields.push('opening_value = ?');
+      updateValues.push(openingValue);
+    }
 
     if (updateFields.length === 0) {
       throw new Error('No fields to update');
@@ -232,6 +272,61 @@ class ItemService {
       );
     }
 
+    // Update or create inventory projection if opening stock or warehouse changed
+    if (openingStock !== undefined || warehouseId !== undefined) {
+      // Determine the warehouse to use
+      let targetWarehouseId = warehouseId;
+      
+      // If warehouse not provided, try to get existing warehouse from inventory_projections
+      if (!targetWarehouseId) {
+        const existingProjections = await db.query(
+          'SELECT warehouse_id FROM inventory_projections WHERE institution_id = ? AND item_id = ? LIMIT 1',
+          [institutionId, itemId]
+        );
+        if (existingProjections.length > 0) {
+          targetWarehouseId = existingProjections[0].warehouse_id;
+        }
+      }
+      
+      // Only proceed if we have a warehouse and opening stock
+      if (targetWarehouseId && openingStock !== undefined && openingStock > 0) {
+        // Get current cost price if not provided in update
+        const finalCostPrice = costPrice !== undefined ? costPrice : (await db.query(
+          'SELECT cost_price FROM items WHERE id = ? AND institution_id = ?',
+          [itemId, institutionId]
+        ))[0].cost_price;
+
+        const averageCost = finalCostPrice;
+        const totalValue = openingStock * averageCost;
+
+        // Check if inventory projection exists for this warehouse
+        const existing = await db.query(
+          'SELECT id FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+          [institutionId, itemId, targetWarehouseId]
+        );
+
+        if (existing.length > 0) {
+          // Update existing projection
+          await db.query(
+            `UPDATE inventory_projections 
+             SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?, updated_at = NOW()
+             WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+            [openingStock, openingStock, averageCost, totalValue, institutionId, itemId, targetWarehouseId]
+          );
+        } else {
+          // Create new projection
+          await db.query(
+            `INSERT INTO inventory_projections 
+             (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
+             VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
+            [institutionId, itemId, targetWarehouseId, openingStock, openingStock, averageCost, totalValue]
+          );
+        }
+        
+        logger.info('Inventory projection updated', { itemId, warehouseId: targetWarehouseId, openingStock, averageCost, totalValue, institutionId });
+      }
+    }
+
     logger.info('Item updated', { itemId, institutionId, userId });
     return itemId;
   }
@@ -242,7 +337,8 @@ class ItemService {
        COALESCE(SUM(ip.quantity_on_hand), 0) as current_stock,
        b.name as brand_name,
        m.name as manufacturer_name,
-       u.name as unit_name
+       u.name as unit_name,
+       GROUP_CONCAT(DISTINCT ip.warehouse_id) as warehouse_ids
        FROM items i
        LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
        LEFT JOIN brands b ON i.brand = b.id
@@ -258,12 +354,25 @@ class ItemService {
     }
 
     const item = items[0];
+    
+    // Parse dimensions if stored as JSON string
+    let dimensions = null;
+    if (item.dimensions) {
+      try {
+        dimensions = typeof item.dimensions === 'string' ? JSON.parse(item.dimensions) : item.dimensions;
+      } catch (e) {
+        dimensions = null;
+      }
+    }
+    
     return {
       ...item,
       brand: item.brand_name || item.brand,
       manufacturer: item.manufacturer_name || item.manufacturer,
       unit: item.unit_name || item.unit,
-      custom_fields: JSON.parse(item.custom_fields || '{}')
+      custom_fields: JSON.parse(item.custom_fields || '{}'),
+      dimensions: dimensions,
+      warehouse_ids: item.warehouse_ids ? item.warehouse_ids.split(',') : []
     };
   }
 
