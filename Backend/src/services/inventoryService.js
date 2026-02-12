@@ -178,7 +178,6 @@ class InventoryService {
     
     const normalizedQuantityChange = adjustmentType === 'decrease' ? -Math.abs(quantityChange) : Math.abs(quantityChange);
     
-    // Determine loss type based on reason
     let lossType = 'MANUAL';
     if (reason) {
       const reasonLower = reason.toLowerCase();
@@ -188,8 +187,7 @@ class InventoryService {
     }
     
     try {
-      await db.transaction(async (connection) => {
-        // Record in adjustments table
+      return await db.transaction(async (connection) => {
         const adjustmentId = require('uuid').v4();
         await connection.execute(
           `INSERT INTO inventory_adjustments 
@@ -198,32 +196,37 @@ class InventoryService {
           [adjustmentId, institutionId, itemId, warehouseId, adjustmentType, Math.abs(quantityChange), reason, lossType, userId, `ADJ-${Date.now()}`]
         );
 
-        // Update inventory projections
-        const current = await connection.execute(
+        const [current] = await connection.execute(
           'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
           [institutionId, itemId, warehouseId]
         );
 
-        if (current[0].length === 0 && normalizedQuantityChange > 0) {
+        if (current.length === 0 && normalizedQuantityChange > 0) {
           await connection.execute(
             `INSERT INTO inventory_projections 
              (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
              VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
             [institutionId, itemId, warehouseId, normalizedQuantityChange, normalizedQuantityChange]
           );
-        } else if (current[0].length > 0) {
+        } else if (current.length > 0) {
+          const currentRecord = current[0];
+          const newQuantity = parseFloat(currentRecord.quantity_on_hand) + normalizedQuantityChange;
+          const avgCost = parseFloat(currentRecord.average_cost) || 0;
+          const newTotalValue = newQuantity * avgCost;
+          
           await connection.execute(
             `UPDATE inventory_projections 
-             SET quantity_on_hand = quantity_on_hand + ?,
+             SET quantity_on_hand = ?,
                  quantity_available = quantity_available + ?,
+                 total_value = ?,
                  last_movement_date = NOW()
              WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-            [normalizedQuantityChange, normalizedQuantityChange, institutionId, itemId, warehouseId]
+            [newQuantity, normalizedQuantityChange, newTotalValue, institutionId, itemId, warehouseId]
           );
         }
-      });
 
-      return 'success';
+        return 'success';
+      });
     } catch (error) {
       logger.error('Failed to adjust stock', { institutionId, itemId, warehouseId, error: error.message });
       throw error;
