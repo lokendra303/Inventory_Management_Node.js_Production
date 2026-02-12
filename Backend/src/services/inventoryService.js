@@ -85,9 +85,11 @@ class InventoryService {
     try {
       // Check available stock before reservation
       const currentStock = await projectionService.getInventoryProjection(institutionId, itemId, warehouseId);
+      const availableQty = currentStock ? Number(currentStock.quantity_available) : 0;
+      const requestedQty = Number(quantity);
       
-      if (!currentStock || currentStock.quantity_available < quantity) {
-        throw new Error(`Insufficient stock: available ${currentStock?.quantity_available || 0}, requested ${quantity}`);
+      if (availableQty < requestedQty) {
+        throw new Error(`Insufficient stock: available ${availableQty}, requested ${requestedQty}`);
       }
 
       const eventId = await eventStore.appendEvent(

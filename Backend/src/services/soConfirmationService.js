@@ -43,8 +43,11 @@ class SOConfirmationService {
         // Check stock availability per line's warehouse
         for (const line of lines) {
           const stock = await inventoryService.getCurrentStock(institutionId, line.item_id, line.warehouse_id);
-          if (!stock || stock.quantity_available < line.quantity_ordered) {
-            throw new Error(`Insufficient stock for ${line.item_name}. Available: ${stock?.quantity_available || 0}, Required: ${line.quantity_ordered}`);
+          const availableQty = stock ? Number(stock.quantity_available) : 0;
+          const requiredQty = Number(line.quantity_ordered);
+          
+          if (availableQty < requiredQty) {
+            throw new Error(`Insufficient stock for ${line.item_name}. Available: ${availableQty}, Required: ${requiredQty}`);
           }
         }
 
@@ -98,11 +101,51 @@ class SOConfirmationService {
           ['shipped', soId]
         );
 
+        // Auto-generate sales invoice
+        const invoiceId = uuidv4();
+        const invoiceNumber = `SI-${so.so_number}-${Date.now()}`;
+        
+        let subtotal = 0;
+        let totalTax = 0;
+        let totalDiscount = 0;
+        
+        for (const line of lines) {
+          const lineTotal = line.quantity_ordered * line.unit_price;
+          subtotal += lineTotal;
+        }
+        
+        const grandTotal = subtotal + totalTax - totalDiscount;
+        
+        await connection.execute(`
+          INSERT INTO sales_invoices (
+            id, institution_id, invoice_number, customer_id, customer_name, so_id,
+            invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
+            discount_amount, total_amount, paid_amount, balance_amount, status, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
+        `, [
+          invoiceId, institutionId, invoiceNumber, so.customer_id, so.customer_name, soId,
+          new Date().toISOString().split('T')[0], null, so.currency || 'USD', 1,
+          subtotal, totalTax, totalDiscount, grandTotal, 0, grandTotal, userId
+        ]);
+        
+        // Add invoice lines
+        for (const line of lines) {
+          await connection.execute(`
+            INSERT INTO sales_invoice_lines (
+              invoice_id, so_line_id, item_id, item_name, quantity, unit_price, line_total,
+              tax_rate, tax_amount, discount_rate, discount_amount
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            invoiceId, line.id, line.item_id, line.item_name, line.quantity_ordered,
+            line.unit_price, line.quantity_ordered * line.unit_price, 0, 0, 0, 0
+          ]);
+        }
+
         logger.info('SO confirmation processed successfully', {
           soId,
           soNumber: so.so_number,
           shipmentNumber,
-          warehouseId: so.warehouse_id,
+          invoiceNumber,
           totalLines: lines.length,
           institutionId,
           userId
@@ -111,6 +154,7 @@ class SOConfirmationService {
         return {
           success: true,
           shipmentNumber,
+          invoiceNumber,
           itemsProcessed: lines.length,
           warehouseUpdated: so.warehouse_name || so.warehouse_id
         };

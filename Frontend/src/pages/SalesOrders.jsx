@@ -180,13 +180,19 @@ const SalesOrders = () => {
 
   const confirmSO = async (so) => {
     try {
-      await apiService.put(`/sales-orders/${so.id}/status`, {
+      const response = await apiService.put(`/sales-orders/${so.id}/status`, {
         status: "confirmed",
       });
-      message.success("Sales order confirmed");
+      
+      if (response.success && response.data?.invoiceNumber) {
+        message.success(`Sales order confirmed and invoice ${response.data.invoiceNumber} generated`);
+      } else {
+        message.success("Sales order confirmed");
+      }
+      
       fetchData();
     } catch (error) {
-      message.error("Failed to confirm sales order");
+      message.error(error.response?.data?.error || "Failed to confirm sales order");
     }
   };
 
