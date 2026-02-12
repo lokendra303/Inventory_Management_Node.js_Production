@@ -9,7 +9,6 @@ class PurchaseOrderService {
       poNumber,
       vendorId,
       vendorName,
-      warehouseId,
       currency = 'USD',
       exchangeRate = 1.0,
       orderDate,
@@ -23,23 +22,18 @@ class PurchaseOrderService {
 
     try {
       await db.transaction(async (connection) => {
-        // Validate required fields
         if (!institutionId) throw new Error('institutionId is required');
         if (!poNumber) throw new Error('poNumber is required');
         if (!vendorName) throw new Error('vendorName is required');
-        if (!warehouseId) throw new Error('warehouseId is required');
         
-        // Validate and format dates
         let formattedOrderDate = orderDate;
         let formattedExpectedDate = expectedDate;
         
-        // If orderDate is missing or invalid, use current date
         if (!orderDate || typeof orderDate === 'object' || orderDate === '{}') {
           formattedOrderDate = new Date().toISOString().split('T')[0];
         } else if (orderDate instanceof Date) {
           formattedOrderDate = orderDate.toISOString().split('T')[0];
         } else if (typeof orderDate === 'string' && orderDate.trim()) {
-          // Validate date format
           const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
           if (!dateRegex.test(orderDate)) {
             throw new Error('orderDate must be in YYYY-MM-DD format');
@@ -49,7 +43,6 @@ class PurchaseOrderService {
           formattedOrderDate = new Date().toISOString().split('T')[0];
         }
         
-        // Format expected date if provided
         if (expectedDate && typeof expectedDate === 'object' && expectedDate !== null) {
           formattedExpectedDate = null;
         } else if (expectedDate instanceof Date) {
@@ -63,26 +56,27 @@ class PurchaseOrderService {
           }
         }
         
-        // Create PO header with null created_by if userId is invalid
         const createdBy = userId || null;
         
         await connection.execute(
           `INSERT INTO purchase_orders 
-           (id, institution_id, po_number, vendor_id, vendor_name, warehouse_id, currency, exchange_rate, 
+           (id, institution_id, po_number, vendor_id, vendor_name, currency, exchange_rate, 
             order_date, expected_date, notes, created_by, status) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
-          [poId, institutionId, poNumber, vendorId || null, vendorName, warehouseId, currency, exchangeRate, 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+          [poId, institutionId, poNumber, vendorId || null, vendorName, currency, exchangeRate, 
            formattedOrderDate, formattedExpectedDate, notes || null, createdBy]
         );
 
-        // Create PO lines
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
+          if (!line.warehouseId) {
+            throw new Error('Warehouse is required for each line item');
+          }
+          
           const lineId = uuidv4();
           const lineTotal = line.quantity * line.unitCost;
           subtotal += lineTotal;
 
-          // Format line expected date
           let lineExpectedDate = line.expectedDate || formattedExpectedDate || null;
           if (lineExpectedDate && typeof lineExpectedDate === 'object') {
             lineExpectedDate = null;
@@ -90,20 +84,19 @@ class PurchaseOrderService {
           
           await connection.execute(
             `INSERT INTO purchase_order_lines 
-             (id, institution_id, po_id, item_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, poId, line.itemId, i + 1, line.quantity, line.unitCost, lineTotal, lineExpectedDate]
+             (id, institution_id, po_id, item_id, warehouse_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, poId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitCost, lineTotal, lineExpectedDate]
           );
         }
 
-        // Update PO totals
         await connection.execute(
           'UPDATE purchase_orders SET subtotal = ?, total_amount = ? WHERE id = ?',
           [subtotal, subtotal, poId]
         );
       });
 
-      logger.info('Purchase order created', { poId, institutionId, poNumber, userId });
+      logger.info('Multi-warehouse purchase order created', { poId, institutionId, poNumber, userId });
       return poId;
     } catch (error) {
       logger.error('Failed to create purchase order', { institutionId, poNumber, error: error.message });
@@ -112,32 +105,14 @@ class PurchaseOrderService {
   }
 
   async createGRN(institutionId, grnData, userId) {
-    console.log('=== GRN SERVICE DEBUG ===');
-    console.log('institutionId:', institutionId);
-    console.log('grnData:', JSON.stringify(grnData, null, 2));
-    console.log('userId:', userId);
-    console.log('grnData.poId:', grnData.poId);
-    console.log('typeof grnData.poId:', typeof grnData.poId);
-    console.log('=========================');
+    const { grnNumber, poId, receiptDate, lines, notes } = grnData;
 
-    const {
-      grnNumber,
-      poId,
-      warehouseId,
-      receiptDate,
-      lines,
-      notes
-    } = grnData;
-
-    // Validate required parameters
     if (!institutionId) throw new Error('institutionId is required');
     if (!poId) throw new Error(`poId is required. Received: ${poId}`);
-    if (!warehouseId) throw new Error(`warehouseId is required. Received: ${warehouseId}`);
     if (!lines || !Array.isArray(lines) || lines.length === 0) {
       throw new Error('lines array is required and must not be empty');
     }
     
-    // Validate and format receipt date
     let formattedReceiptDate = receiptDate;
     if (!receiptDate || typeof receiptDate === 'object' || receiptDate === '{}') {
       formattedReceiptDate = new Date().toISOString().split('T')[0];
@@ -149,49 +124,22 @@ class PurchaseOrderService {
       formattedReceiptDate = new Date().toISOString().split('T')[0];
     }
     
-    // userId can be null, but we'll use it if provided
     const receivedBy = userId || null;
-
     const grnId = uuidv4();
 
     try {
       await db.transaction(async (connection) => {
-        // Create GRN header
-        const grnParams = [
-          grnId, 
-          institutionId, 
-          grnNumber || `GRN-${Date.now()}`, 
-          poId, 
-          warehouseId, 
-          formattedReceiptDate, 
-          receivedBy, 
-          notes || null
-        ];
-        
-        console.log('GRN header params:', JSON.stringify(grnParams, null, 2));
-        
-        // Check for undefined values
-        grnParams.forEach((param, index) => {
-          if (param === undefined) {
-            console.error(`Parameter at index ${index} is undefined`);
-            throw new Error(`Parameter at index ${index} is undefined`);
-          }
-        });
-        
         await connection.execute(
           `INSERT INTO goods_receipt_notes 
-           (id, institution_id, grn_number, po_id, warehouse_id, receipt_date, received_by, notes, status) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
-          grnParams
+           (id, institution_id, grn_number, po_id, receipt_date, received_by, notes, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
+          [grnId, institutionId, grnNumber || `GRN-${Date.now()}`, poId, formattedReceiptDate, receivedBy, notes || null]
         );
 
-        // Process each GRN line
         for (const line of lines) {
-          console.log('Processing line:', JSON.stringify(line, null, 2));
-          
-          // Validate line data
           if (!line.itemId) throw new Error('line.itemId is required');
           if (!line.poLineId) throw new Error('line.poLineId is required');
+          if (!line.warehouseId) throw new Error('line.warehouseId is required');
           if (line.quantityReceived === undefined || line.quantityReceived === null) {
             throw new Error('line.quantityReceived is required');
           }
@@ -202,37 +150,13 @@ class PurchaseOrderService {
           const grnLineId = uuidv4();
           const lineTotal = line.quantityReceived * line.unitCost;
 
-          const lineParams = [
-            grnLineId, 
-            institutionId, 
-            grnId, 
-            line.poLineId, 
-            line.itemId, 
-            line.quantityReceived, 
-            line.unitCost, 
-            lineTotal, 
-            line.qualityStatus || 'accepted'
-          ];
-          
-          console.log('GRN line params:', JSON.stringify(lineParams, null, 2));
-          
-          // Check for undefined values
-          lineParams.forEach((param, index) => {
-            if (param === undefined) {
-              console.error(`Line parameter at index ${index} is undefined`);
-              throw new Error(`Line parameter at index ${index} is undefined`);
-            }
-          });
-
-          // Create GRN line
           await connection.execute(
             `INSERT INTO grn_lines 
              (id, institution_id, grn_id, po_line_id, item_id, quantity_received, unit_cost, line_total, quality_status) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            lineParams
+            [grnLineId, institutionId, grnId, line.poLineId, line.itemId, line.quantityReceived, line.unitCost, lineTotal, line.qualityStatus || 'accepted']
           );
 
-          // Update PO line received quantity
           await connection.execute(
             `UPDATE purchase_order_lines 
              SET quantity_received = quantity_received + ?, 
@@ -246,11 +170,10 @@ class PurchaseOrderService {
             [line.quantityReceived, line.quantityReceived, line.quantityReceived, line.poLineId]
           );
 
-          // Create inventory event for accepted items
           if (line.qualityStatus === 'accepted' || !line.qualityStatus) {
             await inventoryService.receiveStock(institutionId, {
               itemId: line.itemId,
-              warehouseId,
+              warehouseId: line.warehouseId,
               quantity: Number(line.quantityReceived),
               unitCost: Number(line.unitCost),
               poId,
@@ -260,7 +183,6 @@ class PurchaseOrderService {
           }
         }
 
-        // Update PO status based on line statuses
         const [poLines] = await connection.execute(
           'SELECT status FROM purchase_order_lines WHERE po_id = ?',
           [poId]
@@ -275,7 +197,6 @@ class PurchaseOrderService {
         } else if (anyReceived) {
           poStatus = 'partially_received';
         } else {
-          // If no items received yet, keep current status (could be 'confirmed' or 'sent')
           const [currentPO] = await connection.execute(
             'SELECT status FROM purchase_orders WHERE id = ?',
             [poId]
@@ -354,17 +275,16 @@ class PurchaseOrderService {
 
     const po = pos[0];
 
-    // Get PO lines
     const lines = await db.query(
-      `SELECT pol.*, i.sku, i.name as item_name, i.unit
+      `SELECT pol.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
        FROM purchase_order_lines pol
        JOIN items i ON pol.item_id = i.id
+       LEFT JOIN warehouses w ON pol.warehouse_id = w.id
        WHERE pol.institution_id = ? AND pol.po_id = ?
        ORDER BY pol.line_number`,
       [institutionId, poId]
     );
 
-    // Get GRNs
     const grns = await db.query(
       `SELECT grn.*, COUNT(gl.id) as line_count
        FROM goods_receipt_notes grn

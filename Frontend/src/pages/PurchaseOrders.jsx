@@ -17,8 +17,27 @@ const PurchaseOrders = () => {
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedPO, setSelectedPO] = useState(null);
   const [selectedPOForView, setSelectedPOForView] = useState(null);
+  const [allItemStocks, setAllItemStocks] = useState({});
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
+
+  const fetchAllStocks = async () => {
+    try {
+      const response = await apiService.get('/inventory');
+      if (response.success) {
+        const stockByItemAndWarehouse = {};
+        response.data.forEach((inv) => {
+          if (!stockByItemAndWarehouse[inv.item_id]) {
+            stockByItemAndWarehouse[inv.item_id] = {};
+          }
+          stockByItemAndWarehouse[inv.item_id][inv.warehouse_id] = inv.quantity_available || 0;
+        });
+        setAllItemStocks(stockByItemAndWarehouse);
+      }
+    } catch (error) {
+      console.error('Failed to fetch stock', error);
+    }
+  };
 
   const columns = [
     { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
@@ -187,23 +206,12 @@ const PurchaseOrders = () => {
 
   const receivePO = async (po) => {
     try {
-      console.log('Original PO object:', po);
-      // Fetch PO details with lines
       const response = await apiService.get(`/purchase-orders/${po.id}`);
-      console.log('API response:', response);
       
       if (response.success) {
         const poData = response.data;
-        console.log('PO data from API:', poData);
+        const completePO = { ...poData, id: poData.id || po.id };
         
-        // Ensure we have the PO id and warehouse_id from the original po object if missing from response
-        const completePO = {
-          ...poData,
-          id: poData.id || po.id,
-          warehouse_id: poData.warehouse_id || po.warehouse_id
-        };
-        
-        console.log('Complete PO object:', completePO);
         setSelectedPO(completePO);
         
         receiveForm.setFieldsValue({
@@ -212,7 +220,9 @@ const PurchaseOrders = () => {
           lines: completePO.lines?.map(line => ({
             poLineId: line.id,
             itemId: line.item_id,
+            warehouseId: line.warehouse_id,
             itemName: line.item_name,
+            warehouseName: line.warehouse_name,
             quantityOrdered: line.quantity_ordered,
             quantityReceived: line.quantity_ordered - (line.quantity_received || 0),
             unitCost: line.unit_cost
@@ -228,17 +238,9 @@ const PurchaseOrders = () => {
 
   const handleReceiveGoods = async (values) => {
     try {
-      console.log('Form values:', values);
-      console.log('Selected PO:', selectedPO);
-      
-      // Get PO data from the table if selectedPO is incomplete
-      const currentPO = pos.find(p => p.id === selectedPO?.id) || selectedPO;
-      console.log('Current PO from table:', currentPO);
-      
       const grnData = {
         grnNumber: values.grnNumber,
-        poId: currentPO?.id || selectedPO?.id,
-        warehouseId: currentPO?.warehouse_id || selectedPO?.warehouse_id,
+        poId: selectedPO?.id,
         receiptDate: values.receiptDate,
         notes: values.notes,
         lines: (values.lines || []).map(line => ({
@@ -247,8 +249,6 @@ const PurchaseOrders = () => {
           unitCost: Number(line.unitCost)
         }))
       };
-      
-      console.log('Sending GRN data:', grnData);
 
       const response = await apiService.post('/grn', grnData);
       
@@ -258,15 +258,17 @@ const PurchaseOrders = () => {
         receiveForm.resetFields();
         setSelectedPO(null);
         fetchData();
+        fetchAllStocks();
       }
     } catch (error) {
       console.error('GRN creation error:', error);
-      message.error('Failed to receive goods');
+      message.error(error.response?.data?.error || 'Failed to receive goods');
     }
   };
 
   useEffect(() => {
     fetchData();
+    fetchAllStocks();
   }, []);
 
   return (
@@ -316,14 +318,6 @@ const PurchaseOrders = () => {
             </Select>
           </Form.Item>
           
-          <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
-            <Select placeholder="Select warehouse">
-              {warehouses.filter(wh => wh.status === 'active').map(wh => (
-                <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          
           <Form.Item name="currency" label="Currency" initialValue="USD">
             <Select placeholder="Select currency">
               <Select.Option value="USD">USD</Select.Option>
@@ -344,38 +338,157 @@ const PurchaseOrders = () => {
           <Form.List name="lines">
             {(fields, { add, remove }) => (
               <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'itemId']}
-                      rules={[{ required: true, message: 'Select item' }]}
-                    >
-                      <Select placeholder="Select item" style={{ width: 200 }}>
-                        {items.filter(item => item.status === 'active').map(item => (
-                          <Select.Option key={item.id} value={item.id}>
-                            {item.name} ({item.sku})
-                          </Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'quantity']}
-                      rules={[{ required: true, message: 'Enter quantity' }]}
-                    >
-                      <InputNumber placeholder="Quantity" min={1} />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'unitCost']}
-                      rules={[{ required: true, message: 'Enter unit cost' }]}
-                    >
-                      <InputNumber placeholder="Unit Cost" min={0} step={0.01} />
-                    </Form.Item>
-                    <Button onClick={() => remove(name)}>Remove</Button>
-                  </Space>
-                ))}
+                {fields.map(({ key, name, ...restField }) => {
+                  const selectedItemId = form.getFieldValue(['lines', name, 'itemId']);
+                  const selectedWarehouseId = form.getFieldValue(['lines', name, 'warehouseId']);
+                  const allLines = form.getFieldValue('lines') || [];
+
+                  const allocatedStock = {};
+                  allLines.forEach((line, idx) => {
+                    if (idx !== name && line?.itemId && line?.warehouseId && line?.quantity) {
+                      const key = `${line.itemId}_${line.warehouseId}`;
+                      allocatedStock[key] = (allocatedStock[key] || 0) + line.quantity;
+                    }
+                  });
+
+                  const availableWarehouses = selectedItemId
+                    ? warehouses.filter(wh => wh.status === 'active')
+                    : warehouses.filter(wh => wh.status === 'active');
+
+                  const availableItems = selectedWarehouseId
+                    ? items.filter(item => item.status === 'active')
+                    : items.filter(item => item.status === 'active');
+
+                  const currentStock = selectedItemId && selectedWarehouseId
+                    ? allItemStocks[selectedItemId]?.[selectedWarehouseId] || 0
+                    : 0;
+
+                  return (
+                    <div key={key} style={{ marginBottom: 16, padding: 16, border: '1px solid #d9d9d9', borderRadius: 4, backgroundColor: '#fafafa' }}>
+                      <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Space align="start" style={{ width: '100%', flexWrap: 'wrap' }}>
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'itemId']}
+                            label="Item"
+                            rules={[{ required: true, message: 'Select item' }]}
+                            style={{ marginBottom: 0, minWidth: 250, flex: 1 }}
+                          >
+                            <Select
+                              placeholder="Select item"
+                              showSearch
+                              optionLabelProp="label"
+                              filterOption={(input, option) => {
+                                const label = option.label || '';
+                                return label.toLowerCase().includes(input.toLowerCase());
+                              }}
+                              dropdownStyle={{ minWidth: 350 }}
+                              onChange={(itemId) => {
+                                const selectedItem = items.find(i => i.id === itemId);
+                                if (selectedItem) {
+                                  const lines = form.getFieldValue('lines') || [];
+                                  lines[name] = { ...lines[name], unitCost: selectedItem.cost_price || 0 };
+                                  form.setFieldsValue({ lines });
+                                }
+                              }}
+                            >
+                              {availableItems.map(item => {
+                                let available = 0;
+                                if (selectedWarehouseId) {
+                                  available = allItemStocks[item.id]?.[selectedWarehouseId] || 0;
+                                } else {
+                                  available = Object.values(allItemStocks[item.id] || {}).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                                }
+                                return (
+                                  <Select.Option key={item.id} value={item.id} label={`${item.name} (${item.sku})`}>
+                                    <div>
+                                      <strong>{item.name}</strong> ({item.sku})<br />
+                                      <span style={{ fontSize: '12px', color: '#1890ff' }}>
+                                        Current Stock: {available} {!selectedWarehouseId && '(all warehouses)'}
+                                      </span>
+                                    </div>
+                                  </Select.Option>
+                                );
+                              })}
+                            </Select>
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'warehouseId']}
+                            label="Warehouse"
+                            rules={[{ required: true, message: 'Select warehouse' }]}
+                            style={{ marginBottom: 0, minWidth: 250, flex: 1 }}
+                          >
+                            <Select placeholder="Select warehouse" showSearch optionLabelProp="label" optionFilterProp="label" dropdownStyle={{ minWidth: 300 }}>
+                              {availableWarehouses.map(wh => {
+                                const stock = allItemStocks[selectedItemId]?.[wh.id] || 0;
+                                return (
+                                  <Select.Option key={wh.id} value={wh.id} label={wh.name}>
+                                    <div>
+                                      <strong>{wh.name}</strong>
+                                      {selectedItemId && (
+                                        <>
+                                          <br />
+                                          <span style={{ fontSize: '12px', color: '#1890ff' }}>
+                                            Current Stock: {stock} units
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </Select.Option>
+                                );
+                              })}
+                            </Select>
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'quantity']}
+                            label="Quantity"
+                            rules={[{ required: true, message: 'Enter qty' }]}
+                            style={{ marginBottom: 0, width: 100 }}
+                          >
+                            <InputNumber
+                              placeholder="Qty"
+                              min={1}
+                              style={{ width: '100%' }}
+                              onChange={() => form.setFieldsValue({})}
+                            />
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'unitCost']}
+                            label="Unit Cost"
+                            rules={[{ required: true, message: 'Enter cost' }]}
+                            style={{ marginBottom: 0, width: 120 }}
+                          >
+                            <InputNumber placeholder="Cost" min={0} step={0.01} style={{ width: '100%' }} />
+                          </Form.Item>
+
+                          <Form.Item label=" " style={{ marginBottom: 0 }}>
+                            <Button onClick={() => remove(name)} danger>Remove</Button>
+                          </Form.Item>
+                        </Space>
+
+                        {selectedItemId && selectedWarehouseId && (
+                          <div style={{ padding: '8px 12px', backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 4 }}>
+                            <span style={{ fontSize: '13px', color: '#0050b3' }}>
+                              ℹ️ <strong>{items.find(i => i.id === selectedItemId)?.name}</strong> at <strong>{warehouses.find(w => w.id === selectedWarehouseId)?.name}</strong>:
+                              <strong style={{ color: '#1890ff', marginLeft: 4 }}>Current: {parseFloat(currentStock).toFixed(2)} units</strong>
+                              {form.getFieldValue(['lines', name, 'quantity']) && (
+                                <span style={{ color: '#52c41a', marginLeft: 4 }}>
+                                  → After receiving: {(parseFloat(currentStock) + parseFloat(form.getFieldValue(['lines', name, 'quantity']) || 0)).toFixed(2)} units
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </Space>
+                    </div>
+                  );
+                })}
                 <Form.Item>
                   <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
                     Add Line Item
@@ -441,9 +554,19 @@ const PurchaseOrders = () => {
                       <Input />
                     </Form.Item>
                     
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: '16px', alignItems: 'end' }}>
+                    <Form.Item name={[name, 'warehouseId']} hidden>
+                      <Input />
+                    </Form.Item>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', gap: '16px', alignItems: 'end' }}>
                       <Form.Item label="Item">
                         <Form.Item name={[name, 'itemName']} noStyle>
+                          <Input disabled />
+                        </Form.Item>
+                      </Form.Item>
+                      
+                      <Form.Item label="Warehouse">
+                        <Form.Item name={[name, 'warehouseName']} noStyle>
                           <Input disabled />
                         </Form.Item>
                       </Form.Item>
@@ -542,6 +665,7 @@ const PurchaseOrders = () => {
               columns={[
                 { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
                 { title: 'SKU', dataIndex: 'sku', key: 'sku' },
+                { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
                 { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered' },
                 { title: 'Received', dataIndex: 'quantity_received', key: 'quantity_received', render: (val) => val || 0 },
                 { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', render: (val) => `${selectedPOForView.currency} ${val}` },
