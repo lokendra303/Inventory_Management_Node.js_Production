@@ -179,10 +179,21 @@ const createSalesOrderSchema = Joi.object({
   orderDate: Joi.date().required(),
   expectedShipDate: Joi.date().optional(),
   notes: Joi.string().optional(),
+  customerAddress: Joi.object({
+    street: Joi.string().optional(),
+    city: Joi.string().optional(),
+    state: Joi.string().optional(),
+    zip: Joi.string().optional(),
+    country: Joi.string().optional(),
+    latitude: Joi.number().optional(),
+    longitude: Joi.number().optional()
+  }).optional(),
+  shippingMethod: Joi.string().valid('standard', 'express', 'overnight').default('standard'),
   lines: Joi.array().items(Joi.object({
     itemId,
     quantity: quantity,
-    unitPrice: unitPrice
+    unitPrice: unitPrice,
+    weight: Joi.number().positive().optional()
   })).min(1).required()
 }).unknown(true);
 

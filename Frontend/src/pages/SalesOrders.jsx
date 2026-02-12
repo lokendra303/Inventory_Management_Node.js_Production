@@ -1,9 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
-import apiService from '../services/apiService';
-import { useCurrency } from '../contexts/CurrencyContext.jsx';
-import { formatPrice } from '../utils/currency';
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  Table,
+  Button,
+  Space,
+  Modal,
+  Form,
+  Input,
+  Select,
+  InputNumber,
+  message,
+  DatePicker,
+} from "antd";
+import { PlusOutlined } from "@ant-design/icons";
+import apiService from "../services/apiService";
+import { useCurrency } from "../contexts/CurrencyContext.jsx";
+import { formatPrice } from "../utils/currency";
 
 const SalesOrders = () => {
   const { currency } = useCurrency();
@@ -15,64 +27,113 @@ const SalesOrders = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedSOForView, setSelectedSOForView] = useState(null);
+  const [allItemStocks, setAllItemStocks] = useState({});
   const [form] = Form.useForm();
 
+  const fetchAllStocks = async () => {
+    try {
+      const response = await apiService.get("/inventory");
+      if (response.success) {
+        const stockByItemAndWarehouse = {};
+        response.data.forEach((inv) => {
+          if (!stockByItemAndWarehouse[inv.item_id]) {
+            stockByItemAndWarehouse[inv.item_id] = {};
+          }
+          stockByItemAndWarehouse[inv.item_id][inv.warehouse_id] =
+            inv.quantity_available || 0;
+        });
+        setAllItemStocks(stockByItemAndWarehouse);
+        console.log("Stock data loaded:", stockByItemAndWarehouse);
+      }
+    } catch (error) {
+      console.error("Failed to fetch stock", error);
+    }
+  };
+
   const columns = [
-    { title: 'SO Number', dataIndex: 'so_number', key: 'so_number' },
-    { title: 'Customer', dataIndex: 'customer_name', key: 'customer_name' },
-    { 
-      title: 'Status', 
-      dataIndex: 'status', 
-      key: 'status',
+    { title: "SO Number", dataIndex: "so_number", key: "so_number" },
+    { title: "Customer", dataIndex: "customer_name", key: "customer_name" },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
       render: (status) => {
         const colors = {
-          draft: 'gray',
-          confirmed: 'blue',
-          shipped: 'green',
-          delivered: 'green',
-          cancelled: 'red'
+          draft: "gray",
+          confirmed: "blue",
+          shipped: "green",
+          delivered: "green",
+          cancelled: "red",
         };
-        return <span style={{ color: colors[status] || 'black' }}>{status?.toUpperCase()}</span>;
-      }
+        return (
+          <span style={{ color: colors[status] || "black" }}>
+            {status?.toUpperCase()}
+          </span>
+        );
+      },
     },
-    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val, record) => formatPrice(val, currency, record.currency || 'USD') },
-    { title: 'Order Date', dataIndex: 'order_date', key: 'order_date' },
     {
-      title: 'Actions',
-      key: 'actions',
+      title: "Total",
+      dataIndex: "total_amount",
+      key: "total_amount",
+      render: (val, record) =>
+        formatPrice(val, currency, record.currency || "USD"),
+    },
+    { title: "Order Date", dataIndex: "order_date", key: "order_date" },
+    {
+      title: "Actions",
+      key: "actions",
       render: (_, record) => (
         <Space>
-          <Button size="small" onClick={() => viewSO(record)}>View</Button>
-          {record.status === 'draft' && (
-            <Button size="small" type="primary" onClick={() => confirmSO(record)}>Confirm</Button>
+          <Button size="small" onClick={() => viewSO(record)}>
+            View
+          </Button>
+          {record.status === "draft" && (
+            <Button
+              size="small"
+              type="primary"
+              onClick={() => confirmSO(record)}
+            >
+              Confirm
+            </Button>
           )}
-          {record.status === 'confirmed' && (
-            <Button size="small" onClick={() => shipSO(record)}>Ship</Button>
+          {record.status === "confirmed" && (
+            <Button size="small" onClick={() => shipSO(record)}>
+              Ship
+            </Button>
           )}
-          {record.status === 'draft' && (
-            <Button size="small" danger onClick={() => cancelSO(record)}>Cancel</Button>
+          {record.status === "draft" && (
+            <Button size="small" danger onClick={() => cancelSO(record)}>
+              Cancel
+            </Button>
           )}
         </Space>
-      )
-    }
+      ),
+    },
   ];
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [sosRes, customersRes, warehousesRes, itemsRes] = await Promise.all([
-        apiService.get('/sales-orders').catch(() => ({ success: false, data: [] })),
-        apiService.get('/customers').catch(() => ({ success: false, data: [] })),
-        apiService.get('/warehouses'),
-        apiService.get('/items')
-      ]);
-      
+      const [sosRes, customersRes, warehousesRes, itemsRes] = await Promise.all(
+        [
+          apiService
+            .get("/sales-orders")
+            .catch(() => ({ success: false, data: [] })),
+          apiService
+            .get("/customers")
+            .catch(() => ({ success: false, data: [] })),
+          apiService.get("/warehouses"),
+          apiService.get("/items"),
+        ],
+      );
+
       setSOs(sosRes.success ? sosRes.data : []);
       setCustomers(customersRes.success ? customersRes.data : []);
       setWarehouses(warehousesRes.success ? warehousesRes.data : []);
       setItems(itemsRes.success ? itemsRes.data : []);
     } catch (error) {
-      message.error('Failed to fetch data');
+      message.error("Failed to fetch data");
     } finally {
       setLoading(false);
     }
@@ -81,56 +142,71 @@ const SalesOrders = () => {
   const handleCreateSO = async (values) => {
     try {
       // Get selected customer details
-      const selectedCustomer = customers.find(c => c.id === values.customerId);
-      
+      const selectedCustomer = customers.find(
+        (c) => c.id === values.customerId,
+      );
+
       const soData = {
         ...values,
-        customerName: selectedCustomer?.display_name || selectedCustomer?.company_name || 'Unknown Customer',
-        orderDate: values.orderDate.format('YYYY-MM-DD'),
-        expectedShipDate: values.expectedShipDate?.format('YYYY-MM-DD'),
-        lines: values.lines || []
+        customerName:
+          selectedCustomer?.display_name ||
+          selectedCustomer?.company_name ||
+          "Unknown Customer",
+        orderDate: values.orderDate.format("YYYY-MM-DD"),
+        expectedShipDate: values.expectedShipDate?.format("YYYY-MM-DD"),
+        lines: values.lines || [],
       };
 
-      const response = await apiService.post('/sales-orders', soData);
-      
+      const response = await apiService.post("/sales-orders", soData);
+
       if (response.success) {
-        message.success('Sales order created successfully');
+        message.success("Sales order created successfully");
         setModalVisible(false);
         form.resetFields();
         fetchData();
       }
     } catch (error) {
-      message.error('Failed to create sales order');
+      const errorMsg =
+        error.response?.data?.error ||
+        error.message ||
+        "Failed to create sales order";
+      message.error(errorMsg);
     }
   };
 
   const confirmSO = async (so) => {
     try {
-      await apiService.put(`/sales-orders/${so.id}/status`, { status: 'confirmed' });
-      message.success('Sales order confirmed');
+      await apiService.put(`/sales-orders/${so.id}/status`, {
+        status: "confirmed",
+      });
+      message.success("Sales order confirmed");
       fetchData();
     } catch (error) {
-      message.error('Failed to confirm sales order');
+      message.error("Failed to confirm sales order");
     }
   };
 
   const shipSO = async (so) => {
     try {
-      await apiService.put(`/sales-orders/${so.id}/status`, { status: 'shipped' });
-      message.success('Sales order shipped');
+      await apiService.put(`/sales-orders/${so.id}/status`, {
+        status: "shipped",
+      });
+      message.success("Sales order shipped");
       fetchData();
     } catch (error) {
-      message.error('Failed to ship sales order');
+      message.error("Failed to ship sales order");
     }
   };
 
   const cancelSO = async (so) => {
     try {
-      await apiService.put(`/sales-orders/${so.id}/status`, { status: 'cancelled' });
-      message.success('Sales order cancelled');
+      await apiService.put(`/sales-orders/${so.id}/status`, {
+        status: "cancelled",
+      });
+      message.success("Sales order cancelled");
       fetchData();
     } catch (error) {
-      message.error('Failed to cancel sales order');
+      message.error("Failed to cancel sales order");
     }
   };
 
@@ -142,30 +218,31 @@ const SalesOrders = () => {
         setViewModalVisible(true);
       }
     } catch (error) {
-      message.error('Failed to load SO details');
+      message.error("Failed to load SO details");
     }
   };
 
   useEffect(() => {
     fetchData();
+    fetchAllStocks();
   }, []);
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: "24px" }}>
       <h1>Sales Orders</h1>
       <Card>
         <Space style={{ marginBottom: 16 }}>
-          <Button 
-            type="primary" 
+          <Button
+            type="primary"
             icon={<PlusOutlined />}
             onClick={() => setModalVisible(true)}
           >
             Create SO
           </Button>
         </Space>
-        <Table 
-          columns={columns} 
-          dataSource={sos} 
+        <Table
+          columns={columns}
+          dataSource={sos}
           loading={loading}
           rowKey="id"
         />
@@ -178,33 +255,36 @@ const SalesOrders = () => {
         footer={null}
         width={800}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleCreateSO}
-        >
-          <Form.Item name="soNumber" label="SO Number" rules={[{ required: true }]}>
+        <Form form={form} layout="vertical" onFinish={handleCreateSO}>
+          <Form.Item
+            name="soNumber"
+            label="SO Number"
+            rules={[{ required: true }]}
+          >
             <Input placeholder="Enter SO number" />
           </Form.Item>
-          
-          <Form.Item name="customerId" label="Customer" rules={[{ required: true }]}>
-            <Select placeholder="Select customer" showSearch optionFilterProp="children">
-              {customers.filter(customer => customer.status === 'active').map(customer => (
-                <Select.Option key={customer.id} value={customer.id}>
-                  {customer.display_name} {customer.company_name && `- ${customer.company_name}`}
-                </Select.Option>
-              ))}
+
+          <Form.Item
+            name="customerId"
+            label="Customer"
+            rules={[{ required: true }]}
+          >
+            <Select
+              placeholder="Select customer"
+              showSearch
+              optionFilterProp="children"
+            >
+              {customers
+                .filter((customer) => customer.status === "active")
+                .map((customer) => (
+                  <Select.Option key={customer.id} value={customer.id}>
+                    {customer.display_name}{" "}
+                    {customer.company_name && `- ${customer.company_name}`}
+                  </Select.Option>
+                ))}
             </Select>
           </Form.Item>
-          
-          <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
-            <Select placeholder="Select warehouse">
-              {warehouses.filter(wh => wh.status === 'active').map(wh => (
-                <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          
+
           <Form.Item name="currency" label="Currency" initialValue="USD">
             <Select placeholder="Select currency">
               <Select.Option value="USD">USD</Select.Option>
@@ -213,7 +293,7 @@ const SalesOrders = () => {
               <Select.Option value="INR">INR</Select.Option>
             </Select>
           </Form.Item>
-          
+
           <Form.Item name="channel" label="Sales Channel" initialValue="direct">
             <Select placeholder="Select channel">
               <Select.Option value="direct">Direct</Select.Option>
@@ -222,67 +302,392 @@ const SalesOrders = () => {
               <Select.Option value="wholesale">Wholesale</Select.Option>
             </Select>
           </Form.Item>
-          
-          <Form.Item name="orderDate" label="Order Date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+
+          <Form.Item
+            name="orderDate"
+            label="Order Date"
+            rules={[{ required: true }]}
+          >
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
-          
+
           <Form.Item name="expectedShipDate" label="Expected Ship Date">
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
 
           <Form.List name="lines">
             {(fields, { add, remove }) => (
               <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'itemId']}
-                      rules={[{ required: true, message: 'Select item' }]}
+                {fields.map(({ key, name, ...restField }) => {
+                  const selectedItemId = form.getFieldValue([
+                    "lines",
+                    name,
+                    "itemId",
+                  ]);
+                  const selectedWarehouseId = form.getFieldValue([
+                    "lines",
+                    name,
+                    "warehouseId",
+                  ]);
+                  const allLines = form.getFieldValue("lines") || [];
+
+                  // Calculate already allocated quantities per item-warehouse combination
+                  const allocatedStock = {};
+                  allLines.forEach((line, idx) => {
+                    if (
+                      idx !== name &&
+                      line?.itemId &&
+                      line?.warehouseId &&
+                      line?.quantity
+                    ) {
+                      const key = `${line.itemId}_${line.warehouseId}`;
+                      allocatedStock[key] =
+                        (allocatedStock[key] || 0) + line.quantity;
+                    }
+                  });
+
+                  // Filter warehouses that have the selected item in stock (after allocation)
+                  const availableWarehouses = selectedItemId
+                    ? warehouses.filter((wh) => {
+                        const totalStock =
+                          allItemStocks[selectedItemId]?.[wh.id] || 0;
+                        const allocated =
+                          allocatedStock[`${selectedItemId}_${wh.id}`] || 0;
+                        const available = totalStock - allocated;
+                        return wh.status === "active" && available > 0;
+                      })
+                    : warehouses.filter((wh) => wh.status === "active");
+
+                  // Filter items that are available in the selected warehouse (after allocation)
+                  const availableItems = selectedWarehouseId
+                    ? items.filter((item) => {
+                        const totalStock =
+                          allItemStocks[item.id]?.[selectedWarehouseId] || 0;
+                        const allocated =
+                          allocatedStock[`${item.id}_${selectedWarehouseId}`] ||
+                          0;
+                        const available = totalStock - allocated;
+                        return item.status === "active" && available > 0;
+                      })
+                    : items.filter((item) => item.status === "active");
+
+                  // Calculate available stock for current selection
+                  const currentTotalStock =
+                    selectedItemId && selectedWarehouseId
+                      ? allItemStocks[selectedItemId]?.[selectedWarehouseId] ||
+                        0
+                      : 0;
+                  const currentAllocated =
+                    selectedItemId && selectedWarehouseId
+                      ? allocatedStock[
+                          `${selectedItemId}_${selectedWarehouseId}`
+                        ] || 0
+                      : 0;
+                  const currentAvailable = currentTotalStock - currentAllocated;
+
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        marginBottom: 16,
+                        padding: 16,
+                        border: "1px solid #d9d9d9",
+                        borderRadius: 4,
+                        backgroundColor: "#fafafa",
+                      }}
                     >
-                      <Select placeholder="Select item" style={{ width: 200 }}>
-                        {items.filter(item => item.status === 'active').map(item => (
-                          <Select.Option key={item.id} value={item.id}>
-                            {item.name} ({item.sku})
-                          </Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'quantity']}
-                      rules={[{ required: true, message: 'Enter quantity' }]}
-                    >
-                      <InputNumber placeholder="Quantity" min={1} />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'unitPrice']}
-                      rules={[{ required: true, message: 'Enter unit price' }]}
-                    >
-                      <InputNumber placeholder="Unit Price" min={0} step={0.01} />
-                    </Form.Item>
-                    <Button onClick={() => remove(name)}>Remove</Button>
-                  </Space>
-                ))}
+                      <Space
+                        direction="vertical"
+                        style={{ width: "100%" }}
+                        size="small"
+                      >
+                        <Space
+                          align="start"
+                          style={{ width: "100%", flexWrap: "wrap" }}
+                        >
+                          <Form.Item
+                            {...restField}
+                            name={[name, "itemId"]}
+                            label="Item"
+                            rules={[{ required: true, message: "Select item" }]}
+                            style={{ marginBottom: 0, minWidth: 250, flex: 1 }}
+                          >
+                            <Select
+                              placeholder="Select item"
+                              showSearch
+                              optionLabelProp="label"
+                              filterOption={(input, option) => {
+                                const label = option.label || '';
+                                return label.toLowerCase().includes(input.toLowerCase());
+                              }}
+                              dropdownStyle={{ minWidth: 350 }}
+                              onChange={(itemId) => {
+                                const selectedItem = items.find(
+                                  (i) => i.id === itemId,
+                                );
+                                if (selectedItem) {
+                                  const lines =
+                                    form.getFieldValue("lines") || [];
+                                  lines[name] = {
+                                    ...lines[name],
+                                    unitPrice: selectedItem.selling_price || 0,
+                                  };
+                                  form.setFieldsValue({ lines });
+                                }
+                              }}
+                            >
+                              {availableItems.map((item) => {
+                                let available = 0;
+
+                                if (selectedWarehouseId) {
+                                  const totalStock =
+                                    allItemStocks[item.id]?.[
+                                      selectedWarehouseId
+                                    ] || 0;
+                                  const allocated =
+                                    allocatedStock[
+                                      `${item.id}_${selectedWarehouseId}`
+                                    ] || 0;
+                                  available = totalStock - allocated;
+                                } else {
+                                  // Show total across all warehouses
+                                  const totalStock = Object.values(
+                                    allItemStocks[item.id] || {},
+                                  ).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                                  const allocated = Object.keys(
+                                    allItemStocks[item.id] || {},
+                                  ).reduce((sum, whId) => {
+                                    return (
+                                      sum +
+                                      (allocatedStock[`${item.id}_${whId}`] ||
+                                        0)
+                                    );
+                                  }, 0);
+                                  available = totalStock - allocated;
+                                }
+
+                                return (
+                                  <Select.Option
+                                    key={item.id}
+                                    value={item.id}
+                                    label={`${item.name} (${item.sku})`}
+                                  >
+                                    <div>
+                                      <strong>{item.name}</strong> ({item.sku})
+                                      <br />
+                                      <span
+                                        style={{
+                                          fontSize: "12px",
+                                          color: available > 0 ? "#52c41a" : "#ff4d4f",
+                                        }}
+                                      >
+                                        Available: {available}{" "}
+                                        {!selectedWarehouseId &&
+                                          "(all warehouses)"}
+                                      </span>
+                                    </div>
+                                  </Select.Option>
+                                );
+                              })}
+                            </Select>
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
+                            name={[name, "warehouseId"]}
+                            label="Warehouse"
+                            rules={[
+                              { required: true, message: "Select warehouse" },
+                            ]}
+                            style={{ marginBottom: 0, minWidth: 250, flex: 1 }}
+                          >
+                            <Select
+                              placeholder="Select warehouse"
+                              showSearch
+                              optionLabelProp="label" // ✅ important
+                              optionFilterProp="label" // ✅ important
+                              dropdownStyle={{ minWidth: 300 }}
+                            >
+                              {availableWarehouses.map((wh) => {
+                                const totalStock =
+                                  allItemStocks[selectedItemId]?.[wh.id] || 0;
+
+                                const allocated =
+                                  allocatedStock[
+                                    `${selectedItemId}_${wh.id}`
+                                  ] || 0;
+
+                                const available = totalStock - allocated;
+
+                                return (
+                                  <Select.Option
+                                    key={wh.id}
+                                    value={wh.id}
+                                    label={wh.name} // 👈 This is what shows after selection
+                                  >
+                                    <div>
+                                      <strong>{wh.name}</strong>
+
+                                      {selectedItemId && (
+                                        <>
+                                          <br />
+                                          <span
+                                            style={{
+                                              fontSize: "12px",
+                                              color: "#52c41a",
+                                            }}
+                                          >
+                                            Available: {available} units
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </Select.Option>
+                                );
+                              })}
+                            </Select>
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
+                            name={[name, "quantity"]}
+                            label="Quantity"
+                            rules={[
+                              { required: true, message: "Enter qty" },
+                              {
+                                validator: (_, value) => {
+                                  if (
+                                    value &&
+                                    selectedItemId &&
+                                    selectedWarehouseId &&
+                                    value > currentAvailable
+                                  ) {
+                                    return Promise.reject(
+                                      `Only ${currentAvailable} available`,
+                                    );
+                                  }
+                                  return Promise.resolve();
+                                },
+                              },
+                            ]}
+                            style={{ marginBottom: 0, width: 100 }}
+                          >
+                            <InputNumber
+                              placeholder="Qty"
+                              min={1}
+                              max={currentAvailable || undefined}
+                              style={{ width: "100%" }}
+                              onChange={() => {
+                                // Trigger re-render to update stock calculations
+                                form.setFieldsValue({});
+                              }}
+                            />
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
+                            name={[name, "unitPrice"]}
+                            label="Unit Price"
+                            rules={[{ required: true, message: "Enter price" }]}
+                            style={{ marginBottom: 0, width: 120 }}
+                          >
+                            <InputNumber
+                              placeholder="Price"
+                              min={0}
+                              step={0.01}
+                              style={{ width: "100%" }}
+                            />
+                          </Form.Item>
+
+                          <Form.Item label=" " style={{ marginBottom: 0 }}>
+                            <Button onClick={() => remove(name)} danger>
+                              Remove
+                            </Button>
+                          </Form.Item>
+                        </Space>
+
+                        {selectedItemId && selectedWarehouseId && (
+                          <div
+                            style={{
+                              padding: "8px 12px",
+                              backgroundColor: "#e6f7ff",
+                              border: "1px solid #91d5ff",
+                              borderRadius: 4,
+                            }}
+                          >
+                            <span
+                              style={{ fontSize: "13px", color: "#0050b3" }}
+                            >
+                              ℹ️{" "}
+                              <strong>
+                                {
+                                  items.find((i) => i.id === selectedItemId)
+                                    ?.name
+                                }
+                              </strong>{" "}
+                              at{" "}
+                              <strong>
+                                {
+                                  warehouses.find(
+                                    (w) => w.id === selectedWarehouseId,
+                                  )?.name
+                                }
+                              </strong>
+                              :
+                              {form.getFieldValue([
+                                "lines",
+                                name,
+                                "quantity",
+                              ]) && (
+                                <span
+                                  style={{ color: "#1890ff", marginLeft: 4 }}
+                                >
+                                  {form.getFieldValue([
+                                    "lines",
+                                    name,
+                                    "quantity",
+                                  ])}{" "}
+                                  selected,
+                                </span>
+                              )}
+                              <strong
+                                style={{ color: "#52c41a", marginLeft: 4 }}
+                              >
+                                {currentAvailable -
+                                  (form.getFieldValue([
+                                    "lines",
+                                    name,
+                                    "quantity",
+                                  ]) || 0)}{" "}
+                                remaining
+                              </strong>
+                            </span>
+                          </div>
+                        )}
+                      </Space>
+                    </div>
+                  );
+                })}
                 <Form.Item>
-                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                  <Button
+                    type="dashed"
+                    onClick={() => add()}
+                    block
+                    icon={<PlusOutlined />}
+                  >
                     Add Line Item
                   </Button>
                 </Form.Item>
               </>
             )}
           </Form.List>
-          
+
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit">
                 Create Sales Order
               </Button>
-              <Button onClick={() => setModalVisible(false)}>
-                Cancel
-              </Button>
+              <Button onClick={() => setModalVisible(false)}>Cancel</Button>
             </Space>
           </Form.Item>
         </Form>
@@ -297,41 +702,82 @@ const SalesOrders = () => {
           setSelectedSOForView(null);
         }}
         footer={[
-          <Button key="close" onClick={() => {
-            setViewModalVisible(false);
-            setSelectedSOForView(null);
-          }}>
+          <Button
+            key="close"
+            onClick={() => {
+              setViewModalVisible(false);
+              setSelectedSOForView(null);
+            }}
+          >
             Close
-          </Button>
+          </Button>,
         ]}
         width={1000}
       >
         {selectedSOForView && (
           <div>
             <div style={{ marginBottom: 16 }}>
-              <strong>Customer:</strong> {selectedSOForView.customer_name}<br/>
-              <strong>Warehouse:</strong> {selectedSOForView.warehouse_name}<br/>
-              <strong>Status:</strong> {selectedSOForView.status?.toUpperCase()}<br/>
-              <strong>Order Date:</strong> {selectedSOForView.order_date}<br/>
-              <strong>Expected Ship Date:</strong> {selectedSOForView.expected_ship_date}<br/>
-              <strong>Currency:</strong> {selectedSOForView.currency}<br/>
-              <strong>Channel:</strong> {selectedSOForView.channel}<br/>
-              <strong>Total Amount:</strong> {selectedSOForView.currency} {selectedSOForView.total_amount}
+              <strong>Customer:</strong> {selectedSOForView.customer_name}
+              <br />
+              <strong>Warehouse:</strong> {selectedSOForView.warehouse_name}
+              <br />
+              <strong>Status:</strong> {selectedSOForView.status?.toUpperCase()}
+              <br />
+              <strong>Order Date:</strong> {selectedSOForView.order_date}
+              <br />
+              <strong>Expected Ship Date:</strong>{" "}
+              {selectedSOForView.expected_ship_date}
+              <br />
+              <strong>Currency:</strong> {selectedSOForView.currency}
+              <br />
+              <strong>Channel:</strong> {selectedSOForView.channel}
+              <br />
+              <strong>Total Amount:</strong> {selectedSOForView.currency}{" "}
+              {selectedSOForView.total_amount}
             </div>
-            
+
             <h4>Line Items:</h4>
             <Table
               dataSource={selectedSOForView.lines || []}
               rowKey="id"
               pagination={false}
               columns={[
-                { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-                { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-                { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered' },
-                { title: 'Shipped', dataIndex: 'quantity_shipped', key: 'quantity_shipped', render: (val) => val || 0 },
-                { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', render: (val) => `${selectedSOForView.currency} ${val}` },
-                { title: 'Line Total', dataIndex: 'line_total', key: 'line_total', render: (val) => `${selectedSOForView.currency} ${val}` },
-                { title: 'Status', dataIndex: 'status', key: 'status', render: (val) => val?.toUpperCase() }
+                { title: "Item", dataIndex: "item_name", key: "item_name" },
+                { title: "SKU", dataIndex: "sku", key: "sku" },
+                {
+                  title: "Warehouse",
+                  dataIndex: "warehouse_name",
+                  key: "warehouse_name",
+                },
+                {
+                  title: "Ordered",
+                  dataIndex: "quantity_ordered",
+                  key: "quantity_ordered",
+                },
+                {
+                  title: "Shipped",
+                  dataIndex: "quantity_shipped",
+                  key: "quantity_shipped",
+                  render: (val) => val || 0,
+                },
+                {
+                  title: "Unit Price",
+                  dataIndex: "unit_price",
+                  key: "unit_price",
+                  render: (val) => `${selectedSOForView.currency} ${val}`,
+                },
+                {
+                  title: "Line Total",
+                  dataIndex: "line_total",
+                  key: "line_total",
+                  render: (val) => `${selectedSOForView.currency} ${val}`,
+                },
+                {
+                  title: "Status",
+                  dataIndex: "status",
+                  key: "status",
+                  render: (val) => val?.toUpperCase(),
+                },
               ]}
             />
           </div>

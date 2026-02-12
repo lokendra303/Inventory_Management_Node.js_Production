@@ -49,4 +49,22 @@ router.get('/:id/confirmation-summary',
   salesOrderController.getConfirmationSummary
 );
 
+// POST /api/sales-orders/warehouse-recommendations
+router.post('/warehouse-recommendations',
+  requirePermission('sales_view'),
+  salesOrderController.getWarehouseRecommendations
+);
+
+// POST /api/sales-orders/stock-availability
+router.post('/stock-availability',
+  requirePermission('sales_view'),
+  salesOrderController.getStockAvailability
+);
+
+// POST /api/sales-orders/calculate-cost
+router.post('/calculate-cost',
+  requirePermission('sales_view'),
+  salesOrderController.calculateOrderCost
+);
+
 module.exports = router;

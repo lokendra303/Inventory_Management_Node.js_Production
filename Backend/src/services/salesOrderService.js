@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database/connection');
 const logger = require('../utils/logger');
 const inventoryService = require('./inventoryService');
+const warehouseOptimizationService = require('./warehouseOptimizationService');
 
 class SalesOrderService {
   async createSalesOrder(institutionId, soData, userId) {
@@ -9,14 +10,15 @@ class SalesOrderService {
       soNumber,
       customerId,
       customerName,
-      warehouseId,
       channel = 'direct',
       currency = 'USD',
       orderDate,
       expectedShipDate,
       notes,
       lines,
-      isPreorder = false
+      isPreorder = false,
+      customerAddress,
+      shippingMethod = 'standard'
     } = soData;
 
     const soId = uuidv4();
@@ -24,18 +26,38 @@ class SalesOrderService {
     let totalCommittedDemand = 0;
 
     try {
+      // Validate stock availability per warehouse for each line
+      if (!isPreorder) {
+        for (const line of lines) {
+          if (!line.warehouseId) {
+            throw new Error('Warehouse is required for each line item');
+          }
+          
+          const stockValidation = await warehouseOptimizationService.validateStockAvailability(
+            institutionId,
+            line.warehouseId,
+            [{ itemId: line.itemId, quantity: line.quantity }]
+          );
+
+          if (!stockValidation.isAvailable) {
+            const item = stockValidation.unavailableItems[0];
+            throw new Error(`Insufficient stock for ${item.itemName}: requested ${item.requested}, available ${item.available}`);
+          }
+        }
+      }
+
       await db.transaction(async (connection) => {
-        // Create SO header
+        // Create SO header without warehouse_id (multi-warehouse order)
         await connection.execute(
           `INSERT INTO sales_orders 
-           (id, institution_id, so_number, customer_id, customer_name, warehouse_id, channel, currency, 
-            order_date, expected_ship_date, notes, created_by, status, is_preorder) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
-          [soId, institutionId, soNumber, customerId || null, customerName, warehouseId, channel, currency, 
-           orderDate || null, expectedShipDate || null, notes || null, userId, isPreorder]
+           (id, institution_id, so_number, customer_id, customer_name, channel, currency, 
+            order_date, expected_ship_date, notes, created_by, status, is_preorder, shipping_method) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+          [soId, institutionId, soNumber, customerId || null, customerName, channel, currency, 
+           orderDate || null, expectedShipDate || null, notes || null, userId, isPreorder, shippingMethod]
         );
 
-        // Create SO lines
+        // Create SO lines with warehouse per line
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           const lineId = uuidv4();
@@ -48,9 +70,9 @@ class SalesOrderService {
 
           await connection.execute(
             `INSERT INTO sales_order_lines 
-             (id, institution_id, so_id, item_id, line_number, quantity_ordered, unit_price, line_total) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, soId, line.itemId, i + 1, line.quantity, line.unitPrice, lineTotal]
+             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineTotal]
           );
         }
 
@@ -61,7 +83,7 @@ class SalesOrderService {
         );
       });
 
-      logger.info('Sales order created', { soId, institutionId, soNumber, userId, isPreorder });
+      logger.info('Multi-warehouse sales order created', { soId, institutionId, soNumber, userId, isPreorder });
       return soId;
     } catch (error) {
       logger.error('Failed to create sales order', { institutionId, soNumber, error: error.message });
@@ -109,9 +131,10 @@ class SalesOrderService {
 
     // Get SO lines
     const lines = await db.query(
-      `SELECT sol.*, i.sku, i.name as item_name, i.unit
+      `SELECT sol.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
        FROM sales_order_lines sol
        JOIN items i ON sol.item_id = i.id
+       LEFT JOIN warehouses w ON sol.warehouse_id = w.id
        WHERE sol.institution_id = ? AND sol.so_id = ?
        ORDER BY sol.line_number`,
       [institutionId, soId]
@@ -120,22 +143,20 @@ class SalesOrderService {
     return { ...so, lines };
   }
   async reserveStock(institutionId, soData, userId) {
-    const { soId, warehouseId, lines } = soData;
+    const { soId, lines } = soData;
 
     try {
       await db.transaction(async (connection) => {
         for (const line of lines) {
-          // Reserve inventory for each line
           await inventoryService.reserveStock(institutionId, {
             itemId: line.itemId,
-            warehouseId,
+            warehouseId: line.warehouseId,
             quantity: line.quantity,
             unitPrice: line.unitPrice,
             soId,
             soLineId: line.id
           }, userId);
 
-          // Update SO line status
           await connection.execute(
             'UPDATE sales_order_lines SET status = "reserved" WHERE id = ?',
             [line.id]
@@ -151,15 +172,14 @@ class SalesOrderService {
   }
 
   async shipStock(institutionId, soData, userId) {
-    const { soId, warehouseId, lines, shipmentNumber } = soData;
+    const { soId, lines, shipmentNumber } = soData;
 
     try {
       await db.transaction(async (connection) => {
         for (const line of lines) {
-          // Ship inventory for each line
           await inventoryService.shipStock(institutionId, {
             itemId: line.itemId,
-            warehouseId,
+            warehouseId: line.warehouseId,
             quantity: line.quantityShipped,
             unitPrice: line.unitPrice,
             soId,
@@ -167,7 +187,6 @@ class SalesOrderService {
             shipmentNumber
           }, userId);
 
-          // Update SO line quantities
           await connection.execute(
             'UPDATE sales_order_lines SET quantity_shipped = quantity_shipped + ?, status = "shipped" WHERE id = ?',
             [line.quantityShipped, line.id]
@@ -192,6 +211,42 @@ class SalesOrderService {
     }
 
     logger.info('SO status updated', { soId, institutionId, status, userId });
+  }
+
+  /**
+   * Get warehouse recommendations for an order
+   */
+  async getWarehouseRecommendations(institutionId, orderData) {
+    try {
+      return await warehouseOptimizationService.getOptimalWarehouse(institutionId, orderData);
+    } catch (error) {
+      logger.error('Failed to get warehouse recommendations', { institutionId, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Get multi-warehouse stock availability
+   */
+  async getStockAvailability(institutionId, items) {
+    try {
+      return await warehouseOptimizationService.getMultiWarehouseAvailability(institutionId, items);
+    } catch (error) {
+      logger.error('Failed to get stock availability', { institutionId, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Calculate order fulfillment cost
+   */
+  async calculateOrderCost(institutionId, warehouseId, orderData) {
+    try {
+      return await warehouseOptimizationService.calculateFulfillmentCost(institutionId, warehouseId, orderData);
+    } catch (error) {
+      logger.error('Failed to calculate order cost', { institutionId, warehouseId, error: error.message });
+      throw error;
+    }
   }
 }
 

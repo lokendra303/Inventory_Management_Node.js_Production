@@ -179,6 +179,103 @@ class SalesOrderController {
       });
     }
   }
+
+  async getWarehouseRecommendations(req, res) {
+    try {
+      const { customerId, items, customerAddress } = req.body;
+
+      if (!items || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Items are required'
+        });
+      }
+
+      const recommendations = await salesOrderService.getWarehouseRecommendations(
+        req.institutionId,
+        { customerId, items, customerAddress }
+      );
+
+      res.json({
+        success: true,
+        data: recommendations
+      });
+    } catch (error) {
+      logger.error('Failed to get warehouse recommendations', {
+        error: error.message,
+        institutionId: req.institutionId
+      });
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async getStockAvailability(req, res) {
+    try {
+      const { items } = req.body;
+
+      if (!items || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Items are required'
+        });
+      }
+
+      const availability = await salesOrderService.getStockAvailability(
+        req.institutionId,
+        items
+      );
+
+      res.json({
+        success: true,
+        data: availability
+      });
+    } catch (error) {
+      logger.error('Failed to get stock availability', {
+        error: error.message,
+        institutionId: req.institutionId
+      });
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async calculateOrderCost(req, res) {
+    try {
+      const { warehouseId, items, customerAddress, shippingMethod } = req.body;
+
+      if (!warehouseId || !items || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Warehouse ID and items are required'
+        });
+      }
+
+      const cost = await salesOrderService.calculateOrderCost(
+        req.institutionId,
+        warehouseId,
+        { items, customerAddress, shippingMethod }
+      );
+
+      res.json({
+        success: true,
+        data: cost
+      });
+    } catch (error) {
+      logger.error('Failed to calculate order cost', {
+        error: error.message,
+        institutionId: req.institutionId
+      });
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new SalesOrderController();
