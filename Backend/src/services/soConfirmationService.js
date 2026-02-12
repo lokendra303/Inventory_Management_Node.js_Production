@@ -121,7 +121,7 @@ class SOConfirmationService {
             id, institution_id, invoice_number, customer_id, customer_name, so_id,
             invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
             discount_amount, total_amount, paid_amount, balance_amount, status, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?)
         `, [
           invoiceId, institutionId, invoiceNumber, so.customer_id, so.customer_name, soId,
           new Date().toISOString().split('T')[0], null, so.currency || 'USD', 1,
