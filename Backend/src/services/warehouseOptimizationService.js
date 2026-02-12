@@ -134,29 +134,40 @@ class WarehouseOptimizationService {
     }
   }
 
-  /**
-   * Validate stock availability across warehouses
-   */
   async validateStockAvailability(institutionId, warehouseId, items) {
     const unavailableItems = [];
 
     for (const item of items) {
-      const [stock] = await db.query(
-        `SELECT ip.quantity_available, i.name, i.sku
-         FROM inventory_projections ip
-         JOIN items i ON ip.item_id = i.id
-         WHERE ip.institution_id = ? AND ip.warehouse_id = ? AND ip.item_id = ?`,
-        [institutionId, warehouseId, item.itemId]
+      // First try inventory table, then inventory_projections
+      let stock = await db.query(
+        `SELECT i.name, i.sku, inv.quantity_available
+         FROM items i
+         LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.warehouse_id = ? AND inv.institution_id = ?
+         WHERE i.id = ? AND i.institution_id = ?`,
+        [warehouseId, institutionId, item.itemId, institutionId]
       );
 
-      if (!stock || stock.quantity_available < item.quantity) {
+      // If no data in inventory, try inventory_projections
+      if (!stock || !stock[0] || stock[0].quantity_available === null) {
+        stock = await db.query(
+          `SELECT i.name, i.sku, ip.quantity_available
+           FROM items i
+           LEFT JOIN inventory_projections ip ON ip.item_id = i.id AND ip.warehouse_id = ? AND ip.institution_id = ?
+           WHERE i.id = ? AND i.institution_id = ?`,
+          [warehouseId, institutionId, item.itemId, institutionId]
+        );
+      }
+
+      const availableQty = stock && stock[0] ? (stock[0].quantity_available || 0) : 0;
+
+      if (availableQty < item.quantity) {
         unavailableItems.push({
           itemId: item.itemId,
-          itemName: stock?.name || 'Unknown',
-          sku: stock?.sku || 'N/A',
+          itemName: stock && stock[0] ? stock[0].name : 'Unknown',
+          sku: stock && stock[0] ? stock[0].sku : 'N/A',
           requested: item.quantity,
-          available: stock?.quantity_available || 0,
-          shortage: item.quantity - (stock?.quantity_available || 0)
+          available: availableQty,
+          shortage: item.quantity - availableQty
         });
       }
     }

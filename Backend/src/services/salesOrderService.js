@@ -26,26 +26,6 @@ class SalesOrderService {
     let totalCommittedDemand = 0;
 
     try {
-      // Validate stock availability per warehouse for each line
-      if (!isPreorder) {
-        for (const line of lines) {
-          if (!line.warehouseId) {
-            throw new Error('Warehouse is required for each line item');
-          }
-          
-          const stockValidation = await warehouseOptimizationService.validateStockAvailability(
-            institutionId,
-            line.warehouseId,
-            [{ itemId: line.itemId, quantity: line.quantity }]
-          );
-
-          if (!stockValidation.isAvailable) {
-            const item = stockValidation.unavailableItems[0];
-            throw new Error(`Insufficient stock for ${item.itemName}: requested ${item.requested}, available ${item.available}`);
-          }
-        }
-      }
-
       await db.transaction(async (connection) => {
         // Create SO header without warehouse_id (multi-warehouse order)
         await connection.execute(

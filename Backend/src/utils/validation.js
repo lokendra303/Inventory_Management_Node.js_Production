@@ -173,11 +173,17 @@ const createSalesOrderSchema = Joi.object({
   soNumber: Joi.string().max(100).required(),
   customerId: Joi.string().uuid().optional(),
   customerName: Joi.string().max(255).required(),
-  warehouseId,
+  warehouseId: Joi.string().uuid().optional(),
   channel: Joi.string().max(100).default('direct'),
   currency: Joi.string().length(3).default('USD'),
-  orderDate: Joi.date().required(),
-  expectedShipDate: Joi.date().optional(),
+  orderDate: Joi.alternatives().try(
+    Joi.date(),
+    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+  ).required(),
+  expectedShipDate: Joi.alternatives().try(
+    Joi.date(),
+    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+  ).optional().allow(null),
   notes: Joi.string().optional(),
   customerAddress: Joi.object({
     street: Joi.string().optional(),
@@ -191,6 +197,7 @@ const createSalesOrderSchema = Joi.object({
   shippingMethod: Joi.string().valid('standard', 'express', 'overnight').default('standard'),
   lines: Joi.array().items(Joi.object({
     itemId,
+    warehouseId,
     quantity: quantity,
     unitPrice: unitPrice,
     weight: Joi.number().positive().optional()
@@ -347,20 +354,7 @@ const validate = (schema) => {
       });
     }
     
-    // Recursively convert undefined to null
-    const convertUndefinedToNull = (obj) => {
-      if (obj === null || obj === undefined) return null;
-      if (typeof obj !== 'object') return obj;
-      if (Array.isArray(obj)) return obj.map(convertUndefinedToNull);
-      
-      const result = {};
-      for (const key in obj) {
-        result[key] = obj[key] === undefined ? null : convertUndefinedToNull(obj[key]);
-      }
-      return result;
-    };
-    
-    req.body = convertUndefinedToNull(value);
+    req.body = value;
     next();
   };
 };

@@ -152,9 +152,13 @@ const SalesOrders = () => {
           selectedCustomer?.display_name ||
           selectedCustomer?.company_name ||
           "Unknown Customer",
-        orderDate: values.orderDate.format("YYYY-MM-DD"),
-        expectedShipDate: values.expectedShipDate?.format("YYYY-MM-DD"),
-        lines: values.lines || [],
+        orderDate: values.orderDate ? values.orderDate.format("YYYY-MM-DD") : new Date().toISOString().split('T')[0],
+        expectedShipDate: values.expectedShipDate?.format("YYYY-MM-DD") || null,
+        lines: (values.lines || []).map(line => ({
+          ...line,
+          quantity: Number(line.quantity),
+          unitPrice: Number(line.unitPrice)
+        })),
       };
 
       const response = await apiService.post("/sales-orders", soData);

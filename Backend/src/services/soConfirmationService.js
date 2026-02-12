@@ -40,9 +40,9 @@ class SOConfirmationService {
           throw new Error('No sales order lines found');
         }
 
-        // Check stock availability
+        // Check stock availability per line's warehouse
         for (const line of lines) {
-          const stock = await inventoryService.getCurrentStock(institutionId, line.item_id, so.warehouse_id);
+          const stock = await inventoryService.getCurrentStock(institutionId, line.item_id, line.warehouse_id);
           if (!stock || stock.quantity_available < line.quantity_ordered) {
             throw new Error(`Insufficient stock for ${line.item_name}. Available: ${stock?.quantity_available || 0}, Required: ${line.quantity_ordered}`);
           }
@@ -56,7 +56,7 @@ class SOConfirmationService {
           // Reserve stock first
           await inventoryService.reserveStock(institutionId, {
             itemId: line.item_id,
-            warehouseId: so.warehouse_id,
+            warehouseId: line.warehouse_id,
             quantity: line.quantity_ordered,
             unitPrice: line.unit_price,
             soId: soId,
@@ -66,7 +66,7 @@ class SOConfirmationService {
           // Ship stock (reduces inventory)
           await inventoryService.shipStock(institutionId, {
             itemId: line.item_id,
-            warehouseId: so.warehouse_id,
+            warehouseId: line.warehouse_id,
             quantity: line.quantity_ordered,
             unitPrice: line.unit_price,
             soId: soId,
@@ -85,7 +85,7 @@ class SOConfirmationService {
           logger.info('Inventory reduced for item', {
             itemId: line.item_id,
             itemName: line.item_name,
-            warehouseId: so.warehouse_id,
+            warehouseId: line.warehouse_id,
             quantity: line.quantity_ordered,
             unitPrice: line.unit_price,
             soId: soId

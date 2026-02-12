@@ -99,6 +99,11 @@ function validateEventData(eventType, eventData) {
       throw new Error(`Missing required field: ${field}`);
     }
     
+    // Convert string numbers to actual numbers
+    if (type === 'number' && typeof eventData[field] === 'string') {
+      eventData[field] = Number(eventData[field]);
+    }
+    
     if (typeof eventData[field] !== type) {
       throw new Error(`Invalid type for field ${field}: expected ${type}, got ${typeof eventData[field]}`);
     }
