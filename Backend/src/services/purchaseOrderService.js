@@ -224,13 +224,12 @@ class PurchaseOrderService {
     console.log('filters:', filters);
     
     let query = `
-      SELECT po.*, v.display_name as vendor_name, w.name as warehouse_name,
+      SELECT po.*, v.display_name as vendor_name,
              COUNT(pol.id) as line_count,
              SUM(pol.quantity_ordered) as total_quantity_ordered,
              SUM(pol.quantity_received) as total_quantity_received
       FROM purchase_orders po
       LEFT JOIN vendors v ON po.vendor_id = v.id
-      LEFT JOIN warehouses w ON po.warehouse_id = w.id
       LEFT JOIN purchase_order_lines pol ON po.id = pol.po_id
       WHERE po.institution_id = ?
     `;
@@ -263,10 +262,9 @@ class PurchaseOrderService {
 
   async getPurchaseOrder(institutionId, poId) {
     const pos = await db.query(
-      `SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name, w.name as warehouse_name
+      `SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name
        FROM purchase_orders po
        LEFT JOIN vendors v ON po.vendor_id = v.id
-       LEFT JOIN warehouses w ON po.warehouse_id = w.id
        WHERE po.institution_id = ? AND po.id = ?`,
       [institutionId, poId]
     );
@@ -300,10 +298,9 @@ class PurchaseOrderService {
 
   async getGRN(institutionId, grnId) {
     const [grns] = await db.query(
-      `SELECT grn.*, po.po_number, w.name as warehouse_name
+      `SELECT grn.*, po.po_number
        FROM goods_receipt_notes grn
        JOIN purchase_orders po ON grn.po_id = po.id
-       LEFT JOIN warehouses w ON grn.warehouse_id = w.id
        WHERE grn.institution_id = ? AND grn.id = ?`,
       [institutionId, grnId]
     );
