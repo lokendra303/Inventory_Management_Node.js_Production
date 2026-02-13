@@ -1,6 +1,7 @@
 const purchaseOrderService = require('../services/purchaseOrderService');
 const vendorService = require('../services/vendorService');
 const poConfirmationService = require('../services/poConfirmationService');
+const purchaseOrderPDFService = require('../services/purchaseOrderPDFService');
 const logger = require('../utils/logger');
 
 class PurchaseOrderController {
@@ -396,6 +397,66 @@ class PurchaseOrderController {
       res.status(500).json({
         success: false,
         error: 'Internal server error'
+      });
+    }
+  }
+
+  async downloadPOPDF(req, res) {
+    try {
+      const { id: poId } = req.params;
+      const po = await purchaseOrderService.getPurchaseOrder(req.institutionId, poId);
+      
+      if (!po) {
+        return res.status(404).json({
+          success: false,
+          error: 'Purchase order not found'
+        });
+      }
+      
+      const pdfBuffer = await purchaseOrderPDFService.generatePDFBuffer(po, req.institutionId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="PO_${po.po_number}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      logger.error('Failed to generate PO PDF', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        poId: req.params.id 
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate PDF'
+      });
+    }
+  }
+
+  async updatePurchaseOrder(req, res) {
+    try {
+      const { id: poId } = req.params;
+      const userId = req.user?.userId || null;
+      
+      await purchaseOrderService.updatePurchaseOrder(
+        req.institutionId,
+        poId,
+        req.body,
+        userId
+      );
+      
+      res.json({
+        success: true,
+        message: 'Purchase order updated successfully'
+      });
+    } catch (error) {
+      logger.error('PO update failed', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        poId: req.params.id,
+        userId: req.user?.userId || null
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
       });
     }
   }

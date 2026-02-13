@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, DownloadOutlined } from '@ant-design/icons';
+import moment from 'moment';
 import apiService from '../services/apiService';
 import { useCurrency } from '../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../utils/currency';
@@ -17,6 +18,7 @@ const PurchaseOrders = () => {
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedPO, setSelectedPO] = useState(null);
   const [selectedPOForView, setSelectedPOForView] = useState(null);
+  const [editingPO, setEditingPO] = useState(null);
   const [allItemStocks, setAllItemStocks] = useState({});
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
@@ -66,14 +68,14 @@ const PurchaseOrders = () => {
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => viewPO(record)}>View</Button>
+          {(record.status === 'draft' || record.status === 'sent') && (
+            <Button size="small" onClick={() => editPO(record)}>Edit</Button>
+          )}
           {record.status === 'draft' && (
             <Button size="small" type="primary" onClick={() => sendPO(record)}>Send</Button>
           )}
           {record.status === 'sent' && (
             <Button size="small" onClick={() => confirmPO(record)}>Confirm</Button>
-          )}
-          {['sent', 'confirmed', 'partially_received'].includes(record.status) && (
-            <Button size="small" type="dashed" onClick={() => receivePO(record)}>Receive</Button>
           )}
           {record.status === 'draft' && (
             <Button size="small" danger onClick={() => cancelPO(record)}>Cancel</Button>
@@ -121,17 +123,27 @@ const PurchaseOrders = () => {
         lines: values.lines || []
       };
 
-      const response = await apiService.post('/purchase-orders', poData);
-      
-      if (response.success) {
-        message.success('Purchase order created successfully');
-        setModalVisible(false);
-        form.resetFields();
-        fetchData();
+      if (editingPO) {
+        const response = await apiService.put(`/purchase-orders/${editingPO.id}`, poData);
+        if (response.success) {
+          message.success('Purchase order updated successfully');
+          setModalVisible(false);
+          setEditingPO(null);
+          form.resetFields();
+          fetchData();
+        }
+      } else {
+        const response = await apiService.post('/purchase-orders', poData);
+        if (response.success) {
+          message.success('Purchase order created successfully');
+          setModalVisible(false);
+          form.resetFields();
+          fetchData();
+        }
       }
     } catch (error) {
-      console.error('PO creation error:', error);
-      message.error(error.response?.data?.error || 'Failed to create purchase order');
+      console.error('PO creation/update error:', error);
+      message.error(error.response?.data?.error || 'Failed to save purchase order');
     }
   };
 
@@ -266,6 +278,74 @@ const PurchaseOrders = () => {
     }
   };
 
+  const editPO = async (po) => {
+    try {
+      const response = await apiService.get(`/purchase-orders/${po.id}`);
+      if (response.success) {
+        const poData = response.data;
+        setEditingPO(poData);
+        
+        form.setFieldsValue({
+          poNumber: poData.po_number,
+          vendorId: poData.vendor_id,
+          currency: poData.currency,
+          orderDate: poData.order_date ? moment(poData.order_date) : null,
+          expectedDate: poData.expected_date ? moment(poData.expected_date) : null,
+          lines: poData.lines?.map(line => ({
+            itemId: line.item_id,
+            warehouseId: line.warehouse_id,
+            quantity: line.quantity_ordered,
+            unitCost: line.unit_cost
+          })) || []
+        });
+        
+        setModalVisible(true);
+      }
+    } catch (error) {
+      message.error('Failed to load PO details');
+    }
+  };
+
+  const downloadPDF = async (po) => {
+    try {
+      const token = sessionStorage.getItem('token');
+      let institutionId = sessionStorage.getItem('institutionId');
+      
+      // Try to extract institution ID from token if not in storage
+      if (!institutionId && token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          institutionId = payload.institutionId;
+        } catch (e) {
+          console.error('Failed to parse token');
+        }
+      }
+      
+      const response = await fetch(`${apiService.baseURL}/purchase-orders/${po.id}/pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-institution-id': institutionId
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to download PDF');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PO_${po.po_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      message.success('PDF downloaded successfully');
+    } catch (error) {
+      message.error('Failed to download PDF');
+    }
+  };
+
   useEffect(() => {
     fetchData();
     fetchAllStocks();
@@ -293,9 +373,13 @@ const PurchaseOrders = () => {
       </Card>
 
       <Modal
-        title="Create Purchase Order"
+        title={editingPO ? 'Edit Purchase Order' : 'Create Purchase Order'}
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          setModalVisible(false);
+          setEditingPO(null);
+          form.resetFields();
+        }}
         footer={null}
         width={800}
       >
@@ -501,9 +585,13 @@ const PurchaseOrders = () => {
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit">
-                Create Purchase Order
+                {editingPO ? 'Update Purchase Order' : 'Create Purchase Order'}
               </Button>
-              <Button onClick={() => setModalVisible(false)}>
+              <Button onClick={() => {
+                setModalVisible(false);
+                setEditingPO(null);
+                form.resetFields();
+              }}>
                 Cancel
               </Button>
             </Space>
@@ -636,6 +724,13 @@ const PurchaseOrders = () => {
           setSelectedPOForView(null);
         }}
         footer={[
+          <Button 
+            key="download" 
+            icon={<DownloadOutlined />}
+            onClick={() => downloadPDF(selectedPOForView)}
+          >
+            Download PDF
+          </Button>,
           <Button key="close" onClick={() => {
             setViewModalVisible(false);
             setSelectedPOForView(null);

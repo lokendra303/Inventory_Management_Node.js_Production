@@ -26,6 +26,14 @@ router.get('/:id',
   purchaseOrderController.getPurchaseOrder
 );
 
+// PUT /api/purchase-orders/:id
+router.put('/:id',
+  requirePermission('purchase_management'),
+  validateInstitutionConsistency,
+  auditLog('purchase_order_updated'),
+  purchaseOrderController.updatePurchaseOrder
+);
+
 // PUT /api/purchase-orders/:id/status
 router.put('/:id/status',
   validate(schemas.updatePOStatusSchema),
@@ -47,6 +55,12 @@ router.post('/:id/confirm',
 router.get('/:id/confirmation-summary',
   requirePermission('purchase_view'),
   purchaseOrderController.getConfirmationSummary
+);
+
+// GET /api/purchase-orders/:id/pdf - Download PO as PDF
+router.get('/:id/pdf',
+  requirePermission('purchase_view'),
+  purchaseOrderController.downloadPOPDF
 );
 
 module.exports = router;

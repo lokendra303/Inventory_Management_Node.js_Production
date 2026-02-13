@@ -383,6 +383,73 @@ class PurchaseOrderService {
     logger.info('PO status updated', { poId, institutionId, status, userId });
   }
 
+  async updatePurchaseOrder(institutionId, poId, poData, userId) {
+    const { vendorId, vendorName, currency, exchangeRate, orderDate, expectedDate, notes, lines } = poData;
+
+    try {
+      await db.transaction(async (connection) => {
+        // Check if PO exists and is in draft status
+        const [existingPO] = await connection.execute(
+          'SELECT status FROM purchase_orders WHERE institution_id = ? AND id = ?',
+          [institutionId, poId]
+        );
+
+        if (!existingPO || existingPO.length === 0) {
+          throw new Error('Purchase order not found');
+        }
+
+        if (existingPO[0].status !== 'draft' && existingPO[0].status !== 'sent') {
+          throw new Error('Only draft and sent purchase orders can be edited');
+        }
+
+        let subtotal = 0;
+
+        // Update PO header
+        await connection.execute(
+          `UPDATE purchase_orders 
+           SET vendor_id = ?, vendor_name = ?, currency = ?, exchange_rate = ?, 
+               order_date = ?, expected_date = ?, notes = ?, updated_at = NOW()
+           WHERE institution_id = ? AND id = ?`,
+          [vendorId || null, vendorName, currency || 'USD', exchangeRate || 1.0, 
+           orderDate, expectedDate || null, notes || null, institutionId, poId]
+        );
+
+        // Delete existing lines
+        await connection.execute(
+          'DELETE FROM purchase_order_lines WHERE institution_id = ? AND po_id = ?',
+          [institutionId, poId]
+        );
+
+        // Insert new lines
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const lineId = uuidv4();
+          const lineTotal = line.quantity * line.unitCost;
+          subtotal += lineTotal;
+
+          await connection.execute(
+            `INSERT INTO purchase_order_lines 
+             (id, institution_id, po_id, item_id, warehouse_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, poId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitCost, lineTotal, line.expectedDate || null]
+          );
+        }
+
+        // Update totals
+        await connection.execute(
+          'UPDATE purchase_orders SET subtotal = ?, total_amount = ? WHERE id = ?',
+          [subtotal, subtotal, poId]
+        );
+      });
+
+      logger.info('Purchase order updated', { poId, institutionId, userId });
+      return true;
+    } catch (error) {
+      logger.error('Failed to update purchase order', { institutionId, poId, error: error.message });
+      throw error;
+    }
+  }
+
   async getPendingReceipts(institutionId, warehouseId = null) {
     let query = `
       SELECT pol.*, po.po_number, po.vendor_name, i.sku, i.name as item_name,

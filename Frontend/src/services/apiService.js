@@ -79,6 +79,10 @@ class ApiService {
     }
   }
 
+  get baseURL() {
+    return this.api.defaults.baseURL;
+  }
+
   async get(url, config = {}) {
     return this.api.get(url, config);
   }
