@@ -154,27 +154,17 @@ const createPurchaseOrderSchema = Joi.object({
   poNumber: Joi.string().max(100).required(),
   vendorId: Joi.string().uuid().optional(),
   vendorName: Joi.string().max(255).required(),
-  warehouseId: Joi.string().uuid().optional(),
+  warehouseId,
   currency: Joi.string().length(3).default('USD'),
   exchangeRate: Joi.number().positive().default(1.0),
-  orderDate: Joi.alternatives().try(
-    Joi.date(),
-    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
-  ).required(),
-  expectedDate: Joi.alternatives().try(
-    Joi.date(),
-    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
-  ).optional().allow(null),
+  orderDate: Joi.date().required(),
+  expectedDate: Joi.date().optional(),
   notes: Joi.string().optional(),
   lines: Joi.array().items(Joi.object({
     itemId,
-    warehouseId: Joi.string().uuid().optional(),
     quantity: quantity,
     unitCost: unitCost,
-    expectedDate: Joi.alternatives().try(
-      Joi.date(),
-      Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
-    ).optional().allow(null)
+    expectedDate: Joi.date().optional()
   })).min(1).required()
 }).unknown(true);
 
@@ -249,15 +239,13 @@ const updateUserPermissionsSchema = Joi.object({
 const createGRNSchema = Joi.object({
   grnNumber: Joi.string().max(100).required(),
   poId: Joi.string().uuid().required(),
-  warehouseId: Joi.string().uuid().optional(),
+  warehouseId: Joi.string().uuid().required(),
   receiptDate: Joi.date().required(),
   notes: Joi.string().optional(),
   lines: Joi.array().items(Joi.object({
     poLineId: Joi.string().uuid().required(),
     itemId: Joi.string().uuid().required(),
-    warehouseId: Joi.string().uuid().optional(),
     itemName: Joi.string().optional(),
-    warehouseName: Joi.string().optional(),
     quantityOrdered: Joi.number().optional(),
     quantityReceived: Joi.number().positive().required(),
     unitCost: Joi.number().positive().required(),
