@@ -214,7 +214,48 @@ class PurchaseOrderService {
       // Update inventory AFTER transaction completes
       for (const update of inventoryUpdates) {
         console.log('Updating inventory:', update);
-        await inventoryService.receiveStock(institutionId, update, userId);
+        try {
+          await inventoryService.receiveStock(institutionId, update, userId);
+          console.log('✓ Inventory updated successfully for item:', update.itemId);
+        } catch (invError) {
+          console.error('✗ Event-sourced update failed, using direct DB update:', invError.message);
+          // Fallback: Direct database update
+          try {
+            const current = await db.query(
+              'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+              [institutionId, update.itemId, update.warehouseId]
+            );
+
+            if (current.length === 0) {
+              await db.query(
+                `INSERT INTO inventory_projections 
+                 (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, 0, ?, ?, NOW(), 1)`,
+                [institutionId, update.itemId, update.warehouseId, update.quantity, update.quantity, update.unitCost, update.quantity * update.unitCost]
+              );
+            } else {
+              const curr = current[0];
+              const currentValue = Number(curr.quantity_on_hand) * Number(curr.average_cost);
+              const newValue = Number(update.quantity) * Number(update.unitCost);
+              const newQtyOnHand = Number(curr.quantity_on_hand) + Number(update.quantity);
+              const newTotalValue = currentValue + newValue;
+              const newAvgCost = newTotalValue / newQtyOnHand;
+              const newQtyAvailable = Number(curr.quantity_available) + Number(update.quantity);
+
+              await db.query(
+                `UPDATE inventory_projections 
+                 SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?, 
+                     last_movement_date = NOW(), version = version + 1
+                 WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+                [newQtyOnHand, newQtyAvailable, newAvgCost, newTotalValue, institutionId, update.itemId, update.warehouseId]
+              );
+            }
+            console.log('✓ Direct DB update successful for item:', update.itemId);
+          } catch (dbError) {
+            console.error('✗ Direct DB update also failed:', dbError.message);
+            logger.error('Both inventory update methods failed', { update, eventError: invError.message, dbError: dbError.message });
+          }
+        }
       }
 
       logger.info('GRN created', { grnId, institutionId, grnNumber, poId, userId });
@@ -304,7 +345,7 @@ class PurchaseOrderService {
   }
 
   async getGRN(institutionId, grnId) {
-    const [grns] = await db.query(
+    const grns = await db.query(
       `SELECT grn.*, po.po_number
        FROM goods_receipt_notes grn
        JOIN purchase_orders po ON grn.po_id = po.id

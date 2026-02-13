@@ -58,6 +58,7 @@ class POConfirmationService {
         );
 
         // Process each line item
+        const inventoryUpdates = [];
         for (const line of lines) {
           if (!line.warehouse_id) {
             throw new Error(`Line ${line.line_number} must have a warehouse assigned`);
@@ -92,8 +93,8 @@ class POConfirmationService {
             // Create new inventory record
             await connection.execute(
               `INSERT INTO inventory_projections 
-               (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
-               VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
+               (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+               VALUES (UUID(), ?, ?, ?, ?, ?, 0, ?, ?, NOW(), 1)`,
               [
                 institutionId, 
                 line.item_id, 
@@ -107,12 +108,12 @@ class POConfirmationService {
           } else {
             // Update existing inventory
             const current = currentInventory[0];
-            const currentValue = current.quantity_on_hand * current.average_cost;
-            const newValue = line.quantity_ordered * line.unit_cost;
-            const newQuantityOnHand = current.quantity_on_hand + line.quantity_ordered;
+            const currentValue = Number(current.quantity_on_hand) * Number(current.average_cost);
+            const newValue = Number(line.quantity_ordered) * Number(line.unit_cost);
+            const newQuantityOnHand = Number(current.quantity_on_hand) + Number(line.quantity_ordered);
             const newTotalValue = currentValue + newValue;
             const newAverageCost = newTotalValue / newQuantityOnHand;
-            const newQuantityAvailable = current.quantity_available + line.quantity_ordered;
+            const newQuantityAvailable = Number(current.quantity_available) + Number(line.quantity_ordered);
 
             await connection.execute(
               `UPDATE inventory_projections 
@@ -131,6 +132,13 @@ class POConfirmationService {
             unitCost: line.unit_cost,
             poId: poId
           });
+          
+          inventoryUpdates.push({
+            itemId: line.item_id,
+            itemName: line.item_name,
+            warehouseId: line.warehouse_id,
+            quantity: line.quantity_ordered
+          });
         }
 
         // Update PO status to received
@@ -145,6 +153,7 @@ class POConfirmationService {
           grnId,
           grnNumber,
           totalLines: lines.length,
+          inventoryUpdates,
           institutionId,
           userId
         });
@@ -173,7 +182,7 @@ class POConfirmationService {
    */
   async getConfirmationSummary(institutionId, poId) {
     try {
-      const [poResult] = await db.query(
+      const poResult = await db.query(
         `SELECT po.*, v.display_name as vendor_name
          FROM purchase_orders po 
          LEFT JOIN vendors v ON po.vendor_id = v.id
