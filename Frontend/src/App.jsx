@@ -20,6 +20,7 @@ import Users from './pages/Users.jsx';
 import Reports from './pages/Reports.jsx';
 import Settings from './pages/Settings.jsx';
 import CompanySettings from './pages/CompanySettings.jsx';
+import AccountSettings from './pages/AccountSettings.jsx';
 import Documents from './pages/Documents.jsx';
 import Vendors from './pages/Vendors.jsx';
 import NewVendor from './pages/NewVendor.jsx';
@@ -134,6 +135,7 @@ function AppContent() {
             <Route path="/reports/*" element={<Reports />} />
             <Route path="/profit-loss" element={<ProfitLoss />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/account-settings" element={<AccountSettings />} />
             <Route path="/company-settings" element={<CompanySettings />} />
             <Route path="/documents" element={<Documents />} />
             <Route path="/purchases/vendors" element={<ProtectedVendors />} />

@@ -42,6 +42,12 @@ router.put('/change-password',
   authController.changePassword
 );
 
+// PUT /api/users/account-settings
+router.put('/account-settings',
+  auditLog('account_settings_updated'),
+  authController.updateAccountSettings
+);
+
 // PUT /api/users/:userId/permissions
 router.put('/:userId/permissions', 
   requirePermission('user_management'),

@@ -63,6 +63,7 @@ const Settings = () => {
       items: [
         { label: 'Users', path: '/users' },
         { label: 'Roles', path: '/roles' },
+        { label: 'Account Settings', path: '/account-settings' },
         { label: 'User Preferences', path: '/settings/user-preferences' }
       ],
       type: 'red'

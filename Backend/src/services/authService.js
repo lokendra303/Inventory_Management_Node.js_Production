@@ -491,6 +491,87 @@ class AuthService {
     logger.info('User password changed', { userId, institutionId });
   }
 
+  async updateAccountSettings(institutionId, userId, updateData) {
+    const { firstName, lastName, email, mobile, address, city, state, country, postalCode, dateOfBirth, gender } = updateData;
+    
+    if (email) {
+      const existingUser = await db.query(
+        'SELECT id FROM institution_users WHERE institution_id = ? AND email = ? AND id != ?',
+        [institutionId, email, userId]
+      );
+      
+      if (existingUser.length > 0) {
+        throw new Error('Email already exists');
+      }
+    }
+
+    const updateFields = [];
+    const updateValues = [];
+
+    if (firstName !== undefined) {
+      updateFields.push('first_name = ?');
+      updateValues.push(firstName);
+    }
+    if (lastName !== undefined) {
+      updateFields.push('last_name = ?');
+      updateValues.push(lastName);
+    }
+    if (email !== undefined) {
+      updateFields.push('email = ?');
+      updateValues.push(email);
+    }
+    if (mobile !== undefined) {
+      updateFields.push('mobile = ?');
+      updateValues.push(this._toNull(mobile));
+    }
+    if (address !== undefined) {
+      updateFields.push('address = ?');
+      updateValues.push(this._toNull(address));
+    }
+    if (city !== undefined) {
+      updateFields.push('city = ?');
+      updateValues.push(this._toNull(city));
+    }
+    if (state !== undefined) {
+      updateFields.push('state = ?');
+      updateValues.push(this._toNull(state));
+    }
+    if (country !== undefined) {
+      updateFields.push('country = ?');
+      updateValues.push(this._toNull(country));
+    }
+    if (postalCode !== undefined) {
+      updateFields.push('postal_code = ?');
+      updateValues.push(this._toNull(postalCode));
+    }
+    if (dateOfBirth !== undefined) {
+      updateFields.push('date_of_birth = ?');
+      updateValues.push(this._toNull(dateOfBirth));
+    }
+    if (gender !== undefined) {
+      updateFields.push('gender = ?');
+      updateValues.push(this._toNull(gender));
+    }
+
+    if (updateFields.length === 0) {
+      throw new Error('No fields to update');
+    }
+
+    updateFields.push('updated_at = NOW()');
+    updateValues.push(institutionId, userId);
+
+    const result = await db.query(
+      `UPDATE institution_users SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
+      updateValues
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('User not found');
+    }
+
+    logger.info('User account settings updated', { userId, institutionId });
+  }
+
   async extendSession(userId, institutionId) {
     // Verify user is still active
     const users = await db.query(

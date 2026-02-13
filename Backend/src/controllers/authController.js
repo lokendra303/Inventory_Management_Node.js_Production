@@ -372,6 +372,43 @@ class AuthController {
     }
   }
 
+  async updateAccountSettings(req, res) {
+    try {
+      const userId = req.user.userId;
+      const institutionId = req.institutionId;
+      const updateData = req.body;
+
+      await authService.updateAccountSettings(institutionId, userId, updateData);
+
+      const users = await authService.getInstitutionUsers(institutionId);
+      const userProfile = users.find(u => u.id === userId);
+
+      res.json({
+        success: true,
+        message: 'Account settings updated successfully',
+        data: {
+          id: userProfile.id,
+          email: userProfile.email,
+          mobile: userProfile.mobile,
+          firstName: userProfile.first_name,
+          lastName: userProfile.last_name,
+          address: userProfile.address,
+          city: userProfile.city,
+          state: userProfile.state,
+          country: userProfile.country,
+          postalCode: userProfile.postal_code,
+          dateOfBirth: userProfile.date_of_birth,
+          gender: userProfile.gender
+        }
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
   async extendSession(req, res) {
     try {
       const result = await authService.extendSession(req.user.userId, req.institutionId);

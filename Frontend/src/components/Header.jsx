@@ -16,7 +16,7 @@ const Header = ({ collapsed, setCollapsed, user, isMobile }) => {
       key: 'profile',
       icon: <UserOutlined />,
       label: 'Account Settings',
-      onClick: () => navigate('/settings')
+      onClick: () => navigate('/account-settings')
     },
     {
       type: 'divider'
