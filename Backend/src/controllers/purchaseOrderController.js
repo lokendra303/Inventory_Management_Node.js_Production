@@ -154,7 +154,6 @@ class PurchaseOrderController {
       const { id: poId } = req.params;
       const { status } = req.body;
 
-      // Additional validation (already handled by middleware, but keeping for safety)
       if (!status) {
         return res.status(400).json({
           success: false,
@@ -170,7 +169,7 @@ class PurchaseOrderController {
           req.user.userId
         );
         
-        res.json({
+        return res.json({
           success: true,
           message: 'Purchase order confirmed and inventory updated successfully',
           data: result
@@ -179,7 +178,7 @@ class PurchaseOrderController {
         // For other status updates, use the original service
         await purchaseOrderService.updatePOStatus(req.institutionId, poId, status, req.user.userId);
         
-        res.json({
+        return res.json({
           success: true,
           message: 'Purchase order status updated successfully'
         });
@@ -187,10 +186,11 @@ class PurchaseOrderController {
     } catch (error) {
       logger.error('Failed to update PO status', {
         error: error.message,
+        stack: error.stack,
         institutionId: req.institutionId,
         poId: req.params.id
       });
-      res.status(400).json({
+      return res.status(400).json({
         success: false,
         error: error.message
       });

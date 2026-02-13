@@ -1,7 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/connection');
 const logger = require('../utils/logger');
-const inventoryService = require('./inventoryService');
 
 class POConfirmationService {
   /**
@@ -10,13 +9,10 @@ class POConfirmationService {
    */
   async processPOConfirmation(institutionId, poId, userId) {
     try {
-      await db.transaction(async (connection) => {
+      return await db.transaction(async (connection) => {
         // Get PO details
         const [poResult] = await connection.execute(
-          `SELECT po.*, w.name as warehouse_name 
-           FROM purchase_orders po 
-           LEFT JOIN warehouses w ON po.warehouse_id = w.id 
-           WHERE po.institution_id = ? AND po.id = ?`,
+          `SELECT po.* FROM purchase_orders po WHERE po.institution_id = ? AND po.id = ?`,
           [institutionId, poId]
         );
 
@@ -26,11 +22,12 @@ class POConfirmationService {
 
         const po = poResult[0];
 
-        // Get PO lines
+        // Get PO lines with warehouse info
         const [lines] = await connection.execute(
-          `SELECT pol.*, i.sku, i.name as item_name, i.unit
+          `SELECT pol.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
            FROM purchase_order_lines pol
            JOIN items i ON pol.item_id = i.id
+           LEFT JOIN warehouses w ON pol.warehouse_id = w.id
            WHERE pol.institution_id = ? AND pol.po_id = ?
            ORDER BY pol.line_number`,
           [institutionId, poId]
@@ -47,14 +44,13 @@ class POConfirmationService {
         // Create automatic GRN
         await connection.execute(
           `INSERT INTO goods_receipt_notes 
-           (id, institution_id, grn_number, po_id, warehouse_id, receipt_date, received_by, notes, status) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
+           (id, institution_id, grn_number, po_id, receipt_date, received_by, notes, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
           [
             grnId, 
             institutionId, 
             grnNumber, 
             poId, 
-            po.warehouse_id, 
             new Date().toISOString().split('T')[0], 
             userId, 
             'Auto-generated GRN on PO confirmation'
@@ -63,6 +59,10 @@ class POConfirmationService {
 
         // Process each line item
         for (const line of lines) {
+          if (!line.warehouse_id) {
+            throw new Error(`Line ${line.line_number} must have a warehouse assigned`);
+          }
+
           const grnLineId = uuidv4();
           const lineTotal = line.quantity_ordered * line.unit_cost;
 
@@ -82,21 +82,51 @@ class POConfirmationService {
             [line.quantity_ordered, line.id]
           );
 
-          // Create inventory entry using inventory service
-          await inventoryService.receiveStock(institutionId, {
-            itemId: line.item_id,
-            warehouseId: po.warehouse_id,
-            quantity: Number(line.quantity_ordered),
-            unitCost: Number(line.unit_cost),
-            poId: poId,
-            poLineId: line.id,
-            grnNumber: grnNumber
-          }, userId);
+          // Update inventory directly in transaction
+          const [currentInventory] = await connection.execute(
+            'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+            [institutionId, line.item_id, line.warehouse_id]
+          );
+
+          if (currentInventory.length === 0) {
+            // Create new inventory record
+            await connection.execute(
+              `INSERT INTO inventory_projections 
+               (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
+               VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
+              [
+                institutionId, 
+                line.item_id, 
+                line.warehouse_id, 
+                line.quantity_ordered, 
+                line.quantity_ordered, 
+                line.unit_cost, 
+                line.quantity_ordered * line.unit_cost
+              ]
+            );
+          } else {
+            // Update existing inventory
+            const current = currentInventory[0];
+            const currentValue = current.quantity_on_hand * current.average_cost;
+            const newValue = line.quantity_ordered * line.unit_cost;
+            const newQuantityOnHand = current.quantity_on_hand + line.quantity_ordered;
+            const newTotalValue = currentValue + newValue;
+            const newAverageCost = newTotalValue / newQuantityOnHand;
+            const newQuantityAvailable = current.quantity_available + line.quantity_ordered;
+
+            await connection.execute(
+              `UPDATE inventory_projections 
+               SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?, 
+                   last_movement_date = NOW(), version = version + 1
+               WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+              [newQuantityOnHand, newQuantityAvailable, newAverageCost, newTotalValue, institutionId, line.item_id, line.warehouse_id]
+            );
+          }
 
           logger.info('Inventory updated for item', {
             itemId: line.item_id,
             itemName: line.item_name,
-            warehouseId: po.warehouse_id,
+            warehouseId: line.warehouse_id,
             quantity: line.quantity_ordered,
             unitCost: line.unit_cost,
             poId: poId
@@ -114,7 +144,6 @@ class POConfirmationService {
           poNumber: po.po_number,
           grnId,
           grnNumber,
-          warehouseId: po.warehouse_id,
           totalLines: lines.length,
           institutionId,
           userId
@@ -124,8 +153,7 @@ class POConfirmationService {
           success: true,
           grnId,
           grnNumber,
-          itemsProcessed: lines.length,
-          warehouseUpdated: po.warehouse_name || po.warehouse_id
+          itemsProcessed: lines.length
         };
       });
     } catch (error) {
@@ -146,9 +174,8 @@ class POConfirmationService {
   async getConfirmationSummary(institutionId, poId) {
     try {
       const [poResult] = await db.query(
-        `SELECT po.*, w.name as warehouse_name, v.display_name as vendor_name
+        `SELECT po.*, v.display_name as vendor_name
          FROM purchase_orders po 
-         LEFT JOIN warehouses w ON po.warehouse_id = w.id 
          LEFT JOIN vendors v ON po.vendor_id = v.id
          WHERE po.institution_id = ? AND po.id = ?`,
         [institutionId, poId]
@@ -162,15 +189,16 @@ class POConfirmationService {
 
       // Get line items with current inventory levels
       const lines = await db.query(
-        `SELECT pol.*, i.sku, i.name as item_name, i.unit,
+        `SELECT pol.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name,
                 ip.quantity_on_hand as current_stock,
                 ip.quantity_available as available_stock
          FROM purchase_order_lines pol
          JOIN items i ON pol.item_id = i.id
-         LEFT JOIN inventory_projections ip ON (ip.item_id = pol.item_id AND ip.warehouse_id = ?)
+         LEFT JOIN warehouses w ON pol.warehouse_id = w.id
+         LEFT JOIN inventory_projections ip ON (ip.item_id = pol.item_id AND ip.warehouse_id = pol.warehouse_id)
          WHERE pol.institution_id = ? AND pol.po_id = ?
          ORDER BY pol.line_number`,
-        [po.warehouse_id, institutionId, poId]
+        [institutionId, poId]
       );
 
       return {
@@ -180,8 +208,7 @@ class POConfirmationService {
           totalItems: lines.length,
           totalQuantity: lines.reduce((sum, line) => sum + line.quantity_ordered, 0),
           totalValue: lines.reduce((sum, line) => sum + (line.quantity_ordered * line.unit_cost), 0),
-          warehouseName: po.warehouse_name,
-          vendorName: po.vendor_name || po.vendor_name
+          vendorName: po.vendor_name
         }
       };
     } catch (error) {

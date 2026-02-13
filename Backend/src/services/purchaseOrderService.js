@@ -126,6 +126,7 @@ class PurchaseOrderService {
     
     const receivedBy = userId || null;
     const grnId = uuidv4();
+    const inventoryUpdates = [];
 
     try {
       await db.transaction(async (connection) => {
@@ -171,7 +172,7 @@ class PurchaseOrderService {
           );
 
           if (line.qualityStatus === 'accepted' || !line.qualityStatus) {
-            await inventoryService.receiveStock(institutionId, {
+            inventoryUpdates.push({
               itemId: line.itemId,
               warehouseId: line.warehouseId,
               quantity: Number(line.quantityReceived),
@@ -179,7 +180,7 @@ class PurchaseOrderService {
               poId,
               poLineId: line.poLineId,
               grnNumber: grnNumber || `GRN-${Date.now()}`
-            }, userId);
+            });
           }
         }
 
@@ -209,6 +210,12 @@ class PurchaseOrderService {
           [poStatus, poId]
         );
       });
+
+      // Update inventory AFTER transaction completes
+      for (const update of inventoryUpdates) {
+        console.log('Updating inventory:', update);
+        await inventoryService.receiveStock(institutionId, update, userId);
+      }
 
       logger.info('GRN created', { grnId, institutionId, grnNumber, poId, userId });
       return grnId;

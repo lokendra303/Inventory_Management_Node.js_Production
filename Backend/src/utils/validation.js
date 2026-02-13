@@ -154,7 +154,7 @@ const createPurchaseOrderSchema = Joi.object({
   poNumber: Joi.string().max(100).required(),
   vendorId: Joi.string().uuid().optional(),
   vendorName: Joi.string().max(255).required(),
-  warehouseId,
+  warehouseId: Joi.string().uuid().optional(),
   currency: Joi.string().length(3).default('USD'),
   exchangeRate: Joi.number().positive().default(1.0),
   orderDate: Joi.date().required(),
@@ -162,6 +162,7 @@ const createPurchaseOrderSchema = Joi.object({
   notes: Joi.string().optional(),
   lines: Joi.array().items(Joi.object({
     itemId,
+    warehouseId,
     quantity: quantity,
     unitCost: unitCost,
     expectedDate: Joi.date().optional()
@@ -239,31 +240,33 @@ const updateUserPermissionsSchema = Joi.object({
 const createGRNSchema = Joi.object({
   grnNumber: Joi.string().max(100).required(),
   poId: Joi.string().uuid().required(),
-  warehouseId: Joi.string().uuid().required(),
-  receiptDate: Joi.date().required(),
+  receiptDate: Joi.alternatives().try(
+    Joi.date(),
+    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+  ).required(),
   notes: Joi.string().optional(),
   lines: Joi.array().items(Joi.object({
     poLineId: Joi.string().uuid().required(),
     itemId: Joi.string().uuid().required(),
+    warehouseId: Joi.string().uuid().required(),
     itemName: Joi.string().optional(),
+    warehouseName: Joi.string().optional(),
     quantityOrdered: Joi.number().optional(),
     quantityReceived: Joi.number().positive().required(),
     unitCost: Joi.number().positive().required(),
     qualityStatus: Joi.string().valid('accepted', 'rejected').default('accepted')
-  })).min(1).required()
+  }).unknown(true)).min(1).required()
 }).unknown(true);
 
 // Purchase Order status update schema
 const updatePOStatusSchema = Joi.object({
-  status: Joi.string().valid('draft', 'pending_approval', 'approved', 'sent', 'confirmed', 'partially_received', 'received', 'cancelled').required(),
-  institutionId: Joi.string().uuid().optional()
-});
+  status: Joi.string().valid('draft', 'pending_approval', 'approved', 'sent', 'confirmed', 'partially_received', 'received', 'cancelled').required()
+}).unknown(true);
 
 // Sales Order status update schema
 const updateSOStatusSchema = Joi.object({
-  status: Joi.string().valid('draft', 'confirmed', 'shipped', 'delivered', 'cancelled').required(),
-  institutionId: Joi.string().uuid().optional()
-});
+  status: Joi.string().valid('draft', 'confirmed', 'shipped', 'delivered', 'cancelled').required()
+}).unknown(true);
 
 // Automation Rule schemas
 const createAutomationRuleSchema = Joi.object({
