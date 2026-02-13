@@ -25,6 +25,7 @@ class PurchaseOrderService {
         if (!institutionId) throw new Error('institutionId is required');
         if (!poNumber) throw new Error('poNumber is required');
         if (!vendorName) throw new Error('vendorName is required');
+        if (!lines || lines.length === 0) throw new Error('At least one line item is required');
         
         let formattedOrderDate = orderDate;
         let formattedExpectedDate = expectedDate;
@@ -69,8 +70,18 @@ class PurchaseOrderService {
 
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
-          if (!line.warehouseId) {
-            throw new Error('Warehouse is required for each line item');
+          
+          // If warehouseId is not provided, get the first available warehouse
+          let warehouseId = line.warehouseId;
+          if (!warehouseId) {
+            const [warehouses] = await connection.execute(
+              'SELECT id FROM warehouses WHERE institution_id = ? AND status = "active" LIMIT 1',
+              [institutionId]
+            );
+            if (warehouses.length === 0) {
+              throw new Error('No active warehouse found. Please create a warehouse first.');
+            }
+            warehouseId = warehouses[0].id;
           }
           
           const lineId = uuidv4();
@@ -86,7 +97,7 @@ class PurchaseOrderService {
             `INSERT INTO purchase_order_lines 
              (id, institution_id, po_id, item_id, warehouse_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, poId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitCost, lineTotal, lineExpectedDate]
+            [lineId, institutionId, poId, line.itemId, warehouseId, i + 1, line.quantity, line.unitCost, lineTotal, lineExpectedDate]
           );
         }
 
@@ -129,23 +140,50 @@ class PurchaseOrderService {
 
     try {
       await db.transaction(async (connection) => {
+        // Get warehouse from first line or use default
+        let grnWarehouseId = grnData.warehouseId;
+        if (!grnWarehouseId && lines.length > 0) {
+          // Get warehouse from PO line
+          const [poLines] = await connection.execute(
+            'SELECT warehouse_id FROM purchase_order_lines WHERE id = ? LIMIT 1',
+            [lines[0].poLineId]
+          );
+          if (poLines.length > 0) {
+            grnWarehouseId = poLines[0].warehouse_id;
+          }
+        }
+        
+        if (!grnWarehouseId) {
+          // Get first available warehouse
+          const [warehouses] = await connection.execute(
+            'SELECT id FROM warehouses WHERE institution_id = ? AND status = "active" LIMIT 1',
+            [institutionId]
+          );
+          if (warehouses.length === 0) {
+            throw new Error('No active warehouse found. Please create a warehouse first.');
+          }
+          grnWarehouseId = warehouses[0].id;
+        }
+
         await connection.execute(
           `INSERT INTO goods_receipt_notes 
-           (id, institution_id, grn_number, po_id, receipt_date, received_by, notes, status) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
-          [grnId, institutionId, grnNumber || `GRN-${Date.now()}`, poId, formattedReceiptDate, receivedBy, notes || null]
+           (id, institution_id, grn_number, po_id, warehouse_id, receipt_date, received_by, notes, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
+          [grnId, institutionId, grnNumber || `GRN-${Date.now()}`, poId, grnWarehouseId, formattedReceiptDate, receivedBy, notes || null]
         );
 
         for (const line of lines) {
           if (!line.itemId) throw new Error('line.itemId is required');
           if (!line.poLineId) throw new Error('line.poLineId is required');
-          if (!line.warehouseId) throw new Error('line.warehouseId is required');
           if (line.quantityReceived === undefined || line.quantityReceived === null) {
             throw new Error('line.quantityReceived is required');
           }
           if (line.unitCost === undefined || line.unitCost === null) {
             throw new Error('line.unitCost is required');
           }
+          
+          // Use line warehouse or fall back to GRN warehouse
+          const lineWarehouseId = line.warehouseId || grnWarehouseId;
           
           const grnLineId = uuidv4();
           const lineTotal = line.quantityReceived * line.unitCost;
@@ -173,7 +211,7 @@ class PurchaseOrderService {
           if (line.qualityStatus === 'accepted' || !line.qualityStatus) {
             await inventoryService.receiveStock(institutionId, {
               itemId: line.itemId,
-              warehouseId: line.warehouseId,
+              warehouseId: lineWarehouseId,
               quantity: Number(line.quantityReceived),
               unitCost: Number(line.unitCost),
               poId,
@@ -219,18 +257,13 @@ class PurchaseOrderService {
   }
 
   async getPurchaseOrders(institutionId, filters = {}, limit = 100, offset = 0) {
-    console.log('=== DEBUG getPurchaseOrders ===');
-    console.log('institutionId:', institutionId);
-    console.log('filters:', filters);
-    
     let query = `
-      SELECT po.*, v.display_name as vendor_name, w.name as warehouse_name,
+      SELECT po.*, v.display_name as vendor_name,
              COUNT(pol.id) as line_count,
              SUM(pol.quantity_ordered) as total_quantity_ordered,
              SUM(pol.quantity_received) as total_quantity_received
       FROM purchase_orders po
       LEFT JOIN vendors v ON po.vendor_id = v.id
-      LEFT JOIN warehouses w ON po.warehouse_id = w.id
       LEFT JOIN purchase_order_lines pol ON po.id = pol.po_id
       WHERE po.institution_id = ?
     `;
@@ -247,26 +280,15 @@ class PurchaseOrderService {
     }
 
     query += ' GROUP BY po.id ORDER BY po.created_at DESC';
-    
-    console.log('Final query:', query);
-    console.log('Params:', params);
 
-    try {
-      const result = await db.query(query, params);
-      console.log('Query result count:', result.length);
-      return result;
-    } catch (error) {
-      console.error('Database query error:', error.message);
-      throw error;
-    }
+    return await db.query(query, params);
   }
 
   async getPurchaseOrder(institutionId, poId) {
     const pos = await db.query(
-      `SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name, w.name as warehouse_name
+      `SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name
        FROM purchase_orders po
        LEFT JOIN vendors v ON po.vendor_id = v.id
-       LEFT JOIN warehouses w ON po.warehouse_id = w.id
        WHERE po.institution_id = ? AND po.id = ?`,
       [institutionId, poId]
     );
@@ -300,10 +322,9 @@ class PurchaseOrderService {
 
   async getGRN(institutionId, grnId) {
     const [grns] = await db.query(
-      `SELECT grn.*, po.po_number, w.name as warehouse_name
+      `SELECT grn.*, po.po_number
        FROM goods_receipt_notes grn
        JOIN purchase_orders po ON grn.po_id = po.id
-       LEFT JOIN warehouses w ON grn.warehouse_id = w.id
        WHERE grn.institution_id = ? AND grn.id = ?`,
       [institutionId, grnId]
     );
@@ -352,7 +373,7 @@ class PurchaseOrderService {
     const params = [institutionId];
 
     if (warehouseId) {
-      query += ' AND po.warehouse_id = ?';
+      query += ' AND pol.warehouse_id = ?';
       params.push(warehouseId);
     }
 

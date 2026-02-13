@@ -6,16 +6,23 @@ const logger = require('../utils/logger');
 // Extract institution context from JWT token
 const extractInstitutionContext = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
+    // Try cookie first, then fall back to Authorization header
+    let token = req.cookies?.token;
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+    
+    if (!token) {
       return res.status(401).json({
         success: false,
         error: 'Authorization token required'
       });
     }
 
-    const token = authHeader.substring(7);
     const decoded = await authService.verifyToken(token);
     
     req.institutionId = decoded.institutionId;

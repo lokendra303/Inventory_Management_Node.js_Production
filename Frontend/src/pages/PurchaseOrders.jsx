@@ -106,6 +106,8 @@ const PurchaseOrders = () => {
 
   const handleCreatePO = async (values) => {
     try {
+      console.log('Form values:', values);
+      
       // Get selected vendor details
       const selectedVendor = vendors.find(v => v.id === values.vendorId);
       
@@ -118,8 +120,14 @@ const PurchaseOrders = () => {
         vendorName: selectedVendor?.display_name || selectedVendor?.company_name || 'Unknown Vendor',
         orderDate: orderDate,
         expectedDate: expectedDate,
-        lines: values.lines || []
+        lines: (values.lines || []).map(line => ({
+          ...line,
+          quantity: Number(line.quantity),
+          unitCost: Number(line.unitCost)
+        }))
       };
+      
+      console.log('Sending PO data:', poData);
 
       const response = await apiService.post('/purchase-orders', poData);
       
@@ -131,7 +139,8 @@ const PurchaseOrders = () => {
       }
     } catch (error) {
       console.error('PO creation error:', error);
-      message.error(error.response?.data?.error || 'Failed to create purchase order');
+      console.error('Error response:', error.response?.data);
+      message.error(error.response?.data?.error || error.response?.data?.details?.[0]?.message || 'Failed to create purchase order');
     }
   };
 
@@ -147,32 +156,12 @@ const PurchaseOrders = () => {
 
   const confirmPO = async (po) => {
     try {
-      // First, try to auto-generate invoice BEFORE changing status
-      let invoiceGenerated = false;
-      let invoiceNumber = null;
+      const response = await apiService.put(`/purchase-orders/${po.id}/status`, { status: 'confirmed' });
       
-      try {
-        console.log('Attempting to generate invoice for PO:', po.id);
-        const invoiceResponse = await apiService.post(`/purchase-invoices/generate-from-po/${po.id}`);
-        console.log('Invoice generation response:', invoiceResponse);
-        if (invoiceResponse.success) {
-          invoiceGenerated = true;
-          invoiceNumber = invoiceResponse.data.invoiceNumber;
-        }
-      } catch (invoiceError) {
-        console.error('Invoice generation failed:', invoiceError);
-        console.error('Error response:', invoiceError.response?.data);
-      }
-      
-      // Then confirm the PO
-      await apiService.put(`/purchase-orders/${po.id}/status`, { status: 'confirmed' });
-      
-      // Show appropriate message
-      if (invoiceGenerated) {
-        message.success(`Purchase order confirmed and invoice ${invoiceNumber} auto-generated`);
+      if (response.success && response.data?.invoiceNumber) {
+        message.success(`Purchase order confirmed and invoice ${response.data.invoiceNumber} generated`);
       } else {
         message.success('Purchase order confirmed');
-        message.info('You can create invoice manually from Invoices page');
       }
       
       fetchData();

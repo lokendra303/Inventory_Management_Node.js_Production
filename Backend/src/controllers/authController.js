@@ -91,10 +91,20 @@ class AuthController {
       const { email, password, institutionId } = req.body;
       const result = await authService.authenticateUser(email, password, institutionId);
       
+      // Store token in HTTP-only cookie
+      res.cookie('token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
+      
+      // Return user data without token
+      const { token, ...userData } = result;
       res.json({
         success: true,
         message: 'Login successful',
-        data: result
+        data: userData
       });
     } catch (error) {
       logger.error('Login failed', { error: error.message, email: req.body.email });
@@ -292,21 +302,29 @@ class AuthController {
 
   async refreshToken(req, res) {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const token = req.cookies.token;
+      if (!token) {
         return res.status(401).json({
           success: false,
           error: 'Token required for refresh'
         });
       }
 
-      const token = authHeader.substring(7);
       const result = await authService.refreshToken(token);
       
+      // Update cookie with new token
+      res.cookie('token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 * 1000
+      });
+      
+      const { token: newToken, ...userData } = result;
       res.json({
         success: true,
         message: 'Token refreshed successfully',
-        data: result
+        data: userData
       });
     } catch (error) {
       logger.error('Token refresh failed', { error: error.message });
@@ -420,10 +438,19 @@ class AuthController {
       const { email, tempPassword, institutionId } = req.body;
       const result = await authService.loginWithTempAccess(email, tempPassword, institutionId);
       
+      // Store token in HTTP-only cookie
+      res.cookie('token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 * 1000
+      });
+      
+      const { token, ...userData } = result;
       res.json({
         success: true,
         message: 'Temporary login successful',
-        data: result
+        data: userData
       });
     } catch (error) {
       res.status(401).json({
@@ -431,6 +458,14 @@ class AuthController {
         error: error.message
       });
     }
+  }
+
+  async logout(req, res) {
+    res.clearCookie('token');
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
   }
 
   // Institution management endpoints

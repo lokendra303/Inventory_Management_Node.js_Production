@@ -13,9 +13,8 @@ class POConfirmationService {
       await db.transaction(async (connection) => {
         // Get PO details
         const [poResult] = await connection.execute(
-          `SELECT po.*, w.name as warehouse_name 
+          `SELECT po.*
            FROM purchase_orders po 
-           LEFT JOIN warehouses w ON po.warehouse_id = w.id 
            WHERE po.institution_id = ? AND po.id = ?`,
           [institutionId, poId]
         );
@@ -44,7 +43,7 @@ class POConfirmationService {
         const grnNumber = `AUTO-GRN-${po.po_number}-${Date.now()}`;
         const grnId = uuidv4();
 
-        // Create automatic GRN
+        // Create automatic GRN using warehouse_id from first line
         await connection.execute(
           `INSERT INTO goods_receipt_notes 
            (id, institution_id, grn_number, po_id, warehouse_id, receipt_date, received_by, notes, status) 
@@ -53,8 +52,8 @@ class POConfirmationService {
             grnId, 
             institutionId, 
             grnNumber, 
-            poId, 
-            po.warehouse_id, 
+            poId,
+            lines[0].warehouse_id,
             new Date().toISOString().split('T')[0], 
             userId, 
             'Auto-generated GRN on PO confirmation'
@@ -85,7 +84,7 @@ class POConfirmationService {
           // Create inventory entry using inventory service
           await inventoryService.receiveStock(institutionId, {
             itemId: line.item_id,
-            warehouseId: po.warehouse_id,
+            warehouseId: line.warehouse_id,
             quantity: Number(line.quantity_ordered),
             unitCost: Number(line.unit_cost),
             poId: poId,
@@ -96,25 +95,65 @@ class POConfirmationService {
           logger.info('Inventory updated for item', {
             itemId: line.item_id,
             itemName: line.item_name,
-            warehouseId: po.warehouse_id,
+            warehouseId: line.warehouse_id,
             quantity: line.quantity_ordered,
             unitCost: line.unit_cost,
             poId: poId
           });
         }
 
-        // Update PO status to received
+        // Update PO status to confirmed
         await connection.execute(
           'UPDATE purchase_orders SET status = ?, updated_at = NOW() WHERE id = ?',
-          ['received', poId]
+          ['confirmed', poId]
         );
+
+        // Auto-generate purchase invoice
+        const invoiceId = uuidv4();
+        const invoiceNumber = `PI-${po.po_number}-${Date.now()}`;
+        
+        let subtotal = 0;
+        let totalTax = 0;
+        let totalDiscount = 0;
+        
+        for (const line of lines) {
+          const lineTotal = line.quantity_ordered * line.unit_cost;
+          subtotal += lineTotal;
+        }
+        
+        const grandTotal = subtotal + totalTax - totalDiscount;
+        
+        await connection.execute(`
+          INSERT INTO purchase_invoices (
+            id, institution_id, invoice_number, vendor_id, vendor_name, po_id, grn_id,
+            invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
+            discount_amount, total_amount, paid_amount, balance_amount, status, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?)
+        `, [
+          invoiceId, institutionId, invoiceNumber, po.vendor_id, po.vendor_name, poId, grnId,
+          new Date().toISOString().split('T')[0], null, po.currency || 'USD', po.exchange_rate || 1,
+          subtotal, totalTax, totalDiscount, grandTotal, 0, grandTotal, userId
+        ]);
+        
+        // Add invoice lines
+        for (const line of lines) {
+          await connection.execute(`
+            INSERT INTO purchase_invoice_lines (
+              invoice_id, po_line_id, grn_line_id, item_id, item_name, warehouse_id, quantity, unit_cost, line_total,
+              tax_rate, tax_amount, discount_rate, discount_amount
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            invoiceId, line.id, null, line.item_id, line.item_name, line.warehouse_id, line.quantity_ordered,
+            line.unit_cost, line.quantity_ordered * line.unit_cost, 0, 0, 0, 0
+          ]);
+        }
 
         logger.info('PO confirmation processed successfully', {
           poId,
           poNumber: po.po_number,
           grnId,
           grnNumber,
-          warehouseId: po.warehouse_id,
+          invoiceNumber,
           totalLines: lines.length,
           institutionId,
           userId
@@ -124,8 +163,8 @@ class POConfirmationService {
           success: true,
           grnId,
           grnNumber,
-          itemsProcessed: lines.length,
-          warehouseUpdated: po.warehouse_name || po.warehouse_id
+          invoiceNumber,
+          itemsProcessed: lines.length
         };
       });
     } catch (error) {
@@ -146,9 +185,8 @@ class POConfirmationService {
   async getConfirmationSummary(institutionId, poId) {
     try {
       const [poResult] = await db.query(
-        `SELECT po.*, w.name as warehouse_name, v.display_name as vendor_name
+        `SELECT po.*, v.display_name as vendor_name
          FROM purchase_orders po 
-         LEFT JOIN warehouses w ON po.warehouse_id = w.id 
          LEFT JOIN vendors v ON po.vendor_id = v.id
          WHERE po.institution_id = ? AND po.id = ?`,
         [institutionId, poId]
@@ -162,15 +200,16 @@ class POConfirmationService {
 
       // Get line items with current inventory levels
       const lines = await db.query(
-        `SELECT pol.*, i.sku, i.name as item_name, i.unit,
+        `SELECT pol.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name,
                 ip.quantity_on_hand as current_stock,
                 ip.quantity_available as available_stock
          FROM purchase_order_lines pol
          JOIN items i ON pol.item_id = i.id
-         LEFT JOIN inventory_projections ip ON (ip.item_id = pol.item_id AND ip.warehouse_id = ?)
+         LEFT JOIN warehouses w ON pol.warehouse_id = w.id
+         LEFT JOIN inventory_projections ip ON (ip.item_id = pol.item_id AND ip.warehouse_id = pol.warehouse_id)
          WHERE pol.institution_id = ? AND pol.po_id = ?
          ORDER BY pol.line_number`,
-        [po.warehouse_id, institutionId, poId]
+        [institutionId, poId]
       );
 
       return {
@@ -180,8 +219,7 @@ class POConfirmationService {
           totalItems: lines.length,
           totalQuantity: lines.reduce((sum, line) => sum + line.quantity_ordered, 0),
           totalValue: lines.reduce((sum, line) => sum + (line.quantity_ordered * line.unit_cost), 0),
-          warehouseName: po.warehouse_name,
-          vendorName: po.vendor_name || po.vendor_name
+          vendorName: po.vendor_name
         }
       };
     } catch (error) {

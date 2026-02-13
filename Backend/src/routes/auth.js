@@ -28,6 +28,9 @@ router.post('/temp-login',
 // POST /api/auth/refresh
 router.post('/refresh', authController.refreshToken);
 
+// POST /api/auth/logout (PROTECTED)
+router.post('/logout', requireAuth, authController.logout);
+
 // GET /api/auth/profile (PROTECTED)
 router.get('/profile', requireAuth, authController.getProfile);
 
