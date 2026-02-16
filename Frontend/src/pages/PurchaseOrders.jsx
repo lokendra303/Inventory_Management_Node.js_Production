@@ -5,6 +5,7 @@ import moment from 'moment';
 import apiService from '../services/apiService';
 import { useCurrency } from '../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../utils/currency';
+import { formatQuantity, formatAmount } from '../utils/numberFormat';
 
 const PurchaseOrders = () => {
   const { currency } = useCurrency();
@@ -606,10 +607,10 @@ const PurchaseOrders = () => {
                           <div style={{ padding: '8px 12px', backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 4 }}>
                             <span style={{ fontSize: '13px', color: '#0050b3' }}>
                               ℹ️ <strong>{items.find(i => i.id === selectedItemId)?.name}</strong> at <strong>{warehouses.find(w => w.id === selectedWarehouseId)?.name}</strong>:
-                              <strong style={{ color: '#1890ff', marginLeft: 4 }}>Current: {parseFloat(currentStock).toFixed(2)} units</strong>
+                              <strong style={{ color: '#1890ff', marginLeft: 4 }}>Current: {formatQuantity(currentStock)} units</strong>
                               {form.getFieldValue(['lines', name, 'quantity']) && (
                                 <span style={{ color: '#52c41a', marginLeft: 4 }}>
-                                  → After receiving: {(parseFloat(currentStock) + parseFloat(form.getFieldValue(['lines', name, 'quantity']) || 0)).toFixed(2)} units
+                                  → After receiving: {formatQuantity(parseFloat(currentStock) + parseFloat(form.getFieldValue(['lines', name, 'quantity']) || 0))} units
                                 </span>
                               )}
                             </span>
@@ -815,10 +816,10 @@ const PurchaseOrders = () => {
                 { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
                 { title: 'SKU', dataIndex: 'sku', key: 'sku' },
                 { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
-                { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered' },
-                { title: 'Received', dataIndex: 'quantity_received', key: 'quantity_received', render: (val) => val || 0 },
-                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', render: (val) => `${selectedPOForView.currency} ${val}` },
-                { title: 'Line Total', dataIndex: 'line_total', key: 'line_total', render: (val) => `${selectedPOForView.currency} ${val}` },
+                { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered', render: (val) => formatQuantity(val) },
+                { title: 'Received', dataIndex: 'quantity_received', key: 'quantity_received', render: (val) => formatQuantity(val || 0) },
+                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', render: (val) => `${selectedPOForView.currency} ${formatAmount(val)}` },
+                { title: 'Line Total', dataIndex: 'line_total', key: 'line_total', render: (val) => `${selectedPOForView.currency} ${formatAmount(val)}` },
                 { title: 'Status', dataIndex: 'status', key: 'status', render: (val) => val?.toUpperCase() }
               ]}
             />

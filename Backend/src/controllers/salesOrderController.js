@@ -1,5 +1,6 @@
 const salesOrderService = require('../services/salesOrderService');
 const soConfirmationService = require('../services/soConfirmationService');
+const salesOrderPDFService = require('../services/salesOrderPDFService');
 const logger = require('../utils/logger');
 
 class SalesOrderController {
@@ -273,6 +274,36 @@ class SalesOrderController {
       res.status(500).json({
         success: false,
         error: error.message
+      });
+    }
+  }
+
+  async downloadSOPDF(req, res) {
+    try {
+      const { id: soId } = req.params;
+      const so = await salesOrderService.getSalesOrder(req.institutionId, soId);
+      
+      if (!so) {
+        return res.status(404).json({
+          success: false,
+          error: 'Sales order not found'
+        });
+      }
+      
+      const pdfBuffer = await salesOrderPDFService.generatePDFBuffer(so, req.institutionId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="SO_${so.so_number}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      logger.error('Failed to generate SO PDF', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        soId: req.params.id 
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate PDF'
       });
     }
   }

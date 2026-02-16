@@ -91,66 +91,80 @@ class PurchaseOrderPDFService {
         doc.fontSize(18).font('Helvetica-Bold').text('PURCHASE ORDER', 50, y);
         y += 30;
 
-        // PO Details
+        // PO Details on left, Vendor Details on right (same row)
+        const detailsStartY = y;
+        
+        // Left side - PO Details
         doc.fontSize(10).font('Helvetica-Bold').text('PO Number:', 50, y);
         doc.font('Helvetica').text(poData.po_number || 'N/A', 150, y);
-        
-        doc.font('Helvetica-Bold').text('Status:', 350, y);
-        doc.font('Helvetica').text((poData.status || 'N/A').toUpperCase(), 420, y);
         y += 20;
 
         doc.font('Helvetica-Bold').text('Order Date:', 50, y);
-        doc.font('Helvetica').text(poData.order_date || 'N/A', 150, y);
+        const orderDate = poData.order_date ? new Date(poData.order_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A';
+        doc.font('Helvetica').text(orderDate, 150, y);
+        y += 20;
         
         if (poData.expected_date) {
-          doc.font('Helvetica-Bold').text('Expected Date:', 350, y);
-          doc.font('Helvetica').text(poData.expected_date, 420, y);
+          doc.font('Helvetica-Bold').text('Expected Date:', 50, y);
+          const expectedDate = new Date(poData.expected_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+          doc.font('Helvetica').text(expectedDate, 150, y);
+          y += 20;
         }
-        y += 20;
 
         doc.font('Helvetica-Bold').text('Currency:', 50, y);
         doc.font('Helvetica').text(poData.currency || 'USD', 150, y);
-        y += 30;
-
-        // Vendor Details
-        doc.fontSize(12).font('Helvetica-Bold').text('Vendor Details', 50, y);
         y += 20;
         
-        doc.fontSize(10).font('Helvetica-Bold').text(vendorDetails?.display_name || poData.vendor_name || 'N/A', 50, y);
-        y += 15;
+        doc.font('Helvetica-Bold').text('Status:', 50, y);
+        doc.font('Helvetica').text((poData.status || 'N/A').toUpperCase(), 150, y);
+
+        // Right side - Vendor Details (starting at same Y as PO Details)
+        let vendorY = detailsStartY;
+        doc.fontSize(12).font('Helvetica-Bold').text('Vendor Details', 320, vendorY);
+        vendorY += 20;
+        
+        const vendorName = vendorDetails?.display_name || poData.vendor_name || 'N/A';
+        doc.fontSize(10).font('Helvetica-Bold').text(vendorName, 320, vendorY, { width: 225 });
+        vendorY += doc.heightOfString(vendorName, { width: 225 }) + 3;
         
         if (vendorDetails?.company_name) {
-          doc.fontSize(9).font('Helvetica').text(vendorDetails.company_name, 50, y);
-          y += 12;
+          doc.fontSize(9).font('Helvetica').text(vendorDetails.company_name, 320, vendorY, { width: 225 });
+          vendorY += doc.heightOfString(vendorDetails.company_name, { width: 225 }) + 3;
         }
         
         if (vendorDetails?.billing_address1) {
-          doc.fontSize(9).font('Helvetica').text(vendorDetails.billing_address1, 50, y);
-          y += 12;
+          doc.fontSize(9).font('Helvetica').text(vendorDetails.billing_address1, 320, vendorY, { width: 225 });
+          vendorY += doc.heightOfString(vendorDetails.billing_address1, { width: 225 }) + 3;
+          
           if (vendorDetails.billing_address2) {
-            doc.text(vendorDetails.billing_address2, 50, y);
-            y += 12;
+            doc.text(vendorDetails.billing_address2, 320, vendorY, { width: 225 });
+            vendorY += doc.heightOfString(vendorDetails.billing_address2, { width: 225 }) + 3;
           }
-          doc.text(`${vendorDetails.billing_city || ''}, ${vendorDetails.billing_state || ''} ${vendorDetails.billing_pin_code || ''}`, 50, y);
-          y += 12;
+          
+          const cityStateZip = `${vendorDetails.billing_city || ''}, ${vendorDetails.billing_state || ''} ${vendorDetails.billing_pin_code || ''}`;
+          doc.text(cityStateZip, 320, vendorY, { width: 225 });
+          vendorY += doc.heightOfString(cityStateZip, { width: 225 }) + 3;
         }
         
         if (vendorDetails?.email) {
-          doc.text(`Email: ${vendorDetails.email}`, 50, y);
-          y += 12;
+          const emailText = `Email: ${vendorDetails.email}`;
+          doc.text(emailText, 320, vendorY, { width: 225 });
+          vendorY += doc.heightOfString(emailText, { width: 225 }) + 3;
         }
         
         if (vendorDetails?.work_phone || vendorDetails?.mobile_phone) {
-          doc.text(`Phone: ${vendorDetails.work_phone || vendorDetails.mobile_phone}`, 50, y);
-          y += 12;
+          const phoneText = `Phone: ${vendorDetails.work_phone || vendorDetails.mobile_phone}`;
+          doc.text(phoneText, 320, vendorY, { width: 225 });
+          vendorY += doc.heightOfString(phoneText, { width: 225 }) + 3;
         }
         
         if (vendorDetails?.gstin) {
-          doc.text(`GSTIN: ${vendorDetails.gstin}`, 50, y);
-          y += 12;
+          const gstinText = `GSTIN: ${vendorDetails.gstin}`;
+          doc.text(gstinText, 320, vendorY, { width: 225 });
+          vendorY += doc.heightOfString(gstinText, { width: 225 }) + 3;
         }
         
-        y += 10;
+        y = Math.max(y + 20, vendorY) + 10;
 
         // Line Items Table
         doc.fontSize(11).font('Helvetica-Bold').text('Line Items:', 50, y);

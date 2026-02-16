@@ -74,7 +74,7 @@ class PurchaseOrderService {
           }
           
           const lineId = uuidv4();
-          const lineTotal = line.quantity * line.unitCost;
+          const lineTotal = Math.round(line.quantity * line.unitCost * 100) / 100;
           subtotal += lineTotal;
 
           let lineExpectedDate = line.expectedDate || formattedExpectedDate || null;
@@ -149,7 +149,7 @@ class PurchaseOrderService {
           }
           
           const grnLineId = uuidv4();
-          const lineTotal = line.quantityReceived * line.unitCost;
+          const lineTotal = Math.round(line.quantityReceived * line.unitCost * 100) / 100;
 
           await connection.execute(
             `INSERT INTO grn_lines 
@@ -424,7 +424,7 @@ class PurchaseOrderService {
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           const lineId = uuidv4();
-          const lineTotal = line.quantity * line.unitCost;
+          const lineTotal = Math.round(line.quantity * line.unitCost * 100) / 100;
           subtotal += lineTotal;
 
           await connection.execute(

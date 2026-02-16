@@ -5,6 +5,7 @@ import apiService from '../services/apiService';
 import InvoiceForm from '../components/InvoiceForm';
 import { useCurrency } from '../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../utils/currency';
+import { formatQuantity, formatAmount } from '../utils/numberFormat';
 
 const { Title } = Typography;
 
@@ -138,9 +139,9 @@ const PurchaseInvoices = () => {
                     <tr key={item.sno}>
                       <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.sno}</td>
                       <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.itemName}</td>
-                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{parseFloat(item.quantity).toFixed(2)}</td>
-                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{parseFloat(item.unitAmount).toFixed(2)}</td>
-                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{item.netAmount.toFixed(2)}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{formatQuantity(item.quantity)}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{formatAmount(item.unitAmount)}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{formatAmount(item.netAmount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -148,10 +149,10 @@ const PurchaseInvoices = () => {
 
               {/* Totals */}
               <div style={{ textAlign: 'right', marginTop: '20px' }}>
-                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {data.details.currency} {data.totals.subtotal.toFixed(2)}</p>
-                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {data.details.currency} {data.totals.totalTaxAmount.toFixed(2)}</p>
-                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Discount:</strong> {data.details.currency} {data.totals.totalDiscountAmount.toFixed(2)}</p>
-                <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {data.details.currency} {data.totals.grandTotal.toFixed(2)}</h3>
+                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {data.details.currency} {formatAmount(data.totals.subtotal)}</p>
+                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {data.details.currency} {formatAmount(data.totals.totalTaxAmount)}</p>
+                <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Discount:</strong> {data.details.currency} {formatAmount(data.totals.totalDiscountAmount)}</p>
+                <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {data.details.currency} {formatAmount(data.totals.grandTotal)}</h3>
                 <p style={{ margin: '5px 0', fontSize: '12px', fontStyle: 'italic' }}>Amount in words: {data.totals.amountInWords}</p>
               </div>
 

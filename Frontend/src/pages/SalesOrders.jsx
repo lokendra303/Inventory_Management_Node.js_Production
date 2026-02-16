@@ -12,7 +12,7 @@ import {
   message,
   DatePicker,
 } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, DownloadOutlined, PrinterOutlined } from "@ant-design/icons";
 import apiService from "../services/apiService";
 import { useCurrency } from "../contexts/CurrencyContext.jsx";
 import { formatPrice } from "../utils/currency";
@@ -229,6 +229,91 @@ const SalesOrders = () => {
       }
     } catch (error) {
       message.error("Failed to load SO details");
+    }
+  };
+
+  const downloadPDF = async (so) => {
+    try {
+      const token = sessionStorage.getItem('token');
+      let institutionId = sessionStorage.getItem('institutionId');
+      
+      if (!institutionId && token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          institutionId = payload.institutionId;
+        } catch (e) {
+          console.error('Failed to parse token');
+        }
+      }
+      
+      const response = await fetch(`${apiService.baseURL}/sales-orders/${so.id}/pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-institution-id': institutionId
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to download PDF');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SO_${so.so_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      message.success('PDF downloaded successfully');
+    } catch (error) {
+      message.error('Failed to download PDF');
+    }
+  };
+
+  const printSO = async (so) => {
+    try {
+      const token = sessionStorage.getItem('token');
+      let institutionId = sessionStorage.getItem('institutionId');
+      
+      if (!institutionId && token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          institutionId = payload.institutionId;
+        } catch (e) {
+          console.error('Failed to parse token');
+        }
+      }
+      
+      const response = await fetch(`${apiService.baseURL}/sales-orders/${so.id}/pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-institution-id': institutionId
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to load PDF');
+      
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const printWindow = window.open(blobUrl, '_blank');
+      if (!printWindow) {
+        message.error('Please allow pop-ups to print');
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      
+      printWindow.onload = function() {
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      };
+    } catch (error) {
+      console.error('Print error:', error);
+      message.error('Failed to print PDF');
     }
   };
 
@@ -712,6 +797,21 @@ const SalesOrders = () => {
           setSelectedSOForView(null);
         }}
         footer={[
+          <Button 
+            key="print" 
+            type="primary"
+            icon={<PrinterOutlined />}
+            onClick={() => printSO(selectedSOForView)}
+          >
+            Print
+          </Button>,
+          <Button 
+            key="download" 
+            icon={<DownloadOutlined />}
+            onClick={() => downloadPDF(selectedSOForView)}
+          >
+            Download PDF
+          </Button>,
           <Button
             key="close"
             onClick={() => {

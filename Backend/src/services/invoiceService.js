@@ -36,10 +36,10 @@ class InvoiceService {
 
     const calculatedLines = lines.map(line => {
       const unitAmount = line.unitCost || line.unitPrice || 0;
-      const lineTotal = line.quantity * unitAmount;
-      const discountAmount = (lineTotal * (line.discountRate || 0)) / 100;
-      const taxableAmount = lineTotal - discountAmount;
-      const taxAmount = (taxableAmount * (line.taxRate || 0)) / 100;
+      const lineTotal = Math.round(line.quantity * unitAmount * 100) / 100;
+      const discountAmount = Math.round((lineTotal * (line.discountRate || 0)) / 100 * 100) / 100;
+      const taxableAmount = Math.round((lineTotal - discountAmount) * 100) / 100;
+      const taxAmount = Math.round((taxableAmount * (line.taxRate || 0)) / 100 * 100) / 100;
 
       subtotal += lineTotal;
       totalDiscountAmount += discountAmount;
@@ -50,17 +50,17 @@ class InvoiceService {
         lineTotal,
         discountAmount,
         taxAmount,
-        netAmount: taxableAmount + taxAmount
+        netAmount: Math.round((taxableAmount + taxAmount) * 100) / 100
       };
     });
 
-    const totalAmount = subtotal - totalDiscountAmount + totalTaxAmount;
+    const totalAmount = Math.round((subtotal - totalDiscountAmount + totalTaxAmount) * 100) / 100;
 
     return {
       lines: calculatedLines,
-      subtotal,
-      totalDiscountAmount,
-      totalTaxAmount,
+      subtotal: Math.round(subtotal * 100) / 100,
+      totalDiscountAmount: Math.round(totalDiscountAmount * 100) / 100,
+      totalTaxAmount: Math.round(totalTaxAmount * 100) / 100,
       totalAmount
     };
   }

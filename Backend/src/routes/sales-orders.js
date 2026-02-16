@@ -67,4 +67,10 @@ router.post('/calculate-cost',
   salesOrderController.calculateOrderCost
 );
 
+// GET /api/sales-orders/:id/pdf
+router.get('/:id/pdf',
+  requirePermission('sales_view'),
+  salesOrderController.downloadSOPDF
+);
+
 module.exports = router;
