@@ -3,31 +3,48 @@ import { Modal } from 'antd';
 
 // Simple rate limiter to prevent 429 errors
 class RateLimiter {
-  constructor(maxRequests = 10, windowMs = 1000) {
+  constructor(maxRequests = 5, windowMs = 1000) {
     this.maxRequests = maxRequests;
     this.windowMs = windowMs;
     this.requests = [];
+    this.queue = [];
+    this.processing = false;
   }
 
   async waitForSlot() {
-    const now = Date.now();
-    // Remove old requests outside the window
-    this.requests = this.requests.filter(time => now - time < this.windowMs);
+    return new Promise((resolve) => {
+      this.queue.push(resolve);
+      this.processQueue();
+    });
+  }
+
+  async processQueue() {
+    if (this.processing || this.queue.length === 0) return;
     
-    if (this.requests.length >= this.maxRequests) {
-      const oldestRequest = Math.min(...this.requests);
-      const waitTime = this.windowMs - (now - oldestRequest) + 10; // Add 10ms buffer
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-      return this.waitForSlot(); // Recursive call after waiting
+    this.processing = true;
+    
+    while (this.queue.length > 0) {
+      const now = Date.now();
+      this.requests = this.requests.filter(time => now - time < this.windowMs);
+      
+      if (this.requests.length < this.maxRequests) {
+        this.requests.push(now);
+        const resolve = this.queue.shift();
+        resolve();
+      } else {
+        const oldestRequest = Math.min(...this.requests);
+        const waitTime = this.windowMs - (now - oldestRequest) + 50;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
     }
     
-    this.requests.push(now);
+    this.processing = false;
   }
 }
 
 class ApiService {
   constructor() {
-    this.rateLimiter = new RateLimiter(8, 1000); // 8 requests per second
+    this.rateLimiter = new RateLimiter(5, 1000); // 5 requests per second
     
     this.api = axios.create({
       baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',

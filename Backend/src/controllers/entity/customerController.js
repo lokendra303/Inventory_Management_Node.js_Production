@@ -1,5 +1,5 @@
-const customerService = require('../services/entity/customerService');
-const logger = require('../utils/logger');
+const customerService = require('../../services/entity/customerService');
+const logger = require('../../utils/logger');
 
 class CustomerController {
   async createCustomer(req, res) {

@@ -1,7 +1,7 @@
-const salesOrderService = require('../services/order/salesOrderService');
-const soConfirmationService = require('../services/order/soConfirmationService');
-const salesOrderPDFService = require('../services/pdf/salesOrderPDFService');
-const logger = require('../utils/logger');
+const salesOrderService = require('../../services/order/salesOrderService');
+const soConfirmationService = require('../../services/order/soConfirmationService');
+const salesOrderPDFService = require('../../services/pdf/salesOrderPDFService');
+const logger = require('../../utils/logger');
 
 class SalesOrderController {
   async createSalesOrder(req, res) {

@@ -1,5 +1,5 @@
 const express = require('express');
-const reorderLevelController = require('../../controllers/reorderLevelController');
+const reorderLevelController = require('../../controllers/inventory/reorderLevelController');
 const { requirePermission, validateInstitutionConsistency, auditLog } = require('../../middleware/auth');
 
 const router = express.Router();

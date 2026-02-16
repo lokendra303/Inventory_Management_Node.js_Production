@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const manufacturerController = require('../../controllers/manufacturerController');
+const manufacturerController = require('../../controllers/entity/manufacturerController');
 const { requireAuth } = require('../../middleware/auth');
 
 // All routes require authentication

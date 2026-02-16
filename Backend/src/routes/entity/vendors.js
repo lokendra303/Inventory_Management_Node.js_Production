@@ -1,5 +1,5 @@
 const express = require('express');
-const purchaseOrderController = require('../../controllers/purchaseOrderController');
+const purchaseOrderController = require('../../controllers/order/purchaseOrderController');
 const { requirePermission, validateInstitutionConsistency, auditLog } = require('../../middleware/auth');
 
 const router = express.Router();

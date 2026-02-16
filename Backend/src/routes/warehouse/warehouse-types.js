@@ -1,5 +1,5 @@
 const express = require('express');
-const warehouseTypeController = require('../../controllers/warehouseTypeController');
+const warehouseTypeController = require('../../controllers/warehouse/warehouseTypeController');
 const { requirePermission, auditLog } = require('../../middleware/auth');
 
 const router = express.Router();

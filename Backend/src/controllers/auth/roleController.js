@@ -1,5 +1,5 @@
-const roleService = require('../services/auth/roleService');
-const logger = require('../utils/logger');
+const roleService = require('../../services/auth/roleService');
+const logger = require('../../utils/logger');
 
 class RoleController {
   async createRole(req, res) {

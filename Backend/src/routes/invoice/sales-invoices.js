@@ -1,5 +1,5 @@
 const express = require('express');
-const salesInvoiceController = require('../../controllers/salesInvoiceController');
+const salesInvoiceController = require('../../controllers/invoice/salesInvoiceController');
 const { requirePermission, validateInstitutionConsistency, auditLog } = require('../../middleware/auth');
 const { validate, schemas } = require('../../utils/validation');
 

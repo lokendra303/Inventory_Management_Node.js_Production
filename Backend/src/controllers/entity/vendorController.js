@@ -1,5 +1,5 @@
-const vendorService = require('../services/entity/vendorService');
-const logger = require('../utils/logger');
+const vendorService = require('../../services/entity/vendorService');
+const logger = require('../../utils/logger');
 
 class VendorController {
   async createVendor(req, res) {

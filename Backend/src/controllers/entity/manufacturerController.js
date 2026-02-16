@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const database = require('../database/connection');
+const database = require('../../database/connection');
 
 class ManufacturerController {
   async create(req, res) {

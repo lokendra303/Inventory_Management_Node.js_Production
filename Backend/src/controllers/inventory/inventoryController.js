@@ -1,5 +1,5 @@
-const inventoryService = require('../services/inventory/inventoryService');
-const logger = require('../utils/logger');
+const inventoryService = require('../../services/inventory/inventoryService');
+const logger = require('../../utils/logger');
 
 class InventoryController {
   async receiveStock(req, res) {
@@ -220,7 +220,7 @@ class InventoryController {
       const { warehouseId } = req.params;
       
       // Check warehouse access
-      const warehouseService = require('../services/warehouse/warehouseService');
+      const warehouseService = require('../../services/warehouse/warehouseService');
       const hasAccess = await warehouseService.checkWarehouseAccess(req.institutionId, req.user.userId, warehouseId);
       
       if (!hasAccess) {
@@ -257,11 +257,11 @@ class InventoryController {
       const warehouseId = req.query.warehouseId;
       
       // Get user's accessible warehouses
-      const warehouseService = require('../services/warehouse/warehouseService');
+      const warehouseService = require('../../services/warehouse/warehouseService');
       const userWarehouses = await warehouseService.getUserWarehouses(req.institutionId, req.user.userId);
       const accessibleWarehouseIds = userWarehouses.map(w => w.id);
       
-      const projectionService = require('../projections/inventoryProjections');
+      const projectionService = require('../../projections/inventoryProjections');
       const inventory = await projectionService.getInstitutionInventory(
         req.institutionId, 
         limit, 
@@ -293,11 +293,11 @@ class InventoryController {
       const warehouseId = req.query.warehouseId;
       
       // Get user's accessible warehouses
-      const warehouseService = require('../services/warehouse/warehouseService');
+      const warehouseService = require('../../services/warehouse/warehouseService');
       const userWarehouses = await warehouseService.getUserWarehouses(req.institutionId, req.user.userId);
       const accessibleWarehouseIds = userWarehouses.map(w => w.id);
       
-      const projectionService = require('../projections/inventoryProjections');
+      const projectionService = require('../../projections/inventoryProjections');
       const lowStockItems = await projectionService.getLowStockItems(
         req.institutionId, 
         threshold, 
@@ -323,7 +323,7 @@ class InventoryController {
 
   async getDashboardStats(req, res) {
     try {
-      const projectionService = require('../projections/inventoryProjections');
+      const projectionService = require('../../projections/inventoryProjections');
       const stats = await projectionService.getDashboardStats(req.institutionId);
       
       res.json({

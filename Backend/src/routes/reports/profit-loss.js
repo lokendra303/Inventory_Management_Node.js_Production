@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const profitLossController = require('../../controllers/profitLossController');
+const profitLossController = require('../../controllers/reports/profitLossController');
 const { requirePermission } = require('../../middleware/auth');
 
 router.get('/', requirePermission('inventory_view'), profitLossController.getProfitLoss);

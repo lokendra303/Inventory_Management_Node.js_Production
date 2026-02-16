@@ -1,5 +1,5 @@
 const express = require('express');
-const customerController = require('../../controllers/customerController');
+const customerController = require('../../controllers/entity/customerController');
 const { requirePermission, validateInstitutionConsistency, auditLog } = require('../../middleware/auth');
 
 const router = express.Router();

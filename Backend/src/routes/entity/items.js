@@ -1,5 +1,5 @@
 const express = require('express');
-const itemController = require('../../controllers/itemController');
+const itemController = require('../../controllers/entity/itemController');
 const { requirePermission, auditLog } = require('../../middleware/auth');
 
 const router = express.Router();

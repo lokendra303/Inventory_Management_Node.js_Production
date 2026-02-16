@@ -1,5 +1,5 @@
-const warehouseService = require('../services/warehouse/warehouseService');
-const logger = require('../utils/logger');
+const warehouseService = require('../../services/warehouse/warehouseService');
+const logger = require('../../utils/logger');
 
 class WarehouseController {
   async createWarehouse(req, res) {

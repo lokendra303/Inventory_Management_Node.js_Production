@@ -1,5 +1,5 @@
 const express = require('express');
-const inventoryController = require('../../controllers/inventoryController');
+const inventoryController = require('../../controllers/inventory/inventoryController');
 const { requirePermission, auditLog } = require('../../middleware/auth');
 const { validate, schemas } = require('../../utils/validation');
 

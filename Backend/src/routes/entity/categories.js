@@ -1,5 +1,5 @@
 const express = require('express');
-const categoryController = require('../../controllers/categoryController');
+const categoryController = require('../../controllers/entity/categoryController');
 const { requirePermission, validateInstitutionConsistency, auditLog } = require('../../middleware/auth');
 
 const router = express.Router();

@@ -1,5 +1,5 @@
 const express = require('express');
-const settingsController = require('../../controllers/settingsController');
+const settingsController = require('../../controllers/settings/settingsController');
 const { auditLog } = require('../../middleware/auth');
 
 const router = express.Router();

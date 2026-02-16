@@ -1,5 +1,5 @@
-const itemService = require('../services/entity/itemService');
-const logger = require('../utils/logger');
+const itemService = require('../../services/entity/itemService');
+const logger = require('../../utils/logger');
 
 class ItemController {
   async createItem(req, res) {

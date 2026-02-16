@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const companySettingsController = require('../../controllers/companySettingsController');
+const companySettingsController = require('../../controllers/settings/companySettingsController');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({

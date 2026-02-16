@@ -1,5 +1,5 @@
-const authService = require('../services/auth/authService');
-const logger = require('../utils/logger');
+const authService = require('../../services/auth/authService');
+const logger = require('../../utils/logger');
 
 class AuthController {
   // Register new institution (replaces registerUser/registerinstitution)

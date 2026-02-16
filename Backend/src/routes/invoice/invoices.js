@@ -1,5 +1,5 @@
 const express = require('express');
-const invoiceDashboardController = require('../../controllers/invoiceDashboardController');
+const invoiceDashboardController = require('../../controllers/invoice/invoiceDashboardController');
 const { requirePermission } = require('../../middleware/auth');
 
 const router = express.Router();

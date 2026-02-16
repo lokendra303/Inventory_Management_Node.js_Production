@@ -1,5 +1,5 @@
-const db = require('../database/connection');
-const logger = require('../utils/logger');
+const db = require('../../database/connection');
+const logger = require('../../utils/logger');
 const path = require('path');
 const fs = require('fs');
 
@@ -166,3 +166,4 @@ class CompanySettingsController {
 }
 
 module.exports = new CompanySettingsController();
+

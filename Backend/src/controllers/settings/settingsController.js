@@ -1,6 +1,6 @@
-const db = require('../database/connection');
-const logger = require('../utils/logger');
-const CurrencyService = require('../utils/currencyService');
+const db = require('../../database/connection');
+const logger = require('../../utils/logger');
+const CurrencyService = require('../../utils/currencyService');
 
 class SettingsController {
   async getInstitutionSettings(req, res) {

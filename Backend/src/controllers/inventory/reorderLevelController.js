@@ -1,5 +1,5 @@
-const reorderLevelService = require('../services/inventory/reorderLevelService');
-const logger = require('../utils/logger');
+const reorderLevelService = require('../../services/inventory/reorderLevelService');
+const logger = require('../../utils/logger');
 
 class ReorderLevelController {
   async setReorderLevel(req, res) {

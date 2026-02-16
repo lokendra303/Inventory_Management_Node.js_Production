@@ -1,5 +1,5 @@
-const categoryService = require('../services/entity/categoryService');
-const logger = require('../utils/logger');
+const categoryService = require('../../services/entity/categoryService');
+const logger = require('../../utils/logger');
 
 class CategoryController {
   async createCategory(req, res) {
