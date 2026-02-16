@@ -1,6 +1,6 @@
 const PDFDocument = require('pdfkit');
-const logger = require('../utils/logger');
-const db = require('../database/connection');
+const logger = require('../../utils/logger');
+const db = require('../../database/connection');
 
 class PurchaseOrderPDFService {
   async generatePDFBuffer(poData, institutionId = null) {

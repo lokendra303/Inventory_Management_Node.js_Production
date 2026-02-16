@@ -47,7 +47,7 @@ app.post('/api/register', async (req, res) => {
     const { email, password, firstName, lastName, companyName } = req.body;
     
     // Create institution using new service
-    const { institutionId, userId } = await require('./services/authService').createInstitution({
+    const { institutionId, userId } = await require('./services/auth/authService').createInstitution({
       name: companyName,
       email: `admin@${companyName.toLowerCase().replace(/\s+/g, '')}.com`,
       adminEmail: email,

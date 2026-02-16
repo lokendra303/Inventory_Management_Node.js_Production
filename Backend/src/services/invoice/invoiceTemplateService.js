@@ -1,7 +1,7 @@
-const db = require('../database/connection');
-const vendorService = require('./vendorService');
-const customerService = require('./customerService');
-const logger = require('../utils/logger');
+const db = require('../../database/connection');
+const vendorService = require('../entity/vendorService');
+const customerService = require('../entity/customerService');
+const logger = require('../../utils/logger');
 
 class InvoiceTemplateService {
   /**

@@ -1,4 +1,4 @@
-const itemService = require('../services/itemService');
+const itemService = require('../services/entity/itemService');
 const logger = require('../utils/logger');
 
 class ItemController {

@@ -1,9 +1,9 @@
 const { v4: uuidv4 } = require('uuid');
-const db = require('../database/connection');
-const eventStore = require('../events/eventStore');
-const { INVENTORY_EVENTS, validateEventData, createAggregateId } = require('../events/inventoryEvents');
-const projectionService = require('../projections/inventoryProjections');
-const logger = require('../utils/logger');
+const db = require('../../database/connection');
+const eventStore = require('../../events/eventStore');
+const { INVENTORY_EVENTS, validateEventData, createAggregateId } = require('../../events/inventoryEvents');
+const projectionService = require('../../projections/inventoryProjections');
+const logger = require('../../utils/logger');
 
 class InventoryService {
   async receiveStock(institutionId, data, userId) {

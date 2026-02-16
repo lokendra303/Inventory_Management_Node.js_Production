@@ -1,6 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
-const db = require('../database/connection');
-const logger = require('../utils/logger');
+const db = require('../../database/connection');
+const logger = require('../../utils/logger');
 const itemFieldService = require('./itemFieldService');
 
 class ItemService {
@@ -520,7 +520,7 @@ class ItemService {
       return 0;
     }
 
-    const projectionService = require('../projections/inventoryProjections');
+    const projectionService = require('../../projections/inventoryProjections');
     let minAvailableStock = Infinity;
 
     for (const component of components) {

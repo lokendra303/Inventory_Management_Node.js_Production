@@ -1,6 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
-const db = require('../database/connection');
-const logger = require('../utils/logger');
+const db = require('../../database/connection');
+const logger = require('../../utils/logger');
 
 class WarehouseService {
   async createWarehouse(institutionId, warehouseData, userId) {
@@ -334,7 +334,7 @@ class WarehouseService {
 
   async getWarehouseMovements(institutionId, warehouseId, limit = 100, offset = 0) {
     // Get recent inventory movements for this warehouse
-    const eventStore = require('../events/eventStore');
+    const eventStore = require('../../events/eventStore');
     
     const events = await db.query(
       `SELECT es.*, i.sku, i.name as item_name

@@ -1,4 +1,4 @@
-const roleService = require('../services/roleService');
+const roleService = require('../services/auth/roleService');
 const logger = require('../utils/logger');
 
 class RoleController {

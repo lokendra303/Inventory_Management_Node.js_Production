@@ -1,6 +1,6 @@
-const salesOrderService = require('../services/salesOrderService');
-const soConfirmationService = require('../services/soConfirmationService');
-const salesOrderPDFService = require('../services/salesOrderPDFService');
+const salesOrderService = require('../services/order/salesOrderService');
+const soConfirmationService = require('../services/order/soConfirmationService');
+const salesOrderPDFService = require('../services/pdf/salesOrderPDFService');
 const logger = require('../utils/logger');
 
 class SalesOrderController {

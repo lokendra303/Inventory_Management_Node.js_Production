@@ -1,4 +1,4 @@
-const reorderLevelService = require('../services/reorderLevelService');
+const reorderLevelService = require('../services/inventory/reorderLevelService');
 const logger = require('../utils/logger');
 
 class ReorderLevelController {

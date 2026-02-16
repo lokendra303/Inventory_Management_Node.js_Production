@@ -1,8 +1,8 @@
 const db = require('../database/connection');
 const logger = require('../utils/logger');
-const invoiceTemplateService = require('../services/invoiceTemplateService');
-const invoicePDFService = require('../services/invoicePDFService');
-const autoInvoiceService = require('../services/autoInvoiceService');
+const invoiceTemplateService = require('../services/invoice/invoiceTemplateService');
+const invoicePDFService = require('../services/pdf/invoicePDFService');
+const autoInvoiceService = require('../services/invoice/autoInvoiceService');
 const { v4: uuidv4 } = require('uuid');
 
 class SalesInvoiceController {

@@ -1,4 +1,4 @@
-const reportsService = require('../services/reportsService');
+const reportsService = require('../services/reports/reportsService');
 const logger = require('../utils/logger');
 
 class ReportsController {

@@ -91,7 +91,7 @@ class InventoryProjectionService {
       }
       
       // Check for low stock alerts
-      const reorderService = require('../services/reorderLevelService');
+      const reorderService = require('../services/inventory/reorderLevelService');
       await reorderService.checkLowStock(institutionId, itemId, warehouseId);
     } catch (error) {
       console.error('Error in handlePurchaseReceived:', error);

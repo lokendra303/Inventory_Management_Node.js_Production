@@ -1,4 +1,4 @@
-const vendorService = require('../services/vendorService');
+const vendorService = require('../services/entity/vendorService');
 const logger = require('../utils/logger');
 
 class VendorController {

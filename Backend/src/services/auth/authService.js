@@ -1,10 +1,10 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const db = require('../database/connection');
-const config = require('../config');
-const logger = require('../utils/logger');
-const { ROLE_PERMISSIONS } = require('../constants/permissions');
+const db = require('../../database/connection');
+const config = require('../../config');
+const logger = require('../../utils/logger');
+const { ROLE_PERMISSIONS } = require('../../constants/permissions');
 
 class AuthService {
   // Helper function to convert undefined to null

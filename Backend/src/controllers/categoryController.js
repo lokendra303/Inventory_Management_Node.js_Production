@@ -1,4 +1,4 @@
-const categoryService = require('../services/categoryService');
+const categoryService = require('../services/entity/categoryService');
 const logger = require('../utils/logger');
 
 class CategoryController {

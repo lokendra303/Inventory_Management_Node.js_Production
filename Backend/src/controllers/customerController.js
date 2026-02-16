@@ -1,4 +1,4 @@
-const customerService = require('../services/customerService');
+const customerService = require('../services/entity/customerService');
 const logger = require('../utils/logger');
 
 class CustomerController {

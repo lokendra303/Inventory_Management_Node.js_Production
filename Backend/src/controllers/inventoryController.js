@@ -1,4 +1,4 @@
-const inventoryService = require('../services/inventoryService');
+const inventoryService = require('../services/inventory/inventoryService');
 const logger = require('../utils/logger');
 
 class InventoryController {
@@ -220,7 +220,7 @@ class InventoryController {
       const { warehouseId } = req.params;
       
       // Check warehouse access
-      const warehouseService = require('../services/warehouseService');
+      const warehouseService = require('../services/warehouse/warehouseService');
       const hasAccess = await warehouseService.checkWarehouseAccess(req.institutionId, req.user.userId, warehouseId);
       
       if (!hasAccess) {
@@ -257,7 +257,7 @@ class InventoryController {
       const warehouseId = req.query.warehouseId;
       
       // Get user's accessible warehouses
-      const warehouseService = require('../services/warehouseService');
+      const warehouseService = require('../services/warehouse/warehouseService');
       const userWarehouses = await warehouseService.getUserWarehouses(req.institutionId, req.user.userId);
       const accessibleWarehouseIds = userWarehouses.map(w => w.id);
       
@@ -293,7 +293,7 @@ class InventoryController {
       const warehouseId = req.query.warehouseId;
       
       // Get user's accessible warehouses
-      const warehouseService = require('../services/warehouseService');
+      const warehouseService = require('../services/warehouse/warehouseService');
       const userWarehouses = await warehouseService.getUserWarehouses(req.institutionId, req.user.userId);
       const accessibleWarehouseIds = userWarehouses.map(w => w.id);
       

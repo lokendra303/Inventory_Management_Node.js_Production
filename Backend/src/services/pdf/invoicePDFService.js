@@ -1,8 +1,8 @@
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
-const logger = require('../utils/logger');
-const db = require('../database/connection');
+const logger = require('../../utils/logger');
+const db = require('../../database/connection');
 const axios = require('axios');
 
 class InvoicePDFService {

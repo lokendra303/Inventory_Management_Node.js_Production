@@ -1,4 +1,4 @@
-const warehouseService = require('../services/warehouseService');
+const warehouseService = require('../services/warehouse/warehouseService');
 const logger = require('../utils/logger');
 
 class WarehouseController {

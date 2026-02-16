@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
-const authService = require('../services/authService');
+const authService = require('../services/auth/authService');
 const logger = require('../utils/logger');
 
 // Extract institution context from JWT token

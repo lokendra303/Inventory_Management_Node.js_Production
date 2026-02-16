@@ -1,6 +1,6 @@
-const db = require('../database/connection');
+const db = require('../../database/connection');
 const AccountingService = require('./accountingService');
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 
 class InvoiceService {
   // Generate Invoice Number

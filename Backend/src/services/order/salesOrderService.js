@@ -1,8 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
-const db = require('../database/connection');
-const logger = require('../utils/logger');
-const inventoryService = require('./inventoryService');
-const warehouseOptimizationService = require('./warehouseOptimizationService');
+const db = require('../../database/connection');
+const logger = require('../../utils/logger');
+const inventoryService = require('../inventory/inventoryService');
+const warehouseOptimizationService = require('../warehouse/warehouseOptimizationService');
 
 class SalesOrderService {
   async createSalesOrder(institutionId, soData, userId) {

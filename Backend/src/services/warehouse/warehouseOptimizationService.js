@@ -1,5 +1,5 @@
-const db = require('../database/connection');
-const logger = require('../utils/logger');
+const db = require('../../database/connection');
+const logger = require('../../utils/logger');
 
 class WarehouseOptimizationService {
   /**

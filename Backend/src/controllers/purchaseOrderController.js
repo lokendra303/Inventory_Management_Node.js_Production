@@ -1,7 +1,7 @@
-const purchaseOrderService = require('../services/purchaseOrderService');
-const vendorService = require('../services/vendorService');
-const poConfirmationService = require('../services/poConfirmationService');
-const purchaseOrderPDFService = require('../services/purchaseOrderPDFService');
+const purchaseOrderService = require('../services/order/purchaseOrderService');
+const vendorService = require('../services/entity/vendorService');
+const poConfirmationService = require('../services/order/poConfirmationService');
+const purchaseOrderPDFService = require('../services/pdf/purchaseOrderPDFService');
 const logger = require('../utils/logger');
 
 class PurchaseOrderController {
