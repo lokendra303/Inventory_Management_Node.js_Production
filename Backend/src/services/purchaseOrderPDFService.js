@@ -194,11 +194,21 @@ class PurchaseOrderPDFService {
 
         // Table Rows with auto-pagination
         doc.font('Helvetica').fontSize(8);
+        let pageNumber = 1;
         (poData.lines || []).forEach((line) => {
           // Check if we need a new page (leave 100px for totals)
           if (y > 680) {
+            // Add page number to current page
+            doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
+            
             doc.addPage();
+            pageNumber++;
             y = 50;
+            
+            // Add PO number header on new page
+            doc.fontSize(12).font('Helvetica-Bold').text(`PO: ${poData.po_number}`, 50, y);
+            y += 25;
+            
             y = drawTableHeader(y);
             doc.font('Helvetica').fontSize(8);
           }
@@ -225,6 +235,9 @@ class PurchaseOrderPDFService {
         // Total
         doc.fontSize(11).font('Helvetica-Bold').text('Total Amount:', 380, y);
         doc.text(`${poData.currency || 'USD'} ${parseFloat(poData.total_amount || 0).toFixed(2)}`, 480, y);
+        
+        // Add page number to last page
+        doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
 
         doc.end();
       } catch (error) {

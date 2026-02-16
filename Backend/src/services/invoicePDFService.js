@@ -77,30 +77,58 @@ class InvoicePDFService {
         doc.moveTo(50, 100).lineTo(545, 100).stroke();
         y += 15;
 
-        // Invoice Details and Vendor Info
-        doc.fontSize(12).font('Helvetica-Bold').text('PURCHASE INVOICE', 50, y);
-        y += 25;
+        // Invoice Title
+        const invoiceType = standardInvoice.details?.type === 'sales' ? 'SALES INVOICE' : 'PURCHASE INVOICE';
+        doc.fontSize(18).font('Helvetica-Bold').text(invoiceType, 50, y);
+        y += 30;
         
-        // Vendor Details - Left Side
-        doc.fontSize(9).font('Helvetica-Bold').text('Vendor Details', 50, y);
-        doc.font('Helvetica-Bold').text('Invoice #:', 350, y);
-        doc.font('Helvetica').text(standardInvoice.details?.invoiceNumber || 'N/A', 420, y);
-        y += 15;
+        // Invoice Details on left, Vendor/Customer Details on right (same row)
+        const detailsStartY = y;
         
-        doc.font('Helvetica-Bold').text(standardInvoice.partyDetails?.name || 'N/A', 50, y);
-        doc.font('Helvetica-Bold').text('Date:', 350, y);
-        doc.font('Helvetica').text(new Date(standardInvoice.details?.invoiceDate).toLocaleDateString(), 420, y);
-        y += 15;
+        // Left side - Invoice Details
+        doc.fontSize(10).font('Helvetica-Bold').text('Invoice #:', 50, y);
+        doc.font('Helvetica').text(standardInvoice.details?.invoiceNumber || 'N/A', 150, y);
+        y += 20;
         
-        doc.fontSize(8).font('Helvetica').text(standardInvoice.partyDetails?.billingAddress?.line1 || '', 50, y);
-        doc.fontSize(9).font('Helvetica-Bold').text('Due Date:', 350, y);
-        doc.font('Helvetica').text(new Date(standardInvoice.details?.dueDate).toLocaleDateString(), 420, y);
-        y += 12;
+        doc.font('Helvetica-Bold').text('Invoice Date:', 50, y);
+        const invoiceDate = standardInvoice.details?.invoiceDate ? new Date(standardInvoice.details.invoiceDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A';
+        doc.font('Helvetica').text(invoiceDate, 150, y);
+        y += 20;
         
-        doc.fontSize(8).text(`${standardInvoice.partyDetails?.billingAddress?.city || ''}, ${standardInvoice.partyDetails?.billingAddress?.state || ''}`, 50, y);
-        y += 12;
-        doc.text(standardInvoice.partyDetails?.contact?.phone || '', 50, y);
-        y += 25;
+        doc.font('Helvetica-Bold').text('Due Date:', 50, y);
+        const dueDate = standardInvoice.details?.dueDate ? new Date(standardInvoice.details.dueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A';
+        doc.font('Helvetica').text(dueDate, 150, y);
+        y += 20;
+        
+        doc.font('Helvetica-Bold').text('Currency:', 50, y);
+        doc.font('Helvetica').text(standardInvoice.details?.currency || 'USD', 150, y);
+        
+        // Right side - Vendor/Customer Details (starting at same Y as Invoice Details)
+        let partyY = detailsStartY;
+        const partyLabel = standardInvoice.details?.type === 'sales' ? 'Customer Details' : 'Vendor Details';
+        doc.fontSize(12).font('Helvetica-Bold').text(partyLabel, 320, partyY);
+        partyY += 20;
+        
+        const partyName = standardInvoice.partyDetails?.name || 'N/A';
+        doc.fontSize(10).font('Helvetica-Bold').text(partyName, 320, partyY, { width: 225 });
+        partyY += doc.heightOfString(partyName, { width: 225 }) + 3;
+        
+        if (standardInvoice.partyDetails?.billingAddress?.line1) {
+          doc.fontSize(9).font('Helvetica').text(standardInvoice.partyDetails.billingAddress.line1, 320, partyY, { width: 225 });
+          partyY += doc.heightOfString(standardInvoice.partyDetails.billingAddress.line1, { width: 225 }) + 3;
+          
+          const cityState = `${standardInvoice.partyDetails.billingAddress.city || ''}, ${standardInvoice.partyDetails.billingAddress.state || ''}`;
+          doc.text(cityState, 320, partyY, { width: 225 });
+          partyY += doc.heightOfString(cityState, { width: 225 }) + 3;
+        }
+        
+        if (standardInvoice.partyDetails?.contact?.phone) {
+          const phoneText = `Phone: ${standardInvoice.partyDetails.contact.phone}`;
+          doc.text(phoneText, 320, partyY, { width: 225 });
+          partyY += doc.heightOfString(phoneText, { width: 225 }) + 3;
+        }
+        
+        y = Math.max(y + 20, partyY) + 10;
 
         // Line Items Table with borders
         const col1 = 50;
@@ -132,11 +160,21 @@ class InvoicePDFService {
 
         // Table Rows with borders and pagination
         doc.font('Helvetica').fontSize(fontSize);
+        let pageNumber = 1;
         (standardInvoice.lineItems || []).forEach((item, index) => {
           // Check if we need a new page (leave 150px for totals and footer)
           if (y > 680) {
+            // Add page number to current page
+            doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
+            
             doc.addPage();
+            pageNumber++;
             y = 50;
+            
+            // Add Invoice number header on new page
+            doc.fontSize(12).font('Helvetica-Bold').text(`Invoice: ${standardInvoice.details?.invoiceNumber}`, 50, y);
+            y += 25;
+            
             y = drawTableHeader(y);
             doc.font('Helvetica').fontSize(fontSize);
           }
@@ -185,6 +223,9 @@ class InvoicePDFService {
         
         doc.fontSize(8).font('Helvetica-Oblique').text(`Amount in words: ${standardInvoice.totals?.amountInWords || ''}`, 350, y, { align: 'right' });
         y += 30;
+        
+        // Add page number to last page
+        doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
 
         // Bank Details with shadow box
         if (standardInvoice.partyDetails?.bankDetails?.bankName || standardInvoice.partyDetails?.bankDetails?.accountNumber) {
@@ -242,8 +283,10 @@ class InvoicePDFService {
           y += 95;
         }
 
-        // Footer with Stamp and Signature
-        const footerY = 700;
+        // Footer with Stamp and Signature - Dynamic position
+        y += 20;
+        const footerY = y;
+        
         if (stampBuffer) {
           doc.image(stampBuffer, 50, footerY, { width: 80, height: 80 });
         }
