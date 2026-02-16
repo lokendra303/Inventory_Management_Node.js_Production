@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Typography, Button, Table, Space, Tag, message, Modal } from 'antd';
-import { ShoppingCartOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined } from '@ant-design/icons';
+import { ShoppingCartOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined, PrinterOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import InvoiceForm from '../components/InvoiceForm';
 import { useCurrency } from '../contexts/CurrencyContext.jsx';
@@ -220,6 +220,37 @@ const PurchaseInvoices = () => {
     }
   };
 
+  const handlePrintPDF = async (invoiceId) => {
+    try {
+      setLoading(true);
+      const response = await apiService.get(`/purchase-invoices/${invoiceId}/pdf?download=true`, {
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const printWindow = window.open(blobUrl, '_blank');
+      if (!printWindow) {
+        message.error('Please allow pop-ups to print');
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      
+      printWindow.onload = function() {
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      };
+    } catch (error) {
+      console.error('Print error:', error);
+      message.error('Failed to print PDF');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleModalSave = (savedInvoice) => {
     setModalVisible(false);
     fetchInvoices();
@@ -299,6 +330,12 @@ const PurchaseInvoices = () => {
             icon={<EyeOutlined />}
             onClick={() => handleViewStandardFormat(record.id)}
             title="View Standard Format"
+          />
+          <Button
+            type="text"
+            icon={<PrinterOutlined />}
+            onClick={() => handlePrintPDF(record.id)}
+            title="Print PDF"
           />
           <Button
             type="text"
