@@ -467,7 +467,6 @@ class InventoryService {
   }
 
   async getWarehouseStock(institutionId, warehouseId) {
-    const projectionService = require('../projections/inventoryProjections');
     return await projectionService.getWarehouseInventory(institutionId, warehouseId);
   }
 

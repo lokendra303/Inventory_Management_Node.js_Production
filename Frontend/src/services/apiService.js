@@ -1,8 +1,34 @@
 import axios from 'axios';
 import { Modal } from 'antd';
 
+// Simple rate limiter to prevent 429 errors
+class RateLimiter {
+  constructor(maxRequests = 10, windowMs = 1000) {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+    this.requests = [];
+  }
+
+  async waitForSlot() {
+    const now = Date.now();
+    // Remove old requests outside the window
+    this.requests = this.requests.filter(time => now - time < this.windowMs);
+    
+    if (this.requests.length >= this.maxRequests) {
+      const oldestRequest = Math.min(...this.requests);
+      const waitTime = this.windowMs - (now - oldestRequest) + 10; // Add 10ms buffer
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return this.waitForSlot(); // Recursive call after waiting
+    }
+    
+    this.requests.push(now);
+  }
+}
+
 class ApiService {
   constructor() {
+    this.rateLimiter = new RateLimiter(8, 1000); // 8 requests per second
+    
     this.api = axios.create({
       baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
       timeout: 30000,
@@ -11,9 +37,12 @@ class ApiService {
       },
     });
 
-    // Request interceptor
+    // Request interceptor with rate limiting
     this.api.interceptors.request.use(
-      (config) => {
+      async (config) => {
+        // Apply rate limiting
+        await this.rateLimiter.waitForSlot();
+        
         const token = sessionStorage.getItem('token');
         
         if (token) {
@@ -59,6 +88,16 @@ class ApiService {
             window.location.href = '/';
             return Promise.reject(error);
           }
+        } else if (error.response?.status === 429) {
+          // Handle rate limiting with exponential backoff
+          const retryAfter = error.response.headers['retry-after'] || 1;
+          const delay = parseInt(retryAfter) * 1000;
+          
+          console.warn(`Rate limited. Retrying after ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Retry the request
+          return this.api.request(error.config);
         } else if (error.response?.status === 403) {
           return Promise.reject({
             ...error,

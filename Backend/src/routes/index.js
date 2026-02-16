@@ -11,10 +11,10 @@ const reorderLevelController = require('../controllers/reorderLevelController');
 const categoryController = require('../controllers/categoryController');
 const settingsController = require('../controllers/settingsController');
 const customerController = require('../controllers/customerController');
-const allDataRoutes = require('./all-data');
-const purchaseInvoiceRoutes = require('./purchase-invoices');
-const salesInvoiceRoutes = require('./sales-invoices');
-const invoiceRoutes = require('./invoices');
+const allDataRoutes = require('./master-data/all-data');
+const purchaseInvoiceRoutes = require('./invoice/purchase-invoices');
+const salesInvoiceRoutes = require('./invoice/sales-invoices');
+const invoiceRoutes = require('./invoice/invoices');
 const { requireAuth, requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 

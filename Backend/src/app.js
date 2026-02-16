@@ -18,11 +18,35 @@ app.use(helmet({
 }));
 app.use(cors());
 
-// Rate limiting
+// Rate limiting with better configuration
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.max,
-  message: { success: false, error: 'Too many requests' }
+  message: { 
+    success: false, 
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: Math.ceil(config.rateLimit.windowMs / 1000)
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: (req) => {
+    // Skip rate limiting for health checks and static files
+    return req.path === '/health' || req.path.startsWith('/uploads/');
+  },
+  handler: (req, res) => {
+    logger.warn('Rate limit exceeded', {
+      ip: req.ip,
+      path: req.path,
+      method: req.method,
+      userAgent: req.get('User-Agent')
+    });
+    
+    res.status(429).json({
+      success: false,
+      error: 'Too many requests from this IP, please try again later.',
+      retryAfter: Math.ceil(config.rateLimit.windowMs / 1000)
+    });
+  }
 });
 app.use(limiter);
 
@@ -39,7 +63,7 @@ app.get('/health', (req, res) => {
 });
 
 // Public routes
-app.use('/api/auth', require('./routes/auth'));
+app.use('/api/auth', require('./routes/auth/auth'));
 
 // Public user registration
 app.post('/api/register', async (req, res) => {
@@ -70,8 +94,8 @@ app.post('/api/register', async (req, res) => {
 });
 
 // Token management routes (JWT protected)
-app.use('/api/api-keys', requireAuth, validateInstitutionConsistency, require('./routes/api-keys'));
-app.use('/api/bearer-tokens', requireAuth, validateInstitutionConsistency, require('./routes/bearer-tokens'));
+app.use('/api/api-keys', requireAuth, validateInstitutionConsistency, require('./routes/auth/api-keys'));
+app.use('/api/bearer-tokens', requireAuth, validateInstitutionConsistency, require('./routes/auth/bearer-tokens'));
 
 // Protected routes (JWT, API Key, or Bearer Token)
 const authMiddleware = (req, res, next) => {

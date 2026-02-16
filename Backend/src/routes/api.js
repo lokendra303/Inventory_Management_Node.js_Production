@@ -9,37 +9,37 @@ router.get('/health', (req, res) => {
 });
 
 // Public routes (no authentication required)
-router.use('/auth', require('./auth'));
+router.use('/auth', require('./auth/auth'));
 
 // Protected routes (authentication required)
 router.use(requireAuth);
 router.use(validateInstitutionConsistency);
 
 // Resource routes
-router.use('/users', require('./users'));
-router.use('/roles', require('./roles'));
-router.use('/items', require('./items'));
-router.use('/manufacturers', require('./manufacturers'));
-router.use('/brands', require('./brands'));
-router.use('/units', require('./units'));
-router.use('/dropdown-options', require('./dropdown-options'));
-router.use('/categories', require('./categories'));
-router.use('/warehouses', require('./warehouses'));
-router.use('/warehouse-types', require('./warehouse-types'));
-router.use('/inventory', require('./inventory'));
-router.use('/purchase-orders', require('./purchase-orders'));
-router.use('/vendors', require('./vendors'));
-router.use('/customers', require('./customers'));
-router.use('/sales-orders', require('./sales-orders'));
-router.use('/invoices', require('./invoices'));
-router.use('/purchase-invoices', require('./purchase-invoices'));
-router.use('/sales-invoices', require('./sales-invoices'));
-router.use('/grn', require('./grn'));
-router.use('/reorder-levels', require('./reorder-levels'));
-router.use('/reports', require('./reports'));
-router.use('/profit-loss', require('./profit-loss'));
-router.use('/settings', require('./settings'));
-router.use('/company-settings', require('./company-settings'));
+router.use('/users', require('./auth/users'));
+router.use('/roles', require('./auth/roles'));
+router.use('/items', require('./entity/items'));
+router.use('/manufacturers', require('./entity/manufacturers'));
+router.use('/brands', require('./entity/brands'));
+router.use('/units', require('./master-data/units'));
+router.use('/dropdown-options', require('./master-data/dropdown-options'));
+router.use('/categories', require('./entity/categories'));
+router.use('/warehouses', require('./warehouse/warehouses'));
+router.use('/warehouse-types', require('./warehouse/warehouse-types'));
+router.use('/inventory', require('./inventory/inventory'));
+router.use('/purchase-orders', require('./order/purchase-orders'));
+router.use('/vendors', require('./entity/vendors'));
+router.use('/customers', require('./entity/customers'));
+router.use('/sales-orders', require('./order/sales-orders'));
+router.use('/invoices', require('./invoice/invoices'));
+router.use('/purchase-invoices', require('./invoice/purchase-invoices'));
+router.use('/sales-invoices', require('./invoice/sales-invoices'));
+router.use('/grn', require('./order/grn'));
+router.use('/reorder-levels', require('./inventory/reorder-levels'));
+router.use('/reports', require('./reports/reports'));
+router.use('/profit-loss', require('./reports/profit-loss'));
+router.use('/settings', require('./settings/settings'));
+router.use('/company-settings', require('./settings/company-settings'));
 
 // Error handling middleware
 router.use((error, req, res, next) => {

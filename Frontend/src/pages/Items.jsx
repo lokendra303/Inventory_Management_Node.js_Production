@@ -109,25 +109,35 @@ const Items = () => {
 
   const fetchDropdownOptions = async () => {
     try {
-      const manufacturersRes = await apiService.get('/manufacturers');
-      const brandsRes = await apiService.get('/brands');
-      const unitsRes = await apiService.get('/units');
-      const vendorsRes = await apiService.get('/vendors');
+      // Use Promise.allSettled to handle individual failures gracefully
+      const results = await Promise.allSettled([
+        apiService.get('/manufacturers'),
+        apiService.get('/brands'),
+        apiService.get('/units'),
+        apiService.get('/vendors')
+      ]);
       
-      const manufacturers = Array.isArray(manufacturersRes) ? manufacturersRes : (manufacturersRes?.data || []);
-      const brands = Array.isArray(brandsRes) ? brandsRes : (brandsRes?.data || []);
-      const units = Array.isArray(unitsRes) ? unitsRes : (unitsRes?.data || []);
-      const vendors = Array.isArray(vendorsRes) ? vendorsRes : (vendorsRes?.data || []);
+      const [manufacturersRes, brandsRes, unitsRes, vendorsRes] = results;
       
-      console.log('Manufacturers fetched:', manufacturers.length, manufacturers);
-      console.log('Brands fetched:', brands.length, brands);
-      console.log('Units fetched:', units.length, units);
-      console.log('Vendors fetched:', vendors.length, vendors);
+      if (manufacturersRes.status === 'fulfilled') {
+        const manufacturers = Array.isArray(manufacturersRes.value) ? manufacturersRes.value : (manufacturersRes.value?.data || []);
+        setManufacturerOptions(manufacturers);
+      }
       
-      setManufacturerOptions(manufacturers);
-      setBrandOptions(brands);
-      setUnitOptions(units);
-      setVendorOptions(vendors);
+      if (brandsRes.status === 'fulfilled') {
+        const brands = Array.isArray(brandsRes.value) ? brandsRes.value : (brandsRes.value?.data || []);
+        setBrandOptions(brands);
+      }
+      
+      if (unitsRes.status === 'fulfilled') {
+        const units = Array.isArray(unitsRes.value) ? unitsRes.value : (unitsRes.value?.data || []);
+        setUnitOptions(units);
+      }
+      
+      if (vendorsRes.status === 'fulfilled') {
+        const vendors = Array.isArray(vendorsRes.value) ? vendorsRes.value : (vendorsRes.value?.data || []);
+        setVendorOptions(vendors);
+      }
     } catch (error) {
       console.error('Dropdown fetch error:', error);
     }
@@ -136,18 +146,18 @@ const Items = () => {
   const fetchItems = async () => {
     try {
       setLoading(true);
-      console.log('Fetching items...');
       
-      const [itemsResponse, warehousesResponse] = await Promise.all([
-        apiService.get('/items'),
-        apiService.get('/warehouses')
-      ]);
-      
-      console.log('Items response:', itemsResponse);
+      // Stagger API calls to prevent 429 errors
+      const itemsResponse = await apiService.get('/items');
       
       if (itemsResponse.success) {
         setItems(itemsResponse.data);
       }
+      
+      // Add small delay before next request
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const warehousesResponse = await apiService.get('/warehouses');
       
       if (warehousesResponse.success) {
         setWarehouses(warehousesResponse.data);
@@ -156,6 +166,7 @@ const Items = () => {
       // Only fetch categories if user has permission
       if (user?.permissions?.category_view || user?.permissions?.all) {
         try {
+          await new Promise(resolve => setTimeout(resolve, 100));
           const categoriesResponse = await apiService.get('/categories');
           if (categoriesResponse.success) {
             setCategories(categoriesResponse.data);
@@ -321,14 +332,19 @@ const viewItem = (item) => {
   };
 
   useEffect(() => {
-    console.log('Items component mounted, fetching data...');
-    fetchItems();
-    fetchDropdownOptions();
+    const initializeData = async () => {
+      await fetchItems();
+      // Add delay before fetching dropdown options
+      await new Promise(resolve => setTimeout(resolve, 200));
+      await fetchDropdownOptions();
+    };
+    
+    initializeData();
     
     // Refresh vendor list when window regains focus (after adding vendor in new tab)
     const handleFocus = () => {
       if (modalVisible) {
-        fetchDropdownOptions();
+        setTimeout(() => fetchDropdownOptions(), 100);
       }
     };
     window.addEventListener('focus', handleFocus);
