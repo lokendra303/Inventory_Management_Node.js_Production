@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { formatNumber } from '../../utils/currency.js';
@@ -18,7 +18,7 @@ const Inventory = () => {
 
   const [currency, setCurrency] = useState('');
 
-  const [editingRecord, setEditingRecord] = useState(null);
+  const [viewingRecord, setViewingRecord] = useState(null);
 
   // Permission checks
   const canReceive = user?.permissions?.inventory_receive || user?.permissions?.all;
@@ -38,31 +38,16 @@ const Inventory = () => {
     {
       title: 'Actions',
       key: 'actions',
-      width: 150,
+      width: 100,
       fixed: 'right',
       render: (_, record) => (
-        <Space>
-          {showManualButtons ? (
-            <>
-              <Button 
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => openEditModal(record)}
-              >
-                Edit
-              </Button>
-              <Button 
-                size="small"
-                danger
-                onClick={() => deleteInventory(record)}
-              >
-                Delete
-              </Button>
-            </>
-          ) : (
-            <span style={{ color: '#999' }}>View Only</span>
-          )}
-        </Space>
+        <Button 
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => openViewModal(record)}
+        >
+          View
+        </Button>
       )
     }
   ];
@@ -135,43 +120,12 @@ const Inventory = () => {
 
       if (modalType === 'receive') {
         response = await apiService.post('/inventory/receive', operationData);
-      } else if (modalType === 'edit') {
-        const currentQuantity = editingRecord?.quantity_on_hand || 0;
-        const newQuantity = values.quantityOnHand;
-        const quantityChange = newQuantity - currentQuantity;
-        
-        console.log('Edit data:', {
-          itemId: editingRecord.item_id,
-          warehouseId: editingRecord.warehouse_id,
-          currentQuantity,
-          newQuantity,
-          quantityChange,
-          adjustmentType: quantityChange >= 0 ? 'increase' : 'decrease'
-        });
-        
-        if (quantityChange === 0) {
-          message.info('No quantity change detected');
-          setModalVisible(false);
-          setEditingRecord(null);
-          form.resetFields();
-          return;
-        }
-        
-        response = await apiService.post('/inventory/adjust', {
-          itemId: editingRecord.item_id,
-          warehouseId: editingRecord.warehouse_id,
-          adjustmentType: quantityChange >= 0 ? 'increase' : 'decrease',
-          quantityChange: Math.abs(quantityChange),
-          reason: 'Manual adjustment via edit'
-        });
       }
 
       if (response && response.success) {
-        message.success(`${modalType === 'edit' ? 'Update' : 'Stock receive'} successful`);
+        message.success('Stock receive successful');
         setModalVisible(false);
-        setEditingRecord(null);
         form.resetFields();
-        // Force refresh with a small delay to ensure backend updates are complete
         setTimeout(() => {
           fetchData();
         }, 500);
@@ -184,16 +138,13 @@ const Inventory = () => {
       console.error('Operation error:', error);
       console.error('Error response:', error.response?.data);
       const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
-      message.error(`Failed to ${modalType === 'edit' ? 'update' : 'receive'} stock: ${errorMessage}`);
+      message.error(`Failed to receive stock: ${errorMessage}`);
     }
   };
 
-  const openEditModal = (record) => {
-    setModalType('edit');
-    setEditingRecord(record);
-    form.setFieldsValue({
-      quantityOnHand: record.quantity_on_hand
-    });
+  const openViewModal = (record) => {
+    setViewingRecord(record);
+    setModalType('view');
     setModalVisible(true);
   };
 
@@ -203,25 +154,7 @@ const Inventory = () => {
     form.resetFields();
   };
 
-  const deleteInventory = async (record) => {
-    Modal.confirm({
-      title: 'Delete Inventory',
-      content: `Are you sure you want to delete inventory for "${record.item_name}" in "${record.warehouse_name}"?`,
-      okText: 'Delete',
-      okType: 'danger',
-      onOk: async () => {
-        try {
-          const response = await apiService.delete(`/inventory/${record.item_id}/${record.warehouse_id}`);
-          if (response.success) {
-            message.success('Inventory deleted successfully');
-            fetchData();
-          }
-        } catch (error) {
-          message.error(error.response?.data?.error || 'Failed to delete inventory');
-        }
-      }
-    });
-  };
+
 
   useEffect(() => {
     fetchData();
@@ -255,13 +188,37 @@ const Inventory = () => {
       );
     }
 
-    if (modalType === 'edit') {
+    if (modalType === 'view' && viewingRecord) {
       return (
-        <>
-          <Form.Item name="quantityOnHand" label="On Hand Quantity" rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-        </>
+        <div style={{ padding: '8px 0' }}>
+          <div style={{ marginBottom: 16 }}>
+            <strong>Item:</strong> {viewingRecord.item_name}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <strong>SKU:</strong> {viewingRecord.sku}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <strong>Unit:</strong> {viewingRecord.unit}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <strong>Warehouse:</strong> {viewingRecord.warehouse_name}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <strong>Quantity On Hand:</strong> {formatNumber(viewingRecord.quantity_on_hand || 0)}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <strong>Quantity Available:</strong> {formatNumber(viewingRecord.quantity_available || 0)}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <strong>Quantity Reserved:</strong> {formatNumber(viewingRecord.quantity_reserved || 0)}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <strong>Average Cost:</strong> {viewingRecord.average_cost && !isNaN(Number(viewingRecord.average_cost)) ? `${viewingRecord.currency || currency}${formatNumber(viewingRecord.average_cost)}` : '-'}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <strong>Total Value:</strong> {viewingRecord.total_value && !isNaN(Number(viewingRecord.total_value)) ? `${viewingRecord.currency || currency}${formatNumber(viewingRecord.total_value)}` : '-'}
+          </div>
+        </div>
       );
     }
 
@@ -308,28 +265,42 @@ const Inventory = () => {
       </Card>
 
       <Modal
-        title={`${modalType.charAt(0).toUpperCase() + modalType.slice(1)} Stock`}
+        title={modalType === 'view' ? 'Inventory Details' : `${modalType.charAt(0).toUpperCase() + modalType.slice(1)} Stock`}
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        footer={null}
+        onCancel={() => {
+          setModalVisible(false);
+          setViewingRecord(null);
+        }}
+        footer={modalType === 'view' ? [
+          <Button key="close" onClick={() => {
+            setModalVisible(false);
+            setViewingRecord(null);
+          }}>
+            Close
+          </Button>
+        ] : null}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleOperation}
-        >
-          {renderModalContent()}
-          <Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit">
-                {modalType.charAt(0).toUpperCase() + modalType.slice(1)} Stock
-              </Button>
-              <Button onClick={() => setModalVisible(false)}>
-                Cancel
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
+        {modalType === 'view' ? (
+          renderModalContent()
+        ) : (
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleOperation}
+          >
+            {renderModalContent()}
+            <Form.Item>
+              <Space>
+                <Button type="primary" htmlType="submit">
+                  Receive Stock
+                </Button>
+                <Button onClick={() => setModalVisible(false)}>
+                  Cancel
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
     </div>
   );

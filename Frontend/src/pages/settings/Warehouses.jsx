@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Statistic, Row, Col, Descriptions, Tag } from 'antd';
-import { PlusOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Statistic, Row, Col, Descriptions, Tag, Divider, Popconfirm } from 'antd';
+import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { usePermissions } from '../../components/common/PermissionWrapper';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -12,13 +12,14 @@ const Warehouses = () => {
   const [warehouseTypes, setWarehouseTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [editingTypeId, setEditingTypeId] = useState(null);
+  const [editingTypeName, setEditingTypeName] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState(null);
   const [warehouseDetails, setWarehouseDetails] = useState(null);
   const [editingWarehouse, setEditingWarehouse] = useState(null);
   const [form] = Form.useForm();
-  const [typeForm] = Form.useForm();
 
   const canManageWarehouses = hasPermission('warehouse_management');
   const canManageWarehouseTypes = hasPermission('warehouse_type_management');
@@ -192,24 +193,16 @@ const fetchWarehouses = async () => {
     <div style={{ padding: '24px' }}>
       <h1>Warehouses</h1>
       <Card>
-        <Space style={{ marginBottom: 16 }}>
-          {canManageWarehouses && (
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />}
-              onClick={() => setModalVisible(true)}
-            >
-              Add Warehouse
-            </Button>
-          )}
-          {canManageWarehouseTypes && (
-            <Button 
-              onClick={() => setTypeModalVisible(true)}
-            >
-              Manage Types
-            </Button>
-          )}
-        </Space>
+        {canManageWarehouses && (
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={() => setModalVisible(true)}
+            style={{ marginBottom: 16 }}
+          >
+            Add Warehouse
+          </Button>
+        )}
         <Table 
           columns={columns} 
           dataSource={warehouses} 
@@ -256,6 +249,143 @@ const fetchWarehouses = async () => {
             <Select 
               placeholder="Select warehouse type"
               allowClear
+              dropdownRender={(menu) => (
+                <>
+                  <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    {warehouseTypes.map(type => (
+                      <div key={type.id} style={{ padding: '5px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {editingTypeId === type.id ? (
+                          <>
+                            <Input
+                              size="small"
+                              value={editingTypeName}
+                              onChange={(e) => setEditingTypeName(e.target.value)}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              style={{ flex: 1, marginRight: 8 }}
+                            />
+                            <Space size="small">
+                              <Button
+                                size="small"
+                                type="primary"
+                                onClick={async () => {
+                                  if (!editingTypeName.trim()) {
+                                    message.warning('Type name cannot be empty');
+                                    return;
+                                  }
+                                  try {
+                                    const response = await apiService.put(`/warehouse-types/${type.id}`, { name: editingTypeName });
+                                    if (response.success) {
+                                      message.success('Type updated successfully');
+                                      setEditingTypeId(null);
+                                      setEditingTypeName('');
+                                      fetchWarehouses();
+                                    }
+                                  } catch (error) {
+                                    message.error('Failed to update type');
+                                  }
+                                }}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                size="small"
+                                icon={<CloseOutlined />}
+                                onClick={() => {
+                                  setEditingTypeId(null);
+                                  setEditingTypeName('');
+                                }}
+                              />
+                            </Space>
+                          </>
+                        ) : (
+                          <>
+                            <span 
+                              style={{ flex: 1, cursor: 'pointer' }}
+                              onClick={() => form.setFieldsValue({ type: type.id })}
+                            >
+                              {type.name}
+                            </span>
+                            {canManageWarehouseTypes && (
+                              <Space size="small">
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  icon={<EditOutlined />}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingTypeId(type.id);
+                                    setEditingTypeName(type.name);
+                                  }}
+                                />
+                                <Popconfirm
+                                  title="Delete this type?"
+                                  description="This will affect warehouses using this type."
+                                  onConfirm={async (e) => {
+                                    e?.stopPropagation();
+                                    try {
+                                      const response = await apiService.delete(`/warehouse-types/${type.id}`);
+                                      if (response.success) {
+                                        message.success('Type deleted successfully');
+                                        fetchWarehouses();
+                                      }
+                                    } catch (error) {
+                                      message.error('Failed to delete type');
+                                    }
+                                  }}
+                                  onCancel={(e) => e?.stopPropagation()}
+                                >
+                                  <Button
+                                    size="small"
+                                    type="text"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </Popconfirm>
+                              </Space>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {canManageWarehouseTypes && (
+                    <>
+                      <Divider style={{ margin: '8px 0' }} />
+                      <Space style={{ padding: '0 8px 4px' }}>
+                        <Input
+                          placeholder="New type name"
+                          value={newTypeName}
+                          onChange={(e) => setNewTypeName(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        />
+                        <Button
+                          type="text"
+                          icon={<PlusOutlined />}
+                          onClick={async () => {
+                            if (!newTypeName.trim()) {
+                              message.warning('Please enter a type name');
+                              return;
+                            }
+                            try {
+                              const response = await apiService.post('/warehouse-types', { name: newTypeName });
+                              if (response.success) {
+                                message.success('Type created successfully');
+                                setNewTypeName('');
+                                fetchWarehouses();
+                              }
+                            } catch (error) {
+                              message.error('Failed to create type');
+                            }
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </Space>
+                    </>
+                  )}
+                </>
+              )}
             >
               {warehouseTypes.map(type => (
                 <Select.Option key={type.id} value={type.id}>
@@ -292,55 +422,6 @@ const fetchWarehouses = async () => {
                 form.resetFields();
               }}>
                 Cancel
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* Warehouse Type Modal */}
-      <Modal
-        title="Manage Warehouse Types"
-        open={typeModalVisible}
-        onCancel={() => setTypeModalVisible(false)}
-        footer={null}
-        width={600}
-      >
-        <Form
-          form={typeForm}
-          layout="vertical"
-          onFinish={async (values) => {
-            try {
-              const response = await apiService.post('/warehouse-types', values);
-              if (response.success) {
-                message.success('Warehouse type created successfully');
-                typeForm.resetFields();
-                fetchWarehouses();
-              }
-            } catch (error) {
-              message.error('Failed to create warehouse type');
-            }
-          }}
-        >
-          <Form.Item
-            name="name"
-            label="Type Name"
-            rules={[{ required: true, message: 'Please input type name!' }]}
-          >
-            <Input placeholder="Enter warehouse type name" />
-          </Form.Item>
-          
-          <Form.Item name="description" label="Description">
-            <Input.TextArea placeholder="Enter description" rows={3} />
-          </Form.Item>
-          
-          <Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit">
-                Create Type
-              </Button>
-              <Button onClick={() => typeForm.resetFields()}>
-                Reset
               </Button>
             </Space>
           </Form.Item>
