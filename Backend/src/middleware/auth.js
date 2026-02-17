@@ -261,7 +261,10 @@ const rateLimit = (maxRequests = 100, windowMs = 15 * 60 * 1000) => {
   const requests = new Map();
   
   return (req, res, next) => {
-    const key = req.ip + ':' + (req.user?.userId || 'anonymous');
+    // Use IP as primary key, userId as secondary if available
+    // This prevents issues when rate limit runs before auth middleware
+    const userId = req.user?.userId || req.serviceAccount?.jti || 'anon';
+    const key = `${req.ip}:${userId}`;
     const now = Date.now();
     const windowStart = now - windowMs;
     
@@ -283,8 +286,11 @@ const rateLimit = (maxRequests = 100, windowMs = 15 * 60 * 1000) => {
       logger.warn('Rate limit exceeded', {
         ip: req.ip,
         userId: req.user?.userId,
+        serviceAccount: req.serviceAccount?.name,
         requests: userRequests.length,
-        maxRequests
+        maxRequests,
+        windowMs,
+        key
       });
       
       return res.status(429).json({
@@ -295,6 +301,17 @@ const rateLimit = (maxRequests = 100, windowMs = 15 * 60 * 1000) => {
     }
     
     userRequests.push(now);
+    requests.set(key, userRequests);
+    
+    // Periodic cleanup of stale entries (every 100th request)
+    if (Math.random() < 0.01) {
+      for (const [k, reqs] of requests.entries()) {
+        if (reqs.every(timestamp => timestamp <= windowStart)) {
+          requests.delete(k);
+        }
+      }
+    }
+    
     next();
   };
 };
@@ -322,6 +339,15 @@ const createInstitutionRateLimit = (windowMs, max) => {
     const validRequests = requests.filter(timestamp => timestamp > windowStart);
     
     if (validRequests.length >= max) {
+      logger.warn('Institution rate limit exceeded', {
+        institutionId,
+        requests: validRequests.length,
+        max,
+        windowMs,
+        userId: req.user?.userId,
+        serviceAccount: req.serviceAccount?.name
+      });
+      
       return res.status(429).json({ 
         success: false,
         error: 'Rate limit exceeded',
@@ -330,11 +356,15 @@ const createInstitutionRateLimit = (windowMs, max) => {
     }
 
     validRequests.push(now);
+    rateLimitStore.set(institutionId, validRequests);
     
-    if (validRequests.length === 0) {
-      rateLimitStore.delete(institutionId);
-    } else {
-      rateLimitStore.set(institutionId, validRequests);
+    // Periodic cleanup of empty entries (every 100th request)
+    if (Math.random() < 0.01) {
+      for (const [id, reqs] of rateLimitStore.entries()) {
+        if (reqs.every(timestamp => timestamp <= windowStart)) {
+          rateLimitStore.delete(id);
+        }
+      }
     }
     
     next();

@@ -47,7 +47,11 @@ const PERMISSIONS = {
   
   // Vendor Management
   VENDOR_VIEW: 'vendor_view',
-  VENDOR_MANAGEMENT: 'vendor_management'
+  VENDOR_MANAGEMENT: 'vendor_management',
+  
+  // Customer Management
+  CUSTOMER_VIEW: 'customer_view',
+  CUSTOMER_MANAGEMENT: 'customer_management'
 };
 
 /**
@@ -90,7 +94,9 @@ const ROLE_PERMISSIONS = {
     [PERMISSIONS.INVOICE_VIEW]: true,
     [PERMISSIONS.INVOICE_MANAGEMENT]: true,
     [PERMISSIONS.VENDOR_VIEW]: true,
-    [PERMISSIONS.VENDOR_MANAGEMENT]: true
+    [PERMISSIONS.VENDOR_MANAGEMENT]: true,
+    [PERMISSIONS.CUSTOMER_VIEW]: true,
+    [PERMISSIONS.CUSTOMER_MANAGEMENT]: true
   },
   
   user: {
@@ -103,7 +109,8 @@ const ROLE_PERMISSIONS = {
     [PERMISSIONS.PURCHASE_VIEW]: true,
     [PERMISSIONS.SALES_VIEW]: true,
     [PERMISSIONS.INVOICE_VIEW]: true,
-    [PERMISSIONS.VENDOR_VIEW]: true
+    [PERMISSIONS.VENDOR_VIEW]: true,
+    [PERMISSIONS.CUSTOMER_VIEW]: true
   }
 };
 
@@ -151,7 +158,9 @@ const PERMISSION_GROUPS = {
   
   'Sales Management': [
     PERMISSIONS.SALES_VIEW,
-    PERMISSIONS.SALES_MANAGEMENT
+    PERMISSIONS.SALES_MANAGEMENT,
+    PERMISSIONS.CUSTOMER_VIEW,
+    PERMISSIONS.CUSTOMER_MANAGEMENT
   ],
   
   'Invoice Management': [

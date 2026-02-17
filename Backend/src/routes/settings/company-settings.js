@@ -4,6 +4,10 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const companySettingsController = require('../../controllers/settings/companySettingsController');
+const { requireRole } = require('../../middleware/auth');
+
+// Restrict all company settings routes to admin and super_admin
+router.use(requireRole(['admin', 'super_admin']));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
