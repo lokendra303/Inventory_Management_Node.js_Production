@@ -1,9 +1,10 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const authService = require('../services/auth/authService');
+const serviceAccountService = require('../services/auth/serviceAccountService');
 const logger = require('../utils/logger');
 
-// Extract institution context from JWT token
+// Extract institution context from JWT token (supports both user and service account tokens)
 const extractInstitutionContext = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -16,24 +17,54 @@ const extractInstitutionContext = async (req, res, next) => {
     }
 
     const token = authHeader.substring(7);
-    const decoded = await authService.verifyToken(token);
     
-    req.institutionId = decoded.institutionId;
-    req.user = {
-      userId: decoded.userId,
-      institutionId: decoded.institutionId,
-      email: decoded.email,
-      role: decoded.role,
-      permissions: decoded.permissions || {},
-      warehouseAccess: decoded.warehouseAccess || []
-    };
+    // Try to decode token to check type
+    let decoded;
+    try {
+      decoded = jwt.decode(token);
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid token format'
+      });
+    }
 
-    logger.debug('Institution context extracted', {
-      userId: decoded.userId,
-      institutionId: decoded.institutionId,
-      email: decoded.email,
-      role: decoded.role
-    });
+    // Check if it's a service account token
+    if (decoded && decoded.type === 'service_account') {
+      const serviceDecoded = await serviceAccountService.verifyServiceToken(token);
+      
+      req.institutionId = serviceDecoded.institutionId;
+      req.serviceAccount = {
+        jti: serviceDecoded.jti,
+        name: serviceDecoded.serviceName,
+        permissions: serviceDecoded.permissions || {}
+      };
+
+      logger.debug('Service account authenticated', {
+        serviceName: serviceDecoded.serviceName,
+        institutionId: serviceDecoded.institutionId
+      });
+    } else {
+      // Regular user JWT
+      const userDecoded = await authService.verifyToken(token);
+      
+      req.institutionId = userDecoded.institutionId;
+      req.user = {
+        userId: userDecoded.userId,
+        institutionId: userDecoded.institutionId,
+        email: userDecoded.email,
+        role: userDecoded.role,
+        permissions: userDecoded.permissions || {},
+        warehouseAccess: userDecoded.warehouseAccess || []
+      };
+
+      logger.debug('User authenticated', {
+        userId: userDecoded.userId,
+        institutionId: userDecoded.institutionId,
+        email: userDecoded.email,
+        role: userDecoded.role
+      });
+    }
 
     next();
   } catch (error) {
@@ -45,9 +76,9 @@ const extractInstitutionContext = async (req, res, next) => {
   }
 };
 
-// Require authentication
+// Require authentication (accepts both user and service account)
 const requireAuth = async (req, res, next) => {
-  if (!req.user || !req.user.userId) {
+  if (!req.user && !req.serviceAccount) {
     return res.status(401).json({
       success: false,
       error: 'Authentication required'
@@ -56,20 +87,43 @@ const requireAuth = async (req, res, next) => {
   next();
 };
 
-// Require specific permission
+// Require specific permission (supports both user and service account)
 const requirePermission = (permission) => {
   return (req, res, next) => {
-    if (!req.user) {
+    if (!req.user && !req.serviceAccount) {
       return res.status(401).json({
         success: false,
         error: 'Authentication required'
       });
     }
 
+    // Check service account permissions
+    if (req.serviceAccount) {
+      const servicePermissions = req.serviceAccount.permissions || {};
+      
+      if (servicePermissions.all === true || servicePermissions[permission] === true) {
+        return next();
+      }
+      
+      logger.warn('Service account permission denied', {
+        serviceName: req.serviceAccount.name,
+        institutionId: req.institutionId,
+        requiredPermission: permission,
+        servicePermissions: Object.keys(servicePermissions)
+      });
+      
+      return res.status(403).json({ 
+        success: false,
+        error: 'Insufficient permissions',
+        required: permission
+      });
+    }
+
+    // Check user permissions
     const userPermissions = req.user.permissions || {};
     
     // Admin has all permissions
-    if (req.user.role === 'admin' || userPermissions.all === true) {
+    if (req.user.role === 'admin' || req.user.role === 'super_admin' || userPermissions.all === true) {
       return next();
     }
     
@@ -124,15 +178,20 @@ const requireRole = (roles) => {
   };
 };
 
-// Validate institution consistency (ensure user belongs to the institution)
+// Validate institution consistency (ensure user/service account belongs to the institution)
 const validateInstitutionConsistency = async (req, res, next) => {
   try {
-    if (!req.institutionId || !req.user) {
+    if (!req.institutionId) {
+      return next();
+    }
+
+    // Service accounts are already validated by their JWT
+    if (req.serviceAccount) {
       return next();
     }
 
     // Verify user belongs to the institution
-    if (req.user.institutionId !== req.institutionId) {
+    if (req.user && req.user.institutionId !== req.institutionId) {
       logger.error('Institution consistency violation', {
         userId: req.user.userId,
         userInstitutionId: req.user.institutionId,

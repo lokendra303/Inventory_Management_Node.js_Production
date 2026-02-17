@@ -5,9 +5,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const config = require('./config');
 const logger = require('./utils/logger');
-const { requireAuth, validateInstitutionConsistency } = require('./middleware/auth');
-const { validateApiKey } = require('./middleware/apiKey');
-const { validateBearerToken } = require('./middleware/bearerToken');
+const { extractInstitutionContext, validateInstitutionConsistency } = require('./middleware/auth');
 
 const app = express();
 
@@ -93,37 +91,12 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// Token management routes (JWT protected)
-app.use('/api/api-keys', requireAuth, validateInstitutionConsistency, require('./routes/auth/api-keys'));
-app.use('/api/bearer-tokens', requireAuth, validateInstitutionConsistency, require('./routes/auth/bearer-tokens'));
+// Service account management routes (JWT protected)
+app.use('/api/service-accounts', extractInstitutionContext, validateInstitutionConsistency, require('./routes/auth/service-accounts'));
 
-// Protected routes (JWT, API Key, or Bearer Token)
-const authMiddleware = (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
-  const authHeader = req.headers['authorization'];
-  
-  if (apiKey) {
-    return validateApiKey(req, res, next);
-  } else if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    // Check if it's a JWT (contains dots) or random Bearer token
-    if (token.includes('.')) {
-      return requireAuth(req, res, next);
-    } else {
-      return validateBearerToken(req, res, next);
-    }
-  } else {
-    return requireAuth(req, res, next);
-  }
-};
-
-app.use('/api', authMiddleware);
-app.use('/api', (req, res, next) => {
-  if (!req.apiKey && !req.bearerToken) {
-    return validateInstitutionConsistency(req, res, next);
-  }
-  next();
-});
+// All protected routes now use JWT only (user or service account)
+app.use('/api', extractInstitutionContext);
+app.use('/api', validateInstitutionConsistency);
 
 // Use the centralized API router
 app.use('/api', require('./routes/api'));
