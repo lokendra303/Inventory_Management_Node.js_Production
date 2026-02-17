@@ -1,0 +1,30 @@
+/* Documents Page Styling */
+
+.documents-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.documents-sidebar {
+  width: 200px;
+  background: #fff;
+  border-right: 1px solid #f0f0f0;
+  padding: 16px;
+}
+
+.documents-content {
+  flex: 1;
+  padding: 24px;
+}
+
+.document-row {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+}
+
+.document-row:hover {
+  background: #fafafa;
+}

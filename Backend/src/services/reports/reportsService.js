@@ -65,12 +65,10 @@ class ReportsService {
   async getInventoryAdjustmentReport(institutionId, filters = {}) {
     let query = `
       SELECT ia.adjustment_date as created_at, ia.adjustment_type, ia.quantity_change, ia.reason, ia.loss_type, ia.reference_number,
-             i.sku, i.name as item_name, w.name as warehouse_name,
-             u.first_name, u.last_name
+             i.sku, i.name as item_name, w.name as warehouse_name
       FROM inventory_adjustments ia
       JOIN items i ON ia.item_id = i.id
       JOIN warehouses w ON ia.warehouse_id = w.id
-      LEFT JOIN users u ON ia.adjusted_by = u.id
       WHERE ia.institution_id = ?
     `;
     const params = [institutionId];
