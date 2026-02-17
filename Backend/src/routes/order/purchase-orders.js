@@ -63,4 +63,10 @@ router.get('/:id/pdf',
   purchaseOrderController.downloadPOPDF
 );
 
+// POST /api/purchase-orders/:id/email - Email PO
+router.post('/:id/email',
+  requirePermission('purchase_view'),
+  purchaseOrderController.emailPurchaseOrder
+);
+
 module.exports = router;

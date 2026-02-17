@@ -12,7 +12,7 @@ import {
   message,
   DatePicker,
 } from "antd";
-import { PlusOutlined, DownloadOutlined, PrinterOutlined } from "@ant-design/icons";
+import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined } from "@ant-design/icons";
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
@@ -28,6 +28,9 @@ const SalesOrders = () => {
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedSOForView, setSelectedSOForView] = useState(null);
   const [allItemStocks, setAllItemStocks] = useState({});
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [emailAddress, setEmailAddress] = useState('');
+  const [selectedSOForEmail, setSelectedSOForEmail] = useState(null);
   const [form] = Form.useForm();
 
   const fetchAllStocks = async () => {
@@ -314,6 +317,34 @@ const SalesOrders = () => {
     } catch (error) {
       console.error('Print error:', error);
       message.error('Failed to print PDF');
+    }
+  };
+
+  const handleEmailSO = (so) => {
+    setSelectedSOForEmail(so);
+    setEmailAddress('');
+    setEmailModalVisible(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailAddress) {
+      message.warning('Please enter an email address');
+      return;
+    }
+
+    try {
+      const response = await apiService.post(`/sales-orders/${selectedSOForEmail.id}/email`, {
+        to: emailAddress
+      });
+
+      if (response.success) {
+        message.success(`Sales order sent to ${emailAddress}`);
+        setEmailModalVisible(false);
+      } else {
+        message.error(response.error || 'Failed to send email');
+      }
+    } catch (error) {
+      message.error('Failed to send email');
     }
   };
 
@@ -798,6 +829,13 @@ const SalesOrders = () => {
         }}
         footer={[
           <Button 
+            key="email"
+            icon={<MailOutlined />}
+            onClick={() => handleEmailSO(selectedSOForView)}
+          >
+            Email
+          </Button>,
+          <Button 
             key="print" 
             type="primary"
             icon={<PrinterOutlined />}
@@ -892,6 +930,22 @@ const SalesOrders = () => {
             />
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="Email Sales Order"
+        open={emailModalVisible}
+        onCancel={() => setEmailModalVisible(false)}
+        onOk={handleSendEmail}
+        okText="Send Email"
+      >
+        <p>Send sales order <strong>{selectedSOForEmail?.so_number}</strong> to:</p>
+        <Input
+          placeholder="Enter email address"
+          value={emailAddress}
+          onChange={(e) => setEmailAddress(e.target.value)}
+          onPressEnter={handleSendEmail}
+        />
       </Modal>
     </div>
   );

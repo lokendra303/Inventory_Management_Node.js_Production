@@ -1,6 +1,7 @@
 const salesOrderService = require('../../services/order/salesOrderService');
 const soConfirmationService = require('../../services/order/soConfirmationService');
 const salesOrderPDFService = require('../../services/pdf/salesOrderPDFService');
+const emailService = require('../../services/emailService');
 const logger = require('../../utils/logger');
 
 class SalesOrderController {
@@ -304,6 +305,64 @@ class SalesOrderController {
       res.status(500).json({
         success: false,
         error: 'Failed to generate PDF'
+      });
+    }
+  }
+
+  async emailSalesOrder(req, res) {
+    try {
+      const { id: soId } = req.params;
+      const { to } = req.body;
+
+      if (!to) {
+        return res.status(400).json({
+          success: false,
+          error: 'Recipient email is required'
+        });
+      }
+
+      const so = await salesOrderService.getSalesOrder(req.institutionId, soId);
+      
+      if (!so) {
+        return res.status(404).json({
+          success: false,
+          error: 'Sales order not found'
+        });
+      }
+
+      const pdfBuffer = await salesOrderPDFService.generatePDFBuffer(so, req.institutionId);
+      
+      const result = await emailService.sendEmailWithAttachment({
+        to,
+        subject: `Sales Order ${so.so_number}`,
+        text: `Please find attached sales order ${so.so_number}.`,
+        html: `<h3>Sales Order ${so.so_number}</h3><p>Please find your sales order attached.</p><p>Thank you for your business!</p>`,
+        attachments: [{
+          filename: `SO_${so.so_number}.pdf`,
+          content: pdfBuffer
+        }]
+      });
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: 'Sales order sent successfully'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: result.error || 'Failed to send email'
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to email sales order', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        soId: req.params.id 
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send email'
       });
     }
   }

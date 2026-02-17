@@ -73,4 +73,10 @@ router.get('/:id/pdf',
   salesOrderController.downloadSOPDF
 );
 
+// POST /api/sales-orders/:id/email - Email SO
+router.post('/:id/email',
+  requirePermission('sales_view'),
+  salesOrderController.emailSalesOrder
+);
+
 module.exports = router;

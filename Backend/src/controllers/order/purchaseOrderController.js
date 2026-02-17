@@ -2,6 +2,7 @@ const purchaseOrderService = require('../../services/order/purchaseOrderService'
 const vendorService = require('../../services/entity/vendorService');
 const poConfirmationService = require('../../services/order/poConfirmationService');
 const purchaseOrderPDFService = require('../../services/pdf/purchaseOrderPDFService');
+const emailService = require('../../services/emailService');
 const logger = require('../../utils/logger');
 
 class PurchaseOrderController {
@@ -457,6 +458,64 @@ class PurchaseOrderController {
       res.status(400).json({
         success: false,
         error: error.message
+      });
+    }
+  }
+
+  async emailPurchaseOrder(req, res) {
+    try {
+      const { id: poId } = req.params;
+      const { to } = req.body;
+
+      if (!to) {
+        return res.status(400).json({
+          success: false,
+          error: 'Recipient email is required'
+        });
+      }
+
+      const po = await purchaseOrderService.getPurchaseOrder(req.institutionId, poId);
+      
+      if (!po) {
+        return res.status(404).json({
+          success: false,
+          error: 'Purchase order not found'
+        });
+      }
+
+      const pdfBuffer = await purchaseOrderPDFService.generatePDFBuffer(po, req.institutionId);
+      
+      const result = await emailService.sendEmailWithAttachment({
+        to,
+        subject: `Purchase Order ${po.po_number}`,
+        text: `Please find attached purchase order ${po.po_number}.`,
+        html: `<h3>Purchase Order ${po.po_number}</h3><p>Please find your purchase order attached.</p><p>Thank you!</p>`,
+        attachments: [{
+          filename: `PO_${po.po_number}.pdf`,
+          content: pdfBuffer
+        }]
+      });
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: 'Purchase order sent successfully'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: result.error || 'Failed to send email'
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to email purchase order', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        poId: req.params.id 
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send email'
       });
     }
   }

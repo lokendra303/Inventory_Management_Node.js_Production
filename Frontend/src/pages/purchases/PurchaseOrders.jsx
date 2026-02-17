@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker } from 'antd';
-import { PlusOutlined, DownloadOutlined, PrinterOutlined } from '@ant-design/icons';
+import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined } from '@ant-design/icons';
 import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -21,6 +21,9 @@ const PurchaseOrders = () => {
   const [selectedPOForView, setSelectedPOForView] = useState(null);
   const [editingPO, setEditingPO] = useState(null);
   const [allItemStocks, setAllItemStocks] = useState({});
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [emailAddress, setEmailAddress] = useState('');
+  const [selectedPOForEmail, setSelectedPOForEmail] = useState(null);
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
 
@@ -390,6 +393,34 @@ const PurchaseOrders = () => {
     } catch (error) {
       console.error('Print error:', error);
       message.error('Failed to print PDF');
+    }
+  };
+
+  const handleEmailPO = (po) => {
+    setSelectedPOForEmail(po);
+    setEmailAddress('');
+    setEmailModalVisible(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailAddress) {
+      message.warning('Please enter an email address');
+      return;
+    }
+
+    try {
+      const response = await apiService.post(`/purchase-orders/${selectedPOForEmail.id}/email`, {
+        to: emailAddress
+      });
+
+      if (response.success) {
+        message.success(`Purchase order sent to ${emailAddress}`);
+        setEmailModalVisible(false);
+      } else {
+        message.error(response.error || 'Failed to send email');
+      }
+    } catch (error) {
+      message.error('Failed to send email');
     }
   };
 
@@ -772,6 +803,13 @@ const PurchaseOrders = () => {
         }}
         footer={[
           <Button 
+            key="email"
+            icon={<MailOutlined />}
+            onClick={() => handleEmailPO(selectedPOForView)}
+          >
+            Email
+          </Button>,
+          <Button 
             key="print" 
             type="primary"
             icon={<PrinterOutlined />}
@@ -841,6 +879,22 @@ const PurchaseOrders = () => {
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="Email Purchase Order"
+        open={emailModalVisible}
+        onCancel={() => setEmailModalVisible(false)}
+        onOk={handleSendEmail}
+        okText="Send Email"
+      >
+        <p>Send purchase order <strong>{selectedPOForEmail?.po_number}</strong> to:</p>
+        <Input
+          placeholder="Enter email address"
+          value={emailAddress}
+          onChange={(e) => setEmailAddress(e.target.value)}
+          onPressEnter={handleSendEmail}
+        />
       </Modal>
     </div>
   );
