@@ -149,7 +149,6 @@ class PurchaseInvoiceController {
     }
   }
 
-  // Get Purchase Invoices
   async getPurchaseInvoices(req, res) {
     try {
       const { institutionId } = req;
@@ -186,27 +185,32 @@ class PurchaseInvoiceController {
         params.push(dateTo);
       }
 
-      // Validate and normalize pagination parameters (ensure integers)
       const pageInt = Math.max(parseInt(page, 10) || 1, 1);
       const limitInt = Math.max(Math.min(parseInt(limit, 10) || 50, 1000), 1);
       const offset = (pageInt - 1) * limitInt;
 
+      // Simplified query without complex JOINs for faster loading
       const invoices = await db.query(`
         SELECT 
-          pi.*,
-          ANY_VALUE(po.po_number) as po_number,
-          COUNT(pil.id) as line_count
+          pi.id,
+          pi.invoice_number,
+          pi.vendor_id,
+          pi.vendor_name,
+          pi.invoice_date,
+          pi.due_date,
+          pi.currency,
+          pi.total_amount,
+          pi.balance_amount,
+          pi.status,
+          pi.created_at
         FROM purchase_invoices pi
-        LEFT JOIN purchase_orders po ON CAST(pi.po_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(po.id AS CHAR) COLLATE utf8mb4_unicode_ci
-        LEFT JOIN purchase_invoice_lines pil ON pi.id = pil.invoice_id
         ${whereClause}
-        GROUP BY pi.id
         ORDER BY pi.created_at DESC
         LIMIT ${limitInt} OFFSET ${offset}
       `, params);
 
       const [countResult] = await db.query(`
-        SELECT COUNT(DISTINCT pi.id) as total
+        SELECT COUNT(*) as total
         FROM purchase_invoices pi
         ${whereClause}
       `, params);

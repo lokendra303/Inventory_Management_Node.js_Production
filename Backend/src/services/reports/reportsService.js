@@ -135,13 +135,12 @@ class ReportsService {
   // Purchase Reports
   async getPurchaseReport(institutionId, filters = {}) {
     let query = `
-      SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name, w.name as warehouse_name,
+      SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name,
              COUNT(pol.id) as line_count,
              SUM(pol.quantity_ordered) as total_quantity,
              SUM(pol.quantity_received) as total_received
       FROM purchase_orders po
       LEFT JOIN vendors v ON po.vendor_id = v.id
-      LEFT JOIN warehouses w ON po.warehouse_id = w.id
       LEFT JOIN purchase_order_lines pol ON po.id = pol.po_id
       WHERE po.institution_id = ?
     `;
@@ -167,7 +166,10 @@ class ReportsService {
     query += ' GROUP BY po.id ORDER BY po.order_date DESC LIMIT 1000';
     
     try {
-      return await db.query(query, params);
+      console.log('Executing purchase report query for institution:', institutionId);
+      const result = await db.query(query, params);
+      console.log('Purchase report result count:', result.length);
+      return result;
     } catch (error) {
       console.error('Purchase report error:', error);
       return [];

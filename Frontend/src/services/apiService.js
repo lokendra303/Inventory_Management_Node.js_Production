@@ -3,7 +3,7 @@ import { Modal } from 'antd';
 
 // Simple rate limiter to prevent 429 errors
 class RateLimiter {
-  constructor(maxRequests = 5, windowMs = 1000) {
+  constructor(maxRequests = 10, windowMs = 1000) {
     this.maxRequests = maxRequests;
     this.windowMs = windowMs;
     this.requests = [];
@@ -44,7 +44,8 @@ class RateLimiter {
 
 class ApiService {
   constructor() {
-    this.rateLimiter = new RateLimiter(5, 1000); // 5 requests per second
+    this.rateLimiter = new RateLimiter(10, 1000); // 10 requests per second
+    this.retryCount = new Map(); // Track retry attempts per request
     
     this.api = axios.create({
       baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
@@ -106,15 +107,28 @@ class ApiService {
             return Promise.reject(error);
           }
         } else if (error.response?.status === 429) {
-          // Handle rate limiting with exponential backoff
-          const retryAfter = error.response.headers['retry-after'] || 1;
-          const delay = parseInt(retryAfter) * 1000;
+          // Handle rate limiting with exponential backoff and max retries
+          const requestKey = `${error.config.method}-${error.config.url}`;
+          const currentRetries = this.retryCount.get(requestKey) || 0;
           
-          console.warn(`Rate limited. Retrying after ${delay}ms`);
+          if (currentRetries >= 3) {
+            // Max retries reached, clear and reject
+            this.retryCount.delete(requestKey);
+            console.error('Max retries reached for rate limited request');
+            return Promise.reject(new Error('Too many requests. Please try again later.'));
+          }
+          
+          this.retryCount.set(requestKey, currentRetries + 1);
+          const retryAfter = error.response.headers['retry-after'] || 1;
+          const delay = parseInt(retryAfter) * 1000 * (currentRetries + 1); // Exponential backoff
+          
+          console.warn(`Rate limited. Retry ${currentRetries + 1}/3 after ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
           
           // Retry the request
-          return this.api.request(error.config);
+          const result = await this.api.request(error.config);
+          this.retryCount.delete(requestKey); // Clear on success
+          return result;
         } else if (error.response?.status === 403) {
           return Promise.reject({
             ...error,
