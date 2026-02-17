@@ -3,6 +3,7 @@ const logger = require('../../utils/logger');
 const invoiceTemplateService = require('../../services/invoice/invoiceTemplateService');
 const invoicePDFService = require('../../services/pdf/invoicePDFService');
 const autoInvoiceService = require('../../services/invoice/autoInvoiceService');
+const emailService = require('../../services/emailService');
 const { v4: uuidv4 } = require('uuid');
 const { roundToTwo, safeAdd, safeSubtract } = require('../../utils/precision');
 
@@ -911,6 +912,93 @@ class PurchaseInvoiceController {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch matching data'
+      });
+    }
+  }
+
+  // Email Invoice
+  async emailInvoice(req, res) {
+    try {
+      const { institutionId } = req;
+      const { id } = req.params;
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email address is required'
+        });
+      }
+
+      const [invoice] = await db.query(`
+        SELECT pi.*
+        FROM purchase_invoices pi
+        WHERE pi.id = ? AND pi.institution_id = ?
+      `, [id, institutionId]);
+
+      if (!invoice) {
+        return res.status(404).json({
+          success: false,
+          error: 'Invoice not found'
+        });
+      }
+
+      const lines = await db.query(`
+        SELECT pil.*, i.sku, i.unit, i.hsn_code
+        FROM purchase_invoice_lines pil
+        LEFT JOIN items i ON CAST(pil.item_id AS CHAR) = CAST(i.id AS CHAR)
+        WHERE pil.invoice_id = ?
+      `, [id]);
+
+      const invoiceData = {
+        invoiceNumber: invoice.invoice_number,
+        invoiceDate: invoice.invoice_date,
+        dueDate: invoice.due_date,
+        vendorId: invoice.vendor_id,
+        vendorName: invoice.vendor_name,
+        currency: invoice.currency,
+        exchangeRate: invoice.exchange_rate,
+        reference: invoice.reference,
+        notes: invoice.notes,
+        lines: lines.map(line => ({
+          itemId: line.item_id,
+          itemName: line.item_name,
+          sku: line.sku,
+          unit: line.unit,
+          quantity: line.quantity,
+          unitCost: line.unit_cost,
+          taxRate: line.tax_rate,
+          discountRate: line.discount_rate,
+          hsnCode: line.hsn_code
+        }))
+      };
+
+      const standardInvoice = await invoiceTemplateService.generateStandardInvoice(
+        institutionId, 
+        invoiceData, 
+        'purchase'
+      );
+
+      const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice, institutionId);
+      const result = await emailService.sendInvoiceEmail(email, invoice.invoice_number, pdfBuffer);
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: `Invoice sent to ${email}`
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: result.error || 'Failed to send email'
+        });
+      }
+
+    } catch (error) {
+      logger.error('Error emailing invoice:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to email invoice'
       });
     }
   }

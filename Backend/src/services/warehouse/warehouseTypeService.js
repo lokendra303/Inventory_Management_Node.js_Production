@@ -68,6 +68,20 @@ class WarehouseTypeService {
     logger.info('Warehouse type updated', { typeId, institutionId, userId });
     return typeId;
   }
+
+  async deleteWarehouseType(institutionId, typeId) {
+    const result = await db.query(
+      'DELETE FROM warehouse_types WHERE institution_id = ? AND id = ?',
+      [institutionId, typeId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Warehouse type not found');
+    }
+
+    logger.info('Warehouse type deleted', { typeId, institutionId });
+    return true;
+  }
 }
 
 module.exports = new WarehouseTypeService();

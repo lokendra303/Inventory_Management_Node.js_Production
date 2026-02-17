@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Typography, Button, Table, Space, Tag, message, Modal } from 'antd';
-import { ShoppingCartOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined, PrinterOutlined } from '@ant-design/icons';
+import { Card, Typography, Button, Table, Space, Tag, message, Modal, Input } from 'antd';
+import { ShoppingCartOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined, PrinterOutlined, MailOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -15,6 +15,9 @@ const PurchaseInvoices = () => {
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [modalVisible, setModalVisible] = useState(false);
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [emailAddress, setEmailAddress] = useState('');
+  const [selectedInvoiceForEmail, setSelectedInvoiceForEmail] = useState(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
   const [modalMode, setModalMode] = useState('create');
 
@@ -268,6 +271,37 @@ const PurchaseInvoices = () => {
     }
   };
 
+  const handleEmailInvoice = (invoice) => {
+    setSelectedInvoiceForEmail(invoice);
+    setEmailAddress('');
+    setEmailModalVisible(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailAddress) {
+      message.warning('Please enter an email address');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await apiService.post(`/purchase-invoices/${selectedInvoiceForEmail.id}/email`, {
+        email: emailAddress
+      });
+
+      if (response.success) {
+        message.success(`Invoice sent to ${emailAddress}`);
+        setEmailModalVisible(false);
+      } else {
+        message.error(response.error || 'Failed to send email');
+      }
+    } catch (error) {
+      message.error('Failed to send email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleModalSave = (savedInvoice) => {
     setModalVisible(false);
     fetchInvoices();
@@ -333,7 +367,7 @@ const PurchaseInvoices = () => {
     {
       title: 'Actions',
       key: 'actions',
-      width: 200,
+      width: 250,
       render: (_, record) => (
         <Space>
           <Button
@@ -347,6 +381,12 @@ const PurchaseInvoices = () => {
             icon={<EyeOutlined />}
             onClick={() => handleViewStandardFormat(record.id)}
             title="View Standard Format"
+          />
+          <Button
+            type="text"
+            icon={<MailOutlined />}
+            onClick={() => handleEmailInvoice(record)}
+            title="Email Invoice"
           />
           <Button
             type="text"
@@ -406,6 +446,23 @@ const PurchaseInvoices = () => {
           type="purchase"
           invoiceId={selectedInvoiceId}
           onSave={handleModalSave}
+        />
+      </Modal>
+
+      <Modal
+        title="Email Invoice"
+        visible={emailModalVisible}
+        onCancel={() => setEmailModalVisible(false)}
+        onOk={handleSendEmail}
+        okText="Send Email"
+        confirmLoading={loading}
+      >
+        <p>Send invoice <strong>{selectedInvoiceForEmail?.invoice_number}</strong> to:</p>
+        <Input
+          placeholder="Enter email address"
+          value={emailAddress}
+          onChange={(e) => setEmailAddress(e.target.value)}
+          onPressEnter={handleSendEmail}
         />
       </Modal>
     </div>

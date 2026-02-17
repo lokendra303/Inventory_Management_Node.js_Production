@@ -15,6 +15,7 @@ const allDataRoutes = require('./master-data/all-data');
 const purchaseInvoiceRoutes = require('./invoice/purchase-invoices');
 const salesInvoiceRoutes = require('./invoice/sales-invoices');
 const invoiceRoutes = require('./invoice/invoices');
+const testEmailRoutes = require('./test-email');
 const { requireAuth, requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 
@@ -42,6 +43,9 @@ router.post('/auth/temp-login',
   auditLog('temp_access_login'),
   authController.tempLogin
 );
+
+// Test email route (no auth required for testing)
+router.use('/test-email', testEmailRoutes);
 
 // Protected routes (authentication required)
 router.use(requireAuth);
@@ -188,6 +192,12 @@ router.put('/warehouse-types/:typeId',
   requirePermission('warehouse_type_management'),
   auditLog('warehouse_type_updated'),
   warehouseTypeController.updateWarehouseType
+);
+
+router.delete('/warehouse-types/:typeId',
+  requirePermission('warehouse_type_management'),
+  auditLog('warehouse_type_deleted'),
+  warehouseTypeController.deleteWarehouseType
 );
 
 // Inventory operations

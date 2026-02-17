@@ -68,6 +68,28 @@ class WarehouseTypeController {
       });
     }
   }
+
+  async deleteWarehouseType(req, res) {
+    try {
+      const { typeId } = req.params;
+      await warehouseTypeService.deleteWarehouseType(req.institutionId, typeId);
+      
+      res.json({
+        success: true,
+        message: 'Warehouse type deleted successfully'
+      });
+    } catch (error) {
+      logger.error('Warehouse type deletion failed', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        typeId: req.params.typeId
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new WarehouseTypeController();
