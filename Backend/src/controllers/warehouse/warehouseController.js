@@ -39,10 +39,11 @@ class WarehouseController {
       
       let warehouses = await warehouseService.getWarehouses(req.institutionId, filters, limit, offset);
       
-      // Filter warehouses based on user's warehouse access
+      // Filter warehouses based on user's warehouse access only if user has restricted access
       const userWarehouseAccess = req.user.warehouseAccess || [];
       
-      // Admin or institution_users with empty warehouse access can see all warehouses
+      // Admin or users with empty warehouse access can see all warehouses
+      // Only filter if user has specific warehouse restrictions
       if (req.user.role !== 'admin' && userWarehouseAccess.length > 0) {
         warehouses = warehouses.filter(warehouse => 
           userWarehouseAccess.includes(warehouse.id)

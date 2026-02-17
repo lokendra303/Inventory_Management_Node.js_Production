@@ -98,14 +98,20 @@ class ApiService {
       },
       async (error) => {
         if (error.response?.status === 401) {
-          // Only logout on explicit session expired or invalid token errors
-          const errorData = error.response?.data;
+          // Handle session expiration
+          sessionStorage.removeItem('token');
+          sessionStorage.removeItem('user');
+          sessionStorage.removeItem('institutionId');
           
-          if (errorData?.code === 'SESSION_EXPIRED' || errorData?.code === 'INVALID_TOKEN') {
-            sessionStorage.removeItem('token');
-            window.location.href = '/';
-            return Promise.reject(error);
-          }
+          Modal.warning({
+            title: 'Session Expired',
+            content: 'Your session has expired. Please login again.',
+            onOk: () => {
+              window.location.href = '/';
+            }
+          });
+          
+          return Promise.reject(error);
         } else if (error.response?.status === 429) {
           // Handle rate limiting with exponential backoff and max retries
           const requestKey = `${error.config.method}-${error.config.url}`;

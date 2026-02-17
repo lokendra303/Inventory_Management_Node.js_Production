@@ -49,6 +49,20 @@ const Dashboard = () => {
       
       // Calculate stats from data
       const totalItems = inventory.length;
+      const activeItems = items.filter(i => i.status === 'active').length;
+      const inactiveItems = items.filter(i => i.status === 'inactive').length;
+      const totalQuantity = inventory.reduce((sum, item) => {
+        const quantity = parseFloat(item.quantity_on_hand) || 0;
+        return sum + quantity;
+      }, 0);
+      const totalAvailable = inventory.reduce((sum, item) => {
+        const available = parseFloat(item.quantity_available) || 0;
+        return sum + available;
+      }, 0);
+      const totalReserved = inventory.reduce((sum, item) => {
+        const reserved = parseFloat(item.quantity_reserved) || 0;
+        return sum + reserved;
+      }, 0);
       const totalValue = inventory.reduce((sum, item) => {
         const quantity = parseFloat(item.quantity_on_hand) || 0;
         const avgCost = parseFloat(item.average_cost) || 0;
@@ -65,6 +79,11 @@ const Dashboard = () => {
 
       setDashboardData({
         totalItems,
+        activeItems,
+        inactiveItems,
+        totalQuantity,
+        totalAvailable,
+        totalReserved,
         totalValue,
         lowStockItems: lowStockItems.slice(0, 10),
         lowStockCount: lowStockItems.length,
@@ -139,27 +158,66 @@ const Dashboard = () => {
       
       {/* Key Metrics */}
       <Row gutter={16} style={{ marginBottom: '24px' }}>
-        <Col span={4}>
+        <Col span={5}>
           <Card>
             <Statistic
-              title="Total Items"
-              value={dashboardData.totalItemsCount}
+              title="Active Items"
+              value={dashboardData.activeItems || 0}
               prefix={<InboxOutlined />}
-              valueStyle={{ color: '#3f8600' }}
+              valueStyle={{ color: '#52c41a' }}
             />
           </Card>
         </Col>
         <Col span={5}>
           <Card>
             <Statistic
-              title="Total Inventory Value"
-              value={dashboardData.totalValue}
+              title="Inactive Items"
+              value={dashboardData.inactiveItems || 0}
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Card>
+        </Col>
+        <Col span={5}>
+          <Card>
+            <Statistic
+              title="Total Quantity"
+              value={dashboardData.totalQuantity || 0}
               valueStyle={{ color: '#1890ff' }}
-              formatter={(value) => formatPrice(value, currency, 'USD')}
+            />
+          </Card>
+        </Col>
+        <Col span={5}>
+          <Card>
+            <Statistic
+              title="Available Quantity"
+              value={dashboardData.totalAvailable || 0}
+              valueStyle={{ color: '#52c41a' }}
             />
           </Card>
         </Col>
         <Col span={4}>
+          <Card>
+            <Statistic
+              title="Reserved Quantity"
+              value={dashboardData.totalReserved || 0}
+              valueStyle={{ color: '#faad14' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      <Row gutter={16} style={{ marginBottom: '24px' }}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Total Inventory Value"
+              value={dashboardData.totalValue}
+              valueStyle={{ color: '#722ed1' }}
+              formatter={(value) => formatPrice(value, currency, 'USD')}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
           <Card>
             <Statistic
               title="Low Stock Items"
@@ -169,13 +227,13 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col span={6}>
           <Card>
             <Statistic
               title="Active Warehouses"
               value={dashboardData.activeWarehouses}
               prefix={<ShoppingCartOutlined />}
-              valueStyle={{ color: '#722ed1' }}
+              valueStyle={{ color: '#52c41a' }}
             />
           </Card>
         </Col>

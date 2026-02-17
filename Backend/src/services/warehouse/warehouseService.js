@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const { roundToTwo } = require('../../utils/precision');
 
 class WarehouseService {
   async createWarehouse(institutionId, warehouseData, userId) {
@@ -129,12 +130,24 @@ class WarehouseService {
         `SELECT 
            COUNT(DISTINCT ip.item_id) as total_items,
            SUM(ip.quantity_on_hand) as total_quantity,
+           SUM(ip.quantity_available) as total_available,
+           SUM(ip.quantity_reserved) as total_reserved,
            SUM(ip.total_value) as total_value,
            COUNT(CASE WHEN ip.quantity_on_hand <= 10 THEN 1 END) as low_stock_items
          FROM inventory_projections ip
          WHERE ip.institution_id = ? AND ip.warehouse_id = ? AND ip.quantity_on_hand > 0`,
         [institutionId, warehouseId]
       );
+
+      // Round values for precision, handle null values
+      const summary = {
+        total_items: inventorySummary?.total_items || 0,
+        total_quantity: roundToTwo(parseFloat(inventorySummary?.total_quantity) || 0),
+        total_available: roundToTwo(parseFloat(inventorySummary?.total_available) || 0),
+        total_reserved: roundToTwo(parseFloat(inventorySummary?.total_reserved) || 0),
+        total_value: roundToTwo(parseFloat(inventorySummary?.total_value) || 0),
+        low_stock_items: inventorySummary?.low_stock_items || 0
+      };
 
       // Get items by category
       const itemsByCategory = await db.query(
@@ -151,28 +164,38 @@ class WarehouseService {
         [institutionId, warehouseId]
       );
 
+      // Round values for precision, handle null values
+      itemsByCategory.forEach(cat => {
+        cat.total_quantity = roundToTwo(parseFloat(cat.total_quantity) || 0);
+        cat.total_value = roundToTwo(parseFloat(cat.total_value) || 0);
+      });
+
       // Get top items by value
       const topItems = await db.query(
         `SELECT 
-           i.sku, i.name, i.category, i.unit,
+           i.sku, i.name, i.category, 
+           COALESCE(u.name, i.unit, 'N/A') as unit,
            ip.quantity_on_hand, ip.average_cost, ip.total_value
          FROM inventory_projections ip
          JOIN items i ON ip.item_id = i.id
+         LEFT JOIN units u ON CAST(i.unit AS CHAR) = CAST(u.id AS CHAR)
          WHERE ip.institution_id = ? AND ip.warehouse_id = ? AND ip.quantity_on_hand > 0
          ORDER BY ip.total_value DESC
          LIMIT 20`,
         [institutionId, warehouseId]
       );
 
+      // Round values for precision, handle null values
+      topItems.forEach(item => {
+        item.quantity_on_hand = roundToTwo(parseFloat(item.quantity_on_hand) || 0);
+        item.average_cost = roundToTwo(parseFloat(item.average_cost) || 0);
+        item.total_value = roundToTwo(parseFloat(item.total_value) || 0);
+      });
+
       return {
         ...warehouse,
         capacity_constraints: JSON.parse(warehouse.capacity_constraints || '{}'),
-        summary: inventorySummary || {
-          total_items: 0,
-          total_quantity: 0,
-          total_value: 0,
-          low_stock_items: 0
-        },
+        summary,
         categories: itemsByCategory,
         topItems
       };
@@ -194,7 +217,7 @@ class WarehouseService {
       params.push(filters.status);
     }
 
-    query += ' ORDER BY CASE WHEN w.status = "active" THEN 0 ELSE 1 END, w.name';
+    query += ' ORDER BY w.name';
 
     return await db.query(query, params);
   }
@@ -276,19 +299,19 @@ class WarehouseService {
 
     const user = institution_users[0];
     
-    // Admin has access to all warehouses
+    // Admin has access to all active warehouses
     if (user.role === 'admin') {
       return await this.getWarehouses(institutionId, { status: 'active' });
     }
 
     const warehouseAccess = JSON.parse(user.warehouse_access || '[]');
     
-    // Empty array means access to all warehouses
+    // Empty array means access to all active warehouses
     if (warehouseAccess.length === 0) {
       return await this.getWarehouses(institutionId, { status: 'active' });
     }
 
-    // Get specific warehouses
+    // Get specific active warehouses only
     if (warehouseAccess.length > 0) {
       const placeholders = warehouseAccess.map(() => '?').join(',');
       const warehouses = await db.query(

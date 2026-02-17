@@ -4,6 +4,7 @@ const invoiceTemplateService = require('../../services/invoice/invoiceTemplateSe
 const invoicePDFService = require('../../services/pdf/invoicePDFService');
 const autoInvoiceService = require('../../services/invoice/autoInvoiceService');
 const { v4: uuidv4 } = require('uuid');
+const { roundToTwo, safeAdd, safeSubtract } = require('../../utils/precision');
 
 class SalesInvoiceController {
   // Create Sales Invoice
@@ -439,9 +440,9 @@ class SalesInvoiceController {
           paymentData.paymentMethod, paymentData.reference, paymentData.notes, user.userId
         ]);
 
-        // Update invoice amounts
-        const newPaidAmount = parseFloat(invoice.paid_amount) + parseFloat(paymentData.amount);
-        const newBalanceAmount = parseFloat(invoice.total_amount) - newPaidAmount;
+        // Update invoice amounts with precision handling
+        const newPaidAmount = roundToTwo(safeAdd(invoice.paid_amount, paymentData.amount));
+        const newBalanceAmount = roundToTwo(safeSubtract(invoice.total_amount, newPaidAmount));
         const newStatus = newBalanceAmount <= 0.01 ? 'paid' : 'partially_paid';
 
         await connection.execute(`

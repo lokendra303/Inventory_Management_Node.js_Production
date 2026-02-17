@@ -393,11 +393,27 @@ const fetchWarehouses = async () => {
                 </Col>
                 <Col span={6}>
                   <Statistic 
+                    title="Available Quantity" 
+                    value={warehouseDetails.summary?.total_available || 0}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic 
+                    title="Reserved Quantity" 
+                    value={warehouseDetails.summary?.total_reserved || 0}
+                    valueStyle={{ color: '#faad14' }}
+                  />
+                </Col>
+              </Row>
+              <Row gutter={16} style={{ marginTop: 16 }}>
+                <Col span={12}>
+                  <Statistic 
                     title="Total Value" 
                     value={formatPrice(warehouseDetails.summary?.total_value || 0)} 
                   />
                 </Col>
-                <Col span={6}>
+                <Col span={12}>
                   <Statistic 
                     title="Low Stock Items" 
                     value={warehouseDetails.summary?.low_stock_items || 0}
