@@ -309,7 +309,7 @@ const PurchaseInvoices = () => {
       title: 'Amount',
       dataIndex: 'total_amount',
       key: 'total_amount',
-      render: (amount) => formatPrice(amount, currency, 'USD'),
+      render: (amount) => formatPrice(amount, currency),
     },
     {
       title: 'Status',

@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Card, Typography, Button, Space, Statistic, Row, Col, Spin } from 'antd';
 import { DollarOutlined, FileTextOutlined, BarChartOutlined, ShoppingCartOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
+import { useCurrency } from '../../contexts/CurrencyContext.jsx';
+import { formatPrice } from '../../utils/currency';
 
 const { Title, Paragraph } = Typography;
 
 const InvoiceDashboard = () => {
+  const { currency } = useCurrency();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -52,10 +55,10 @@ const InvoiceDashboard = () => {
                       <Statistic title="Total" value={dashboardData.purchase?.total_invoices || 0} />
                     </Col>
                     <Col span={8}>
-                      <Statistic title="Amount" value={dashboardData.purchase?.total_amount || 0} prefix="$" precision={2} />
+                      <Statistic title="Amount" value={formatPrice(dashboardData.purchase?.total_amount || 0, currency)} />
                     </Col>
                     <Col span={8}>
-                      <Statistic title="Outstanding" value={dashboardData.purchase?.outstanding_amount || 0} prefix="$" precision={2} />
+                      <Statistic title="Outstanding" value={formatPrice(dashboardData.purchase?.outstanding_amount || 0, currency)} />
                     </Col>
                   </Row>
                 </Card>
@@ -67,10 +70,10 @@ const InvoiceDashboard = () => {
                       <Statistic title="Total" value={dashboardData.sales?.total_invoices || 0} />
                     </Col>
                     <Col span={8}>
-                      <Statistic title="Amount" value={dashboardData.sales?.total_amount || 0} prefix="$" precision={2} />
+                      <Statistic title="Amount" value={formatPrice(dashboardData.sales?.total_amount || 0, currency)} />
                     </Col>
                     <Col span={8}>
-                      <Statistic title="Outstanding" value={dashboardData.sales?.outstanding_amount || 0} prefix="$" precision={2} />
+                      <Statistic title="Outstanding" value={formatPrice(dashboardData.sales?.outstanding_amount || 0, currency)} />
                     </Col>
                   </Row>
                 </Card>

@@ -75,6 +75,11 @@ class PurchaseOrderService {
           
           const lineId = uuidv4();
           const lineTotal = Math.round(line.quantity * line.unitCost * 100) / 100;
+          const discountRate = line.discountRate || 0;
+          const taxRate = line.taxRate || 0;
+          const discountAmount = Math.round((lineTotal * discountRate) / 100 * 100) / 100;
+          const taxableAmount = lineTotal - discountAmount;
+          const taxAmount = Math.round((taxableAmount * taxRate) / 100 * 100) / 100;
           subtotal += lineTotal;
 
           let lineExpectedDate = line.expectedDate || formattedExpectedDate || null;
@@ -84,9 +89,9 @@ class PurchaseOrderService {
           
           await connection.execute(
             `INSERT INTO purchase_order_lines 
-             (id, institution_id, po_id, item_id, warehouse_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, poId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitCost, lineTotal, lineExpectedDate]
+             (id, institution_id, po_id, item_id, warehouse_id, line_number, quantity_ordered, unit_cost, line_total, tax_rate, tax_amount, discount_rate, discount_amount, expected_date) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, poId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitCost, lineTotal, taxRate, taxAmount, discountRate, discountAmount, lineExpectedDate]
           );
         }
 
@@ -425,13 +430,18 @@ class PurchaseOrderService {
           const line = lines[i];
           const lineId = uuidv4();
           const lineTotal = Math.round(line.quantity * line.unitCost * 100) / 100;
+          const discountRate = line.discountRate || 0;
+          const taxRate = line.taxRate || 0;
+          const discountAmount = Math.round((lineTotal * discountRate) / 100 * 100) / 100;
+          const taxableAmount = lineTotal - discountAmount;
+          const taxAmount = Math.round((taxableAmount * taxRate) / 100 * 100) / 100;
           subtotal += lineTotal;
 
           await connection.execute(
             `INSERT INTO purchase_order_lines 
-             (id, institution_id, po_id, item_id, warehouse_id, line_number, quantity_ordered, unit_cost, line_total, expected_date) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, poId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitCost, lineTotal, line.expectedDate || null]
+             (id, institution_id, po_id, item_id, warehouse_id, line_number, quantity_ordered, unit_cost, line_total, tax_rate, tax_amount, discount_rate, discount_amount, expected_date) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, poId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitCost, lineTotal, taxRate, taxAmount, discountRate, discountAmount, line.expectedDate || null]
           );
         }
 

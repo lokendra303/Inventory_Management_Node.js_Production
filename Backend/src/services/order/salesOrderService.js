@@ -42,6 +42,11 @@ class SalesOrderService {
           const line = lines[i];
           const lineId = uuidv4();
           const lineTotal = line.quantity * line.unitPrice;
+          const discountRate = line.discountRate || 0;
+          const taxRate = line.taxRate || 0;
+          const discountAmount = Math.round((lineTotal * discountRate) / 100 * 100) / 100;
+          const taxableAmount = lineTotal - discountAmount;
+          const taxAmount = Math.round((taxableAmount * taxRate) / 100 * 100) / 100;
           subtotal += lineTotal;
           
           if (isPreorder) {
@@ -50,9 +55,9 @@ class SalesOrderService {
 
           await connection.execute(
             `INSERT INTO sales_order_lines 
-             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineTotal]
+             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total, tax_rate, tax_amount, discount_rate, discount_amount) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineTotal, taxRate, taxAmount, discountRate, discountAmount]
           );
         }
 

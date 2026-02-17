@@ -586,7 +586,7 @@ class PurchaseInvoiceController {
           {
             account_code: invoice.grn_id ? 'GRN_CLEARING' : 'PURCHASE_EXPENSE',
             account_name: invoice.grn_id ? 'GRN Clearing Account' : 'Purchase Expense',
-            debit_amount: invoice.subtotal + invoice.discount_amount,
+            debit_amount: invoice.subtotal - invoice.discount_amount,
             credit_amount: 0
           },
           // Dr Input Tax (if any)
