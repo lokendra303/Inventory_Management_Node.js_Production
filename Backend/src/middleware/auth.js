@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-const config = require('../config');
 const authService = require('../services/auth/authService');
 const serviceAccountService = require('../services/auth/serviceAccountService');
 const logger = require('../utils/logger');
@@ -69,7 +68,7 @@ const extractInstitutionContext = async (req, res, next) => {
     next();
   } catch (error) {
     logger.error('Failed to extract institution context', { error: error.message });
-    res.status(401).json({
+    return res.status(401).json({
       success: false,
       error: 'Invalid or expired token'
     });
@@ -225,7 +224,7 @@ const requireWarehouseAccess = (warehouseIdParam = 'warehouseId') => {
     }
 
     // Admin has access to all warehouses
-    if (req.user.role === 'admin') {
+    if (req.user.role === 'admin' || req.user.role === 'super_admin') {
       return next();
     }
 
@@ -269,12 +268,16 @@ const rateLimit = (maxRequests = 100, windowMs = 15 * 60 * 1000) => {
     // Clean old entries
     if (requests.has(key)) {
       const userRequests = requests.get(key).filter(time => time > windowStart);
-      requests.set(key, userRequests);
+      if (userRequests.length === 0) {
+        requests.delete(key);
+      } else {
+        requests.set(key, userRequests);
+      }
     } else {
       requests.set(key, []);
     }
     
-    const userRequests = requests.get(key);
+    const userRequests = requests.get(key) || [];
     
     if (userRequests.length >= maxRequests) {
       logger.warn('Rate limit exceeded', {
@@ -320,13 +323,19 @@ const createInstitutionRateLimit = (windowMs, max) => {
     
     if (validRequests.length >= max) {
       return res.status(429).json({ 
+        success: false,
         error: 'Rate limit exceeded',
-        retryAfter: Math.ceil((validRequests[0] - windowStart) / 1000)
+        retryAfter: Math.ceil((validRequests[0] + windowMs - now) / 1000)
       });
     }
 
     validRequests.push(now);
-    rateLimitStore.set(institutionId, validRequests);
+    
+    if (validRequests.length === 0) {
+      rateLimitStore.delete(institutionId);
+    } else {
+      rateLimitStore.set(institutionId, validRequests);
+    }
     
     next();
   };
@@ -338,6 +347,8 @@ const auditLog = (action) => {
     const originalSend = res.send;
     
     res.send = function(data) {
+      res.send = originalSend;
+      
       // Log the action after response
       setImmediate(() => {
         logger.info('Audit log', {
@@ -352,7 +363,7 @@ const auditLog = (action) => {
         });
       });
       
-      originalSend.call(this, data);
+      return originalSend.call(this, data);
     };
     
     next();
