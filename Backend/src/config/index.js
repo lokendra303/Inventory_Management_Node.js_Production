@@ -7,25 +7,25 @@ module.exports = {
   },
   
   database: {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 3306,
-    database: process.env.DB_NAME || 'ims_sepcune',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '12345',
+    host: process.env.DB_HOST ,
+    port: process.env.DB_PORT ,
+    database: process.env.DB_NAME ,
+    user: process.env.DB_USER ,
+    password: process.env.DB_PASSWORD ,
     connectionLimit: 20,
     acquireTimeout: 60000,
     timeout: 60000
   },
   
   redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: process.env.REDIS_PORT || 6379,
-    password: process.env.REDIS_PASSWORD || null,
+    host: process.env.REDIS_HOST ,
+    port: process.env.REDIS_PORT ,
+    password: process.env.REDIS_PASSWORD,
     db: 0
   },
   
   jwt: {
-    secret: process.env.JWT_SECRET || 'fallback-secret-change-in-production',
+    secret: process.env.JWT_SECRET ,
     expiresIn: '999y' // No expiration
   },
   
