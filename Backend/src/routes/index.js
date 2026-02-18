@@ -15,7 +15,7 @@ const allDataRoutes = require('./master-data/all-data');
 const purchaseInvoiceRoutes = require('./invoice/purchase-invoices');
 const salesInvoiceRoutes = require('./invoice/sales-invoices');
 const invoiceRoutes = require('./invoice/invoices');
-const testEmailRoutes = require('./test-email');
+
 const { requireAuth, requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
 
@@ -45,7 +45,7 @@ router.post('/auth/temp-login',
 );
 
 // Test email route (no auth required for testing)
-router.use('/test-email', testEmailRoutes);
+
 
 // Protected routes (authentication required)
 router.use(requireAuth);
