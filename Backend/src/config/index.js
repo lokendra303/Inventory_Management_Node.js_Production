@@ -12,9 +12,7 @@ module.exports = {
     database: process.env.DB_NAME ,
     user: process.env.DB_USER ,
     password: process.env.DB_PASSWORD ,
-    connectionLimit: 20,
-    acquireTimeout: 60000,
-    timeout: 60000
+    connectionLimit: 20
   },
   
   redis: {

@@ -98,18 +98,28 @@ class ApiService {
       },
       async (error) => {
         if (error.response?.status === 401) {
-          // Handle session expiration
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('user');
-          sessionStorage.removeItem('institutionId');
+          // Only show session expired modal if user was logged in (has token)
+          // Don't show for login/profile endpoint failures
+          const isAuthEndpoint = error.config?.url?.includes('/auth/login') || 
+                                 error.config?.url?.includes('/auth/profile');
+          const hadToken = sessionStorage.getItem('token');
           
-          Modal.warning({
-            title: 'Session Expired',
-            content: 'Your session has expired. Please login again.',
-            onOk: () => {
-              window.location.href = '/';
-            }
-          });
+          if (!isAuthEndpoint && hadToken) {
+            // Handle session expiration for authenticated users
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('user');
+            sessionStorage.removeItem('lastActivity');
+            sessionStorage.removeItem('institutionId');
+            
+            Modal.warning({
+              title: 'Session Expired',
+              content: 'Your session has expired. Please login again.',
+              onOk: () => {
+                window.location.href = '/';
+              },
+              centered: true
+            });
+          }
           
           return Promise.reject(error);
         } else if (error.response?.status === 429) {

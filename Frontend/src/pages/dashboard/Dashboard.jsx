@@ -72,8 +72,6 @@ const Dashboard = () => {
       const inactiveWarehouses = warehouses.filter(w => w.status === 'inactive').length;
       const totalItemsCount = items.length;
       
-      console.log('Dashboard data:', { totalItems, totalValue, inventory: inventory.slice(0, 3) });
-      
       // Generate mock stock trend data
       const stockTrend = generateMockTrendData();
 

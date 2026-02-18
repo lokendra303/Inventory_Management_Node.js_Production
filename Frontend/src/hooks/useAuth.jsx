@@ -16,8 +16,6 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  console.log('AuthProvider render - user:', user, 'loading:', loading);
-
   const logout = () => {
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('lastActivity');
@@ -29,15 +27,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    console.log('AuthProvider useEffect triggered');
     const token = sessionStorage.getItem('token');
-    console.log('Token from sessionStorage:', token);
     if (token) {
       const lastActivity = sessionStorage.getItem('lastActivity');
       if (lastActivity) {
         const timeSinceLastActivity = Date.now() - parseInt(lastActivity);
         if (timeSinceLastActivity > 15 * 60 * 1000) {
-          console.log('Session expired, removing token');
           sessionStorage.removeItem('token');
           sessionStorage.removeItem('lastActivity');
           sessionStorage.removeItem('institutionId');
@@ -58,18 +53,14 @@ export const AuthProvider = ({ children }) => {
       apiService.setAuthToken(token);
       fetchProfile();
     } else {
-      console.log('No token found, setting loading to false');
       setLoading(false);
     }
   }, []);
 
   const fetchProfile = async () => {
     try {
-      console.log('Fetching profile...');
       const response = await apiService.get('/auth/profile');
-      console.log('Profile response:', response);
       if (response.success) {
-        console.log('Profile fetch successful, setting user:', response.data);
         
         // Store institution ID if available
         if (response.data.institutionId) {
@@ -80,50 +71,28 @@ export const AuthProvider = ({ children }) => {
         const token = sessionStorage.getItem('token');
         setUser({ ...response.data, token });
       } else {
-        console.log('Profile fetch failed, removing token');
         sessionStorage.removeItem('token');
-        apiService.setAuthToken(null);
-      }
-    } catch (error) {
-      console.error('Failed to fetch profile:', error);
-      
-      // Check if it's a session expired error
-      if (error.response?.data?.code === 'SESSION_EXPIRED' || 
-          error.response?.data?.error?.includes('expired')) {
-        Modal.warning({
-          title: 'Session Expired',
-          content: 'Your session has expired. Please login again.',
-          okText: 'Login',
-          onOk: () => {
-            sessionStorage.removeItem('token');
-            sessionStorage.removeItem('lastActivity');
-            sessionStorage.removeItem('institutionId');
-            apiService.setAuthToken(null);
-            window.location.href = '/';
-          },
-          centered: true,
-          maskClosable: false,
-        });
-      } else {
-        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('lastActivity');
         sessionStorage.removeItem('institutionId');
         apiService.setAuthToken(null);
       }
+    } catch (error) {
+      // Clean up session storage silently - don't show any modal
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('lastActivity');
+      sessionStorage.removeItem('institutionId');
+      apiService.setAuthToken(null);
     } finally {
-      console.log('Setting loading to false');
       setLoading(false);
     }
   };
 
   const login = async (credentials) => {
     try {
-      console.log('Attempting login with:', credentials);
       const response = await apiService.post('/auth/login', credentials);
-      console.log('Login response:', response);
       
       if (response.success) {
         const { token, user: userData } = response.data;
-        console.log('Login successful, setting user:', userData);
         sessionStorage.setItem('token', token);
         sessionStorage.setItem('lastActivity', Date.now().toString());
         
@@ -138,14 +107,22 @@ export const AuthProvider = ({ children }) => {
         message.success('Login successful');
         return { success: true };
       } else {
-        console.log('Login failed:', response.error);
-        message.error(response.error || 'Login failed');
+        Modal.error({
+          title: 'Login Failed',
+          content: response.error || 'Login failed',
+          centered: true,
+          okText: 'Try Again'
+        });
         return { success: false, error: response.error };
       }
     } catch (error) {
-      console.log('Login error:', error);
-      const errorMessage = error.response?.data?.error || 'Login failed';
-      message.error(errorMessage);
+      const errorMessage = error.response?.data?.error || 'Login failed. Please try again.';
+      Modal.error({
+        title: 'Login Failed',
+        content: errorMessage,
+        centered: true,
+        okText: 'Try Again'
+      });
       return { success: false, error: errorMessage };
     }
   };

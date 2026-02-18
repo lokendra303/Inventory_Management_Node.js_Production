@@ -47,9 +47,7 @@ export const CurrencyProvider = ({ children }) => {
         const newRate = exchangeRates[newCurrency] || 1;
         setCurrency(newCurrency);
         setExchangeRate(newRate);
-        console.log('Currency loaded:', newCurrency, 'Rate:', newRate);
       } else {
-        console.warn('No currency data received, using default USD');
         setCurrency('USD');
         setExchangeRate(1);
       }
@@ -69,10 +67,8 @@ export const CurrencyProvider = ({ children }) => {
         const newRate = exchangeRates[newCurrency] || 1;
         setCurrency(newCurrency);
         setExchangeRate(newRate);
-        console.log('Currency updated to:', newCurrency, 'Rate:', newRate);
         return true;
       } else {
-        console.error('Failed to update currency:', response.error || 'Unknown error');
         return false;
       }
     } catch (error) {

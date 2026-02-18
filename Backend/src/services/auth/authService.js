@@ -109,7 +109,7 @@ class AuthService {
     const users = await db.query(query, params);
 
     if (users.length === 0) {
-      throw new Error('Invalid credentials');
+      throw new Error('Email or password is incorrect. Please check your credentials and try again.');
     }
 
     const user = users[0];
@@ -124,7 +124,7 @@ class AuthService {
 
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) {
-      throw new Error('Invalid credentials');
+      throw new Error('Email or password is incorrect. Please check your credentials and try again.');
     }
 
     // Update last login

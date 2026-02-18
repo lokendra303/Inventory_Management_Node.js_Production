@@ -87,10 +87,7 @@ function AppContent() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  console.log('AppContent render - user:', user, 'loading:', loading);
-
   if (loading) {
-    console.log('Showing loading spinner');
     return (
       <div className="loading-container">
         <div className="loading-spinner">Loading...</div>
@@ -99,11 +96,9 @@ function AppContent() {
   }
 
   if (!user) {
-    console.log('No user, showing login page');
     return <Login />;
   }
 
-  console.log('User authenticated, showing main app');
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sidebar 
