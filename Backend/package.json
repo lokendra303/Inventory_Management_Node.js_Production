@@ -4,7 +4,8 @@
   "description": "Production-ready Multi-institution Inventory Management System",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node cluster.js",
+    "start:single": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest",
     "migrate": "node src/database/migrate.js",
