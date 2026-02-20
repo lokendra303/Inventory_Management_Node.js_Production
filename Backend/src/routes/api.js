@@ -40,6 +40,7 @@ router.use('/reports', require('./reports/reports'));
 router.use('/profit-loss', require('./reports/profit-loss'));
 router.use('/settings', require('./settings/settings'));
 router.use('/company-settings', require('./settings/company-settings'));
+router.use('/documents', require('./documents/documents'));
 
 // Error handling middleware
 router.use((error, req, res, next) => {

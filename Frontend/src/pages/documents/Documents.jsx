@@ -1,49 +1,119 @@
-import React, { useState } from 'react';
-import { Layout, Button, Table, Breadcrumb, Collapse, Space, Input, Modal, Form } from 'antd';
-import { PlusOutlined, UploadOutlined, DeleteOutlined, FolderOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Layout, Button, Table, Collapse, Space, Input, Modal, Form, message, Select, Switch } from 'antd';
+import { PlusOutlined, UploadOutlined, DeleteOutlined, FolderOutlined, EyeOutlined, DownloadOutlined } from '@ant-design/icons';
+import { documentService } from '../../services/documentService';
 import '../../styles/Documents.css';
 
 const { Sider, Content } = Layout;
 
 const Documents = () => {
   const [selectedView, setSelectedView] = useState('all');
-  const [documents, setDocuments] = useState([
-    {
-      id: 1,
-      fileName: 'page1_img5.jpeg',
-      uploadedBy: 'Me',
-      uploadedOn: '10/01/2026 02:26 PM',
-      associatedTo: 'Item: good 1, Item Group: good 1',
-      folder: '-'
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [selectedFolderName, setSelectedFolderName] = useState('All Documents');
+  const [documents, setDocuments] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [isUploadModalVisible, setIsUploadModalVisible] = useState(false);
+  const [isFolderModalVisible, setIsFolderModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadForm] = Form.useForm();
+  const [folderForm] = Form.useForm();
+
+  useEffect(() => {
+    loadFolders();
+    loadDocuments();
+  }, [selectedView, selectedFolder]);
+
+  const loadFolders = async () => {
+    try {
+      const response = await documentService.getFolders();
+      setFolders(response.data || []);
+    } catch (error) {
+      message.error('Failed to load folders');
+      setFolders([]);
     }
-  ]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [form] = Form.useForm();
-
-  const showUploadModal = () => {
-    setIsModalVisible(true);
   };
 
-  const handleModalOk = () => {
-    form.validateFields().then(() => {
-      // Handle file upload here
-      setIsModalVisible(false);
-      form.resetFields();
-    });
-  };
-
-  const handleModalCancel = () => {
-    setIsModalVisible(false);
+  const loadDocuments = async () => {
+    try {
+      setLoading(true);
+      const response = await documentService.getDocuments(selectedFolder, selectedView);
+      setDocuments(response.data || []);
+    } catch (error) {
+      message.error('Failed to load documents');
+      setDocuments([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCreateFolder = () => {
+    setIsFolderModalVisible(true);
+  };
+
+  const handleFolderSubmit = async () => {
+    try {
+      const values = await folderForm.validateFields();
+      await documentService.createFolder(values.name, values.parentFolderId);
+      message.success('Folder created successfully');
+      setIsFolderModalVisible(false);
+      folderForm.resetFields();
+      loadFolders();
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Failed to create folder');
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    try {
+      if (!selectedFile) {
+        message.error('Please select a file');
+        return;
+      }
+      
+      const values = await uploadForm.validateFields();
+      await documentService.uploadDocument(
+        selectedFile,
+        values.folderId
+      );
+      message.success('Document uploaded successfully');
+      setIsUploadModalVisible(false);
+      setSelectedFile(null);
+      uploadForm.resetFields();
+      loadDocuments();
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Failed to upload document');
+    }
+  };
+
+  const handleDeleteDocument = async (documentId) => {
     Modal.confirm({
-      title: 'Create New Folder',
-      content: <Input placeholder="Enter folder name" />,
-      okText: 'Create',
-      cancelText: 'Cancel',
-      onOk() {
-        // Handle folder creation
+      title: 'Delete Document',
+      content: 'Are you sure you want to delete this document?',
+      onOk: async () => {
+        try {
+          await documentService.deleteDocument(documentId);
+          message.success('Document deleted successfully');
+          loadDocuments();
+        } catch (error) {
+          message.error('Failed to delete document');
+        }
+      }
+    });
+  };
+
+  const handleDeleteFolder = async (folderId) => {
+    Modal.confirm({
+      title: 'Delete Folder',
+      content: 'Are you sure you want to delete this folder?',
+      onOk: async () => {
+        try {
+          await documentService.deleteFolder(folderId);
+          message.success('Folder deleted successfully');
+          loadFolders();
+        } catch (error) {
+          message.error(error.response?.data?.error || 'Failed to delete folder');
+        }
       }
     });
   };
@@ -58,29 +128,74 @@ const Documents = () => {
     },
     {
       title: 'FILE NAME',
-      dataIndex: 'fileName',
-      key: 'fileName',
-      render: (text) => <span style={{ color: '#1890ff' }}>📄 {text}</span>
+      dataIndex: 'file_name',
+      key: 'file_name',
+      render: (text, record) => (
+        <a href={`http://localhost:5000${record.file_path}`} target="_blank" rel="noopener noreferrer" style={{ color: '#1890ff' }}>
+          📄 {text}
+        </a>
+      )
     },
     {
       title: 'UPLOADED BY',
-      dataIndex: 'uploadedBy',
-      key: 'uploadedBy'
+      dataIndex: 'uploaded_by_name',
+      key: 'uploaded_by_name',
+      render: (text) => text || 'Unknown'
     },
     {
       title: 'UPLOADED ON',
-      dataIndex: 'uploadedOn',
-      key: 'uploadedOn'
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (text) => new Date(text).toLocaleString()
     },
     {
       title: 'ASSOCIATED TO',
-      dataIndex: 'associatedTo',
-      key: 'associatedTo'
+      dataIndex: 'associated_entity',
+      key: 'associated_entity',
+      render: (text, record) => text ? `${text}: ${record.associated_entity_id}` : '-'
     },
     {
       title: 'FOLDER',
-      dataIndex: 'folder',
-      key: 'folder'
+      dataIndex: 'folder_name',
+      key: 'folder_name',
+      render: (text) => text || '-'
+    },
+    {
+      title: 'ACTION',
+      key: 'action',
+      render: (_, record) => (
+        <Space>
+          <Button 
+            type="link" 
+            icon={<EyeOutlined />}
+            onClick={() => window.open(`http://localhost:5000${record.file_path}`, '_blank')}
+          />
+          <Button 
+            type="link" 
+            icon={<DownloadOutlined />}
+            onClick={() => {
+              fetch(`http://localhost:5000${record.file_path}`)
+                .then(response => response.blob())
+                .then(blob => {
+                  const url = window.URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = record.file_name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  window.URL.revokeObjectURL(url);
+                });
+            }}
+          />
+          <Button 
+            type="text" 
+            danger 
+            icon={<DeleteOutlined />}
+            onClick={() => handleDeleteDocument(record.id)}
+          />
+        </Space>
+      )
     }
   ];
 
@@ -88,12 +203,12 @@ const Documents = () => {
     {
       label: 'All Documents',
       key: 'all',
-      onClick: () => setSelectedView('all')
+      onClick: () => { setSelectedView('all'); setSelectedFolder(null); setSelectedFolderName('All Documents'); }
     },
     {
       label: 'Inbox',
       key: 'inbox',
-      onClick: () => setSelectedView('inbox')
+      onClick: () => { setSelectedView('inbox'); setSelectedFolder(null); setSelectedFolderName('Inbox'); }
     }
   ];
 
@@ -112,7 +227,7 @@ const Documents = () => {
           />
         </div>
       ),
-      children: [
+      children: folders && folders.length === 0 ? [
         <div key="no-folders" style={{ padding: '8px 0', color: '#999' }}>
           There are no folders.
         </div>,
@@ -125,7 +240,34 @@ const Documents = () => {
             Create New Folder
           </Button>
         </div>
-      ]
+      ] : folders && folders.map(folder => (
+        <div 
+          key={folder.id}
+          style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between',
+            padding: '8px 0',
+            cursor: 'pointer',
+            opacity: folder.is_active ? 1 : 0.5
+          }}
+        >
+          <span onClick={() => { setSelectedFolder(folder.id); setSelectedView('all'); setSelectedFolderName(folder.name); }}>
+            <FolderOutlined /> {folder.name} ({folder.document_count})
+          </span>
+          <Switch 
+            size="small"
+            checked={folder.is_active}
+            onChange={(checked) => {
+              documentService.toggleFolderStatus(folder.id).then(() => {
+                message.success(`Folder ${checked ? 'activated' : 'deactivated'}`);
+                loadFolders();
+                loadDocuments();
+              });
+            }}
+            onClick={(checked, e) => e.stopPropagation()}
+          />
+        </div>
+      ))
     }
   ];
 
@@ -187,12 +329,11 @@ const Documents = () => {
           alignItems: 'center',
           marginBottom: '24px'
         }}>
-          <h2 style={{ margin: 0 }}>All Documents</h2>
+          <h2 style={{ margin: 0 }}>{selectedFolderName}</h2>
           <Space>
-            <Button type="primary" icon={<UploadOutlined />} onClick={showUploadModal}>
+            <Button type="primary" icon={<UploadOutlined />} onClick={() => setIsUploadModalVisible(true)}>
               Upload File
             </Button>
-            <Button type="text" icon="⋮" />
           </Space>
         </div>
 
@@ -209,7 +350,8 @@ const Documents = () => {
           columns={columns}
           dataSource={documents}
           rowKey="id"
-          pagination={false}
+          loading={loading}
+          pagination={{ pageSize: 20 }}
           bordered={false}
         />
       </Content>
@@ -217,17 +359,66 @@ const Documents = () => {
       {/* Upload Modal */}
       <Modal
         title="Upload File"
-        open={isModalVisible}
-        onOk={handleModalOk}
-        onCancel={handleModalCancel}
+        open={isUploadModalVisible}
+        onOk={handleUploadDocument}
+        onCancel={() => {
+          setIsUploadModalVisible(false);
+          setSelectedFile(null);
+          uploadForm.resetFields();
+        }}
       >
-        <Form form={form} layout="vertical">
+        <Form form={uploadForm} layout="vertical">
           <Form.Item
-            name="file"
             label="Select File"
-            rules={[{ required: true, message: 'Please select a file' }]}
+            required
           >
-            <Input type="file" />
+            <Input 
+              type="file" 
+              key={isUploadModalVisible ? 'file-input' : 'reset'}
+              onChange={(e) => setSelectedFile(e.target.files[0])} 
+            />
+          </Form.Item>
+          <Form.Item
+            name="folderId"
+            label="Folder (Optional)"
+          >
+            <Select placeholder="Select folder" allowClear>
+              {folders && folders.filter(f => f.is_active).map(folder => (
+                <Select.Option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Folder Modal */}
+      <Modal
+        title="Create New Folder"
+        open={isFolderModalVisible}
+        onOk={handleFolderSubmit}
+        onCancel={() => setIsFolderModalVisible(false)}
+      >
+        <Form form={folderForm} layout="vertical">
+          <Form.Item
+            name="name"
+            label="Folder Name"
+            rules={[{ required: true, message: 'Please enter folder name' }]}
+          >
+            <Input placeholder="Enter folder name" />
+          </Form.Item>
+          <Form.Item
+            name="parentFolderId"
+            label="Parent Folder (Optional)"
+          >
+            <Select placeholder="Root level" allowClear>
+              {folders && folders.map(folder => (
+                <Select.Option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </Select.Option>
+              ))}
+            </Select>
           </Form.Item>
         </Form>
       </Modal>
