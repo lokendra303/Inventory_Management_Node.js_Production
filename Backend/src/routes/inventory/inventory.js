@@ -41,13 +41,13 @@ router.get('/:itemId/:warehouseId/history',
   inventoryController.getInventoryHistory
 );
 
-// POST /api/inventory/receive
-router.post('/receive', 
-  validate(schemas.receiveStockSchema),
-  requirePermission('inventory_receive'),
-  auditLog('stock_received'),
-  inventoryController.receiveStock
-);
+// POST /api/inventory/receive - DISABLED
+// router.post('/receive', 
+//   validate(schemas.receiveStockSchema),
+//   requirePermission('inventory_receive'),
+//   auditLog('stock_received'),
+//   inventoryController.receiveStock
+// );
 
 // POST /api/inventory/reserve
 router.post('/reserve', 
