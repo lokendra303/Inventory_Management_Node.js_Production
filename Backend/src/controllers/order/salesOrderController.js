@@ -366,6 +366,42 @@ class SalesOrderController {
       });
     }
   }
+
+  async cancelSalesOrder(req, res) {
+    try {
+      const { id: soId } = req.params;
+      const { cancellationReason } = req.body;
+
+      if (!cancellationReason) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cancellation reason is required'
+        });
+      }
+
+      await salesOrderService.cancelSalesOrder(
+        req.institutionId,
+        soId,
+        cancellationReason,
+        req.user.userId
+      );
+
+      res.json({
+        success: true,
+        message: 'Sales order cancelled and reserved stock released successfully'
+      });
+    } catch (error) {
+      logger.error('Failed to cancel sales order', {
+        error: error.message,
+        institutionId: req.institutionId,
+        soId: req.params.id
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new SalesOrderController();

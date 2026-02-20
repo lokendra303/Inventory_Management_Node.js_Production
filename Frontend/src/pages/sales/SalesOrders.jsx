@@ -31,6 +31,9 @@ const SalesOrders = () => {
   const [emailModalVisible, setEmailModalVisible] = useState(false);
   const [emailAddress, setEmailAddress] = useState('');
   const [selectedSOForEmail, setSelectedSOForEmail] = useState(null);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [selectedSOForCancel, setSelectedSOForCancel] = useState(null);
   const [form] = Form.useForm();
 
   const fetchAllStocks = async () => {
@@ -211,15 +214,33 @@ const SalesOrders = () => {
     }
   };
 
-  const cancelSO = async (so) => {
+  const cancelSO = (so) => {
+    setSelectedSOForCancel(so);
+    setCancellationReason('');
+    setCancelModalVisible(true);
+  };
+
+  const handleCancelSO = async () => {
+    if (!cancellationReason || cancellationReason.trim() === '') {
+      message.warning('Please provide a cancellation reason');
+      return;
+    }
+
     try {
-      await apiService.put(`/sales-orders/${so.id}/status`, {
-        status: "cancelled",
-      });
-      message.success("Sales order cancelled");
-      fetchData();
+      const response = await apiService.post(
+        `/sales-orders/${selectedSOForCancel.id}/cancel`,
+        { cancellationReason: cancellationReason.trim() }
+      );
+
+      if (response.success) {
+        message.success('Sales order cancelled and reserved stock released');
+        setCancelModalVisible(false);
+        fetchData();
+      }
     } catch (error) {
-      message.error("Failed to cancel sales order");
+      message.error(
+        error.response?.data?.error || 'Failed to cancel sales order'
+      );
     }
   };
 
@@ -882,6 +903,15 @@ const SalesOrders = () => {
               <br />
               <strong>Total Amount:</strong> {selectedSOForView.currency}{" "}
               {selectedSOForView.total_amount}
+              {selectedSOForView.status === 'cancelled' && selectedSOForView.cancellation_reason && (
+                <>
+                  <br />
+                  <div style={{ marginTop: 12, padding: 12, backgroundColor: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
+                    <strong style={{ color: '#d4380d' }}>Cancellation Reason:</strong>
+                    <div style={{ marginTop: 4, color: '#595959' }}>{selectedSOForView.cancellation_reason}</div>
+                  </div>
+                </>
+              )}
             </div>
 
             <h4>Line Items:</h4>
@@ -946,6 +976,34 @@ const SalesOrders = () => {
           onChange={(e) => setEmailAddress(e.target.value)}
           onPressEnter={handleSendEmail}
         />
+      </Modal>
+
+      <Modal
+        title="Cancel Sales Order"
+        open={cancelModalVisible}
+        onCancel={() => setCancelModalVisible(false)}
+        onOk={handleCancelSO}
+        okText="Cancel Order"
+        okButtonProps={{ danger: true }}
+      >
+        <p>
+          Are you sure you want to cancel sales order{" "}
+          <strong>{selectedSOForCancel?.so_number}</strong>?
+        </p>
+        <p style={{ marginTop: 16, marginBottom: 8 }}>
+          <strong>Cancellation Reason:</strong>
+        </p>
+        <Input.TextArea
+          placeholder="Please provide a reason for cancellation (required)"
+          value={cancellationReason}
+          onChange={(e) => setCancellationReason(e.target.value)}
+          rows={4}
+          maxLength={500}
+          showCount
+        />
+        <p style={{ marginTop: 8, fontSize: '12px', color: '#888' }}>
+          Note: Reserved stock will be automatically released.
+        </p>
       </Modal>
     </div>
   );

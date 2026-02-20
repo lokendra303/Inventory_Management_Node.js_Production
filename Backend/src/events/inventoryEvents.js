@@ -48,6 +48,15 @@ const EVENT_SCHEMAS = {
     reservedDate: 'string'
   },
   
+  [INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED]: {
+    itemId: 'string',
+    warehouseId: 'string',
+    quantity: 'number',
+    soId: 'string',
+    soLineId: 'string',
+    cancelledDate: 'string'
+  },
+  
   [INVENTORY_EVENTS.SALE_SHIPPED]: {
     itemId: 'string',
     warehouseId: 'string',

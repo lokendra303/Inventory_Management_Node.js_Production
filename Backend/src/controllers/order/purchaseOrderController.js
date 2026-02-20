@@ -519,6 +519,36 @@ class PurchaseOrderController {
       });
     }
   }
+
+  async cancelPurchaseOrder(req, res) {
+    try {
+      const { id: poId } = req.params;
+      const { cancellationReason } = req.body;
+      const userId = req.user?.userId || null;
+
+      await purchaseOrderService.cancelPurchaseOrder(
+        req.institutionId,
+        poId,
+        cancellationReason,
+        userId
+      );
+
+      res.json({
+        success: true,
+        message: 'Purchase order cancelled successfully'
+      });
+    } catch (error) {
+      logger.error('Failed to cancel purchase order', {
+        error: error.message,
+        institutionId: req.institutionId,
+        poId: req.params.id
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new PurchaseOrderController();

@@ -24,6 +24,9 @@ const PurchaseOrders = () => {
   const [emailModalVisible, setEmailModalVisible] = useState(false);
   const [emailAddress, setEmailAddress] = useState('');
   const [selectedPOForEmail, setSelectedPOForEmail] = useState(null);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [selectedPOForCancel, setSelectedPOForCancel] = useState(null);
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
 
@@ -81,7 +84,7 @@ const PurchaseOrders = () => {
           {record.status === 'sent' && (
             <Button size="small" onClick={() => confirmPO(record)}>Confirm</Button>
           )}
-          {record.status === 'draft' && (
+          {(record.status === 'draft' || record.status === 'sent') && (
             <Button size="small" danger onClick={() => cancelPO(record)}>Cancel</Button>
           )}
         </Space>
@@ -198,13 +201,29 @@ const PurchaseOrders = () => {
     }
   };
 
-  const cancelPO = async (po) => {
+  const cancelPO = (po) => {
+    setSelectedPOForCancel(po);
+    setCancellationReason('');
+    setCancelModalVisible(true);
+  };
+
+  const handleCancelPO = async () => {
+    if (!cancellationReason.trim()) {
+      message.warning('Please provide a cancellation reason');
+      return;
+    }
+
     try {
-      await apiService.put(`/purchase-orders/${po.id}/status`, { status: 'cancelled' });
-      message.success('Purchase order cancelled');
+      await apiService.post(`/purchase-orders/${selectedPOForCancel.id}/cancel`, {
+        cancellationReason: cancellationReason.trim()
+      });
+      message.success('Purchase order cancelled successfully');
+      setCancelModalVisible(false);
+      setCancellationReason('');
+      setSelectedPOForCancel(null);
       fetchData();
     } catch (error) {
-      message.error('Failed to cancel purchase order');
+      message.error(error.response?.data?.error || 'Failed to cancel purchase order');
     }
   };
 
@@ -843,6 +862,15 @@ const PurchaseOrders = () => {
               <strong>Expected Date:</strong> {selectedPOForView.expected_date}<br/>
               <strong>Currency:</strong> {selectedPOForView.currency}<br/>
               <strong>Total Amount:</strong> {selectedPOForView.currency} {selectedPOForView.total_amount}
+              {selectedPOForView.status === 'cancelled' && selectedPOForView.cancellation_reason && (
+                <>
+                  <br />
+                  <div style={{ marginTop: 12, padding: 12, backgroundColor: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
+                    <strong style={{ color: '#d4380d' }}>Cancellation Reason:</strong>
+                    <div style={{ marginTop: 4, color: '#595959' }}>{selectedPOForView.cancellation_reason}</div>
+                  </div>
+                </>
+              )}
             </div>
             
             <h4>Line Items:</h4>
@@ -894,6 +922,31 @@ const PurchaseOrders = () => {
           value={emailAddress}
           onChange={(e) => setEmailAddress(e.target.value)}
           onPressEnter={handleSendEmail}
+        />
+      </Modal>
+
+      <Modal
+        title="Cancel Purchase Order"
+        open={cancelModalVisible}
+        onCancel={() => setCancelModalVisible(false)}
+        onOk={handleCancelPO}
+        okText="Cancel Order"
+        okButtonProps={{ danger: true }}
+      >
+        <p>
+          Are you sure you want to cancel purchase order{" "}
+          <strong>{selectedPOForCancel?.po_number}</strong>?
+        </p>
+        <p style={{ marginTop: 16, marginBottom: 8 }}>
+          <strong>Cancellation Reason:</strong>
+        </p>
+        <Input.TextArea
+          placeholder="Please provide a reason for cancellation (required)"
+          value={cancellationReason}
+          onChange={(e) => setCancellationReason(e.target.value)}
+          rows={4}
+          maxLength={500}
+          showCount
         />
       </Modal>
     </div>

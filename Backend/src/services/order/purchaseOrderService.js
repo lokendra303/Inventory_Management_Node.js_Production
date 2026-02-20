@@ -482,6 +482,26 @@ class PurchaseOrderService {
 
     return await db.query(query, params);
   }
+
+  async cancelPurchaseOrder(institutionId, poId, cancellationReason, userId) {
+    if (!cancellationReason || !cancellationReason.trim()) {
+      throw new Error('Cancellation reason is required');
+    }
+
+    const result = await db.query(
+      `UPDATE purchase_orders 
+       SET status = 'cancelled', cancellation_reason = ?, updated_at = NOW() 
+       WHERE institution_id = ? AND id = ? AND status IN ('draft', 'sent')`,
+      [cancellationReason.trim(), institutionId, poId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Purchase order not found or cannot be cancelled');
+    }
+
+    logger.info('Purchase order cancelled', { poId, institutionId, userId });
+    return true;
+  }
 }
 
 module.exports = new PurchaseOrderService();

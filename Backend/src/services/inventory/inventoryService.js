@@ -475,6 +475,53 @@ class InventoryService {
     return await warehouseService.checkWarehouseAccess(institutionId, userId, warehouseId);
   }
 
+  async releaseReservedStock(institutionId, data, userId) {
+    const { itemId, warehouseId, quantity, soId, soLineId } = data;
+    
+    validateEventData(INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED, {
+      itemId,
+      warehouseId,
+      quantity,
+      soId,
+      soLineId,
+      cancelledDate: new Date().toISOString()
+    });
+
+    const aggregateId = createAggregateId(itemId, warehouseId);
+    const idempotencyKey = `release-${soLineId}`;
+
+    try {
+      const eventId = await eventStore.appendEvent(
+        institutionId,
+        'inventory',
+        aggregateId,
+        INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED,
+        {
+          itemId,
+          warehouseId,
+          quantity,
+          soId,
+          soLineId,
+          cancelledDate: new Date().toISOString()
+        },
+        { userId },
+        idempotencyKey
+      );
+
+      // Update projection - release reserved stock
+      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED, {
+        itemId,
+        warehouseId,
+        quantity
+      });
+
+      return eventId;
+    } catch (error) {
+      logger.error('Failed to release reserved stock', { institutionId, itemId, warehouseId, error: error.message });
+      throw error;
+    }
+  }
+
   async deleteInventory(institutionId, itemId, warehouseId, userId) {
     try {
       // Delete inventory projection

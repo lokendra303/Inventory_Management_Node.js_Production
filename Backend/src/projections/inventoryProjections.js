@@ -14,6 +14,9 @@ class InventoryProjectionService {
         case INVENTORY_EVENTS.SALE_RESERVED:
           await this.handleSaleReserved(institutionId, eventData);
           break;
+        case INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED:
+          await this.handleSaleReservationCancelled(institutionId, eventData);
+          break;
         case INVENTORY_EVENTS.SALE_SHIPPED:
           await this.handleSaleShipped(institutionId, eventData);
           break;
@@ -106,6 +109,20 @@ class InventoryProjectionService {
       `UPDATE inventory_projections 
        SET quantity_reserved = quantity_reserved + ?, 
            quantity_available = quantity_available - ?,
+           last_movement_date = NOW(),
+           version = version + 1
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+      [quantity, quantity, institutionId, itemId, warehouseId]
+    );
+  }
+
+  async handleSaleReservationCancelled(institutionId, eventData) {
+    const { itemId, warehouseId, quantity } = eventData;
+
+    await db.query(
+      `UPDATE inventory_projections 
+       SET quantity_reserved = quantity_reserved - ?, 
+           quantity_available = quantity_available + ?,
            last_movement_date = NOW(),
            version = version + 1
        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,

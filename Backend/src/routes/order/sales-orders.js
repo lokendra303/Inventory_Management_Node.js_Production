@@ -79,4 +79,12 @@ router.post('/:id/email',
   salesOrderController.emailSalesOrder
 );
 
+// POST /api/sales-orders/:id/cancel - Cancel SO
+router.post('/:id/cancel',
+  requirePermission('sales_management'),
+  validateInstitutionConsistency,
+  auditLog('sales_order_cancelled'),
+  salesOrderController.cancelSalesOrder
+);
+
 module.exports = router;

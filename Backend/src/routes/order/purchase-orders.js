@@ -69,4 +69,12 @@ router.post('/:id/email',
   purchaseOrderController.emailPurchaseOrder
 );
 
+// POST /api/purchase-orders/:id/cancel - Cancel PO
+router.post('/:id/cancel',
+  requirePermission('purchase_management'),
+  validateInstitutionConsistency,
+  auditLog('purchase_order_cancelled'),
+  purchaseOrderController.cancelPurchaseOrder
+);
+
 module.exports = router;

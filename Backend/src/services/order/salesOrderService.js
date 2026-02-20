@@ -214,6 +214,54 @@ class SalesOrderService {
     logger.info('SO status updated', { soId, institutionId, status, userId });
   }
 
+  async cancelSalesOrder(institutionId, soId, cancellationReason, userId) {
+    try {
+      await db.transaction(async (connection) => {
+        // Get SO details
+        const [so] = await connection.execute(
+          'SELECT status FROM sales_orders WHERE institution_id = ? AND id = ?',
+          [institutionId, soId]
+        );
+
+        if (so.length === 0) {
+          throw new Error('Sales order not found');
+        }
+
+        if (so[0].status === 'confirmed') {
+          throw new Error('Cannot cancel confirmed sales order');
+        }
+
+        // Get SO lines to release reserved stock
+        const lines = await connection.execute(
+          'SELECT id, item_id, warehouse_id, quantity_ordered FROM sales_order_lines WHERE institution_id = ? AND so_id = ?',
+          [institutionId, soId]
+        );
+
+        // Release reserved stock for each line
+        for (const line of lines[0]) {
+          await inventoryService.releaseReservedStock(institutionId, {
+            itemId: line.item_id,
+            warehouseId: line.warehouse_id,
+            quantity: line.quantity_ordered,
+            soId: soId,
+            soLineId: line.id
+          }, userId);
+        }
+
+        // Update SO status to cancelled
+        await connection.execute(
+          'UPDATE sales_orders SET status = ?, cancellation_reason = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+          ['cancelled', cancellationReason, institutionId, soId]
+        );
+      });
+
+      logger.info('SO cancelled and stock released', { soId, institutionId, userId, cancellationReason });
+    } catch (error) {
+      logger.error('Failed to cancel sales order', { soId, institutionId, error: error.message });
+      throw error;
+    }
+  }
+
   /**
    * Get warehouse recommendations for an order
    */
