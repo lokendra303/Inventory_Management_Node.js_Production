@@ -34,6 +34,14 @@ const Documents = () => {
     }
   };
 
+  const getFolderPath = (folderId) => {
+    if (!folderId) return '';
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) return '';
+    const parentPath = getFolderPath(folder.parent_folder_id);
+    return parentPath ? `${parentPath} > ${folder.name}` : folder.name;
+  };
+
   const loadDocuments = async () => {
     try {
       setLoading(true);
@@ -240,13 +248,16 @@ const Documents = () => {
             Create New Folder
           </Button>
         </div>
-      ] : folders && folders.map(folder => (
+      ] : folders && folders.map(folder => {
+        const indent = folder.parent_folder_id ? 20 : 0;
+        return (
         <div 
           key={folder.id}
           style={{ 
             display: 'flex', 
             justifyContent: 'space-between',
             padding: '8px 0',
+            paddingLeft: `${indent}px`,
             cursor: 'pointer',
             opacity: folder.is_active ? 1 : 0.5
           }}
@@ -267,7 +278,7 @@ const Documents = () => {
             onClick={(checked, e) => e.stopPropagation()}
           />
         </div>
-      ))
+      )})
     }
   ];
 
@@ -385,7 +396,7 @@ const Documents = () => {
             <Select placeholder="Select folder" allowClear>
               {folders && folders.filter(f => f.is_active).map(folder => (
                 <Select.Option key={folder.id} value={folder.id}>
-                  {folder.name}
+                  {getFolderPath(folder.id)}
                 </Select.Option>
               ))}
             </Select>
@@ -415,7 +426,7 @@ const Documents = () => {
             <Select placeholder="Root level" allowClear>
               {folders && folders.map(folder => (
                 <Select.Option key={folder.id} value={folder.id}>
-                  {folder.name}
+                  {getFolderPath(folder.id)}
                 </Select.Option>
               ))}
             </Select>
