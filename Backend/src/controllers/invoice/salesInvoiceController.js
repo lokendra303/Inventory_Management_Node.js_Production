@@ -174,7 +174,24 @@ class SalesInvoiceController {
       // Interpolate LIMIT/OFFSET after validation to avoid prepared-statement type issues
       const invoices = await db.query(`
         SELECT 
-          si.*
+          si.id,
+          si.institution_id,
+          si.invoice_number,
+          si.customer_id,
+          si.customer_name,
+          si.so_id,
+          si.invoice_date,
+          si.due_date,
+          si.currency,
+          si.subtotal,
+          si.tax_amount,
+          si.discount_amount,
+          si.total_amount,
+          si.paid_amount,
+          si.balance_amount,
+          COALESCE(si.status, 'posted') as status,
+          si.created_at,
+          si.updated_at
         FROM sales_invoices si
         ${whereClause}
         ORDER BY si.created_at DESC
@@ -204,7 +221,7 @@ class SalesInvoiceController {
       logger.error('Error fetching sales invoices:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch sales invoices'
+        error: error.message || 'Failed to fetch sales invoices'
       });
     }
   }

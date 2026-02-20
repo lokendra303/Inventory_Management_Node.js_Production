@@ -24,6 +24,7 @@ class SalesOrderService {
     const soId = uuidv4();
     let subtotal = 0;
     let totalCommittedDemand = 0;
+    const createdLines = [];
 
     try {
       await db.transaction(async (connection) => {
@@ -42,11 +43,6 @@ class SalesOrderService {
           const line = lines[i];
           const lineId = uuidv4();
           const lineTotal = line.quantity * line.unitPrice;
-          const discountRate = line.discountRate || 0;
-          const taxRate = line.taxRate || 0;
-          const discountAmount = Math.round((lineTotal * discountRate) / 100 * 100) / 100;
-          const taxableAmount = lineTotal - discountAmount;
-          const taxAmount = Math.round((taxableAmount * taxRate) / 100 * 100) / 100;
           subtotal += lineTotal;
           
           if (isPreorder) {
@@ -55,10 +51,18 @@ class SalesOrderService {
 
           await connection.execute(
             `INSERT INTO sales_order_lines 
-             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total, tax_rate, tax_amount, discount_rate, discount_amount) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineTotal, taxRate, taxAmount, discountRate, discountAmount]
+             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineTotal]
           );
+
+          createdLines.push({
+            lineId,
+            itemId: line.itemId,
+            warehouseId: line.warehouseId,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice
+          });
         }
 
         // Update SO totals
@@ -66,9 +70,21 @@ class SalesOrderService {
           'UPDATE sales_orders SET subtotal = ?, total_amount = ?, committed_demand = ? WHERE id = ?',
           [subtotal, subtotal, totalCommittedDemand, soId]
         );
+
+        // Reserve stock for each line item
+        for (const line of createdLines) {
+          await inventoryService.reserveStock(institutionId, {
+            itemId: line.itemId,
+            warehouseId: line.warehouseId,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            soId: soId,
+            soLineId: line.lineId
+          }, userId);
+        }
       });
 
-      logger.info('Multi-warehouse sales order created', { soId, institutionId, soNumber, userId, isPreorder });
+      logger.info('Multi-warehouse sales order created with stock reserved', { soId, institutionId, soNumber, userId, isPreorder });
       return soId;
     } catch (error) {
       logger.error('Failed to create sales order', { institutionId, soNumber, error: error.message });
