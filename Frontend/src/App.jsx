@@ -4,7 +4,6 @@ import { ConfigProvider, Layout, message } from 'antd';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { CurrencyProvider } from './contexts/CurrencyContext.jsx';
 import { withPermission } from './components/common/PermissionWrapper.jsx';
-import useSessionManager from './hooks/useSessionManager.jsx';
 import ErrorBoundary from './components/common/ErrorBoundary.jsx';
 import Login from './pages/auth/Login.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
@@ -68,9 +67,6 @@ function AppContent() {
   const { user, loading } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  
-  // Session manager disabled - no automatic session expiration
-  // useSessionManager();
 
   // Handle responsive behavior
   useEffect(() => {
