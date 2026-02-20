@@ -4,8 +4,14 @@
   "description": "Production-ready Multi-institution Inventory Management System",
   "main": "src/server.js",
   "scripts": {
-    "start": "node cluster.js",
-    "start:single": "node src/server.js",
+    "start": "pm2 start ecosystem.config.js --env production",
+    "start:dev": "pm2 start ecosystem.config.js --env development",
+    "stop": "pm2 stop ecosystem.config.js",
+    "restart": "pm2 restart ecosystem.config.js",
+    "reload": "pm2 reload ecosystem.config.js",
+    "delete": "pm2 delete ecosystem.config.js",
+    "logs": "pm2 logs",
+    "monit": "pm2 monit",
     "dev": "nodemon src/server.js",
     "test": "jest",
     "migrate": "node src/database/migrate.js",
@@ -38,6 +44,7 @@
   "devDependencies": {
     "jest": "^29.7.0",
     "nodemon": "^3.0.2",
+    "pm2": "^5.3.0",
     "supertest": "^6.3.3"
   },
   "engines": {
