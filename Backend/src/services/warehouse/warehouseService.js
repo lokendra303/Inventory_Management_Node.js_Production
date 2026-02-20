@@ -217,7 +217,7 @@ class WarehouseService {
       params.push(filters.status);
     }
 
-    query += ' ORDER BY w.name';
+    query += ' ORDER BY w.status = "active" DESC, w.name';
 
     return await db.query(query, params);
   }
