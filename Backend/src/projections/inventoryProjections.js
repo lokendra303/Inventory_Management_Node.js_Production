@@ -116,16 +116,47 @@ class InventoryProjectionService {
   async handleSaleShipped(institutionId, eventData) {
     const { itemId, warehouseId, quantity } = eventData;
 
-    await db.query(
-      `UPDATE inventory_projections 
-       SET quantity_on_hand = quantity_on_hand - ?,
-           quantity_reserved = quantity_reserved - ?,
-           total_value = (quantity_on_hand - ?) * average_cost,
-           last_movement_date = NOW(),
-           version = version + 1
-       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, quantity, institutionId, itemId, warehouseId]
+    // Get current stock to check reserved quantity
+    const current = await db.query(
+      'SELECT quantity_reserved, quantity_available FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+      [institutionId, itemId, warehouseId]
     );
+
+    if (current.length > 0) {
+      const currentReserved = Number(current[0].quantity_reserved);
+      const quantityToShip = Number(quantity);
+      
+      // If stock was reserved, reduce from reserved; otherwise reduce from available
+      if (currentReserved >= quantityToShip) {
+        // Stock was reserved, reduce from reserved
+        await db.query(
+          `UPDATE inventory_projections 
+           SET quantity_on_hand = quantity_on_hand - ?,
+               quantity_reserved = quantity_reserved - ?,
+               total_value = (quantity_on_hand - ?) * average_cost,
+               last_movement_date = NOW(),
+               version = version + 1
+           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+          [quantityToShip, quantityToShip, quantityToShip, institutionId, itemId, warehouseId]
+        );
+      } else {
+        // Stock was not fully reserved, reduce from available
+        const fromReserved = currentReserved;
+        const fromAvailable = quantityToShip - currentReserved;
+        
+        await db.query(
+          `UPDATE inventory_projections 
+           SET quantity_on_hand = quantity_on_hand - ?,
+               quantity_reserved = 0,
+               quantity_available = quantity_available - ?,
+               total_value = (quantity_on_hand - ?) * average_cost,
+               last_movement_date = NOW(),
+               version = version + 1
+           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+          [quantityToShip, fromAvailable, quantityToShip, institutionId, itemId, warehouseId]
+        );
+      }
+    }
   }
 
   async handleStockAdjusted(institutionId, eventData) {

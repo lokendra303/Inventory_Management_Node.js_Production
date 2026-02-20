@@ -1,4 +1,5 @@
 const itemService = require('../../services/entity/itemService');
+const itemActivityService = require('../../services/inventory/itemActivityService');
 const logger = require('../../utils/logger');
 
 class ItemController {
@@ -111,9 +112,17 @@ class ItemController {
         });
       }
       
+      // Get full audit trail for this item
+      const activitySummary = await itemActivityService.getItemActivitySummary(req.institutionId, itemId);
+      const auditLogs = await itemActivityService.getDetailedItemLogs(req.institutionId, itemId);
+      
       res.json({
         success: true,
-        data: item
+        data: {
+          ...item,
+          inventory_activity: activitySummary,
+          audit_logs: auditLogs
+        }
       });
     } catch (error) {
       logger.error('Failed to get item', { 

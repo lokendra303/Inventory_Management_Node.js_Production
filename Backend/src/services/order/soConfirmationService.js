@@ -56,17 +56,7 @@ class SOConfirmationService {
 
         // Process each line item
         for (const line of lines) {
-          // Reserve stock first
-          await inventoryService.reserveStock(institutionId, {
-            itemId: line.item_id,
-            warehouseId: line.warehouse_id,
-            quantity: line.quantity_ordered,
-            unitPrice: line.unit_price,
-            soId: soId,
-            soLineId: line.id
-          }, userId);
-
-          // Ship stock (reduces inventory)
+          // Ship stock (reduces inventory and moves reserved to pending/shipped)
           await inventoryService.shipStock(institutionId, {
             itemId: line.item_id,
             warehouseId: line.warehouse_id,

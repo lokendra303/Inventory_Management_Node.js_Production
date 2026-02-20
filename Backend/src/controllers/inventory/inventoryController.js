@@ -1,4 +1,5 @@
 const inventoryService = require('../../services/inventory/inventoryService');
+const itemActivityService = require('../../services/inventory/itemActivityService');
 const logger = require('../../utils/logger');
 
 class InventoryController {
@@ -365,6 +366,62 @@ class InventoryController {
   // Backward compatibility
   async getinstitutionInventory(req, res) {
     return this.getInstitutionInventory(req, res);
+  }
+
+  async getItemActivitySummary(req, res) {
+    try {
+      const { itemId, warehouseId } = req.params;
+      const summary = await itemActivityService.getItemActivitySummary(
+        req.institutionId, 
+        itemId, 
+        warehouseId || null
+      );
+      
+      res.json({
+        success: true,
+        data: summary
+      });
+    } catch (error) {
+      logger.error('Failed to get item activity summary', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        itemId: req.params.itemId 
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  async getDetailedItemLogs(req, res) {
+    try {
+      const { itemId } = req.params;
+      const { warehouseId, startDate, endDate, operationType } = req.query;
+      
+      const logs = await itemActivityService.getDetailedItemLogs(
+        req.institutionId, 
+        itemId, 
+        warehouseId || null,
+        { startDate, endDate, operationType }
+      );
+      
+      res.json({
+        success: true,
+        data: logs,
+        pagination: { total: logs.length }
+      });
+    } catch (error) {
+      logger.error('Failed to get detailed item logs', { 
+        error: error.message, 
+        institutionId: req.institutionId,
+        itemId: req.params.itemId 
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
   }
 }
 

@@ -41,6 +41,24 @@ router.get('/:itemId/:warehouseId/history',
   inventoryController.getInventoryHistory
 );
 
+// GET /api/inventory/item-activity/:itemId - Comprehensive item activity summary
+router.get('/item-activity/:itemId', 
+  requirePermission('inventory_view'),
+  inventoryController.getItemActivitySummary
+);
+
+// GET /api/inventory/item-activity/:itemId/warehouse/:warehouseId - Item activity for specific warehouse
+router.get('/item-activity/:itemId/warehouse/:warehouseId', 
+  requirePermission('inventory_view'),
+  inventoryController.getItemActivitySummary
+);
+
+// GET /api/inventory/item-logs/:itemId - Detailed item operation logs
+router.get('/item-logs/:itemId', 
+  requirePermission('inventory_view'),
+  inventoryController.getDetailedItemLogs
+);
+
 // POST /api/inventory/receive - DISABLED
 // router.post('/receive', 
 //   validate(schemas.receiveStockSchema),
