@@ -108,6 +108,22 @@ class SalesInvoiceController {
             discountRate, 
             discountAmount
           ]);
+
+          // Direct inventory deduction for manual invoices
+          if (line.itemId && quantity > 0) {
+            await connection.execute(
+              'UPDATE items SET stock_quantity = stock_quantity - ? WHERE id = ? AND institution_id = ?',
+              [quantity, line.itemId, institutionId]
+            );
+
+            await connection.execute(`
+              INSERT INTO stock_movements (
+                institution_id, item_id, movement_type, quantity, reference_type, reference_id, reference_number, created_by
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+              institutionId, line.itemId, 'out', quantity, 'sales_invoice', invoiceId, invoiceNumber, user?.userId || 1
+            ]);
+          }
         }
 
         return { invoiceId, totalAmount: totals.grandTotal };
@@ -685,32 +701,47 @@ class SalesInvoiceController {
     }
   }
 
-  // Get Items List for Invoice
+  // Get Items List for Invoice (with stock availability like SO)
   async getItemsList(req, res) {
     try {
-      const institutionId = req.institutionId || 'test-institution';
-      const { search, limit } = req.query;
+      const { institutionId } = req;
+      const { search, warehouseId } = req.query;
 
-      const testItems = [
-        { id: '1', sku: 'ITEM001', name: 'Test Item 1', unit: 'PCS', cost_price: 10.00, selling_price: 15.00, status: 'active' },
-        { id: '2', sku: 'ITEM002', name: 'Test Item 2', unit: 'KG', cost_price: 25.50, selling_price: 35.00, status: 'active' },
-        { id: '3', sku: 'ITEM003', name: 'Test Item 3', unit: 'LITER', cost_price: 8.75, selling_price: 12.00, status: 'active' }
-      ];
+      logger.info('Getting items list', { institutionId, search, warehouseId });
 
-      try {
-        const items = await autoInvoiceService.getItemsList(institutionId, search, limit);
-        const finalItems = items.length > 0 ? items : testItems;
-        
-        res.json({
-          success: true,
-          data: { items: finalItems }
-        });
-      } catch (dbError) {
-        res.json({
-          success: true,
-          data: { items: testItems }
-        });
+      // Simple query without warehouse_inventory join for now
+      let query = `
+        SELECT 
+          i.id,
+          i.sku,
+          i.name,
+          i.unit,
+          i.selling_price,
+          i.cost_price,
+          i.tax_rate,
+          i.hsn_code,
+          0 as stock_quantity,
+          0 as reserved_quantity,
+          0 as available_quantity
+        FROM items i
+        WHERE i.institution_id = ? AND i.status = 'active'
+      `;
+      const params = [institutionId];
+
+      if (search) {
+        query += ' AND (i.name LIKE ? OR i.sku LIKE ?)';
+        params.push(`%${search}%`, `%${search}%`);
       }
+
+      query += ' ORDER BY i.name LIMIT 100';
+
+      const items = await db.query(query, params);
+      logger.info('Items fetched', { count: items.length });
+
+      res.json({
+        success: true,
+        data: { items }
+      });
 
     } catch (error) {
       logger.error('Error fetching items list:', error);

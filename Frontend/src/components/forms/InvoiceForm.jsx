@@ -35,6 +35,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   const [loading, setLoading] = useState(false);
   const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [allItemStocks, setAllItemStocks] = useState({});
   const [selectedParty, setSelectedParty] = useState(null);
   const [invoiceLines, setInvoiceLines] = useState([{ key: 1 }]);
   const [invoiceCurrency, setInvoiceCurrency] = useState(currency || 'USD');
@@ -45,6 +47,35 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     totalTax: 0,
     grandTotal: 0
   });
+
+  const fetchAllStocks = async () => {
+    try {
+      const response = await apiService.get('/inventory');
+      if (response.success) {
+        const stockByItemAndWarehouse = {};
+        response.data.forEach((inv) => {
+          if (!stockByItemAndWarehouse[inv.item_id]) {
+            stockByItemAndWarehouse[inv.item_id] = {};
+          }
+          stockByItemAndWarehouse[inv.item_id][inv.warehouse_id] = inv.quantity_available || 0;
+        });
+        setAllItemStocks(stockByItemAndWarehouse);
+      }
+    } catch (error) {
+      console.error('Failed to fetch stock', error);
+    }
+  };
+
+  const loadWarehouses = async () => {
+    try {
+      const response = await apiService.get('/warehouses');
+      if (response.success) {
+        setWarehouses(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading warehouses:', error);
+    }
+  };
 
   const loadParties = async (search = '') => {
     try {
@@ -67,14 +98,22 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       const endpoint = type === 'purchase'
         ? '/purchase-invoices/items/list'
         : '/sales-invoices/items/list';
+      console.log('Loading items from:', endpoint);
       const response = await apiService.get(endpoint, {
         params: { search, limit: 50 }
       });
+      console.log('Items API response:', response);
       if (response.success) {
-        setItems(response.data?.items || []);
+        const itemsList = response.data?.items || [];
+        console.log('Setting items:', itemsList.length, 'items');
+        console.log('First 3 items:', itemsList.slice(0, 3));
+        setItems(itemsList);
+      } else {
+        console.error('Items load failed:', response.error);
       }
     } catch (error) {
       console.error('Error loading items:', error);
+      console.error('Error details:', error.response?.data);
     }
   };
 
@@ -91,7 +130,10 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           itemName: item.name,
           [unitPriceKey]: item[priceField] || 0,
           sku: item.sku,
-          unit: item.unit
+          unit: item.unit,
+          stockQuantity: item.stock_quantity || 0,
+          reservedQuantity: item.reserved_quantity || 0,
+          availableQuantity: item.available_quantity || 0
         } : line
       ));
       console.log('Updated line with item:', { key, itemId: item.id, itemName: item.name });
@@ -272,12 +314,18 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   };
 
   useEffect(() => {
+    console.log('=== INITIAL LOAD useEffect ===');
+    console.log('Type:', type);
     loadParties();
     loadItems();
+    if (type === 'sales') {
+      loadWarehouses();
+      fetchAllStocks();
+    }
     if (invoiceId) {
       loadInvoiceData();
     }
-  }, []);
+  }, [type, invoiceId]);
 
   const loadInvoiceData = async () => {
     try {
@@ -338,6 +386,11 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     calculateTotals();
   }, [calculateTotals]);
 
+  useEffect(() => {
+    console.log('=== ITEMS STATE CHANGED ===');
+    console.log('Items count:', items.length);
+  }, [items]);
+
   const lineColumns = [
     {
       title: 'S.No',
@@ -347,39 +400,102 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     {
       title: 'Item',
       dataIndex: 'itemName',
-      width: 200,
-      render: (value, record) => (
-        <div>
-          <Select
-            showSearch
-            value={record.itemId}
-            placeholder="Select item"
-            optionFilterProp="children"
-            onSelect={(itemId) => handleItemSelect(record.key, itemId)}
-            onSearch={loadItems}
-            filterOption={false}
-            style={{ width: '100%', marginBottom: 8 }}
-            allowClear
-          >
-            {items.map(item => (
-              <Option key={item.id} value={item.id}>
-                {item.sku} - {item.name}
-              </Option>
-            ))}
-          </Select>
-          <Input
-            value={record.itemName}
-            placeholder="Or enter item name manually"
-            onChange={(e) => {
-              updateInvoiceLine(record.key, 'itemName', e.target.value);
-              if (!record.itemId) {
-                updateInvoiceLine(record.key, 'itemId', `manual_${record.key}`);
-              }
-            }}
-            style={{ width: '100%' }}
-          />
-        </div>
-      )
+      width: 250,
+      render: (value, record) => {
+        if (type === 'sales') {
+          const selectedWarehouseId = record.warehouseId;
+          console.log('=== RENDERING ITEMS DROPDOWN ===');
+          console.log('Items state:', items);
+          console.log('Items count:', items.length);
+          console.log('Selected warehouse:', selectedWarehouseId);
+
+          return (
+            <div>
+              <Select
+                showSearch
+                value={record.itemId}
+                placeholder="Select item"
+                onSelect={(itemId) => handleItemSelect(record.key, itemId)}
+                filterOption={(input, option) => {
+                  return option.children?.toString().toLowerCase().includes(input.toLowerCase());
+                }}
+                style={{ width: '100%' }}
+                allowClear
+                notFoundContent="No items found"
+              >
+                {items.map(item => {
+                  console.log('Rendering item option:', item.id, item.name);
+                  let available = 0;
+                  if (selectedWarehouseId) {
+                    available = allItemStocks[item.id]?.[selectedWarehouseId] || 0;
+                  } else {
+                    available = Object.values(allItemStocks[item.id] || {}).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                  }
+                  return (
+                    <Option key={item.id} value={item.id}>
+                      {item.sku} - {item.name} (Avail: {available})
+                    </Option>
+                  );
+                })}
+              </Select>
+              {items.length === 0 && (
+                <div style={{ color: 'red', fontSize: '12px', marginTop: 4 }}>
+                  No items loaded. Check console for errors.
+                </div>
+              )}
+              {record.itemId && selectedWarehouseId && (
+                <div style={{ fontSize: '11px', marginTop: 4, color: '#666' }}>
+                  {(() => {
+                    const item = items.find(i => i.id === record.itemId);
+                    if (!item) return null;
+                    const available = allItemStocks[record.itemId]?.[selectedWarehouseId] || 0;
+                    const qty = record.quantity || 0;
+                    return (
+                      <span style={{ color: qty > available ? '#ff4d4f' : '#52c41a' }}>
+                        Available: {available} {item.unit || ''}
+                        {qty > available && ' - Insufficient stock!'}
+                      </span>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <div>
+            <Select
+              showSearch
+              value={record.itemId}
+              placeholder="Select item"
+              optionFilterProp="children"
+              onSelect={(itemId) => handleItemSelect(record.key, itemId)}
+              onSearch={loadItems}
+              filterOption={false}
+              style={{ width: '100%', marginBottom: 8 }}
+              allowClear
+            >
+              {items.map(item => (
+                <Option key={item.id} value={item.id}>
+                  {item.sku} - {item.name}
+                </Option>
+              ))}
+            </Select>
+            <Input
+              value={record.itemName}
+              placeholder="Or enter item name manually"
+              onChange={(e) => {
+                updateInvoiceLine(record.key, 'itemName', e.target.value);
+                if (!record.itemId) {
+                  updateInvoiceLine(record.key, 'itemId', `manual_${record.key}`);
+                }
+              }}
+              style={{ width: '100%' }}
+            />
+          </div>
+        );
+      }
     },
     {
       title: 'SKU',
@@ -387,6 +503,43 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       width: 100,
       render: (value) => value || '-'
     },
+    ...(type === 'sales' ? [{
+      title: 'Warehouse',
+      dataIndex: 'warehouseId',
+      width: 150,
+      render: (value, record) => {
+        const selectedItemId = record.itemId;
+        const availableWarehouses = warehouses.filter((wh) => wh.status === 'active');
+
+        return (
+          <Select
+            value={value}
+            placeholder="Select warehouse"
+            onChange={(val) => updateInvoiceLine(record.key, 'warehouseId', val)}
+            style={{ width: '100%' }}
+          >
+            {availableWarehouses.map(wh => {
+              const stock = allItemStocks[selectedItemId]?.[wh.id] || 0;
+              return (
+                <Option key={wh.id} value={wh.id} label={wh.name}>
+                  <div>
+                    <strong>{wh.name}</strong>
+                    {selectedItemId && (
+                      <>
+                        <br />
+                        <span style={{ fontSize: '12px', color: '#52c41a' }}>
+                          Available: {stock} units
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </Option>
+              );
+            })}
+          </Select>
+        );
+      }
+    }] : []),
     {
       title: 'Quantity',
       dataIndex: 'quantity',
