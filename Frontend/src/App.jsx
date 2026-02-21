@@ -12,6 +12,8 @@ import Packages from './pages/inventory/Packages.jsx';
 import Items from './pages/inventory/Items.jsx';
 import InventoryAdjustments from './pages/inventory/InventoryAdjustments.jsx';
 import MoveOrders from './pages/inventory/MoveOrders.jsx';
+import Shipments from './pages/inventory/Shipments.jsx';
+import Putaways from './pages/inventory/Putaways.jsx';
 import Warehouses from './pages/settings/Warehouses.jsx';
 import PurchaseOrders from './pages/purchases/PurchaseOrders.jsx';
 import SalesOrders from './pages/sales/SalesOrders.jsx';
@@ -36,7 +38,17 @@ import SalesInvoices from './pages/sales/SalesInvoices.jsx';
 import OutstandingInvoices from './pages/sales/OutstandingInvoices.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import Header from './components/layout/Header.jsx';
+import ItemGroups from './pages/inventory/ItemGroups.jsx';
 import './App.css';
+import DeliveryChallans from './pages/sales/DeliveryChallans.jsx';
+import PaymentReceived from './pages/sales/PaymentReceived.jsx';
+import SalesReturns from './pages/sales/SalesReturns.jsx';
+import CreditNotes from './pages/sales/CreditNotes.jsx';
+import PurchasesReceives from './pages/purchases/PurchasesReceives.jsx';
+import PurchasesBills from './pages/purchases/PurchasesBills.jsx';
+import PurchasesPaymentMade from './pages/purchases/PurchasesPayamentMade.jsx';
+import VendorCredits from './pages/purchases/VendorCredits.jsx';  
+import InvoicePayments from './pages/sales/InvoiceMayments.jsx';
 
 const { Content } = Layout;
 
@@ -46,6 +58,8 @@ const ProtectedPackages = withPermission('inventory_view')(Packages);
 const ProtectedItems = withPermission('item_view')(Items);
 const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
 const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(InventoryAdjustments);
+const ProtectedInventoryShipments = withPermission('inventory_shipment')(Shipments);
+const ProtectedPutaways = withPermission('inventory_putaway')(Putaways);
 const ProtectedMoveOrders = withPermission('inventory_transfer')(MoveOrders);
 const ProtectedPurchaseOrders = withPermission('purchase_view')(PurchaseOrders);
 const ProtectedSalesOrders = withPermission('sales_view')(SalesOrders);
@@ -115,9 +129,23 @@ function AppContent() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<ProtectedInventory />} />
             <Route path="/inventory/adjustments" element={<ProtectedInventoryAdjustments />} />
+            <Route path="/inventory/shipments" element={<ProtectedInventoryShipments />} />
+            <Route path="/inventory/putaways" element={<ProtectedPutaways />} />
             <Route path="/inventory/move-orders" element={<ProtectedMoveOrders />} />
             <Route path="/inventory/packages" element={<ProtectedPackages />} />
             <Route path="/items" element={<ProtectedItems />} />
+            <Route path="/item-groups" element={<ItemGroups />} />
+            <Route path="/sales/delivery-challans" element={<DeliveryChallans />} />
+            <Route path="/sales/payments-received" element={<PaymentReceived />} />
+            <Route path="/sales/returns" element={<SalesReturns />} />
+            <Route path="/sales/credit-notes" element={<CreditNotes />} />
+
+            <Route path="/purchases/receives" element={<PurchasesReceives />} />
+            <Route path="/purchases/bills" element={<PurchasesBills />} />
+            <Route path="/purchases/payments-made" element={<PurchasesPaymentMade />} />
+            <Route path="/purchases/vendor-credits" element={<VendorCredits />} />
+            <Route path="/invoices/payments" element={<InvoicePayments />} />
+
             <Route path="/warehouses" element={<ProtectedWarehouses />} />
             <Route path="/purchase-orders" element={<ProtectedPurchaseOrders />} />
             <Route path="/sales-orders" element={<ProtectedSalesOrders />} />
