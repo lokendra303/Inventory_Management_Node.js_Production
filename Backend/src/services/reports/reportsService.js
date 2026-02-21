@@ -64,21 +64,21 @@ class ReportsService {
 
   async getInventoryAdjustmentReport(institutionId, filters = {}) {
     let query = `
-      SELECT ia.adjustment_date as created_at, ia.adjustment_type, ia.quantity_change, ia.reason, ia.loss_type, ia.reference_number,
+      SELECT ia.created_at, ia.adjustment_type, ia.quantity_change, ia.reason, ia.loss_type, ia.reference_number,
              i.sku, i.name as item_name, w.name as warehouse_name
       FROM inventory_adjustments ia
-      JOIN items i ON ia.item_id = i.id
-      JOIN warehouses w ON ia.warehouse_id = w.id
+      JOIN items i ON ia.item_id COLLATE utf8mb4_unicode_ci = i.id COLLATE utf8mb4_unicode_ci
+      JOIN warehouses w ON ia.warehouse_id COLLATE utf8mb4_unicode_ci = w.id COLLATE utf8mb4_unicode_ci
       WHERE ia.institution_id = ?
     `;
     const params = [institutionId];
 
     if (filters.startDate) {
-      query += ' AND DATE(ia.adjustment_date) >= ?';
+      query += ' AND DATE(ia.created_at) >= ?';
       params.push(filters.startDate);
     }
     if (filters.endDate) {
-      query += ' AND DATE(ia.adjustment_date) <= ?';
+      query += ' AND DATE(ia.created_at) <= ?';
       params.push(filters.endDate);
     }
     if (filters.warehouseId) {
@@ -90,7 +90,7 @@ class ReportsService {
       params.push(filters.lossType);
     }
 
-    query += ' ORDER BY ia.adjustment_date DESC LIMIT 1000';
+    query += ' ORDER BY ia.created_at DESC LIMIT 1000';
     return await db.query(query, params);
   }
 
