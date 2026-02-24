@@ -153,20 +153,20 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       children: [
         hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports', label: 'Home' },
         hasAnyPermission('sales_view', 'purchase_view', 'invoice_view') && { key: '/profit-loss', label: 'Profit & Loss' },
-        hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/favorites', label: 'Favorites' },
-        hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/shared', label: 'Shared Reports' },
-        hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/scheduled', label: 'Scheduled Reports' },
-        hasAnyPermission('sales_view', 'sales_management') && { key: '/reports/sales', label: 'Sales' },
-        hasPermission('inventory_view') && { key: '/reports/inventory', label: 'Inventory' },
-        hasPermission('inventory_view') && { key: '/reports/inventory-valuation', label: 'Inventory Valuation' },
-        hasPermission('inventory_view') && { key: '/reports/inventory-adjustments', label: 'Inventory Adjustments' },
-        hasPermission('inventory_view') && { key: '/reports/stock-transfers', label: 'Stock Transfers' },
-        hasAnyPermission('sales_view', 'sales_management') && { key: '/reports/receivables', label: 'Receivables' },
-        hasAnyPermission('sales_view', 'sales_management') && { key: '/reports/payments-received', label: 'Payments Received' },
-        hasAnyPermission('purchase_view', 'purchase_management') && { key: '/reports/payables', label: 'Payables' },
-        hasAnyPermission('purchase_view', 'purchase_management') && { key: '/reports/purchases', label: 'Purchases' },
-        hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/activity', label: 'Activity' },
-        hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/automation', label: 'Automation' }
+        // hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/favorites', label: 'Favorites' },
+        // hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/shared', label: 'Shared Reports' },
+        // hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/scheduled', label: 'Scheduled Reports' },
+        // hasAnyPermission('sales_view', 'sales_management') && { key: '/reports/sales', label: 'Sales' },
+        // hasPermission('inventory_view') && { key: '/reports/inventory', label: 'Inventory' },
+        // hasPermission('inventory_view') && { key: '/reports/inventory-valuation', label: 'Inventory Valuation' },
+        // hasPermission('inventory_view') && { key: '/reports/inventory-adjustments', label: 'Inventory Adjustments' },
+        // hasPermission('inventory_view') && { key: '/reports/stock-transfers', label: 'Stock Transfers' },
+        // hasAnyPermission('sales_view', 'sales_management') && { key: '/reports/receivables', label: 'Receivables' },
+        // hasAnyPermission('sales_view', 'sales_management') && { key: '/reports/payments-received', label: 'Payments Received' },
+        // hasAnyPermission('purchase_view', 'purchase_management') && { key: '/reports/payables', label: 'Payables' },
+        // hasAnyPermission('purchase_view', 'purchase_management') && { key: '/reports/purchases', label: 'Purchases' },
+        // hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/activity', label: 'Activity' },
+        // hasAnyPermission('inventory_view', 'sales_view', 'purchase_view', 'invoice_view') && { key: '/reports/automation', label: 'Automation' }
       ].filter(Boolean)
     },
     // Documents - Always visible
@@ -181,7 +181,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       icon: <SettingOutlined />,
       label: 'Settings',
       children: [
-        { key: '/settings', label: 'General Settings' },
+        // { key: '/settings', label: 'General Settings' },
         hasRole(['admin', 'super_admin']) && { key: '/company-settings', label: 'Company Settings' }
       ].filter(Boolean)
     }
