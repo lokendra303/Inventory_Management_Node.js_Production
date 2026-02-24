@@ -14,6 +14,7 @@ import { formatPrice } from '../../utils/currency';
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const { currency } = useCurrency();
+  const [currencySymbol, setCurrencySymbol] = useState('₹');
   const [dashboardData, setDashboardData] = useState({
     totalItems: 0,
     totalValue: 0,
@@ -46,6 +47,11 @@ const Dashboard = () => {
       const warehouses = warehousesResponse.success ? warehousesResponse.data : [];
       const lowStockItems = lowStockResponse.success ? lowStockResponse.data : [];
       const items = itemsResponse.success ? itemsResponse.data : [];
+      
+      // Get currency from first inventory item
+      if (inventory.length > 0 && inventory[0].currency) {
+        setCurrencySymbol(inventory[0].currency);
+      }
       
       // Calculate stats from data
       const totalItems = inventory.length;
@@ -210,8 +216,9 @@ const Dashboard = () => {
             <Statistic
               title="Total Inventory Value"
               value={dashboardData.totalValue}
+              precision={2}
+              prefix={currencySymbol}
               valueStyle={{ color: '#722ed1' }}
-              formatter={(value) => formatPrice(value, currency, 'USD')}
             />
           </Card>
         </Col>
