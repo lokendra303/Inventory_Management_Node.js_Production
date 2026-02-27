@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Statistic, Row, Col, Empty, Tag } from 'antd';
-import { PlusOutlined, EyeOutlined, SearchOutlined, InboxOutlined, WarningOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Statistic, Row, Col, Empty, Tag, Timeline, Spin } from 'antd';
+import { PlusOutlined, EyeOutlined, SearchOutlined, InboxOutlined, WarningOutlined, HistoryOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { formatNumber } from '../../utils/currency.js';
@@ -20,6 +20,8 @@ const Inventory = () => {
   const [viewingRecord, setViewingRecord] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [stats, setStats] = useState({ totalValue: 0, totalItems: 0, lowStockCount: 0 });
+  const [historyData, setHistoryData] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Permission checks
   const canReceive = user?.permissions?.inventory_receive || user?.permissions?.all;
@@ -233,10 +235,24 @@ const Inventory = () => {
     }
   };
 
-  const openViewModal = (record) => {
+  const openViewModal = async (record) => {
     setViewingRecord(record);
     setModalType('view');
     setModalVisible(true);
+    
+    // Fetch history
+    setLoadingHistory(true);
+    try {
+      const response = await apiService.get(`/inventory/${record.item_id}/${record.warehouse_id}/history`);
+      if (response.success) {
+        setHistoryData(response.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch history:', error);
+      setHistoryData([]);
+    } finally {
+      setLoadingHistory(false);
+    }
   };
 
   const openModal = (type) => {
@@ -280,6 +296,26 @@ const Inventory = () => {
     }
 
     if (modalType === 'view' && viewingRecord) {
+      const getEventColor = (eventType) => {
+        if (eventType?.includes('RECEIVED')) return 'green';
+        if (eventType?.includes('SHIPPED')) return 'red';
+        if (eventType?.includes('RESERVED')) return 'orange';
+        if (eventType?.includes('ADJUSTED')) return 'blue';
+        if (eventType?.includes('TRANSFER')) return 'purple';
+        return 'gray';
+      };
+
+      const getEventLabel = (eventType) => {
+        if (eventType?.includes('RECEIVED')) return 'Stock Received';
+        if (eventType?.includes('SHIPPED')) return 'Stock Shipped';
+        if (eventType?.includes('RESERVED')) return 'Stock Reserved';
+        if (eventType?.includes('CANCELLED')) return 'Reservation Cancelled';
+        if (eventType?.includes('ADJUSTED')) return 'Stock Adjusted';
+        if (eventType?.includes('TRANSFER_IN')) return 'Transfer In';
+        if (eventType?.includes('TRANSFER_OUT')) return 'Transfer Out';
+        return eventType;
+      };
+
       return (
         <div style={{ padding: '16px 0' }}>
           <Row gutter={[16, 16]}>
@@ -360,6 +396,48 @@ const Inventory = () => {
               </div>
             </Col>
           </Row>
+
+          <div style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
+            <h4 style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <HistoryOutlined /> Transaction History
+            </h4>
+            {loadingHistory ? (
+              <div style={{ textAlign: 'center', padding: 20 }}>
+                <Spin />
+              </div>
+            ) : historyData.length > 0 ? (
+              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                <Timeline>
+                  {historyData.map((event, index) => (
+                    <Timeline.Item key={index} color={getEventColor(event.event_type)}>
+                      <div style={{ marginBottom: 8 }}>
+                        <Tag color={getEventColor(event.event_type)}>{getEventLabel(event.event_type)}</Tag>
+                        <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
+                          {new Date(event.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13 }}>
+                        {event.event_data?.quantity && (
+                          <div>Quantity: <strong>{event.event_data.quantity}</strong></div>
+                        )}
+                        {event.event_data?.quantityChange && (
+                          <div>Change: <strong>{event.event_data.quantityChange > 0 ? '+' : ''}{event.event_data.quantityChange}</strong></div>
+                        )}
+                        {event.event_data?.unitCost && (
+                          <div>Unit Cost: <strong>{currency}{formatNumber(event.event_data.unitCost)}</strong></div>
+                        )}
+                        {event.event_data?.reason && (
+                          <div style={{ color: '#8c8c8c', fontSize: 12 }}>Reason: {event.event_data.reason}</div>
+                        )}
+                      </div>
+                    </Timeline.Item>
+                  ))}
+                </Timeline>
+              </div>
+            ) : (
+              <Empty description="No transaction history available" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
+          </div>
         </div>
       );
     }
@@ -472,16 +550,18 @@ const Inventory = () => {
         onCancel={() => {
           setModalVisible(false);
           setViewingRecord(null);
+          setHistoryData([]);
         }}
         footer={[
           <Button key="close" type="primary" onClick={() => {
             setModalVisible(false);
             setViewingRecord(null);
+            setHistoryData([]);
           }}>
             Close
           </Button>
         ]}
-        width={600}
+        width={700}
       >
         {renderModalContent()}
       </Modal>

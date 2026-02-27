@@ -6,6 +6,7 @@ import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
+import TransactionHistory from '../../components/inventory/TransactionHistory';
 
 const PurchaseOrders = () => {
   const { currency } = useCurrency();
@@ -29,6 +30,8 @@ const PurchaseOrders = () => {
   const [selectedPOForCancel, setSelectedPOForCancel] = useState(null);
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
+  const [poHistory, setPOHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const fetchAllStocks = async () => {
     try {
@@ -233,6 +236,22 @@ const PurchaseOrders = () => {
       if (response.success) {
         setSelectedPOForView(response.data);
         setViewModalVisible(true);
+        
+        // Fetch transaction history for all items in this PO
+        setLoadingHistory(true);
+        try {
+          const historyPromises = response.data.lines?.map(line => 
+            apiService.get(`/inventory/${line.item_id}/${line.warehouse_id}/history`)
+          ) || [];
+          const historyResults = await Promise.all(historyPromises);
+          const allHistory = historyResults.flatMap(res => res.success ? res.data : []);
+          setPOHistory(allHistory.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+        } catch (error) {
+          console.error('Failed to fetch history:', error);
+          setPOHistory([]);
+        } finally {
+          setLoadingHistory(false);
+        }
       }
     } catch (error) {
       message.error('Failed to load PO details');
@@ -819,6 +838,7 @@ const PurchaseOrders = () => {
         onCancel={() => {
           setViewModalVisible(false);
           setSelectedPOForView(null);
+          setPOHistory([]);
         }}
         footer={[
           <Button 
@@ -846,6 +866,7 @@ const PurchaseOrders = () => {
           <Button key="close" onClick={() => {
             setViewModalVisible(false);
             setSelectedPOForView(null);
+            setPOHistory([]);
           }}>
             Close
           </Button>
@@ -905,6 +926,12 @@ const PurchaseOrders = () => {
                 />
               </div>
             )}
+            
+            <TransactionHistory 
+              data={poHistory} 
+              loading={loadingHistory} 
+              currency={selectedPOForView.currency || currency}
+            />
           </div>
         )}
       </Modal>

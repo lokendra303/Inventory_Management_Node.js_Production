@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty } from 'antd';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -29,6 +29,8 @@ const Items = () => {
   const [manufacturerOptions, setManufacturerOptions] = useState([]);
   const [brandOptions, setBrandOptions] = useState([]);
   const [vendorOptions, setVendorOptions] = useState([]);
+  const [itemHistory, setItemHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -261,9 +263,23 @@ const Items = () => {
     }
   };
 
-const viewItem = (item) => {
+const viewItem = async (item) => {
     setViewingItem(item);
     setViewModalVisible(true);
+    
+    // Fetch item transaction history
+    setLoadingHistory(true);
+    try {
+      const response = await apiService.get(`/inventory/item-logs/${item.id}`);
+      if (response.success) {
+        setItemHistory(response.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch item history:', error);
+      setItemHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
   };
 
   const editItem = async (item) => {
@@ -1128,16 +1144,18 @@ const viewItem = (item) => {
         onCancel={() => {
           setViewModalVisible(false);
           setViewingItem(null);
+          setItemHistory([]);
         }}
         footer={[
           <Button key="close" onClick={() => {
             setViewModalVisible(false);
             setViewingItem(null);
+            setItemHistory([]);
           }}>
             Close
           </Button>
         ]}
-        width={800}
+        width={900}
       >
         {viewingItem && (
           <div>
@@ -1208,6 +1226,78 @@ const viewItem = (item) => {
                 </Col>
               </Row>
             )}
+            
+            <div style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
+              <h4 style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <HistoryOutlined /> Transaction History
+              </h4>
+              {loadingHistory ? (
+                <div style={{ textAlign: 'center', padding: 20 }}>
+                  <Spin />
+                </div>
+              ) : itemHistory.length > 0 ? (
+                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                  <Timeline>
+                    {itemHistory.map((log, index) => {
+                      const getEventColor = (type) => {
+                        if (type?.includes('RECEIVED')) return 'green';
+                        if (type?.includes('SHIPPED')) return 'red';
+                        if (type?.includes('RESERVED')) return 'orange';
+                        if (type?.includes('ADJUSTED')) return 'blue';
+                        if (type?.includes('TRANSFER')) return 'purple';
+                        return 'gray';
+                      };
+                      
+                      const getEventLabel = (type) => {
+                        if (type?.includes('RECEIVED')) return 'Stock Received';
+                        if (type?.includes('SHIPPED')) return 'Stock Shipped';
+                        if (type?.includes('RESERVED')) return 'Stock Reserved';
+                        if (type?.includes('CANCELLED')) return 'Reservation Cancelled';
+                        if (type?.includes('ADJUSTED')) return 'Stock Adjusted';
+                        if (type?.includes('TRANSFER_IN')) return 'Transfer In';
+                        if (type?.includes('TRANSFER_OUT')) return 'Transfer Out';
+                        return type;
+                      };
+                      
+                      return (
+                        <Timeline.Item key={index} color={getEventColor(log.operation_type)}>
+                          <div style={{ marginBottom: 8 }}>
+                            <Tag color={getEventColor(log.operation_type)}>{getEventLabel(log.operation_type)}</Tag>
+                            <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
+                              {new Date(log.operation_date).toLocaleString()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 13 }}>
+                            {log.warehouse_name && (
+                              <div>Warehouse: <strong>{log.warehouse_name}</strong></div>
+                            )}
+                            {log.quantity_change && (
+                              <div>Change: <strong style={{ color: log.quantity_change > 0 ? '#52c41a' : '#ff4d4f' }}>
+                                {log.quantity_change > 0 ? '+' : ''}{log.quantity_change}
+                              </strong></div>
+                            )}
+                            {log.balance_after !== null && log.balance_after !== undefined && (
+                              <div>Balance After: <strong>{log.balance_after}</strong></div>
+                            )}
+                            {log.unit_cost && (
+                              <div>Unit Cost: <strong>{formatPrice(log.unit_cost, currency, 'USD')}</strong></div>
+                            )}
+                            {log.reference_number && (
+                              <div style={{ color: '#8c8c8c', fontSize: 12 }}>Ref: {log.reference_number}</div>
+                            )}
+                            {log.notes && (
+                              <div style={{ color: '#8c8c8c', fontSize: 12 }}>Notes: {log.notes}</div>
+                            )}
+                          </div>
+                        </Timeline.Item>
+                      );
+                    })}
+                  </Timeline>
+                </div>
+              ) : (
+                <Empty description="No transaction history available" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
+            </div>
           </div>
         )}
       </Modal>
