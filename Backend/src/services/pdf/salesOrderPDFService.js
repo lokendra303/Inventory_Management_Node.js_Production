@@ -14,6 +14,17 @@ class SalesOrderPDFService {
           [institutionId]
         );
         companySettings = settings;
+        
+        // Fetch company bank details
+        if (companySettings) {
+          const [bankDetails] = await db.query(
+            'SELECT * FROM bank_details WHERE entity_type = ? AND entity_id = ?',
+            ['company', institutionId]
+          );
+          if (bankDetails) {
+            companySettings.bankDetails = bankDetails;
+          }
+        }
       } catch (err) {
         logger.warn('Could not load company settings');
       }
@@ -161,6 +172,62 @@ class SalesOrderPDFService {
         }
         
         y = Math.max(y + 20, customerY) + 10;
+
+        // Company Bank Details
+        if (companySettings?.bankDetails?.bank_name || companySettings?.bankDetails?.account_number) {
+          y += 10;
+          
+          // Shadow effect
+          doc.rect(52, y + 2, 491, 95).fillAndStroke('#e0e0e0', '#e0e0e0');
+          
+          // Main box with border
+          doc.rect(50, y, 491, 95).fillAndStroke('#f9f9f9', '#ddd');
+          
+          y += 15;
+          doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Payment Details', 60, y);
+          y += 18;
+          
+          doc.fontSize(8).font('Helvetica');
+          const bank = companySettings.bankDetails;
+          const leftCol = 60;
+          const rightCol = 300;
+          let leftY = y;
+          let rightY = y;
+          
+          if (bank.bank_name) {
+            doc.font('Helvetica-Bold').text('Bank Name: ', leftCol, leftY, { continued: true });
+            doc.font('Helvetica').text(bank.bank_name);
+            leftY += 13;
+          }
+          if (bank.branch_name) {
+            doc.font('Helvetica-Bold').text('Branch: ', leftCol, leftY, { continued: true });
+            doc.font('Helvetica').text(bank.branch_name);
+            leftY += 13;
+          }
+          if (bank.account_number) {
+            doc.font('Helvetica-Bold').text('Account Number: ', leftCol, leftY, { continued: true });
+            doc.font('Helvetica').text(bank.account_number);
+            leftY += 13;
+          }
+          if (bank.account_type) {
+            doc.font('Helvetica-Bold').text('Account Type: ', leftCol, leftY, { continued: true });
+            doc.font('Helvetica').text(bank.account_type);
+            leftY += 13;
+          }
+          if (bank.ifsc_code) {
+            doc.font('Helvetica-Bold').text('IFSC Code: ', leftCol, leftY, { continued: true });
+            doc.font('Helvetica').text(bank.ifsc_code);
+            leftY += 13;
+          }
+          
+          if (bank.swift_code) {
+            doc.font('Helvetica-Bold').text('SWIFT Code: ', rightCol, rightY, { continued: true });
+            doc.font('Helvetica').text(bank.swift_code);
+            rightY += 13;
+          }
+          
+          y += 80;
+        }
 
         doc.fontSize(11).font('Helvetica-Bold').text('Line Items:', 50, y);
         y += 20;

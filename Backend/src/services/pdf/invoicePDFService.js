@@ -235,7 +235,7 @@ class InvoicePDFService {
           doc.rect(52, y + 2, 491, 95).fillAndStroke('#e0e0e0', '#e0e0e0');
           
           // Main box with border
-          doc.rect(50, y, 491, 95).fillAndStroke('#f9f9f9', '#ddd');
+          doc.rect(50, y, 491, 120).fillAndStroke('#f9f9f9', '#ddd');
           
           y += 15;
           doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Vendor Bank Details', 60, y);
@@ -265,19 +265,19 @@ class InvoicePDFService {
           }
           
           if (bank.accountType) {
-            doc.font('Helvetica-Bold').text('Account Type: ', rightCol, rightY, { continued: true });
+            doc.font('Helvetica-Bold').text('Account Type: ', leftCol, leftY, { continued: true });
             doc.font('Helvetica').text(bank.accountType);
-            rightY += 13;
+            leftY += 13;
           }
           if (bank.ifscCode) {
-            doc.font('Helvetica-Bold').text('IFSC Code: ', rightCol, rightY, { continued: true });
+            doc.font('Helvetica-Bold').text('IFSC Code: ', leftCol, leftY, { continued: true });
             doc.font('Helvetica').text(bank.ifscCode);
-            rightY += 13;
+            leftY += 13;
           }
           if (bank.swiftCode) {
-            doc.font('Helvetica-Bold').text('SWIFT Code: ', rightCol, rightY, { continued: true });
+            doc.font('Helvetica-Bold').text('SWIFT Code: ', leftCol, leftY, { continued: true });
             doc.font('Helvetica').text(bank.swiftCode);
-            rightY += 13;
+            leftY += 13;
           }
           
           y += 95;
