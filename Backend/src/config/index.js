@@ -24,7 +24,7 @@ module.exports = {
   
   jwt: {
     secret: process.env.JWT_SECRET ,
-    expiresIn: '999y' // No expiration
+    expiresIn: process.env.JWT_EXPIRES_IN || '999y' // Use ENV or default to no expiration
   },
   
   email: {
@@ -39,7 +39,7 @@ module.exports = {
   
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60 * 1000, // 1 minute window
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100 // 100 requests per minute
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000 // 100 requests per minute
   },
   
   logging: {
