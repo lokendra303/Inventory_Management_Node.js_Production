@@ -98,6 +98,9 @@ class ApiService {
       },
       async (error) => {
         if (error.response?.status === 401) {
+          // Check if it's a session timeout error
+          const isSessionTimeout = error.response?.data?.code === 'SESSION_TIMEOUT';
+          
           // Only show session expired modal if user was logged in (has token)
           // Don't show for login/profile endpoint failures
           const isAuthEndpoint = error.config?.url?.includes('/auth/login') || 
@@ -113,11 +116,14 @@ class ApiService {
             
             Modal.warning({
               title: 'Session Expired',
-              content: 'Your session has expired. Please login again.',
+              content: isSessionTimeout 
+                ? 'Your session has expired due to inactivity. Please login again.'
+                : 'Your session has expired. Please login again.',
               onOk: () => {
                 window.location.href = '/';
               },
-              centered: true
+              centered: true,
+              maskClosable: false
             });
           }
           

@@ -128,8 +128,23 @@ export const AuthProvider = ({ children }) => {
         logout();
       }
     } catch (error) {
-      // Clean up session storage silently - don't show any modal
-      logout();
+      // Check if it's a session timeout error
+      if (error.response?.data?.code === 'SESSION_TIMEOUT') {
+        logout();
+        Modal.warning({
+          title: 'Session Expired',
+          content: 'Your session has expired due to inactivity. Please login again.',
+          okText: 'Login',
+          onOk: () => {
+            window.location.href = '/';
+          },
+          centered: true,
+          maskClosable: false,
+        });
+      } else {
+        // Clean up session storage silently - don't show any modal
+        logout();
+      }
     } finally {
       setLoading(false);
     }

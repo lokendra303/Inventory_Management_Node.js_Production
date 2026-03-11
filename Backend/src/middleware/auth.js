@@ -408,7 +408,32 @@ module.exports = {
   validateInstitutionConsistency,
   requireWarehouseAccess,
   rateLimit,
-  checkSessionTimeout: (timeoutMs = 15 * 60 * 1000) => (req, res, next) => next(),
+  checkSessionTimeout: (timeoutMs = 15 * 60 * 1000) => {
+    return (req, res, next) => {
+      if (!req.user || !req.user.sessionTimestamp) {
+        return next();
+      }
+
+      const now = Date.now();
+      const sessionAge = now - req.user.sessionTimestamp;
+
+      if (sessionAge > timeoutMs) {
+        logger.warn('Session timeout', {
+          userId: req.user.userId,
+          sessionAge,
+          timeoutMs
+        });
+        
+        return res.status(401).json({
+          success: false,
+          error: 'Session expired due to inactivity',
+          code: 'SESSION_TIMEOUT'
+        });
+      }
+
+      next();
+    };
+  },
   createInstitutionRateLimit,
   auditLog
 };

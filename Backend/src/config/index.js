@@ -24,7 +24,7 @@ module.exports = {
   
   jwt: {
     secret: process.env.JWT_SECRET ,
-    expiresIn: process.env.JWT_EXPIRES_IN || '999y' // Use ENV or default to no expiration
+    expiresIn: process.env.JWT_EXPIRES_IN || '15m'
   },
   
   email: {

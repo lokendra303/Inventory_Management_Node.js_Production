@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import apiService from '../services/apiService';
 import { useAuth } from '../hooks/useAuth';
 import { formatNumber } from '../utils/currency';
@@ -19,8 +19,7 @@ export const CurrencyProvider = ({ children }) => {
   const [exchangeRate, setExchangeRate] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Exchange rates matching backend currency service
-  const exchangeRates = {
+  const exchangeRates = React.useMemo(() => ({
     'USD': 1,
     'EUR': 0.85,
     'GBP': 0.73,
@@ -31,18 +30,12 @@ export const CurrencyProvider = ({ children }) => {
     'CNY': 6.45,
     'SGD': 1.35,
     'AED': 3.67
-  };
+  }), []);
 
-  useEffect(() => {
-    if (user) {
-      fetchCurrency();
-    }
-  }, [user]);
-
-  const fetchCurrency = async () => {
+  const fetchCurrency = useCallback(async () => {
     try {
       const response = await apiService.get('/settings');
-      if (response.success && response.data) {
+      if (response?.success && response?.data) {
         const newCurrency = response.data.currency || 'USD';
         const newRate = exchangeRates[newCurrency] || 1;
         setCurrency(newCurrency);
@@ -53,24 +46,28 @@ export const CurrencyProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Failed to fetch currency:', error);
-      // Set default values on error
       setCurrency('USD');
       setExchangeRate(1);
     }
-  };
+  }, [exchangeRates]);
+
+  useEffect(() => {
+    if (user) {
+      fetchCurrency();
+    }
+  }, [user, fetchCurrency]);
 
   const updateCurrency = async (newCurrency) => {
     try {
       setLoading(true);
       const response = await apiService.put('/settings', { currency: newCurrency });
-      if (response.success) {
+      if (response?.success) {
         const newRate = exchangeRates[newCurrency] || 1;
         setCurrency(newCurrency);
         setExchangeRate(newRate);
         return true;
-      } else {
-        return false;
       }
+      return false;
     } catch (error) {
       console.error('Failed to update currency:', error);
       return false;

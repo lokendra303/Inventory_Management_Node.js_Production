@@ -176,7 +176,7 @@ class AuthService {
         `SELECT u.*, i.status as institution_status 
          FROM institution_users u 
          JOIN institutions i ON u.institution_id = i.id 
-         WHERE u.id = ?`,
+         WHERE u.id = ? lIMIT 1`,
         [decoded.userId]
       );
 

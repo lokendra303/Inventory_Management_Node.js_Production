@@ -9,12 +9,10 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
-import { formatPrice } from '../../utils/currency';
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
-  const { currency } = useCurrency();
-  const [currencySymbol, setCurrencySymbol] = useState('₹');
+  const { currency, formatCurrency } = useCurrency();
   const [dashboardData, setDashboardData] = useState({
     totalItems: 0,
     totalValue: 0,
@@ -26,10 +24,10 @@ const Dashboard = () => {
     recentMovements: [],
     stockTrend: []
   });
-  //useeffect
+
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [currency]);
 
   const fetchDashboardData = async () => {
     try {
@@ -47,11 +45,6 @@ const Dashboard = () => {
       const warehouses = warehousesResponse.success ? warehousesResponse.data : [];
       const lowStockItems = lowStockResponse.success ? lowStockResponse.data : [];
       const items = itemsResponse.success ? itemsResponse.data : [];
-      
-      // Get currency from first inventory item
-      if (inventory.length > 0 && inventory[0].currency) {
-        setCurrencySymbol(inventory[0].currency);
-      }
       
       // Calculate stats from data
       const totalItems = inventory.length;
@@ -215,9 +208,8 @@ const Dashboard = () => {
           <Card>
             <Statistic
               title="Total Inventory Value"
-              value={dashboardData.totalValue}
-              precision={2}
-              prefix={currencySymbol}
+              value={formatCurrency(dashboardData.totalValue, false)}
+              prefix={currency}
               valueStyle={{ color: '#722ed1' }}
             />
           </Card>
@@ -263,7 +255,7 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis />
-                <Tooltip formatter={(value) => [formatPrice(value, currency, 'USD'), 'Value']} />
+                <Tooltip formatter={(value) => [formatCurrency(value, true), 'Value']} />
                 <Line 
                   type="monotone" 
                   dataKey="value" 
