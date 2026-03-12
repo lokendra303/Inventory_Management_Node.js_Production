@@ -4,7 +4,7 @@ import apiService from '../services/apiService';
 
 const AuthContext = createContext();
 const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes
-const ACTIVITY_CHECK_INTERVAL = 3 * 60 * 1000; // Check every 1 minute
+const ACTIVITY_CHECK_INTERVAL = 3 * 60 * 1000; // Check every 3 minute
 const EXTEND_SESSION_THRESHOLD = 5 * 60 * 1000; // Extend if less than 5 minutes remaining
 
 export const useAuth = () => {
