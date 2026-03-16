@@ -3,9 +3,9 @@ import { message, Modal } from 'antd';
 import apiService from '../services/apiService';
 
 const AuthContext = createContext();
-const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes
-const ACTIVITY_CHECK_INTERVAL = 3 * 60 * 1000; // Check every 3 minute
-const EXTEND_SESSION_THRESHOLD = 5 * 60 * 1000; // Extend if less than 5 minutes remaining
+const SESSION_TIMEOUT = parseInt(process.env.REACT_APP_SESSION_TIMEOUT) ;
+const ACTIVITY_CHECK_INTERVAL = parseInt(process.env.REACT_APP_ACTIVITY_CHECK_INTERVAL) ;
+const EXTEND_SESSION_THRESHOLD = parseInt(process.env.REACT_APP_EXTEND_SESSION_THRESHOLD) ;
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
