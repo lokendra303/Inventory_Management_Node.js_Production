@@ -172,37 +172,10 @@ const PurchaseOrders = () => {
 
   const confirmPO = async (po) => {
     try {
-      // First, try to auto-generate invoice BEFORE changing status
-      let invoiceGenerated = false;
-      let invoiceNumber = null;
-      
-      try {
-        console.log('Attempting to generate invoice for PO:', po.id);
-        const invoiceResponse = await apiService.post(`/purchase-invoices/generate-from-po/${po.id}`);
-        console.log('Invoice generation response:', invoiceResponse);
-        if (invoiceResponse.success) {
-          invoiceGenerated = true;
-          invoiceNumber = invoiceResponse.data.invoiceNumber;
-        }
-      } catch (invoiceError) {
-        console.error('Invoice generation failed:', invoiceError);
-        console.error('Error response:', invoiceError.response?.data);
-      }
-      
-      // Then confirm the PO
-      await apiService.put(`/purchase-orders/${po.id}/status`, { status: 'confirmed' });
-      
-      // Show appropriate message
-      if (invoiceGenerated) {
-        message.success(`Purchase order confirmed and invoice ${invoiceNumber} auto-generated`);
-      } else {
-        message.success('Purchase order confirmed');
-        message.info('You can create invoice manually from Invoices page');
-      }
-      
+      await apiService.post(`/purchase-orders/${po.id}/confirm`);
+      message.success('Purchase order confirmed. Go to Purchase Receives to receive goods.');
       fetchData();
     } catch (error) {
-      console.error('PO confirmation error:', error);
       message.error(error.response?.data?.error || 'Failed to confirm purchase order');
     }
   };
@@ -239,18 +212,18 @@ const PurchaseOrders = () => {
       if (response.success) {
         setSelectedPOForView(response.data);
         setViewModalVisible(true);
-        
-        // Fetch transaction history for all items in this PO
+
         setLoadingHistory(true);
         try {
-          const historyPromises = response.data.lines?.map(line => 
-            apiService.get(`/inventory/${line.item_id}/${line.warehouse_id}/history`)
-          ) || [];
+          const historyPromises = (response.data.lines || [])
+            .filter(line => line.item_id && line.warehouse_id)
+            .map(line =>
+              apiService.get(`/inventory/history/${line.item_id}/${line.warehouse_id}`)
+            );
           const historyResults = await Promise.all(historyPromises);
           const allHistory = historyResults.flatMap(res => res.success ? res.data : []);
           setPOHistory(allHistory.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
-        } catch (error) {
-          console.error('Failed to fetch history:', error);
+        } catch (err) {
           setPOHistory([]);
         } finally {
           setLoadingHistory(false);
@@ -282,7 +255,8 @@ const PurchaseOrders = () => {
             warehouseName: line.warehouse_name,
             quantityOrdered: line.quantity_ordered,
             quantityReceived: line.quantity_ordered - (line.quantity_received || 0),
-            unitCost: line.unit_cost
+            unitCost: line.unit_cost,
+            qualityStatus: 'accepted'
           })) || []
         });
         setReceiveModalVisible(true);
@@ -303,7 +277,8 @@ const PurchaseOrders = () => {
         lines: (values.lines || []).map(line => ({
           ...line,
           quantityReceived: Number(line.quantityReceived),
-          unitCost: Number(line.unitCost)
+          unitCost: Number(line.unitCost),
+          qualityStatus: line.qualityStatus
         }))
       };
 
@@ -812,7 +787,7 @@ const PurchaseOrders = () => {
                         <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
                       </Form.Item>
                       
-                      <Form.Item name={[name, 'qualityStatus']} label="Quality" initialValue="accepted">
+                      <Form.Item name={[name, 'qualityStatus']} label="Quality">
                         <Select style={{ width: '100%' }}>
                           <Select.Option value="accepted">Accepted</Select.Option>
                           <Select.Option value="rejected">Rejected</Select.Option>

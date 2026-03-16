@@ -1,4 +1,3 @@
-const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 
@@ -37,137 +36,17 @@ class POConfirmationService {
           throw new Error('No purchase order lines found');
         }
 
-        // Auto-generate GRN number
-        const grnNumber = `AUTO-GRN-${po.po_number}-${Date.now()}`;
-        const grnId = uuidv4();
-
-        // Create automatic GRN
-        await connection.execute(
-          `INSERT INTO goods_receipt_notes 
-           (id, institution_id, grn_number, po_id, receipt_date, received_by, notes, status) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
-          [
-            grnId, 
-            institutionId, 
-            grnNumber, 
-            poId, 
-            new Date().toISOString().split('T')[0], 
-            userId, 
-            'Auto-generated GRN on PO confirmation'
-          ]
-        );
-
-        // Process each line item
-        const inventoryUpdates = [];
-        for (const line of lines) {
-          if (!line.warehouse_id) {
-            throw new Error(`Line ${line.line_number} must have a warehouse assigned`);
-          }
-
-          const grnLineId = uuidv4();
-          const lineTotal = line.quantity_ordered * line.unit_cost;
-
-          // Create GRN line
-          await connection.execute(
-            `INSERT INTO grn_lines 
-             (id, institution_id, grn_id, po_line_id, item_id, quantity_received, unit_cost, line_total, quality_status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted')`,
-            [grnLineId, institutionId, grnId, line.id, line.item_id, line.quantity_ordered, line.unit_cost, lineTotal]
-          );
-
-          // Update PO line status
-          await connection.execute(
-            `UPDATE purchase_order_lines 
-             SET quantity_received = ?, status = 'received', updated_at = NOW()
-             WHERE id = ?`,
-            [line.quantity_ordered, line.id]
-          );
-
-          // Update inventory directly in transaction
-          const [currentInventory] = await connection.execute(
-            'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-            [institutionId, line.item_id, line.warehouse_id]
-          );
-
-          if (currentInventory.length === 0) {
-            // Create new inventory record
-            await connection.execute(
-              `INSERT INTO inventory_projections 
-               (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
-               VALUES (UUID(), ?, ?, ?, ?, ?, 0, ?, ?, NOW(), 1)`,
-              [
-                institutionId, 
-                line.item_id, 
-                line.warehouse_id, 
-                line.quantity_ordered, 
-                line.quantity_ordered, 
-                line.unit_cost, 
-                line.quantity_ordered * line.unit_cost
-              ]
-            );
-          } else {
-            // Update existing inventory
-            const current = currentInventory[0];
-            const currentValue = Number(current.quantity_on_hand) * Number(current.average_cost);
-            const newValue = Number(line.quantity_ordered) * Number(line.unit_cost);
-            const newQuantityOnHand = Number(current.quantity_on_hand) + Number(line.quantity_ordered);
-            const newTotalValue = currentValue + newValue;
-            const newAverageCost = newTotalValue / newQuantityOnHand;
-            const newQuantityAvailable = Number(current.quantity_available) + Number(line.quantity_ordered);
-
-            await connection.execute(
-              `UPDATE inventory_projections 
-               SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?, 
-                   last_movement_date = NOW(), version = version + 1
-               WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-              [newQuantityOnHand, newQuantityAvailable, newAverageCost, newTotalValue, institutionId, line.item_id, line.warehouse_id]
-            );
-          }
-
-          logger.info('Inventory updated for item', {
-            itemId: line.item_id,
-            itemName: line.item_name,
-            warehouseId: line.warehouse_id,
-            quantity: line.quantity_ordered,
-            unitCost: line.unit_cost,
-            poId: poId
-          });
-
-          // Auto-update item cost_price from actual purchase price
-          await connection.execute(
-            'UPDATE items SET cost_price = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?',
-            [line.unit_cost, line.item_id, institutionId]
-          );
-          
-          inventoryUpdates.push({
-            itemId: line.item_id,
-            itemName: line.item_name,
-            warehouseId: line.warehouse_id,
-            quantity: line.quantity_ordered
-          });
-        }
-
-        // Update PO status to received
+        // Just mark PO as confirmed — GRN and invoice are created after goods are physically received
         await connection.execute(
           'UPDATE purchase_orders SET status = ?, updated_at = NOW() WHERE id = ?',
-          ['received', poId]
+          ['confirmed', poId]
         );
 
-        logger.info('PO confirmation processed successfully', {
-          poId,
-          poNumber: po.po_number,
-          grnId,
-          grnNumber,
-          totalLines: lines.length,
-          inventoryUpdates,
-          institutionId,
-          userId
-        });
+        logger.info('PO confirmed — awaiting goods receipt', { poId, poNumber: po.po_number, institutionId, userId });
 
         return {
           success: true,
-          grnId,
-          grnNumber,
+          message: 'Purchase order confirmed. Receive goods to update inventory and generate invoice.',
           itemsProcessed: lines.length
         };
       });

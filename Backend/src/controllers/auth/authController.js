@@ -436,18 +436,23 @@ class AuthController {
 
   async extendSession(req, res) {
     try {
-      const result = await authService.extendSession(req.user.userId, req.institutionId);
-      
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, error: 'Token required' });
+      }
+      const token = authHeader.substring(7);
+      // Use refreshToken with grace period so near-expired/just-expired tokens still work
+      const result = await authService.refreshToken(token);
       res.json({
         success: true,
-        message: 'Session extended successfully',
-        data: result
+        data: { token: result.token }
       });
     } catch (error) {
-      logger.error('Session extension failed', { error: error.message, userId: req.user.userId });
-      res.status(400).json({
+      logger.error('Session extension failed', { error: error.message });
+      res.status(401).json({
         success: false,
-        error: error.message
+        error: 'SESSION_EXPIRED',
+        code: 'SESSION_EXPIRED'
       });
     }
   }

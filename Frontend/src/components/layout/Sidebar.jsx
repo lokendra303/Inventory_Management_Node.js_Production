@@ -112,7 +112,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         hasAnyPermission('vendor_view', 'vendor_management') && { key: '/purchases/vendors', label: 'Vendors' },
         hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchase-orders', label: 'Purchase Orders' },
         hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchase-invoices', label: 'Purchase Invoices' },
-        hasPermission('inventory_receive') && { key: '/purchases/receives', label: 'Purchase Receives' },
+        hasAnyPermission('purchase_view', 'purchase_management', 'inventory_receive') && { key: '/purchases/receives', label: 'Purchase Receives' },
         hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchases/bills', label: 'Bills' },
         hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchases/payments-made', label: 'Payments Made' },
         hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchases/vendor-credits', label: 'Vendor Credits' }

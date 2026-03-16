@@ -169,23 +169,26 @@ class PurchaseOrderService {
 
           await connection.execute(
             `INSERT INTO grn_lines 
-             (id, institution_id, grn_id, po_line_id, item_id, quantity_received, unit_cost, line_total, quality_status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [grnLineId, institutionId, grnId, line.poLineId, line.itemId, line.quantityReceived, line.unitCost, lineTotal, line.qualityStatus || 'accepted']
+             (id, institution_id, grn_id, po_line_id, item_id, warehouse_id, quantity_received, unit_cost, line_total, quality_status) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [grnLineId, institutionId, grnId, line.poLineId, line.itemId, line.warehouseId, line.quantityReceived, line.unitCost, lineTotal, line.qualityStatus || 'accepted']
           );
 
-          await connection.execute(
-            `UPDATE purchase_order_lines 
-             SET quantity_received = quantity_received + ?, 
-                 status = CASE 
-                   WHEN quantity_received + ? >= quantity_ordered THEN 'received'
-                   WHEN quantity_received + ? > 0 THEN 'partially_received'
-                   ELSE 'pending'
-                 END,
-                 updated_at = NOW()
-             WHERE id = ?`,
-            [line.quantityReceived, line.quantityReceived, line.quantityReceived, line.poLineId]
-          );
+          // Only update PO line received qty for accepted items
+          if (line.qualityStatus !== 'rejected') {
+            await connection.execute(
+              `UPDATE purchase_order_lines 
+               SET quantity_received = quantity_received + ?, 
+                   status = CASE 
+                     WHEN quantity_received + ? >= quantity_ordered THEN 'received'
+                     WHEN quantity_received + ? > 0 THEN 'partially_received'
+                     ELSE 'pending'
+                   END,
+                   updated_at = NOW()
+               WHERE id = ?`,
+              [line.quantityReceived, line.quantityReceived, line.quantityReceived, line.poLineId]
+            );
+          }
 
           if (line.qualityStatus === 'accepted' || !line.qualityStatus) {
             inventoryUpdates.push({
@@ -288,10 +291,6 @@ class PurchaseOrderService {
   }
 
   async getPurchaseOrders(institutionId, filters = {}, limit = 100, offset = 0) {
-    console.log('=== DEBUG getPurchaseOrders ===');
-    console.log('institutionId:', institutionId);
-    console.log('filters:', filters);
-    
     let query = `
       SELECT po.*, v.display_name as vendor_name,
              COUNT(pol.id) as line_count,
@@ -315,14 +314,9 @@ class PurchaseOrderService {
     }
 
     query += ' GROUP BY po.id ORDER BY po.created_at DESC';
-    
-    console.log('Final query:', query);
-    console.log('Params:', params);
 
     try {
-      const result = await db.query(query, params);
-      console.log('Query result count:', result.length);
-      return result;
+      return await db.query(query, params);
     } catch (error) {
       console.error('Database query error:', error.message);
       throw error;
@@ -353,7 +347,9 @@ class PurchaseOrderService {
     );
 
     const grns = await db.query(
-      `SELECT grn.*, COUNT(gl.id) as line_count
+      `SELECT grn.*,
+              COUNT(gl.id) as line_count,
+              (SELECT pi.invoice_number FROM purchase_invoices pi WHERE pi.grn_id = grn.id LIMIT 1) as invoice_number
        FROM goods_receipt_notes grn
        LEFT JOIN grn_lines gl ON grn.id = gl.grn_id
        WHERE grn.institution_id = ? AND grn.po_id = ?
@@ -380,10 +376,11 @@ class PurchaseOrderService {
 
     // Get GRN lines
     const lines = await db.query(
-      `SELECT gl.*, i.sku, i.name as item_name, i.unit, pol.quantity_ordered
+      `SELECT gl.*, i.sku, i.name as item_name, i.unit, pol.quantity_ordered, w.name as warehouse_name
        FROM grn_lines gl
        JOIN items i ON gl.item_id = i.id
        JOIN purchase_order_lines pol ON gl.po_line_id = pol.id
+       LEFT JOIN warehouses w ON gl.warehouse_id = w.id
        WHERE gl.institution_id = ? AND gl.grn_id = ?`,
       [institutionId, grnId]
     );

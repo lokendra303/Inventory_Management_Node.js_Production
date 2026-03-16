@@ -535,6 +535,26 @@ class PurchaseInvoiceController {
     }
   }
 
+  // Generate invoice from GRN (after goods are received)
+  async generateInvoiceFromGRN(req, res) {
+    try {
+      const { institutionId, user } = req;
+      const { grnId } = req.params;
+      const result = await autoInvoiceService.generateInvoiceFromGRN(institutionId, grnId, user?.userId);
+      res.status(201).json({
+        success: true,
+        message: 'Invoice generated from goods receipt',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Error generating invoice from GRN:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Failed to generate invoice from GRN'
+      });
+    }
+  }
+
   // Auto-generate invoice from PO
   async generateInvoiceFromPO(req, res) {
     try {

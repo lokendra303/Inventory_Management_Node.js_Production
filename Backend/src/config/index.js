@@ -12,7 +12,8 @@ module.exports = {
     database: process.env.DB_NAME ,
     user: process.env.DB_USER ,
     password: process.env.DB_PASSWORD ,
-    connectionLimit: 20
+    connectionLimit: 20,
+    charset: 'utf8mb4_unicode_ci'
   },
   
   redis: {

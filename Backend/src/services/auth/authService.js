@@ -190,7 +190,7 @@ class AuthService {
     }
   }
 
-  async refreshToken(token, allowExpiredGraceSecs = 300) {
+  async refreshToken(token, allowExpiredGraceSecs = 600) {
     try {
       // Allow recently-expired tokens within grace window so active users aren't kicked out
       let decoded;

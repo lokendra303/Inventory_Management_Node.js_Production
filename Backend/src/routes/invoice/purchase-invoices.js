@@ -6,6 +6,14 @@ const { validate, schemas } = require('../../utils/validation');
 const router = express.Router();
 
 // Specific routes MUST come before parameterized routes
+// POST /api/purchase-invoices/generate-from-grn/:grnId
+router.post('/generate-from-grn/:grnId',
+  requirePermission('invoice_management'),
+  validateInstitutionConsistency,
+  auditLog('invoice_generated_from_grn'),
+  purchaseInvoiceController.generateInvoiceFromGRN
+);
+
 // POST /api/purchase-invoices/generate-from-po/:poId
 router.post('/generate-from-po/:poId',
   requirePermission('invoice_management'),

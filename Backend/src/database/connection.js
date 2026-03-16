@@ -27,10 +27,21 @@ class Database {
     }
   }
 
+  async getConnection() {
+    const connection = await this.pool.getConnection();
+    await connection.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+    return connection;
+  }
+
   async query(sql, params = []) {
     try {
-      const [rows] = await this.pool.execute(sql, params);
-      return rows;
+      const connection = await this.getConnection();
+      try {
+        const [rows] = await connection.execute(sql, params);
+        return rows;
+      } finally {
+        connection.release();
+      }
     } catch (error) {
       logger.error('Database query error:', { sql, params, error: error.message });
       throw error;
@@ -38,7 +49,7 @@ class Database {
   }
 
   async transaction(callback) {
-    const connection = await this.pool.getConnection();
+    const connection = await this.getConnection();
     await connection.beginTransaction();
     
     try {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, InputNumber, Select, message, Tag, Tabs } from 'antd';
-import { PlusOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatAmount } from '../../utils/numberFormat';
@@ -22,35 +22,28 @@ const PurchasesReceives = () => {
       setLoading(true);
       const response = await apiService.get('/purchase-orders');
       if (response.success) {
-        const allGRNs = [];
-        response.data.forEach(po => {
-          if (po.grns) {
-            po.grns.forEach(grn => allGRNs.push({ ...grn, po_number: po.po_number, vendor_name: po.vendor_name }));
-          }
-        });
-
-        // fetch GRNs from all POs that have them
         const posWithGRNs = response.data.filter(po =>
           ['partially_received', 'received'].includes(po.status)
         );
 
         const grnList = [];
-        for (const po of posWithGRNs) {
-          const detail = await apiService.get(`/purchase-orders/${po.id}`);
-          if (detail.success && detail.data.grns) {
-            detail.data.grns.forEach(grn => {
-              grnList.push({
-                ...grn,
-                po_number: po.po_number,
-                vendor_name: po.vendor_name,
-                po_currency: po.currency
+        await Promise.all(posWithGRNs.map(async (po) => {
+          try {
+            const detail = await apiService.get(`/purchase-orders/${po.id}`);
+            if (detail.success && detail.data.grns) {
+              detail.data.grns.forEach(grn => {
+                grnList.push({
+                  ...grn,
+                  po_number: po.po_number,
+                  vendor_name: po.vendor_name,
+                  po_currency: po.currency
+                });
               });
-            });
-          }
-        }
-        setGrns(grnList);
+            }
+          } catch {}
+        }));
+        setGrns(grnList.sort((a, b) => new Date(b.receipt_date) - new Date(a.receipt_date)));
 
-        // pending = confirmed or partially_received POs
         const pending = response.data.filter(po =>
           po.status === 'confirmed' || po.status === 'partially_received'
         );
@@ -88,7 +81,8 @@ const PurchasesReceives = () => {
             alreadyReceived: line.quantity_received || 0,
             pendingQty: line.quantity_ordered - (line.quantity_received || 0),
             quantityReceived: line.quantity_ordered - (line.quantity_received || 0),
-            unitCost: line.unit_cost
+            unitCost: line.unit_cost,
+            qualityStatus: 'accepted'
           }))
         });
         setReceiveModalVisible(true);
@@ -114,7 +108,7 @@ const PurchasesReceives = () => {
           quantityOrdered: Number(line.quantityOrdered),
           quantityReceived: Number(line.quantityReceived),
           unitCost: Number(line.unitCost),
-          qualityStatus: line.qualityStatus || 'accepted'
+          qualityStatus: line.qualityStatus
         }))
       };
 
@@ -128,6 +122,21 @@ const PurchasesReceives = () => {
       }
     } catch (error) {
       message.error(error.response?.data?.error || 'Failed to receive goods');
+    }
+  };
+
+  const generateInvoice = async (grn) => {
+    try {
+      setLoading(true);
+      const response = await apiService.post(`/purchase-invoices/generate-from-grn/${grn.id}`);
+      if (response.success) {
+        message.success(`Invoice ${response.data.invoiceNumber} generated successfully`);
+        fetchGRNs();
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Failed to generate invoice');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -159,10 +168,30 @@ const PurchasesReceives = () => {
       )
     },
     {
+      title: 'Invoice',
+      dataIndex: 'invoice_number',
+      key: 'invoice_number',
+      render: (invoiceNumber) => invoiceNumber
+        ? <Tag color="blue">{invoiceNumber}</Tag>
+        : <Tag color="default">Not Generated</Tag>
+    },
+    {
       title: 'Actions',
       key: 'actions',
       render: (_, record) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={() => viewGRN(record)}>View</Button>
+        <Space>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => viewGRN(record)}>View</Button>
+          {!record.invoice_number && (
+            <Button
+              size="small"
+              type="primary"
+              icon={<FileTextOutlined />}
+              onClick={() => generateInvoice(record)}
+            >
+              Generate Invoice
+            </Button>
+          )}
+        </Space>
       )
     }
   ];
@@ -320,7 +349,7 @@ const PurchasesReceives = () => {
                         <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
                       </Form.Item>
 
-                      <Form.Item name={[name, 'qualityStatus']} label="Quality" initialValue="accepted">
+                      <Form.Item name={[name, 'qualityStatus']} label="Quality">
                         <Select style={{ width: '100%' }}>
                           <Select.Option value="accepted">Accepted</Select.Option>
                           <Select.Option value="rejected">Rejected</Select.Option>
@@ -378,6 +407,7 @@ const PurchasesReceives = () => {
               columns={[
                 { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
                 { title: 'SKU', dataIndex: 'sku', key: 'sku' },
+                { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
                 { title: 'Qty Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered' },
                 { title: 'Qty Received', dataIndex: 'quantity_received', key: 'quantity_received' },
                 {

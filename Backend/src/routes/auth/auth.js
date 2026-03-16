@@ -34,7 +34,7 @@ router.post('/heartbeat', authController.heartbeat);
 // GET /api/auth/profile (PROTECTED)
 router.get('/profile', requireAuth, authController.getProfile);
 
-// POST /api/auth/extend-session (PROTECTED)
-router.post('/extend-session', requireAuth, authController.extendSession);
+// POST /api/auth/extend-session - accepts near-expired tokens (no requireAuth)
+router.post('/extend-session', authController.extendSession);
 
 module.exports = router;

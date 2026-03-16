@@ -84,7 +84,7 @@ class PurchaseOrderController {
       });
       res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
       });
     }
   }

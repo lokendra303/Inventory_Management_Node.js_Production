@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth, validateInstitutionConsistency, checkSessionTimeout } = require('../middleware/auth');
+const { requireAuth, validateInstitutionConsistency } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -13,7 +13,6 @@ router.use('/auth', require('./auth/auth'));
 
 // Protected routes (authentication required)
 router.use(requireAuth);
-router.use(checkSessionTimeout(10 * 60 * 1000)); // 15 minutes timeout
 router.use(validateInstitutionConsistency);
 
 // Resource routes
