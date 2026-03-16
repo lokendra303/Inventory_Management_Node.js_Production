@@ -565,7 +565,23 @@ const PurchaseOrders = () => {
                                 const selectedItem = items.find(i => i.id === itemId);
                                 if (selectedItem) {
                                   const lines = form.getFieldValue('lines') || [];
-                                  lines[name] = { ...lines[name], unitCost: selectedItem.cost_price || 0 };
+
+                                  // Auto-fill warehouse: pick warehouse with highest stock for this item
+                                  const itemStocks = allItemStocks[itemId] || {};
+                                  const activeWarehouseIds = warehouses
+                                    .filter(wh => wh.status === 'active')
+                                    .map(wh => wh.id);
+                                  const bestWarehouseId = activeWarehouseIds.reduce((best, whId) => {
+                                    const stock = Number(itemStocks[whId] || 0);
+                                    const bestStock = Number(itemStocks[best] || 0);
+                                    return stock > bestStock ? whId : best;
+                                  }, activeWarehouseIds[0] || null);
+
+                                  lines[name] = {
+                                    ...lines[name],
+                                    unitCost: selectedItem.cost_price || 0,
+                                    warehouseId: bestWarehouseId
+                                  };
                                   form.setFieldsValue({ lines });
                                 }
                               }}

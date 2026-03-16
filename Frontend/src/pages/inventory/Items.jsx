@@ -35,9 +35,6 @@ const Items = () => {
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
   const canManageItems = user?.permissions?.item_management || user?.permissions?.all;
-  
-  console.log('User permissions:', user?.permissions);
-  console.log('Can manage items:', canManageItems);
 
   const columns = [
     { title: 'SKU', dataIndex: 'sku', key: 'sku' },
@@ -298,10 +295,27 @@ const viewItem = async (item) => {
     } catch (error) {
       console.error('Failed to fetch full item details:', error);
     }
-    
-    const warehouseId = fullItem.warehouse_ids && fullItem.warehouse_ids.length > 0 
-      ? fullItem.warehouse_ids[0] 
-      : null;
+
+    // Pick warehouse with highest stock; fall back to first warehouse_id from item
+    let warehouseId = null;
+    try {
+      const invResponse = await apiService.get('/inventory');
+      if (invResponse.success && invResponse.data.length > 0) {
+        const itemStocks = invResponse.data.filter(inv => inv.item_id === item.id);
+        if (itemStocks.length > 0) {
+          const best = itemStocks.reduce((a, b) =>
+            (Number(b.quantity_available) || 0) > (Number(a.quantity_available) || 0) ? b : a
+          );
+          warehouseId = best.warehouse_id;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch inventory for warehouse prefill:', error);
+    }
+    // Fall back to first warehouse_id stored on item if no inventory found
+    if (!warehouseId && fullItem.warehouse_ids && fullItem.warehouse_ids.length > 0) {
+      warehouseId = fullItem.warehouse_ids[0];
+    }
     
     form.setFieldsValue({
       sku: fullItem.sku,
