@@ -62,7 +62,7 @@ class PurchaseOrderController {
 
   async getPurchaseOrder(req, res) {
     try {
-      const { id: poId } = req.params;
+      const poId = req.params.id || req.params.poId;
       const po = await purchaseOrderService.getPurchaseOrder(req.institutionId, poId);
       
       if (!po) {
@@ -124,7 +124,7 @@ class PurchaseOrderController {
 
   async getGRN(req, res) {
     try {
-      const { grnId } = req.params;
+      const grnId = req.params.id || req.params.grnId;
       const grn = await purchaseOrderService.getGRN(req.institutionId, grnId);
       
       if (!grn) {
@@ -142,7 +142,7 @@ class PurchaseOrderController {
       logger.error('Failed to get GRN', { 
         error: error.message, 
         institutionId: req.institutionId,
-        grnId: req.params.grnId 
+        grnId: req.params.grnId || req.params.id
       });
       res.status(500).json({
         success: false,
@@ -153,7 +153,7 @@ class PurchaseOrderController {
 
   async updatePOStatus(req, res) {
     try {
-      const { id: poId } = req.params;
+      const poId = req.params.id || req.params.poId;
       const { status } = req.body;
 
       if (!status) {
@@ -186,7 +186,7 @@ class PurchaseOrderController {
 
   async confirmPurchaseOrder(req, res) {
     try {
-      const { id: poId } = req.params;
+      const poId = req.params.id || req.params.poId;
       
       const result = await poConfirmationService.processPOConfirmation(
         req.institutionId, 
@@ -215,7 +215,7 @@ class PurchaseOrderController {
 
   async getConfirmationSummary(req, res) {
     try {
-      const { id: poId } = req.params;
+      const poId = req.params.id || req.params.poId;
       
       const summary = await poConfirmationService.getConfirmationSummary(
         req.institutionId, 
@@ -309,7 +309,7 @@ class PurchaseOrderController {
 
   async getVendor(req, res) {
     try {
-      const { id: vendorId } = req.params;
+      const vendorId = req.params.id || req.params.vendorId;
       const vendor = await vendorService.getVendor(req.institutionId, vendorId);
       
       if (!vendor) {
@@ -338,7 +338,7 @@ class PurchaseOrderController {
 
   async updateVendor(req, res) {
     try {
-      const { id: vendorId } = req.params;
+      const vendorId = req.params.id || req.params.vendorId;
       await vendorService.updateVendor(req.institutionId, vendorId, req.body, req.user.userId);
       
       res.json({
@@ -360,7 +360,7 @@ class PurchaseOrderController {
 
   async getVendorPerformance(req, res) {
     try {
-      const { id: vendorId } = req.params;
+      const vendorId = req.params.id || req.params.vendorId;
       const { startDate, endDate } = req.query;
       
       const performance = await vendorService.getVendorPerformance(
@@ -389,7 +389,7 @@ class PurchaseOrderController {
 
   async downloadPOPDF(req, res) {
     try {
-      const { id: poId } = req.params;
+      const poId = req.params.id || req.params.poId;
       const po = await purchaseOrderService.getPurchaseOrder(req.institutionId, poId);
       
       if (!po) {
@@ -419,7 +419,7 @@ class PurchaseOrderController {
 
   async updatePurchaseOrder(req, res) {
     try {
-      const { id: poId } = req.params;
+      const poId = req.params.id || req.params.poId;
       const userId = req.user?.userId || null;
       
       await purchaseOrderService.updatePurchaseOrder(
@@ -449,7 +449,7 @@ class PurchaseOrderController {
 
   async emailPurchaseOrder(req, res) {
     try {
-      const { id: poId } = req.params;
+      const poId = req.params.id || req.params.poId;
       const { to } = req.body;
 
       if (!to) {
@@ -507,7 +507,7 @@ class PurchaseOrderController {
 
   async cancelPurchaseOrder(req, res) {
     try {
-      const { id: poId } = req.params;
+      const poId = req.params.id || req.params.poId;
       const { cancellationReason } = req.body;
       const userId = req.user?.userId || null;
 
