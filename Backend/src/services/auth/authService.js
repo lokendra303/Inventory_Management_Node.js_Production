@@ -190,11 +190,24 @@ class AuthService {
     }
   }
 
-  async refreshToken(token) {
+  async refreshToken(token, allowExpiredGraceSecs = 300) {
     try {
-      const decoded = jwt.verify(token, config.jwt.secret);
-      
-      // Verify user still exists and is active
+      // Allow recently-expired tokens within grace window so active users aren't kicked out
+      let decoded;
+      try {
+        decoded = jwt.verify(token, config.jwt.secret);
+      } catch (err) {
+        if (err.name === 'TokenExpiredError') {
+          decoded = jwt.decode(token);
+          const expiredAgo = Math.floor(Date.now() / 1000) - decoded.exp;
+          if (expiredAgo > allowExpiredGraceSecs) {
+            throw new Error('Token expired beyond grace period');
+          }
+        } else {
+          throw err;
+        }
+      }
+
       const users = await db.query(
         `SELECT u.*, i.status as institution_status 
          FROM institution_users u 
@@ -208,8 +221,6 @@ class AuthService {
       }
 
       const user = users[0];
-      
-      // Generate new token with updated session timestamp
       const sessionTimestamp = Date.now();
       const newToken = jwt.sign(
         {
@@ -239,7 +250,7 @@ class AuthService {
         }
       };
     } catch (error) {
-      throw new Error('Invalid or expired token');
+      throw new Error(error.message || 'Invalid or expired token');
     }
   }
 

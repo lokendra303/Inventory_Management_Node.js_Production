@@ -5,7 +5,7 @@ const institutionId = Joi.string().uuid().required();
 const itemId = Joi.string().uuid().required();
 const warehouseId = Joi.string().uuid().required();
 const quantity = Joi.number().positive().required();
-const unitCost = Joi.number().positive().required();
+const unitCost = Joi.number().min(0).required();
 const unitPrice = Joi.number().positive().required();
 
 // Auth schemas
@@ -164,7 +164,7 @@ const createPurchaseOrderSchema = Joi.object({
     itemId,
     warehouseId,
     quantity: quantity,
-    unitCost: unitCost,
+    unitCost: Joi.number().min(0).required(),
     expectedDate: Joi.date().optional()
   })).min(1).required()
 }).unknown(true);
@@ -253,7 +253,7 @@ const createGRNSchema = Joi.object({
     warehouseName: Joi.string().optional(),
     quantityOrdered: Joi.number().optional(),
     quantityReceived: Joi.number().positive().required(),
-    unitCost: Joi.number().positive().required(),
+    unitCost: Joi.number().min(0).required(),
     qualityStatus: Joi.string().valid('accepted', 'rejected').default('accepted')
   }).unknown(true)).min(1).required()
 }).unknown(true);

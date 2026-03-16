@@ -152,6 +152,17 @@ class PurchaseOrderService {
           if (line.unitCost === undefined || line.unitCost === null) {
             throw new Error('line.unitCost is required');
           }
+
+          // Validate received qty does not exceed pending qty
+          const [poLineResult] = await connection.execute(
+            'SELECT quantity_ordered, quantity_received FROM purchase_order_lines WHERE id = ?',
+            [line.poLineId]
+          );
+          if (poLineResult.length === 0) throw new Error(`PO line ${line.poLineId} not found`);
+          const pending = Number(poLineResult[0].quantity_ordered) - Number(poLineResult[0].quantity_received);
+          if (Number(line.quantityReceived) > pending) {
+            throw new Error(`Cannot receive ${line.quantityReceived} units — only ${pending} units pending for item`);
+          }
           
           const grnLineId = uuidv4();
           const lineTotal = Math.round(line.quantityReceived * line.unitCost * 100) / 100;
@@ -222,6 +233,11 @@ class PurchaseOrderService {
         try {
           await inventoryService.receiveStock(institutionId, update, userId);
           console.log('✓ Inventory updated successfully for item:', update.itemId);
+          // Auto-update item cost_price from actual purchase price
+          await db.query(
+            'UPDATE items SET cost_price = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?',
+            [update.unitCost, update.itemId, institutionId]
+          );
         } catch (invError) {
           console.error('✗ Event-sourced update failed, using direct DB update:', invError.message);
           // Fallback: Direct database update

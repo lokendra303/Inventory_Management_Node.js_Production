@@ -317,6 +317,31 @@ class AuthController {
     }
   }
 
+  async heartbeat(req, res) {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, error: 'Token required' });
+      }
+
+      const token = authHeader.substring(7);
+      const result = await authService.refreshToken(token);
+
+      res.json({
+        success: true,
+        data: { token: result.token }
+      });
+    } catch (error) {
+      // Only log as debug — heartbeat failures are expected when session truly expires
+      logger.debug('Heartbeat token refresh failed', { error: error.message });
+      res.status(401).json({
+        success: false,
+        error: 'SESSION_EXPIRED',
+        code: 'SESSION_EXPIRED'
+      });
+    }
+  }
+
   async updateProfile(req, res) {
     try {
       const { firstName, lastName, email } = req.body;

@@ -28,6 +28,9 @@ router.post('/temp-login',
 // POST /api/auth/refresh
 router.post('/refresh', authController.refreshToken);
 
+// POST /api/auth/heartbeat - called by frontend while user is active to silently refresh token
+router.post('/heartbeat', authController.heartbeat);
+
 // GET /api/auth/profile (PROTECTED)
 router.get('/profile', requireAuth, authController.getProfile);
 

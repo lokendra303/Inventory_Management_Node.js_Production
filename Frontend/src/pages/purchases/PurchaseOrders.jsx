@@ -87,6 +87,9 @@ const PurchaseOrders = () => {
           {record.status === 'sent' && (
             <Button size="small" onClick={() => confirmPO(record)}>Confirm</Button>
           )}
+          {(record.status === 'confirmed' || record.status === 'partially_received') && (
+            <Button size="small" type="primary" onClick={() => receivePO(record)}>Receive Goods</Button>
+          )}
           {(record.status === 'draft' || record.status === 'sent') && (
             <Button size="small" danger onClick={() => cancelPO(record)}>Cancel</Button>
           )}
@@ -784,7 +787,19 @@ const PurchaseOrders = () => {
                       <Form.Item 
                         name={[name, 'quantityReceived']} 
                         label="Receiving"
-                        rules={[{ required: true, message: 'Enter quantity' }]}
+                        rules={[
+                          { required: true, message: 'Enter quantity' },
+                          ({ getFieldValue }) => ({
+                            validator(_, value) {
+                              const lines = getFieldValue('lines');
+                              const ordered = lines?.[name]?.quantityOrdered || 0;
+                              if (value > ordered) {
+                                return Promise.reject(`Cannot exceed pending qty (${ordered})`);
+                              }
+                              return Promise.resolve();
+                            }
+                          })
+                        ]}
                       >
                         <InputNumber min={0} style={{ width: '100%' }} />
                       </Form.Item>

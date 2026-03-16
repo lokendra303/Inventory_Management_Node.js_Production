@@ -294,6 +294,7 @@ router.put('/purchase-orders/:poId/status',
 );
 
 router.post('/grn',
+  validate(schemas.createGRNSchema),
   requirePermission('inventory_receive'),
   validateInstitutionConsistency,
   auditLog('grn_created'),

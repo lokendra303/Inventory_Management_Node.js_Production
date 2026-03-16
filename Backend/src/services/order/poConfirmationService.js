@@ -132,6 +132,12 @@ class POConfirmationService {
             unitCost: line.unit_cost,
             poId: poId
           });
+
+          // Auto-update item cost_price from actual purchase price
+          await connection.execute(
+            'UPDATE items SET cost_price = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?',
+            [line.unit_cost, line.item_id, institutionId]
+          );
           
           inventoryUpdates.push({
             itemId: line.item_id,

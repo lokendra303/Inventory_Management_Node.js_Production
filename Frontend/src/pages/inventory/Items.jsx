@@ -889,7 +889,7 @@ const viewItem = async (item) => {
           </div>
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="sellingPrice" label="Selling Price" rules={[{ required: true, type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="sellingPrice" label="Selling Price" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   step={0.01} 
@@ -947,7 +947,7 @@ const viewItem = async (item) => {
           </div>
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="costPrice" label="Cost Price" rules={[{ required: true, type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="costPrice" label="Cost Price (can be set later via Purchase Order)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   step={0.01} 

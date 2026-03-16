@@ -163,28 +163,13 @@ class PurchaseOrderController {
         });
       }
 
-      // If status is being changed to 'confirmed', use the enhanced confirmation service
-      if (status === 'confirmed') {
-        const result = await poConfirmationService.processPOConfirmation(
-          req.institutionId, 
-          poId, 
-          req.user.userId
-        );
-        
-        return res.json({
-          success: true,
-          message: 'Purchase order confirmed and inventory updated successfully',
-          data: result
-        });
-      } else {
-        // For other status updates, use the original service
-        await purchaseOrderService.updatePOStatus(req.institutionId, poId, status, req.user.userId);
-        
-        return res.json({
-          success: true,
-          message: 'Purchase order status updated successfully'
-        });
-      }
+      // Always just update status — GRN is created manually via Receive Goods
+      await purchaseOrderService.updatePOStatus(req.institutionId, poId, status, req.user.userId);
+      
+      return res.json({
+        success: true,
+        message: 'Purchase order status updated successfully'
+      });
     } catch (error) {
       logger.error('Failed to update PO status', {
         error: error.message,
