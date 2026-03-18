@@ -12,7 +12,7 @@ import {
   message,
   DatePicker,
 } from "antd";
-import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined } from "@ant-design/icons";
+import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from "@ant-design/icons";
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
@@ -35,6 +35,8 @@ const SalesOrders = () => {
   const [cancellationReason, setCancellationReason] = useState('');
   const [selectedSOForCancel, setSelectedSOForCancel] = useState(null);
   const [form] = Form.useForm();
+  const [searchText, setSearchText] = useState('');
+  const [dateRange, setDateRange] = useState([null, null]);
 
   const fetchAllStocks = async () => {
     try {
@@ -378,7 +380,7 @@ const SalesOrders = () => {
     <div style={{ padding: "24px" }}>
       <h1>Sales Orders</h1>
       <Card>
-        <Space style={{ marginBottom: 16 }}>
+        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -386,10 +388,33 @@ const SalesOrders = () => {
           >
             Create SO
           </Button>
+          <Input
+            placeholder="Search by SO number or customer..."
+            prefix={<SearchOutlined />}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            style={{ width: 260 }}
+            allowClear
+          />
+          <DatePicker.RangePicker
+            placeholder={['From Date', 'To Date']}
+            onChange={dates => setDateRange(dates || [null, null])}
+            style={{ width: 240 }}
+          />
         </Space>
         <Table
           columns={columns}
-          dataSource={sos}
+          dataSource={sos.filter(so => {
+            const textMatch = !searchText ||
+              so.so_number?.toLowerCase().includes(searchText.toLowerCase()) ||
+              so.customer_name?.toLowerCase().includes(searchText.toLowerCase());
+            const [from, to] = dateRange;
+            const dateMatch = !from || !to || (() => {
+              const d = new Date(so.order_date);
+              return d >= from.startOf('day').toDate() && d <= to.endOf('day').toDate();
+            })();
+            return textMatch && dateMatch;
+          })}
           loading={loading}
           rowKey="id"
         />

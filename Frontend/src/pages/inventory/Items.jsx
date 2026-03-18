@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -31,6 +31,7 @@ const Items = () => {
   const [vendorOptions, setVendorOptions] = useState([]);
   const [itemHistory, setItemHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [searchText, setSearchText] = useState('');
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -398,10 +399,23 @@ const viewItem = async (item) => {
               Add Item
             </Button>
           )}
+          <Input
+            placeholder="Search by name, SKU or category..."
+            prefix={<SearchOutlined />}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            style={{ width: 300 }}
+            allowClear
+          />
         </Space>
         <Table 
           columns={columns} 
-          dataSource={items} 
+          dataSource={items.filter(item =>
+            !searchText ||
+            item.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+            item.sku?.toLowerCase().includes(searchText.toLowerCase()) ||
+            item.category?.toLowerCase().includes(searchText.toLowerCase())
+          )} 
           loading={loading}
           rowKey="id"
         />

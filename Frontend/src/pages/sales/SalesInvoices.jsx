@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Typography, Button, Table, Space, Tag, message, Modal, Input } from 'antd';
-import { FileTextOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined, PrinterOutlined, MailOutlined } from '@ant-design/icons';
+import { Card, Typography, Button, Table, Space, Tag, message, Modal, Input, DatePicker } from 'antd';
+import { FileTextOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -20,6 +20,8 @@ const SalesInvoices = () => {
   const [selectedInvoiceForEmail, setSelectedInvoiceForEmail] = useState(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
   const [modalMode, setModalMode] = useState('create');
+  const [searchText, setSearchText] = useState('');
+  const [dateRange, setDateRange] = useState([null, null]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchInvoices = useCallback(async () => {
@@ -401,9 +403,34 @@ const SalesInvoices = () => {
       </div>
 
       <Card>
+        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+          <Input
+            placeholder="Search by invoice number or customer..."
+            prefix={<SearchOutlined />}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            style={{ width: 300 }}
+            allowClear
+          />
+          <DatePicker.RangePicker
+            placeholder={['From Date', 'To Date']}
+            onChange={dates => setDateRange(dates || [null, null])}
+            style={{ width: 240 }}
+          />
+        </Space>
         <Table 
           columns={columns} 
-          dataSource={invoices}
+          dataSource={invoices.filter(inv => {
+            const textMatch = !searchText ||
+              inv.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) ||
+              inv.customer_name?.toLowerCase().includes(searchText.toLowerCase());
+            const [from, to] = dateRange;
+            const dateMatch = !from || !to || (() => {
+              const d = new Date(inv.invoice_date);
+              return d >= from.startOf('day').toDate() && d <= to.endOf('day').toDate();
+            })();
+            return textMatch && dateMatch;
+          })}
           loading={loading}
           pagination={{
             current: pagination.current,

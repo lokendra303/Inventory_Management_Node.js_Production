@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Statistic, Row, Col, Descriptions, Tag, Divider, Popconfirm } from 'antd';
-import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { usePermissions } from '../../components/common/PermissionWrapper';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -20,6 +20,7 @@ const Warehouses = () => {
   const [warehouseDetails, setWarehouseDetails] = useState(null);
   const [editingWarehouse, setEditingWarehouse] = useState(null);
   const [form] = Form.useForm();
+  const [searchText, setSearchText] = useState('');
 
   const canManageWarehouses = hasPermission('warehouse_management');
   const canManageWarehouseTypes = hasPermission('warehouse_type_management');
@@ -203,9 +204,21 @@ const fetchWarehouses = async () => {
             Add Warehouse
           </Button>
         )}
+        <Input
+          placeholder="Search by name or code..."
+          prefix={<SearchOutlined />}
+          value={searchText}
+          onChange={e => setSearchText(e.target.value)}
+          style={{ marginBottom: 16, maxWidth: 300, marginLeft: canManageWarehouses ? 8 : 0 }}
+          allowClear
+        />
         <Table 
           columns={columns} 
-          dataSource={warehouses} 
+          dataSource={warehouses.filter(wh =>
+            !searchText ||
+            wh.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+            wh.code?.toLowerCase().includes(searchText.toLowerCase())
+          )} 
           loading={loading}
           rowKey="id"
         />

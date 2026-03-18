@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker } from 'antd';
-import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined } from '@ant-design/icons';
+import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from '@ant-design/icons';
 import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -30,6 +30,8 @@ const PurchaseOrders = () => {
   const [selectedPOForCancel, setSelectedPOForCancel] = useState(null);
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
+  const [searchText, setSearchText] = useState('');
+  const [dateRange, setDateRange] = useState([null, null]);
   const [poHistory, setPOHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -449,7 +451,7 @@ const PurchaseOrders = () => {
     <div style={{ padding: '24px' }}>
       <h1>Purchase Orders</h1>
       <Card>
-        <Space style={{ marginBottom: 16 }}>
+        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
           <Button 
             type="primary" 
             icon={<PlusOutlined />}
@@ -457,10 +459,33 @@ const PurchaseOrders = () => {
           >
             Create PO
           </Button>
+          <Input
+            placeholder="Search by PO number or vendor..."
+            prefix={<SearchOutlined />}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            style={{ width: 260 }}
+            allowClear
+          />
+          <DatePicker.RangePicker
+            placeholder={['From Date', 'To Date']}
+            onChange={dates => setDateRange(dates || [null, null])}
+            style={{ width: 240 }}
+          />
         </Space>
         <Table 
           columns={columns} 
-          dataSource={pos} 
+          dataSource={pos.filter(po => {
+            const textMatch = !searchText ||
+              po.po_number?.toLowerCase().includes(searchText.toLowerCase()) ||
+              po.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
+            const [from, to] = dateRange;
+            const dateMatch = !from || !to || (() => {
+              const d = new Date(po.order_date);
+              return d >= from.startOf('day').toDate() && d <= to.endOf('day').toDate();
+            })();
+            return textMatch && dateMatch;
+          })} 
           loading={loading}
           rowKey="id"
         />

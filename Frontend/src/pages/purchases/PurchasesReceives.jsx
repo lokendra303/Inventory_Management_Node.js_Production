@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, InputNumber, Select, message, Tag, Tabs } from 'antd';
-import { PlusOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, Form, Input, InputNumber, Select, message, Tag, Tabs, DatePicker } from 'antd';
+import { PlusOutlined, EyeOutlined, FileTextOutlined, SearchOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatAmount } from '../../utils/numberFormat';
@@ -15,6 +15,8 @@ const PurchasesReceives = () => {
   const [selectedPO, setSelectedPO] = useState(null);
   const [viewingGRN, setViewingGRN] = useState(null);
   const [receiveForm] = Form.useForm();
+  const [searchText, setSearchText] = useState('');
+  const [dateRange, setDateRange] = useState([null, null]);
 
   // ── fetch all GRNs by loading confirmed/partially_received POs and their grns
   const fetchGRNs = async () => {
@@ -236,26 +238,81 @@ const PurchasesReceives = () => {
       key: 'pending',
       label: `Pending Receipts (${pendingPOs.length})`,
       children: (
-        <Table
-          columns={pendingColumns}
-          dataSource={pendingPOs}
-          loading={loading}
-          rowKey="id"
-          locale={{ emptyText: 'No pending receipts — all confirmed POs have been fully received' }}
-        />
+        <>
+          <Space style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+            <Input
+              placeholder="Search by PO number or vendor..."
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              style={{ width: 280 }}
+              allowClear
+            />
+            <DatePicker.RangePicker
+              placeholder={['From Date', 'To Date']}
+              onChange={dates => setDateRange(dates || [null, null])}
+              style={{ width: 240 }}
+            />
+          </Space>
+          <Table
+            columns={pendingColumns}
+            dataSource={pendingPOs.filter(po => {
+              const textMatch = !searchText ||
+                po.po_number?.toLowerCase().includes(searchText.toLowerCase()) ||
+                po.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
+              const [from, to] = dateRange;
+              const dateMatch = !from || !to || (() => {
+                const d = new Date(po.order_date);
+                return d >= from.startOf('day').toDate() && d <= to.endOf('day').toDate();
+              })();
+              return textMatch && dateMatch;
+            })}
+            loading={loading}
+            rowKey="id"
+            locale={{ emptyText: 'No pending receipts — all confirmed POs have been fully received' }}
+          />
+        </>
       )
     },
     {
       key: 'received',
       label: `Received (${grns.length})`,
       children: (
-        <Table
-          columns={grnColumns}
-          dataSource={grns}
-          loading={loading}
-          rowKey="id"
-          locale={{ emptyText: 'No goods received yet' }}
-        />
+        <>
+          <Space style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+            <Input
+              placeholder="Search by GRN number, PO number or vendor..."
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              style={{ width: 280 }}
+              allowClear
+            />
+            <DatePicker.RangePicker
+              placeholder={['From Date', 'To Date']}
+              onChange={dates => setDateRange(dates || [null, null])}
+              style={{ width: 240 }}
+            />
+          </Space>
+          <Table
+            columns={grnColumns}
+            dataSource={grns.filter(grn => {
+              const textMatch = !searchText ||
+                grn.grn_number?.toLowerCase().includes(searchText.toLowerCase()) ||
+                grn.po_number?.toLowerCase().includes(searchText.toLowerCase()) ||
+                grn.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
+              const [from, to] = dateRange;
+              const dateMatch = !from || !to || (() => {
+                const d = new Date(grn.receipt_date);
+                return d >= from.startOf('day').toDate() && d <= to.endOf('day').toDate();
+              })();
+              return textMatch && dateMatch;
+            })}
+            loading={loading}
+            rowKey="id"
+            locale={{ emptyText: 'No goods received yet' }}
+          />
+        </>
       )
     }
   ];
