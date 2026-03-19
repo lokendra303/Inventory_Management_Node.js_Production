@@ -354,24 +354,26 @@ class ItemService {
     }
 
     const item = items[0];
-    
-    // Parse dimensions if stored as JSON string
-    let dimensions = null;
-    if (item.dimensions) {
-      try {
-        dimensions = typeof item.dimensions === 'string' ? JSON.parse(item.dimensions) : item.dimensions;
-      } catch (e) {
-        dimensions = null;
-      }
-    }
-    
+
+    const safeParse = (val) => {
+      if (!val) return null;
+      if (typeof val === 'object') return val;
+      try { return JSON.parse(val); } catch { return null; }
+    };
+
+    const safeParseObj = (val) => {
+      if (!val) return {};
+      if (typeof val === 'object') return val;
+      try { return JSON.parse(val); } catch { return {}; }
+    };
+
     return {
       ...item,
       brand: item.brand_name || item.brand,
       manufacturer: item.manufacturer_name || item.manufacturer,
       unit: item.unit_name || item.unit,
-      custom_fields: JSON.parse(item.custom_fields || '{}'),
-      dimensions: dimensions,
+      custom_fields: safeParseObj(item.custom_fields),
+      dimensions: safeParse(item.dimensions),
       warehouse_ids: item.warehouse_ids ? item.warehouse_ids.split(',') : []
     };
   }
@@ -416,25 +418,19 @@ class ItemService {
 
     const items = await db.query(query, params);
 
-    return items.map(item => {
-      try {
-        return {
-          ...item,
-          brand: item.brand_name || item.brand,
-          manufacturer: item.manufacturer_name || item.manufacturer,
-          unit: item.unit_name || item.unit,
-          custom_fields: item.custom_fields ? JSON.parse(item.custom_fields) : {}
-        };
-      } catch (e) {
-        return {
-          ...item,
-          brand: item.brand_name || item.brand,
-          manufacturer: item.manufacturer_name || item.manufacturer,
-          unit: item.unit_name || item.unit,
-          custom_fields: {}
-        };
-      }
-    });
+    const safeParseObj = (val) => {
+      if (!val) return {};
+      if (typeof val === 'object') return val;
+      try { return JSON.parse(val); } catch { return {}; }
+    };
+
+    return items.map(item => ({
+      ...item,
+      brand: item.brand_name || item.brand,
+      manufacturer: item.manufacturer_name || item.manufacturer,
+      unit: item.unit_name || item.unit,
+      custom_fields: safeParseObj(item.custom_fields),
+    }));
   }
 
   async getItemFieldConfig(institutionId, itemType) {

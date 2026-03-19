@@ -5,8 +5,8 @@ class ItemActivityService {
   async getItemActivitySummary(institutionId, itemId, warehouseId = null) {
     try {
       const whereClause = warehouseId 
-        ? 'WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?' 
-        : 'WHERE institution_id = ? AND item_id = ?';
+        ? 'WHERE ip.institution_id = ? AND ip.item_id = ? AND ip.warehouse_id = ?' 
+        : 'WHERE ip.institution_id = ? AND ip.item_id = ?';
       const params = warehouseId ? [institutionId, itemId, warehouseId] : [institutionId, itemId];
 
       // Get current stock
@@ -25,10 +25,10 @@ class ItemActivityService {
           'PURCHASE' as operation_type,
           'RECEIVED' as sub_type,
           COUNT(*) as transaction_count,
-          SUM(JSON_EXTRACT(event_data, '$.quantity')) as total_quantity,
-          AVG(JSON_EXTRACT(event_data, '$.unitCost')) as avg_unit_cost,
-          MIN(created_at) as first_date,
-          MAX(created_at) as last_date,
+          SUM(JSON_EXTRACT(es.event_data, '$.quantity')) as total_quantity,
+          AVG(JSON_EXTRACT(es.event_data, '$.unitCost')) as avg_unit_cost,
+          MIN(es.created_at) as first_date,
+          MAX(es.created_at) as last_date,
           ip.warehouse_id,
           w.name as warehouse_name
         FROM event_store es
@@ -47,10 +47,10 @@ class ItemActivityService {
           'SALES' as operation_type,
           'RESERVED' as sub_type,
           COUNT(*) as transaction_count,
-          SUM(JSON_EXTRACT(event_data, '$.quantity')) as total_quantity,
-          AVG(JSON_EXTRACT(event_data, '$.unitPrice')) as avg_unit_cost,
-          MIN(created_at) as first_date,
-          MAX(created_at) as last_date,
+          SUM(JSON_EXTRACT(es.event_data, '$.quantity')) as total_quantity,
+          AVG(JSON_EXTRACT(es.event_data, '$.unitPrice')) as avg_unit_cost,
+          MIN(es.created_at) as first_date,
+          MAX(es.created_at) as last_date,
           ip.warehouse_id,
           w.name as warehouse_name
         FROM event_store es
@@ -69,10 +69,10 @@ class ItemActivityService {
           'SALES' as operation_type,
           'SHIPPED' as sub_type,
           COUNT(*) as transaction_count,
-          SUM(JSON_EXTRACT(event_data, '$.quantity')) as total_quantity,
-          AVG(JSON_EXTRACT(event_data, '$.unitPrice')) as avg_unit_cost,
-          MIN(created_at) as first_date,
-          MAX(created_at) as last_date,
+          SUM(JSON_EXTRACT(es.event_data, '$.quantity')) as total_quantity,
+          AVG(JSON_EXTRACT(es.event_data, '$.unitPrice')) as avg_unit_cost,
+          MIN(es.created_at) as first_date,
+          MAX(es.created_at) as last_date,
           ip.warehouse_id,
           w.name as warehouse_name
         FROM event_store es
@@ -89,20 +89,20 @@ class ItemActivityService {
 
         SELECT 
           'ADJUSTMENT' as operation_type,
-          adjustment_type as sub_type,
+          ia.adjustment_type as sub_type,
           COUNT(*) as transaction_count,
-          SUM(CASE WHEN adjustment_type = 'increase' THEN quantity_change ELSE -quantity_change END) as total_quantity,
+          SUM(CASE WHEN ia.adjustment_type = 'increase' THEN ia.quantity_change ELSE -ia.quantity_change END) as total_quantity,
           NULL as avg_unit_cost,
-          MIN(created_at) as first_date,
-          MAX(created_at) as last_date,
-          warehouse_id,
+          MIN(ia.created_at) as first_date,
+          MAX(ia.created_at) as last_date,
+          ia.warehouse_id,
           w.name as warehouse_name
         FROM inventory_adjustments ia
         LEFT JOIN warehouses w ON ia.warehouse_id = w.id
         WHERE ia.institution_id = ? 
           AND ia.item_id = ?
           ${warehouseId ? 'AND ia.warehouse_id = ?' : ''}
-        GROUP BY ia.warehouse_id, w.name, adjustment_type
+        GROUP BY ia.warehouse_id, w.name, ia.adjustment_type
 
         UNION ALL
 
@@ -110,10 +110,10 @@ class ItemActivityService {
           'RETURN' as operation_type,
           'SALE_RETURNED' as sub_type,
           COUNT(*) as transaction_count,
-          SUM(JSON_EXTRACT(event_data, '$.quantity')) as total_quantity,
-          AVG(JSON_EXTRACT(event_data, '$.unitPrice')) as avg_unit_cost,
-          MIN(created_at) as first_date,
-          MAX(created_at) as last_date,
+          SUM(JSON_EXTRACT(es.event_data, '$.quantity')) as total_quantity,
+          AVG(JSON_EXTRACT(es.event_data, '$.unitPrice')) as avg_unit_cost,
+          MIN(es.created_at) as first_date,
+          MAX(es.created_at) as last_date,
           ip.warehouse_id,
           w.name as warehouse_name
         FROM event_store es
