@@ -262,18 +262,18 @@ const Items = () => {
   };
 
 const viewItem = async (item) => {
-    setViewingItem(item);
     setViewModalVisible(true);
-    
-    // Fetch item transaction history
     setLoadingHistory(true);
     try {
-      const response = await apiService.get(`/inventory/item-logs/${item.id}`);
-      if (response.success) {
-        setItemHistory(response.data || []);
-      }
+      const [itemRes, historyRes] = await Promise.allSettled([
+        apiService.get(`/items/${item.id}`),
+        apiService.get(`/inventory/item-logs/${item.id}`)
+      ]);
+      setViewingItem(itemRes.status === 'fulfilled' && itemRes.value.success ? itemRes.value.data : item);
+      setItemHistory(historyRes.status === 'fulfilled' && historyRes.value.success ? historyRes.value.data || [] : []);
     } catch (error) {
-      console.error('Failed to fetch item history:', error);
+      console.error('Failed to fetch item details:', error);
+      setViewingItem(item);
       setItemHistory([]);
     } finally {
       setLoadingHistory(false);
@@ -1169,21 +1169,9 @@ const viewItem = async (item) => {
       <Modal
         title="View Item Details"
         open={viewModalVisible}
-        onCancel={() => {
-          setViewModalVisible(false);
-          setViewingItem(null);
-          setItemHistory([]);
-        }}
-        footer={[
-          <Button key="close" onClick={() => {
-            setViewModalVisible(false);
-            setViewingItem(null);
-            setItemHistory([]);
-          }}>
-            Close
-          </Button>
-        ]}
-        width={900}
+        onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); }}
+        footer={[<Button key="close" onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); }}>Close</Button>]}
+        width={960}
       >
         {viewingItem && (
           <div>
@@ -1198,17 +1186,34 @@ const viewItem = async (item) => {
                     <p><strong>Unit:</strong> {viewingItem.unit}</p>
                     <p><strong>Brand:</strong> {viewingItem.brand || 'N/A'}</p>
                     <p><strong>Manufacturer:</strong> {viewingItem.manufacturer || 'N/A'}</p>
+                    <p><strong>Barcode:</strong> {viewingItem.barcode || 'N/A'}</p>
+                    <p><strong>HSN Code:</strong> {viewingItem.hsn_code || 'N/A'}</p>
+                    <p><strong>Status:</strong> <span style={{ color: viewingItem.status === 'active' ? '#52c41a' : '#ff4d4f' }}>{viewingItem.status}</span></p>
                   </Col>
                   <Col span={12}>
                     <p><strong>Cost Price:</strong> {viewingItem.cost_price ? formatPrice(viewingItem.cost_price, currency, 'USD') : 'N/A'}</p>
                     <p><strong>Selling Price:</strong> {viewingItem.selling_price ? formatPrice(viewingItem.selling_price, currency, 'USD') : 'N/A'}</p>
                     <p><strong>MRP:</strong> {viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'}</p>
                     <p><strong>Tax Rate:</strong> {viewingItem.tax_rate ? `${viewingItem.tax_rate}%` : 'N/A'}</p>
-                    <p><strong>On Hand Stock:</strong> <span style={{ fontWeight: 'bold', color: (viewingItem.current_stock || 0) <= (viewingItem.min_stock_level || 0) ? '#ff4d4f' : '#52c41a' }}>{(() => { const stock = viewingItem.current_stock || 0; return stock % 1 === 0 ? Math.floor(stock) : stock.toFixed(2); })()}</span></p>
-                    <p><strong>Min Stock Level:</strong> {viewingItem.min_stock_level || 'N/A'}</p>
-                    <p><strong>Max Stock Level:</strong> {viewingItem.max_stock_level || 'N/A'}</p>
-                    <p><strong>Opening Stock:</strong> {viewingItem.opening_stock || 'N/A'}</p>
-                    <p><strong>Status:</strong> <span style={{ color: viewingItem.status === 'active' ? '#52c41a' : '#ff4d4f' }}>{viewingItem.status}</span></p>
+                    <p><strong>Tax Type:</strong> {viewingItem.tax_type || 'N/A'}</p>
+                    <p><strong>On Hand Stock:</strong> <span style={{ fontWeight: 'bold', color: (viewingItem.current_stock || 0) <= (viewingItem.min_stock_level || 0) ? '#ff4d4f' : '#52c41a' }}>{(() => { const s = viewingItem.current_stock || 0; return s % 1 === 0 ? Math.floor(s) : s.toFixed(2); })()}</span></p>
+                    <p><strong>Min Stock Level:</strong> {viewingItem.min_stock_level ?? 'N/A'}</p>
+                    <p><strong>Max Stock Level:</strong> {viewingItem.max_stock_level ?? 'N/A'}</p>
+                    <p><strong>Opening Stock:</strong> {viewingItem.opening_stock ?? 'N/A'}</p>
+                    <p><strong>Opening Value:</strong> {viewingItem.opening_value ? formatPrice(viewingItem.opening_value, currency, 'USD') : 'N/A'}</p>
+                    <p><strong>Valuation Method:</strong> {viewingItem.valuation_method || 'N/A'}</p>
+                  </Col>
+                </Row>
+                <Row gutter={16} style={{ marginTop: 8 }}>
+                  <Col span={12}>
+                    <p><strong>Weight:</strong> {viewingItem.weight ? `${viewingItem.weight} ${viewingItem.weight_unit || 'kg'}` : 'N/A'}</p>
+                    <p><strong>Dimensions (L×W×H):</strong> {viewingItem.dimensions ? `${viewingItem.dimensions.length || 0} × ${viewingItem.dimensions.width || 0} × ${viewingItem.dimensions.height || 0}` : 'N/A'}</p>
+                  </Col>
+                  <Col span={12}>
+                    <p><strong>UPC:</strong> {viewingItem.upc || 'N/A'}</p>
+                    <p><strong>EAN:</strong> {viewingItem.ean || 'N/A'}</p>
+                    <p><strong>ISBN:</strong> {viewingItem.isbn || 'N/A'}</p>
+                    <p><strong>MPN:</strong> {viewingItem.mpn || 'N/A'}</p>
                   </Col>
                 </Row>
               </Col>
@@ -1216,30 +1221,9 @@ const viewItem = async (item) => {
                 <div style={{ textAlign: 'center' }}>
                   <p><strong>Item Image</strong></p>
                   {viewingItem.image ? (
-                    <img 
-                      src={viewingItem.image} 
-                      alt={viewingItem.name}
-                      style={{ 
-                        width: '150px', 
-                        height: '150px', 
-                        objectFit: 'cover',
-                        border: '1px solid #d9d9d9',
-                        borderRadius: '6px'
-                      }} 
-                    />
+                    <img src={viewingItem.image} alt={viewingItem.name} style={{ width: '150px', height: '150px', objectFit: 'cover', border: '1px solid #d9d9d9', borderRadius: '6px' }} />
                   ) : (
-                    <div style={{
-                      width: '150px',
-                      height: '150px',
-                      border: '2px dashed #d9d9d9',
-                      borderRadius: '6px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#999',
-                      fontSize: '12px',
-                      margin: '0 auto'
-                    }}>
+                    <div style={{ width: '150px', height: '150px', border: '2px dashed #d9d9d9', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '12px', margin: '0 auto' }}>
                       No Image Available
                     </div>
                   )}
@@ -1247,10 +1231,9 @@ const viewItem = async (item) => {
               </Col>
             </Row>
             {viewingItem.description && (
-              <Row gutter={16} style={{ marginTop: 16 }}>
+              <Row gutter={16} style={{ marginTop: 8 }}>
                 <Col span={24}>
-                  <p><strong>Description:</strong></p>
-                  <p>{viewingItem.description}</p>
+                  <p><strong>Description:</strong> {viewingItem.description}</p>
                 </Col>
               </Row>
             )}
