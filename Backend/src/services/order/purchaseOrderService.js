@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const inventoryService = require('../inventory/inventoryService');
+const auditLogService = require('../audit/auditLogService');
 
 class PurchaseOrderService {
   async createPurchaseOrder(institutionId, poData, userId) {
@@ -501,18 +502,41 @@ class PurchaseOrderService {
       throw new Error('Cancellation reason is required');
     }
 
-    const result = await db.query(
+    // Fetch current PO to validate status and capture previous state for audit
+    const [existing] = await db.query(
+      'SELECT status, po_number FROM purchase_orders WHERE institution_id = ? AND id = ?',
+      [institutionId, poId]
+    );
+
+    if (!existing) {
+      throw new Error('Purchase order not found');
+    }
+
+    const allowedStatuses = ['draft', 'sent', 'confirmed'];
+    if (!allowedStatuses.includes(existing.status)) {
+      throw new Error(`Cannot cancel a purchase order with status '${existing.status}'. Only draft, sent, or confirmed orders can be cancelled.`);
+    }
+
+    await db.query(
       `UPDATE purchase_orders 
        SET status = 'cancelled', cancellation_reason = ?, updated_at = NOW() 
-       WHERE institution_id = ? AND id = ? AND status IN ('draft', 'sent')`,
+       WHERE institution_id = ? AND id = ?`,
       [cancellationReason.trim(), institutionId, poId]
     );
 
-    if (result.affectedRows === 0) {
-      throw new Error('Purchase order not found or cannot be cancelled');
-    }
+    // Record in audit log so history is preserved
+    await auditLogService.log(
+      institutionId,
+      'purchase_order',
+      poId,
+      'purchase_order_cancelled',
+      { previousStatus: existing.status, cancellationReason: cancellationReason.trim() },
+      userId,
+      null,
+      `PO ${existing.po_number} cancelled from '${existing.status}' status. Reason: ${cancellationReason.trim()}`
+    );
 
-    logger.info('Purchase order cancelled', { poId, institutionId, userId });
+    logger.info('Purchase order cancelled', { poId, institutionId, previousStatus: existing.status, userId });
     return true;
   }
 }

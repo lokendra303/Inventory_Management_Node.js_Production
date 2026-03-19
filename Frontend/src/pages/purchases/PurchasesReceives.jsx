@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, InputNumber, Select, message, Tag, Tabs, DatePicker } from 'antd';
-import { PlusOutlined, EyeOutlined, FileTextOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, FileTextOutlined, SearchOutlined, StopOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatAmount } from '../../utils/numberFormat';
@@ -19,6 +19,10 @@ const PurchasesReceives = () => {
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate] = useState(null);
   const [statusFilter, setStatusFilter] = useState(null);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancellingPO, setCancellingPO] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   // ── fetch all GRNs by loading confirmed/partially_received POs and their grns
   const fetchGRNs = async () => {
@@ -144,6 +148,36 @@ const PurchasesReceives = () => {
     }
   };
 
+  const openCancelModal = (po) => {
+    setCancellingPO(po);
+    setCancelReason('');
+    setCancelModalVisible(true);
+  };
+
+  const handleCancelPO = async () => {
+    if (!cancelReason.trim()) {
+      message.error('Please enter a cancellation reason');
+      return;
+    }
+    try {
+      setCancelLoading(true);
+      const response = await apiService.post(`/purchase-orders/${cancellingPO.id}/cancel`, {
+        cancellationReason: cancelReason.trim()
+      });
+      if (response.success) {
+        message.success(`PO ${cancellingPO.po_number} cancelled successfully`);
+        setCancelModalVisible(false);
+        setCancellingPO(null);
+        setCancelReason('');
+        fetchGRNs();
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Failed to cancel purchase order');
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
   const viewGRN = async (grn) => {
     try {
       const response = await apiService.get(`/grn/${grn.id}`);
@@ -228,9 +262,21 @@ const PurchasesReceives = () => {
       title: 'Actions',
       key: 'actions',
       render: (_, record) => (
-        <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => openReceiveModal(record)}>
-          Receive Goods
-        </Button>
+        <Space>
+          <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => openReceiveModal(record)}>
+            Receive Goods
+          </Button>
+          {record.status === 'confirmed' && (
+            <Button
+              size="small"
+              danger
+              icon={<StopOutlined />}
+              onClick={() => openCancelModal(record)}
+            >
+              Cancel PO
+            </Button>
+          )}
+        </Space>
       )
     }
   ];
@@ -470,6 +516,34 @@ const PurchasesReceives = () => {
             </Space>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Cancel PO Modal */}
+      <Modal
+        title={`Cancel Purchase Order — ${cancellingPO?.po_number}`}
+        open={cancelModalVisible}
+        onCancel={() => { setCancelModalVisible(false); setCancellingPO(null); setCancelReason(''); }}
+        footer={[
+          <Button key="back" onClick={() => { setCancelModalVisible(false); setCancellingPO(null); setCancelReason(''); }}>
+            Go Back
+          </Button>,
+          <Button key="confirm" danger type="primary" loading={cancelLoading} onClick={handleCancelPO}>
+            Confirm Cancellation
+          </Button>
+        ]}
+      >
+        <p style={{ marginBottom: 12 }}>
+          This PO is <strong>confirmed</strong> but no goods have been received yet.
+          Cancelling will mark it as <strong>cancelled</strong> and preserve it in order history and audit log.
+        </p>
+        <Input.TextArea
+          rows={3}
+          placeholder="Enter cancellation reason (required)"
+          value={cancelReason}
+          onChange={e => setCancelReason(e.target.value)}
+          maxLength={500}
+          showCount
+        />
       </Modal>
 
       {/* View GRN Modal */}
