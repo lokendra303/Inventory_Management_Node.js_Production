@@ -145,34 +145,36 @@ class InventoryProjectionService {
       
       // If stock was reserved, reduce from reserved; otherwise reduce from available
       if (currentReserved >= quantityToShip) {
-        // Stock was reserved, reduce from reserved
         await db.query(
           `UPDATE inventory_projections 
            SET quantity_on_hand = quantity_on_hand - ?,
                quantity_reserved = quantity_reserved - ?,
-               total_value = (quantity_on_hand - ?) * average_cost,
                last_movement_date = NOW(),
                version = version + 1
            WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [quantityToShip, quantityToShip, quantityToShip, institutionId, itemId, warehouseId]
+          [quantityToShip, quantityToShip, institutionId, itemId, warehouseId]
         );
       } else {
-        // Stock was not fully reserved, reduce from available
-        const fromReserved = currentReserved;
         const fromAvailable = quantityToShip - currentReserved;
-        
         await db.query(
           `UPDATE inventory_projections 
            SET quantity_on_hand = quantity_on_hand - ?,
                quantity_reserved = 0,
                quantity_available = quantity_available - ?,
-               total_value = (quantity_on_hand - ?) * average_cost,
                last_movement_date = NOW(),
                version = version + 1
            WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [quantityToShip, fromAvailable, quantityToShip, institutionId, itemId, warehouseId]
+          [quantityToShip, fromAvailable, institutionId, itemId, warehouseId]
         );
       }
+
+      // Always recalculate total_value after quantity update
+      await db.query(
+        `UPDATE inventory_projections
+         SET total_value = quantity_on_hand * average_cost
+         WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+        [institutionId, itemId, warehouseId]
+      );
     }
   }
 
@@ -222,6 +224,14 @@ class InventoryProjectionService {
        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
       [quantity, quantity, quantity, institutionId, itemId, warehouseId]
     );
+
+    // Recalculate total_value using updated quantity
+    await db.query(
+      `UPDATE inventory_projections
+       SET total_value = quantity_on_hand * average_cost
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+      [institutionId, itemId, warehouseId]
+    );
   }
 
   async handleTransferIn(institutionId, eventData) {
@@ -250,6 +260,14 @@ class InventoryProjectionService {
          WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
         [quantity, quantity, quantity, institutionId, itemId, warehouseId]
       );
+
+      // Recalculate total_value using updated quantity
+      await db.query(
+        `UPDATE inventory_projections
+         SET total_value = quantity_on_hand * average_cost
+         WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+        [institutionId, itemId, warehouseId]
+      );
     }
   }
 
@@ -263,23 +281,23 @@ class InventoryProjectionService {
 
   async getWarehouseInventory(institutionId, warehouseId) {
     return await db.query(
-      `SELECT ip.*, i.sku, i.name as item_name, u.name as unit, i.cost_price, i.selling_price, i.mrp
+      `SELECT ip.*, i.sku, i.name as item_name, i.status, u.name as unit, i.cost_price, i.selling_price, i.mrp
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        LEFT JOIN units u ON i.unit = u.id
-       WHERE ip.institution_id = ? AND ip.warehouse_id = ?
+       WHERE ip.institution_id = ? AND ip.warehouse_id = ? AND i.status = 'active'
        ORDER BY i.name`,
       [institutionId, warehouseId]
     );
   }
 
   async getInstitutionInventory(institutionId, limit = 100, offset = 0, warehouseId = null, accessibleWarehouseIds = []) {
-    let query = `SELECT ip.*, i.sku, i.name as item_name, u.name as unit, i.cost_price, i.selling_price, i.mrp, w.name as warehouse_name
+    let query = `SELECT ip.*, i.sku, i.name as item_name, i.status, u.name as unit, i.cost_price, i.selling_price, i.mrp, w.name as warehouse_name, w.status as warehouse_status
        FROM inventory_projections ip
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
        LEFT JOIN units u ON i.unit = u.id
-       WHERE ip.institution_id = ?`;
+       WHERE ip.institution_id = ? AND i.status = 'active' AND w.status = 'active'`;
     const params = [institutionId];
 
     // Filter by specific warehouse if provided
@@ -306,7 +324,7 @@ class InventoryProjectionService {
        JOIN items i ON ip.item_id = i.id
        JOIN warehouses w ON ip.warehouse_id = w.id
        LEFT JOIN units u ON i.unit = u.id
-       WHERE ip.institution_id = ? AND ip.quantity_available <= ?`;
+       WHERE ip.institution_id = ? AND ip.quantity_available <= ? AND i.status = 'active' AND w.status = 'active'`;
     const params = [institutionId, threshold];
 
     // Filter by specific warehouse if provided
@@ -330,7 +348,11 @@ class InventoryProjectionService {
   async getDashboardStats(institutionId) {
     const [totalValueResult, totalItemsResult, lowStockResult] = await Promise.all([
       db.query(
-        'SELECT SUM(total_value) as total_value FROM inventory_projections WHERE institution_id = ?',
+        `SELECT SUM(ip.total_value) as total_value
+         FROM inventory_projections ip
+         JOIN items i ON ip.item_id = i.id
+         JOIN warehouses w ON ip.warehouse_id = w.id
+         WHERE ip.institution_id = ? AND i.status = 'active' AND w.status = 'active'`,
         [institutionId]
       ),
       db.query(
@@ -338,7 +360,11 @@ class InventoryProjectionService {
         [institutionId]
       ),
       db.query(
-        'SELECT COUNT(*) as low_stock_count FROM inventory_projections WHERE institution_id = ? AND quantity_available <= 10',
+        `SELECT COUNT(*) as low_stock_count
+         FROM inventory_projections ip
+         JOIN items i ON ip.item_id = i.id
+         JOIN warehouses w ON ip.warehouse_id = w.id
+         WHERE ip.institution_id = ? AND ip.quantity_available <= 10 AND i.status = 'active' AND w.status = 'active'`,
         [institutionId]
       )
     ]);

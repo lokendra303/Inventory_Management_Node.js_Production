@@ -3,8 +3,7 @@ import { Card, Row, Col, Statistic, Table, Alert, Spin } from 'antd';
 import { 
   ShoppingCartOutlined, 
   InboxOutlined, 
-  WarningOutlined,
-  DollarOutlined 
+  WarningOutlined
 } from '@ant-design/icons';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import apiService from '../../services/apiService';
@@ -15,7 +14,6 @@ const Dashboard = () => {
   const { currency, formatCurrency } = useCurrency();
   const [dashboardData, setDashboardData] = useState({
     totalItems: 0,
-    totalValue: 0,
     lowStockItems: [],
     lowStockCount: 0,
     activeWarehouses: 0,
@@ -62,11 +60,6 @@ const Dashboard = () => {
         const reserved = parseFloat(item.quantity_reserved) || 0;
         return sum + reserved;
       }, 0);
-      const totalValue = inventory.reduce((sum, item) => {
-        const quantity = parseFloat(item.quantity_on_hand) || 0;
-        const avgCost = parseFloat(item.average_cost) || 0;
-        return sum + (quantity * avgCost);
-      }, 0);
       const activeWarehouses = warehouses.filter(w => w.status === 'active').length;
       const inactiveWarehouses = warehouses.filter(w => w.status === 'inactive').length;
       const totalItemsCount = items.length;
@@ -81,7 +74,6 @@ const Dashboard = () => {
         totalQuantity,
         totalAvailable,
         totalReserved,
-        totalValue,
         lowStockItems: lowStockItems.slice(0, 10),
         lowStockCount: lowStockItems.length,
         activeWarehouses,
@@ -204,17 +196,7 @@ const Dashboard = () => {
       </Row>
 
       <Row gutter={16} style={{ marginBottom: '24px' }}>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Total Inventory Value"
-              value={formatCurrency(dashboardData.totalValue, false)}
-              prefix={currency}
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
+        <Col span={8}>
           <Card>
             <Statistic
               title="Low Stock Items"
@@ -224,7 +206,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={8}>
           <Card>
             <Statistic
               title="Active Warehouses"
@@ -234,7 +216,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={8}>
           <Card>
             <Statistic
               title="Inactive Warehouses"
