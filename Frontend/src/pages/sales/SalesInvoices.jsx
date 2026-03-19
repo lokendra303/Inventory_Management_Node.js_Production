@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Typography, Button, Table, Space, Tag, message, Modal, Input, DatePicker } from 'antd';
+import { Card, Typography, Button, Table, Space, Tag, message, Modal, Input, DatePicker, Select } from 'antd';
 import { FileTextOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
@@ -21,7 +21,9 @@ const SalesInvoices = () => {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
   const [modalMode, setModalMode] = useState('create');
   const [searchText, setSearchText] = useState('');
-  const [dateRange, setDateRange] = useState([null, null]);
+  const [fromDate, setFromDate] = useState(null);
+  const [toDate, setToDate] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(null);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchInvoices = useCallback(async () => {
@@ -412,11 +414,33 @@ const SalesInvoices = () => {
             style={{ width: 300 }}
             allowClear
           />
-          <DatePicker.RangePicker
-            placeholder={['From Date', 'To Date']}
-            onChange={dates => setDateRange(dates || [null, null])}
-            style={{ width: 240 }}
+          <DatePicker
+            placeholder="From Date"
+            value={fromDate}
+            onChange={date => setFromDate(date)}
+            style={{ width: 150 }}
+            allowClear
           />
+          <DatePicker
+            placeholder="To Date"
+            value={toDate}
+            onChange={date => setToDate(date)}
+            style={{ width: 150 }}
+            allowClear
+          />
+          <Select
+            placeholder="All Statuses"
+            value={statusFilter}
+            onChange={val => setStatusFilter(val)}
+            style={{ width: 160 }}
+            allowClear
+          >
+            <Select.Option value="draft">Draft</Select.Option>
+            <Select.Option value="posted">Posted</Select.Option>
+            <Select.Option value="partially_paid">Partially Paid</Select.Option>
+            <Select.Option value="paid">Paid</Select.Option>
+            <Select.Option value="cancelled">Cancelled</Select.Option>
+          </Select>
         </Space>
         <Table 
           columns={columns} 
@@ -424,12 +448,12 @@ const SalesInvoices = () => {
             const textMatch = !searchText ||
               inv.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) ||
               inv.customer_name?.toLowerCase().includes(searchText.toLowerCase());
-            const [from, to] = dateRange;
-            const dateMatch = !from || !to || (() => {
+            const dateMatch = (!fromDate || !toDate) || (() => {
               const d = new Date(inv.invoice_date);
-              return d >= from.startOf('day').toDate() && d <= to.endOf('day').toDate();
+              return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
             })();
-            return textMatch && dateMatch;
+            const statusMatch = !statusFilter || inv.status === statusFilter;
+            return textMatch && dateMatch && statusMatch;
           })}
           loading={loading}
           pagination={{

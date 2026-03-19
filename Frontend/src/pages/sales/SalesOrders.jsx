@@ -36,7 +36,9 @@ const SalesOrders = () => {
   const [selectedSOForCancel, setSelectedSOForCancel] = useState(null);
   const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
-  const [dateRange, setDateRange] = useState([null, null]);
+  const [fromDate, setFromDate] = useState(null);
+  const [toDate, setToDate] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(null);
 
   const fetchAllStocks = async () => {
     try {
@@ -396,11 +398,33 @@ const SalesOrders = () => {
             style={{ width: 260 }}
             allowClear
           />
-          <DatePicker.RangePicker
-            placeholder={['From Date', 'To Date']}
-            onChange={dates => setDateRange(dates || [null, null])}
-            style={{ width: 240 }}
+          <DatePicker
+            placeholder="From Date"
+            value={fromDate}
+            onChange={date => setFromDate(date)}
+            style={{ width: 150 }}
+            allowClear
           />
+          <DatePicker
+            placeholder="To Date"
+            value={toDate}
+            onChange={date => setToDate(date)}
+            style={{ width: 150 }}
+            allowClear
+          />
+          <Select
+            placeholder="All Statuses"
+            value={statusFilter}
+            onChange={val => setStatusFilter(val)}
+            style={{ width: 160 }}
+            allowClear
+          >
+            <Select.Option value="draft">Draft</Select.Option>
+            <Select.Option value="confirmed">Confirmed</Select.Option>
+            <Select.Option value="shipped">Shipped</Select.Option>
+            <Select.Option value="delivered">Delivered</Select.Option>
+            <Select.Option value="cancelled">Cancelled</Select.Option>
+          </Select>
         </Space>
         <Table
           columns={columns}
@@ -408,12 +432,12 @@ const SalesOrders = () => {
             const textMatch = !searchText ||
               so.so_number?.toLowerCase().includes(searchText.toLowerCase()) ||
               so.customer_name?.toLowerCase().includes(searchText.toLowerCase());
-            const [from, to] = dateRange;
-            const dateMatch = !from || !to || (() => {
+            const dateMatch = (!fromDate || !toDate) || (() => {
               const d = new Date(so.order_date);
-              return d >= from.startOf('day').toDate() && d <= to.endOf('day').toDate();
+              return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
             })();
-            return textMatch && dateMatch;
+            const statusMatch = !statusFilter || so.status === statusFilter;
+            return textMatch && dateMatch && statusMatch;
           })}
           loading={loading}
           rowKey="id"

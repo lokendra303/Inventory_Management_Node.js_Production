@@ -31,7 +31,9 @@ const PurchaseOrders = () => {
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
   const [searchText, setSearchText] = useState('');
-  const [dateRange, setDateRange] = useState([null, null]);
+  const [fromDate, setFromDate] = useState(null);
+  const [toDate, setToDate] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(null);
   const [poHistory, setPOHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -467,11 +469,34 @@ const PurchaseOrders = () => {
             style={{ width: 260 }}
             allowClear
           />
-          <DatePicker.RangePicker
-            placeholder={['From Date', 'To Date']}
-            onChange={dates => setDateRange(dates || [null, null])}
-            style={{ width: 240 }}
+          <DatePicker
+            placeholder="From Date"
+            value={fromDate}
+            onChange={date => setFromDate(date)}
+            style={{ width: 150 }}
+            allowClear
           />
+          <DatePicker
+            placeholder="To Date"
+            value={toDate}
+            onChange={date => setToDate(date)}
+            style={{ width: 150 }}
+            allowClear
+          />
+          <Select
+            placeholder="All Statuses"
+            value={statusFilter}
+            onChange={val => setStatusFilter(val)}
+            style={{ width: 180 }}
+            allowClear
+          >
+            <Select.Option value="draft">Draft</Select.Option>
+            <Select.Option value="sent">Sent</Select.Option>
+            <Select.Option value="confirmed">Confirmed</Select.Option>
+            <Select.Option value="partially_received">Partially Received</Select.Option>
+            <Select.Option value="received">Received</Select.Option>
+            <Select.Option value="cancelled">Cancelled</Select.Option>
+          </Select>
         </Space>
         <Table 
           columns={columns} 
@@ -479,12 +504,12 @@ const PurchaseOrders = () => {
             const textMatch = !searchText ||
               po.po_number?.toLowerCase().includes(searchText.toLowerCase()) ||
               po.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
-            const [from, to] = dateRange;
-            const dateMatch = !from || !to || (() => {
+            const dateMatch = (!fromDate || !toDate) || (() => {
               const d = new Date(po.order_date);
-              return d >= from.startOf('day').toDate() && d <= to.endOf('day').toDate();
+              return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
             })();
-            return textMatch && dateMatch;
+            const statusMatch = !statusFilter || po.status === statusFilter;
+            return textMatch && dateMatch && statusMatch;
           })} 
           loading={loading}
           rowKey="id"

@@ -6,7 +6,6 @@ import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { useLocation } from 'react-router-dom';
 import { formatNumber } from '../../utils/currency.js';
 
-const { RangePicker } = DatePicker;
 const { TabPane } = Tabs;
 
 const Reports = () => {
@@ -22,6 +21,17 @@ const Reports = () => {
   const [dashboardData, setDashboardData] = useState({});
   const [activeTab, setActiveTab] = useState('inventory');
   const [viewModal, setViewModal] = useState({ visible: false, data: null, type: null });
+  const [purchaseFromDate, setPurchaseFromDate] = useState(null);
+  const [purchaseToDate, setPurchaseToDate] = useState(null);
+  const [purchaseStatus, setPurchaseStatus] = useState(null);
+  const [salesFromDate, setSalesFromDate] = useState(null);
+  const [salesToDate, setSalesToDate] = useState(null);
+  const [salesStatus, setSalesStatus] = useState(null);
+  const [adjustmentFromDate, setAdjustmentFromDate] = useState(null);
+  const [adjustmentToDate, setAdjustmentToDate] = useState(null);
+  const [adjustmentLossType, setAdjustmentLossType] = useState(null);
+  const [transferFromDate, setTransferFromDate] = useState(null);
+  const [transferToDate, setTransferToDate] = useState(null);
 
   // Determine initial tab based on URL
   useEffect(() => {
@@ -335,7 +345,7 @@ const Reports = () => {
 
         <TabPane tab="Purchase Report" key="purchase">
           <Card>
-            <Space style={{ marginBottom: 16 }}>
+            <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
               <Button 
                 type="primary" 
                 icon={<FileTextOutlined />}
@@ -344,10 +354,45 @@ const Reports = () => {
               >
                 Refresh Report
               </Button>
+              <DatePicker
+                placeholder="From Date"
+                value={purchaseFromDate}
+                onChange={date => setPurchaseFromDate(date)}
+                style={{ width: 150 }}
+                allowClear
+              />
+              <DatePicker
+                placeholder="To Date"
+                value={purchaseToDate}
+                onChange={date => setPurchaseToDate(date)}
+                style={{ width: 150 }}
+                allowClear
+              />
+              <Select
+                placeholder="All Statuses"
+                value={purchaseStatus}
+                onChange={val => setPurchaseStatus(val)}
+                style={{ width: 180 }}
+                allowClear
+              >
+                <Select.Option value="draft">Draft</Select.Option>
+                <Select.Option value="sent">Sent</Select.Option>
+                <Select.Option value="confirmed">Confirmed</Select.Option>
+                <Select.Option value="partially_received">Partially Received</Select.Option>
+                <Select.Option value="received">Received</Select.Option>
+                <Select.Option value="cancelled">Cancelled</Select.Option>
+              </Select>
             </Space>
             <Table 
               columns={purchaseColumns} 
-              dataSource={purchaseData} 
+              dataSource={purchaseData.filter(po => {
+                const statusMatch = !purchaseStatus || po.status === purchaseStatus;
+                const dateMatch = (!purchaseFromDate || !purchaseToDate) || (() => {
+                  const d = new Date(po.order_date);
+                  return d >= purchaseFromDate.startOf('day').toDate() && d <= purchaseToDate.endOf('day').toDate();
+                })();
+                return statusMatch && dateMatch;
+              })} 
               loading={loading}
               rowKey="id"
             />
@@ -356,7 +401,7 @@ const Reports = () => {
 
         <TabPane tab="Sales Report" key="sales">
           <Card>
-            <Space style={{ marginBottom: 16 }}>
+            <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
               <Button 
                 type="primary" 
                 icon={<FileTextOutlined />}
@@ -365,10 +410,44 @@ const Reports = () => {
               >
                 Refresh Report
               </Button>
+              <DatePicker
+                placeholder="From Date"
+                value={salesFromDate}
+                onChange={date => setSalesFromDate(date)}
+                style={{ width: 150 }}
+                allowClear
+              />
+              <DatePicker
+                placeholder="To Date"
+                value={salesToDate}
+                onChange={date => setSalesToDate(date)}
+                style={{ width: 150 }}
+                allowClear
+              />
+              <Select
+                placeholder="All Statuses"
+                value={salesStatus}
+                onChange={val => setSalesStatus(val)}
+                style={{ width: 160 }}
+                allowClear
+              >
+                <Select.Option value="draft">Draft</Select.Option>
+                <Select.Option value="confirmed">Confirmed</Select.Option>
+                <Select.Option value="shipped">Shipped</Select.Option>
+                <Select.Option value="delivered">Delivered</Select.Option>
+                <Select.Option value="cancelled">Cancelled</Select.Option>
+              </Select>
             </Space>
             <Table 
               columns={salesColumns} 
-              dataSource={salesData} 
+              dataSource={salesData.filter(so => {
+                const statusMatch = !salesStatus || so.status === salesStatus;
+                const dateMatch = (!salesFromDate || !salesToDate) || (() => {
+                  const d = new Date(so.order_date);
+                  return d >= salesFromDate.startOf('day').toDate() && d <= salesToDate.endOf('day').toDate();
+                })();
+                return statusMatch && dateMatch;
+              })} 
               loading={loading}
               rowKey="id"
             />
@@ -377,7 +456,7 @@ const Reports = () => {
 
         <TabPane tab="Inventory Adjustments" key="adjustments">
           <Card>
-            <Space style={{ marginBottom: 16 }}>
+            <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
               <Button 
                 type="primary" 
                 icon={<FileTextOutlined />}
@@ -386,19 +465,26 @@ const Reports = () => {
               >
                 Refresh Report
               </Button>
-              <Select 
-                placeholder="Filter by Loss Type"
+              <DatePicker
+                placeholder="From Date"
+                value={adjustmentFromDate}
+                onChange={date => setAdjustmentFromDate(date)}
                 style={{ width: 150 }}
                 allowClear
-                onChange={(value) => {
-                  // Filter adjustmentData by loss_type
-                  if (value) {
-                    const filtered = adjustmentData.filter(item => item.loss_type === value);
-                    setAdjustmentData(filtered);
-                  } else {
-                    fetchAdjustmentReport(); // Reload all data
-                  }
-                }}
+              />
+              <DatePicker
+                placeholder="To Date"
+                value={adjustmentToDate}
+                onChange={date => setAdjustmentToDate(date)}
+                style={{ width: 150 }}
+                allowClear
+              />
+              <Select
+                placeholder="Filter by Loss Type"
+                value={adjustmentLossType}
+                onChange={val => setAdjustmentLossType(val)}
+                style={{ width: 170 }}
+                allowClear
               >
                 <Select.Option value="MISSING">Missing Items</Select.Option>
                 <Select.Option value="DAMAGED">Damaged Items</Select.Option>
@@ -408,7 +494,14 @@ const Reports = () => {
             </Space>
             <Table 
               columns={adjustmentColumns} 
-              dataSource={adjustmentData} 
+              dataSource={adjustmentData.filter(item => {
+                const lossMatch = !adjustmentLossType || item.loss_type === adjustmentLossType;
+                const dateMatch = (!adjustmentFromDate || !adjustmentToDate) || (() => {
+                  const d = new Date(item.created_at);
+                  return d >= adjustmentFromDate.startOf('day').toDate() && d <= adjustmentToDate.endOf('day').toDate();
+                })();
+                return lossMatch && dateMatch;
+              })} 
               loading={loading}
               rowKey={(record) => `${record.created_at}-${record.item_name}`}
             />
@@ -417,7 +510,7 @@ const Reports = () => {
 
         <TabPane tab="Stock Transfers" key="transfers">
           <Card>
-            <Space style={{ marginBottom: 16 }}>
+            <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
               <Button 
                 type="primary" 
                 icon={<FileTextOutlined />}
@@ -426,10 +519,30 @@ const Reports = () => {
               >
                 Refresh Report
               </Button>
+              <DatePicker
+                placeholder="From Date"
+                value={transferFromDate}
+                onChange={date => setTransferFromDate(date)}
+                style={{ width: 150 }}
+                allowClear
+              />
+              <DatePicker
+                placeholder="To Date"
+                value={transferToDate}
+                onChange={date => setTransferToDate(date)}
+                style={{ width: 150 }}
+                allowClear
+              />
             </Space>
             <Table 
               columns={transferColumns} 
-              dataSource={transferData} 
+              dataSource={transferData.filter(item => {
+                const dateMatch = (!transferFromDate || !transferToDate) || (() => {
+                  const d = new Date(item.created_at);
+                  return d >= transferFromDate.startOf('day').toDate() && d <= transferToDate.endOf('day').toDate();
+                })();
+                return dateMatch;
+              })} 
               loading={loading}
               rowKey={(record) => `${record.created_at}-${record.transfer_id}`}
             />
