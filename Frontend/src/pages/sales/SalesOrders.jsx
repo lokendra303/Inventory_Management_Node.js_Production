@@ -970,14 +970,9 @@ const SalesOrders = () => {
               pagination={false}
               columns={[
                 { title: "Item", dataIndex: "item_name", key: "item_name" },
-                { title: "SKU", dataIndex: "sku", key: "sku" },
+                { title: "HSN Code", dataIndex: "hsn_code", key: "hsn_code", render: (val) => val || '-' },
                 {
-                  title: "Warehouse",
-                  dataIndex: "warehouse_name",
-                  key: "warehouse_name",
-                },
-                {
-                  title: "Ordered",
+                  title: "Qty Ordered",
                   dataIndex: "quantity_ordered",
                   key: "quantity_ordered",
                 },

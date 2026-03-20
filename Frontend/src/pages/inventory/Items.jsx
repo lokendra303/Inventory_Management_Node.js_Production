@@ -222,6 +222,7 @@ const Items = () => {
         valuationMethod: values.valuationMethod,
         weight: values.weight,
         dimensions: dimensions,
+        hsnCode: values.hsnCode,
         upc: values.upc,
         ean: values.ean,
         isbn: values.isbn,
@@ -338,6 +339,7 @@ const viewItem = async (item) => {
       minStockLevel: fullItem.min_stock_level,
       maxStockLevel: fullItem.max_stock_level,
       barcode: fullItem.barcode,
+      hsnCode: fullItem.hsn_code,
       openingStock: fullItem.opening_stock,
       openingValue: fullItem.opening_value,
       valuationMethod: fullItem.valuation_method,
@@ -912,6 +914,13 @@ const viewItem = async (item) => {
             <Col span={8}>
               <Form.Item name="barcode" label="Barcode">
                 <Input placeholder="Enter Barcode" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="hsnCode" label="HSN Code">
+                <Input placeholder="Enter HSN Code" />
               </Form.Item>
             </Col>
           </Row>

@@ -131,11 +131,12 @@ class InvoicePDFService {
         y = Math.max(y + 20, partyY) + 10;
 
         // Line Items Table with borders
-        const col1 = 50;
-        const col2 = 80;
-        const col3 = 320;
-        const col4 = 380;
-        const col5 = 450;
+        const col1 = 50;   // #
+        const col2 = 80;   // Item
+        const col3 = 270;  // HSN Code
+        const col4 = 340;  // Qty
+        const col5 = 410;  // Rate
+        const col6 = 455;  // Amount
         
         // Dynamic sizing based on number of items
         const itemCount = (standardInvoice.lineItems || []).length;
@@ -149,9 +150,10 @@ class InvoicePDFService {
           doc.rect(col1, yPos, 495, 20).fillAndStroke('#f0f0f0', '#000');
           doc.fillColor('#000').text('#', col1 + 5, yPos + 6);
           doc.text('Item', col2, yPos + 6);
-          doc.text('Qty', col3, yPos + 6, { width: 50, align: 'right' });
-          doc.text('Rate', col4, yPos + 6, { width: 60, align: 'right' });
-          doc.text('Amount', col5, yPos + 6, { width: 90, align: 'right' });
+          doc.text('HSN Code', col3, yPos + 6);
+          doc.text('Qty', col4, yPos + 6, { width: 60, align: 'right' });
+          doc.text('Rate', col5, yPos + 6, { width: 40, align: 'right' });
+          doc.text('Amount', col6, yPos + 6, { width: 85, align: 'right' });
           return yPos + 20;
         };
         
@@ -183,21 +185,23 @@ class InvoicePDFService {
           
           // Draw cell borders
           doc.rect(col1, rowY, 30, rowHeight).stroke();
-          doc.rect(col2, rowY, 240, rowHeight).stroke();
-          doc.rect(col3, rowY, 60, rowHeight).stroke();
+          doc.rect(col2, rowY, 190, rowHeight).stroke();
+          doc.rect(col3, rowY, 70, rowHeight).stroke();
           doc.rect(col4, rowY, 70, rowHeight).stroke();
-          doc.rect(col5, rowY, 95, rowHeight).stroke();
+          doc.rect(col5, rowY, 45, rowHeight).stroke();
+          doc.rect(col6, rowY, 90, rowHeight).stroke();
           
           // Cell content with truncation for long names
-          const itemName = (item.itemName || '').length > 45 
-            ? (item.itemName || '').substring(0, 42) + '...' 
+          const itemName = (item.itemName || '').length > 35 
+            ? (item.itemName || '').substring(0, 32) + '...' 
             : (item.itemName || '');
           
           doc.text(item.sno || '', col1 + 5, rowY + 4);
-          doc.text(itemName, col2 + 5, rowY + 4, { width: 230 });
-          doc.text(parseFloat(item.quantity || 0).toFixed(2), col3, rowY + 4, { width: 50, align: 'right' });
-          doc.text(parseFloat(item.unitAmount || 0).toFixed(2), col4, rowY + 4, { width: 60, align: 'right' });
-          doc.text(parseFloat(item.netAmount || 0).toFixed(2), col5, rowY + 4, { width: 90, align: 'right' });
+          doc.text(itemName, col2 + 5, rowY + 4, { width: 180 });
+          doc.text(item.hsn_code || '-', col3 + 5, rowY + 4, { width: 60 });
+          doc.text(parseFloat(item.quantity || 0).toFixed(2), col4, rowY + 4, { width: 60, align: 'right' });
+          doc.text(parseFloat(item.unitAmount || 0).toFixed(2), col5, rowY + 4, { width: 40, align: 'right' });
+          doc.text(parseFloat(item.netAmount || 0).toFixed(2), col6, rowY + 4, { width: 85, align: 'right' });
           y += rowHeight;
         });
 

@@ -338,7 +338,7 @@ class PurchaseOrderService {
     const po = pos[0];
 
     const lines = await db.query(
-      `SELECT pol.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
+      `SELECT pol.*, i.hsn_code, i.name as item_name, i.unit, w.name as warehouse_name
        FROM purchase_order_lines pol
        JOIN items i ON pol.item_id = i.id
        LEFT JOIN warehouses w ON pol.warehouse_id = w.id

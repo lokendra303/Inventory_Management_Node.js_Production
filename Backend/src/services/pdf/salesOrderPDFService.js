@@ -233,21 +233,19 @@ class SalesOrderPDFService {
         y += 20;
 
         const col1 = 50;
-        const col2 = 150;
-        const col3 = 280;
-        const col4 = 360;
-        const col5 = 430;
-        const col6 = 490;
+        const col2 = 200;
+        const col3 = 310;
+        const col4 = 400;
+        const col5 = 490;
 
         const drawTableHeader = (yPos) => {
           doc.fontSize(9).font('Helvetica-Bold');
           doc.rect(col1, yPos, 495, 20).fillAndStroke('#f0f0f0', '#000');
           doc.fillColor('#000').text('Item', col1 + 5, yPos + 6);
-          doc.text('SKU', col2, yPos + 6);
-          doc.text('Warehouse', col3, yPos + 6);
-          doc.text('Ordered', col4, yPos + 6);
-          doc.text('Shipped', col5, yPos + 6);
-          doc.text('Unit Price', col6, yPos + 6);
+          doc.text('HSN Code', col2, yPos + 6);
+          doc.text('Qty Ordered', col3, yPos + 6);
+          doc.text('Unit Price', col4, yPos + 6);
+          doc.text('Line Total', col5, yPos + 6);
           return yPos + 20;
         };
 
@@ -273,19 +271,17 @@ class SalesOrderPDFService {
           }
 
           const rowY = y;
-          doc.rect(col1, rowY, 100, 18).stroke();
-          doc.rect(col2, rowY, 130, 18).stroke();
-          doc.rect(col3, rowY, 80, 18).stroke();
-          doc.rect(col4, rowY, 70, 18).stroke();
-          doc.rect(col5, rowY, 60, 18).stroke();
-          doc.rect(col6, rowY, 55, 18).stroke();
+          doc.rect(col1, rowY, 150, 18).stroke();
+          doc.rect(col2, rowY, 110, 18).stroke();
+          doc.rect(col3, rowY, 90, 18).stroke();
+          doc.rect(col4, rowY, 90, 18).stroke();
+          doc.rect(col5, rowY, 55, 18).stroke();
 
-          doc.text(line.item_name || '', col1 + 5, rowY + 5, { width: 90 });
-          doc.text(line.sku || '', col2 + 5, rowY + 5);
-          doc.text(line.warehouse_name || '', col3 + 5, rowY + 5);
-          doc.text(line.quantity_ordered || '0', col4 + 5, rowY + 5);
-          doc.text(line.quantity_shipped || '0', col5 + 5, rowY + 5);
-          doc.text(parseFloat(line.unit_price || 0).toFixed(2), col6 + 5, rowY + 5);
+          doc.text(line.item_name || '', col1 + 5, rowY + 5, { width: 140 });
+          doc.text(line.hsn_code || '-', col2 + 5, rowY + 5);
+          doc.text(String(line.quantity_ordered || '0'), col3 + 5, rowY + 5);
+          doc.text(parseFloat(line.unit_price || 0).toFixed(2), col4 + 5, rowY + 5);
+          doc.text(parseFloat(line.line_total || 0).toFixed(2), col5 + 5, rowY + 5);
           y += 18;
         });
 

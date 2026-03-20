@@ -933,7 +933,6 @@ const PurchaseOrders = () => {
           <div>
             <div style={{ marginBottom: 16 }}>
               <strong>Vendor:</strong> {selectedPOForView.vendor_name}<br/>
-              <strong>Warehouse:</strong> {selectedPOForView.warehouse_name}<br/>
               <strong>Status:</strong> {selectedPOForView.status?.toUpperCase()}<br/>
               <strong>Order Date:</strong> {selectedPOForView.order_date}<br/>
               <strong>Expected Date:</strong> {selectedPOForView.expected_date}<br/>
@@ -957,10 +956,8 @@ const PurchaseOrders = () => {
               pagination={false}
               columns={[
                 { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-                { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-                { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
-                { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered', render: (val) => formatQuantity(val) },
-                { title: 'Received', dataIndex: 'quantity_received', key: 'quantity_received', render: (val) => formatQuantity(val || 0) },
+                { title: 'HSN Code', dataIndex: 'hsn_code', key: 'hsn_code', render: (val) => val || '-' },
+                { title: 'Qty Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered', render: (val) => formatQuantity(val) },
                 { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', render: (val) => `${selectedPOForView.currency} ${formatAmount(val)}` },
                 { title: 'Line Total', dataIndex: 'line_total', key: 'line_total', render: (val) => `${selectedPOForView.currency} ${formatAmount(val)}` },
                 { title: 'Status', dataIndex: 'status', key: 'status', render: (val) => val?.toUpperCase() }

@@ -132,7 +132,7 @@ class SalesOrderService {
 
     // Get SO lines
     const lines = await db.query(
-      `SELECT sol.*, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
+      `SELECT sol.*, i.hsn_code, i.name as item_name, i.unit, w.name as warehouse_name
        FROM sales_order_lines sol
        JOIN items i ON sol.item_id = i.id
        LEFT JOIN warehouses w ON sol.warehouse_id = w.id

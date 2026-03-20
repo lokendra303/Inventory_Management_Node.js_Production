@@ -129,7 +129,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           itemId: item.id,
           itemName: item.name,
           [unitPriceKey]: item[priceField] || 0,
-          sku: item.sku,
+          hsn_code: item.hsn_code,
           unit: item.unit,
           stockQuantity: item.stock_quantity || 0,
           reservedQuantity: item.reserved_quantity || 0,
@@ -359,7 +359,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               key: index + 1,
               itemId: line.item_id,
               itemName: line.item_name,
-              sku: line.sku,
+              hsn_code: line.hsn_code,
               unit: line.unit,
               quantity: line.quantity,
               discountRate: line.discount_rate || 0,
@@ -498,8 +498,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       }
     },
     {
-      title: 'SKU',
-      dataIndex: 'sku',
+      title: 'HSN Code',
+      dataIndex: 'hsn_code',
       width: 100,
       render: (value) => value || '-'
     },
