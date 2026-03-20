@@ -11,6 +11,12 @@ router.get('/',
   inventoryController.getInstitutionInventory
 );
 
+// GET /api/inventory/adjustments
+router.get('/adjustments',
+  requirePermission('inventory_view'),
+  inventoryController.getAdjustments
+);
+
 // GET /api/inventory/dashboard-stats
 router.get('/dashboard-stats', 
   requirePermission('inventory_view'),

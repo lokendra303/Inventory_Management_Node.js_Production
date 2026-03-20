@@ -176,57 +176,69 @@ class InventoryService {
   }
 
   async adjustStock(institutionId, data, userId) {
-    const { itemId, warehouseId, quantityChange, reason, adjustmentType } = data;
-    
-    const normalizedQuantityChange = adjustmentType === 'decrease' ? -Math.abs(quantityChange) : Math.abs(quantityChange);
-    
-    let lossType = 'MANUAL';
-    if (reason) {
-      const reasonLower = reason.toLowerCase();
-      if (reasonLower.includes('missing') || reasonLower.includes('lost')) lossType = 'MISSING';
-      else if (reasonLower.includes('damaged') || reasonLower.includes('broken')) lossType = 'DAMAGED';
-      else if (reasonLower.includes('expired') || reasonLower.includes('expiry')) lossType = 'EXPIRED';
-    }
-    
+    const { itemId, warehouseId, quantityChange, reason, adjustmentType, lossType = 'OTHER' } = data;
+    const absQty = Math.abs(quantityChange);
+    const normalizedChange = adjustmentType === 'decrease' ? -absQty : absQty;
+
     try {
       return await db.transaction(async (connection) => {
-        const adjustmentId = require('uuid').v4();
-        await connection.execute(
-          `INSERT INTO inventory_adjustments 
-           (id, institution_id, item_id, warehouse_id, adjustment_type, quantity_change, reason, loss_type, adjusted_by, reference_number)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [adjustmentId, institutionId, itemId, warehouseId, adjustmentType, Math.abs(quantityChange), reason, lossType, userId, `ADJ-${Date.now()}`]
-        );
-
-        const [current] = await connection.execute(
+        // Fetch current projection
+        const [rows] = await connection.execute(
           'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
           [institutionId, itemId, warehouseId]
         );
 
-        if (current.length === 0 && normalizedQuantityChange > 0) {
+        if (rows.length === 0 && normalizedChange < 0) {
+          throw new Error('No inventory record found for this item/warehouse');
+        }
+
+        if (rows.length > 0) {
+          const current = rows[0];
+          const onHand = parseFloat(current.quantity_on_hand);
+          const reserved = parseFloat(current.quantity_reserved) || 0;
+          const avgCost = parseFloat(current.average_cost) || 0;
+
+          // Check item's allowNegativeStock flag
+          const [itemRows] = await connection.execute(
+            'SELECT allow_negative_stock FROM items WHERE id = ? AND institution_id = ?',
+            [itemId, institutionId]
+          );
+          const allowNegative = itemRows.length > 0 && itemRows[0].allow_negative_stock;
+
+          const newOnHand = onHand + normalizedChange;
+          if (!allowNegative && newOnHand < 0) {
+            throw new Error(`Insufficient stock: on hand ${onHand}, requested decrease ${absQty}`);
+          }
+
+          // quantity_available = new on_hand - reserved
+          const newAvailable = Math.max(newOnHand - reserved, 0);
+          const newTotalValue = newOnHand * avgCost;
+
           await connection.execute(
-            `INSERT INTO inventory_projections 
+            `UPDATE inventory_projections
+             SET quantity_on_hand = ?, quantity_available = ?, total_value = ?, last_movement_date = NOW()
+             WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+            [newOnHand, newAvailable, newTotalValue, institutionId, itemId, warehouseId]
+          );
+        } else {
+          // No existing record — create one (increase only, already guarded above)
+          await connection.execute(
+            `INSERT INTO inventory_projections
              (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
              VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
-            [institutionId, itemId, warehouseId, normalizedQuantityChange, normalizedQuantityChange]
-          );
-        } else if (current.length > 0) {
-          const currentRecord = current[0];
-          const newQuantity = parseFloat(currentRecord.quantity_on_hand) + normalizedQuantityChange;
-          const avgCost = parseFloat(currentRecord.average_cost) || 0;
-          const newTotalValue = newQuantity * avgCost;
-          
-          await connection.execute(
-            `UPDATE inventory_projections 
-             SET quantity_on_hand = ?,
-                 quantity_available = quantity_available + ?,
-                 total_value = ?,
-                 last_movement_date = NOW()
-             WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-            [newQuantity, normalizedQuantityChange, newTotalValue, institutionId, itemId, warehouseId]
+            [institutionId, itemId, warehouseId, absQty, absQty]
           );
         }
 
+        // Record adjustment log
+        await connection.execute(
+          `INSERT INTO inventory_adjustments
+           (id, institution_id, item_id, warehouse_id, adjustment_type, quantity_change, reason, loss_type, adjusted_by, reference_number)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uuidv4(), institutionId, itemId, warehouseId, adjustmentType, absQty, reason || null, lossType, userId, `ADJ-${Date.now()}`]
+        );
+
+        logger.info('Stock adjusted', { institutionId, itemId, warehouseId, adjustmentType, absQty, userId });
         return 'success';
       });
     } catch (error) {
@@ -637,6 +649,24 @@ class InventoryService {
       logger.error('Failed to mark expired', { institutionId, itemId, warehouseId, error: error.message });
       throw error;
     }
+  }
+
+  async getAdjustments(institutionId, { itemId, warehouseId, limit = 50, offset = 0 } = {}) {
+    let query = `
+      SELECT ia.*, i.name as item_name, i.sku, w.name as warehouse_name,
+             CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as adjusted_by_name
+      FROM inventory_adjustments ia
+      JOIN items i ON ia.item_id = i.id
+      LEFT JOIN warehouses w ON ia.warehouse_id = w.id
+      LEFT JOIN institution_users u ON ia.adjusted_by = u.id
+      WHERE ia.institution_id = ?`;
+    const params = [institutionId];
+
+    if (itemId) { query += ' AND ia.item_id = ?'; params.push(itemId); }
+    if (warehouseId) { query += ' AND ia.warehouse_id = ?'; params.push(warehouseId); }
+
+    query += ` ORDER BY ia.created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+    return db.query(query, params);
   }
 
   async getWarehouseStock(institutionId, warehouseId) {

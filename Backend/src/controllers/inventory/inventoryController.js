@@ -380,6 +380,21 @@ class InventoryController {
     return this.getInstitutionInventory(req, res);
   }
 
+  async getAdjustments(req, res) {
+    try {
+      const { itemId, warehouseId, limit, offset } = req.query;
+      const data = await inventoryService.getAdjustments(req.institutionId, {
+        itemId, warehouseId,
+        limit: parseInt(limit) || 50,
+        offset: parseInt(offset) || 0
+      });
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Failed to get adjustments', { error: error.message, institutionId: req.institutionId });
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
   async getItemActivitySummary(req, res) {
     try {
       const { itemId, warehouseId } = req.params;

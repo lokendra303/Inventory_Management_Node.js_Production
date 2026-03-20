@@ -257,10 +257,33 @@ class InventoryProjectionService {
 
   async getInventoryProjection(institutionId, itemId, warehouseId) {
     const result = await db.query(
-      'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+      `SELECT ip.*, i.cost_price, i.selling_price, i.allow_negative_stock
+       FROM inventory_projections ip
+       JOIN items i ON ip.item_id = i.id
+       WHERE ip.institution_id = ? AND ip.item_id = ? AND ip.warehouse_id = ?`,
       [institutionId, itemId, warehouseId]
     );
-    return result[0] || null;
+
+    if (result[0]) return result[0];
+
+    // No projection row — return zero stock with item's cost price as fallback
+    const items = await db.query(
+      'SELECT cost_price, allow_negative_stock FROM items WHERE institution_id = ? AND id = ?',
+      [institutionId, itemId]
+    );
+    if (items.length === 0) return null;
+
+    return {
+      institution_id: institutionId,
+      item_id: itemId,
+      warehouse_id: warehouseId,
+      quantity_on_hand: 0,
+      quantity_available: 0,
+      quantity_reserved: 0,
+      average_cost: items[0].cost_price || 0,
+      total_value: 0,
+      allow_negative_stock: items[0].allow_negative_stock
+    };
   }
 
   async getWarehouseInventory(institutionId, warehouseId) {
