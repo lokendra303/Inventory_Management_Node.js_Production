@@ -39,8 +39,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await apiService.post('/auth/extend-session');
       if (response.success && response.data?.token) {
-        sessionStorage.setItem('token', response.data.token);
-        apiService.setAuthToken(response.data.token);
+        const newToken = response.data.token;
+        sessionStorage.setItem('token', newToken);
+        apiService.setAuthToken(newToken);
+        setUser(prev => prev ? { ...prev, token: newToken } : prev);
       }
     } catch (error) {
       // Silently ignore — inactivity check will handle actual expiry

@@ -5,7 +5,7 @@ const CurrencyService = require('../../utils/currencyService');
 class SettingsController {
   async getInstitutionSettings(req, res) {
     try {
-      const { institutionId } = req.user;
+      const institutionId = req.institutionId || req.user?.institutionId;
       
       const institution = await db.query(
         'SELECT currency, currency_symbol FROM institutions WHERE id = ?',
@@ -42,7 +42,7 @@ class SettingsController {
   
   async updateInstitutionSettings(req, res) {
     try {
-      const { institutionId } = req.user;
+      const institutionId = req.institutionId || req.user?.institutionId;
       const { currency } = req.body;
       
       if (!currency) {
