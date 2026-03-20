@@ -163,6 +163,18 @@ class InventoryController {
     }
   }
 
+  async getTransferHistory(req, res) {
+    try {
+      const limit = parseInt(req.query.limit) || 100;
+      const offset = parseInt(req.query.offset) || 0;
+      const data = await inventoryService.getTransferHistory(req.institutionId, limit, offset);
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Failed to get transfer history', { error: error.message, institutionId: req.institutionId });
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
   async getInventoryHistory(req, res) {
     try {
       const { itemId, warehouseId } = req.params;

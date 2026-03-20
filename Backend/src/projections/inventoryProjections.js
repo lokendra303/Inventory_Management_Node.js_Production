@@ -224,14 +224,6 @@ class InventoryProjectionService {
        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
       [quantity, quantity, quantity, institutionId, itemId, warehouseId]
     );
-
-    // Recalculate total_value using updated quantity
-    await db.query(
-      `UPDATE inventory_projections
-       SET total_value = quantity_on_hand * average_cost
-       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [institutionId, itemId, warehouseId]
-    );
   }
 
   async handleTransferIn(institutionId, eventData) {
@@ -259,14 +251,6 @@ class InventoryProjectionService {
              version = version + 1
          WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
         [quantity, quantity, quantity, institutionId, itemId, warehouseId]
-      );
-
-      // Recalculate total_value using updated quantity
-      await db.query(
-        `UPDATE inventory_projections
-         SET total_value = quantity_on_hand * average_cost
-         WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-        [institutionId, itemId, warehouseId]
       );
     }
   }

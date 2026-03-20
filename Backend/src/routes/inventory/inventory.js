@@ -29,6 +29,12 @@ router.get('/warehouse/:warehouseId',
   inventoryController.getWarehouseStock
 );
 
+// GET /api/inventory/transfers
+router.get('/transfers',
+  requirePermission('inventory_view'),
+  inventoryController.getTransferHistory
+);
+
 // GET /api/inventory/:itemId/:warehouseId
 router.get('/:itemId/:warehouseId', 
   requirePermission('inventory_view'),
