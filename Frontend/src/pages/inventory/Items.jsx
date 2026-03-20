@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs } from 'antd';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -30,6 +30,7 @@ const Items = () => {
   const [brandOptions, setBrandOptions] = useState([]);
   const [vendorOptions, setVendorOptions] = useState([]);
   const [itemHistory, setItemHistory] = useState([]);
+  const [priceHistory, setPriceHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [searchText, setSearchText] = useState('');
 
@@ -265,16 +266,19 @@ const viewItem = async (item) => {
     setViewModalVisible(true);
     setLoadingHistory(true);
     try {
-      const [itemRes, historyRes] = await Promise.allSettled([
+      const [itemRes, historyRes, priceHistRes] = await Promise.allSettled([
         apiService.get(`/items/${item.id}`),
-        apiService.get(`/inventory/item-logs/${item.id}`)
+        apiService.get(`/inventory/item-logs/${item.id}`),
+        apiService.get(`/items/${item.id}/price-history`)
       ]);
       setViewingItem(itemRes.status === 'fulfilled' && itemRes.value.success ? itemRes.value.data : item);
       setItemHistory(historyRes.status === 'fulfilled' && historyRes.value.success ? historyRes.value.data || [] : []);
+      setPriceHistory(priceHistRes.status === 'fulfilled' && priceHistRes.value.success ? priceHistRes.value.data || [] : []);
     } catch (error) {
       console.error('Failed to fetch item details:', error);
       setViewingItem(item);
       setItemHistory([]);
+      setPriceHistory([]);
     } finally {
       setLoadingHistory(false);
     }
@@ -1169,8 +1173,8 @@ const viewItem = async (item) => {
       <Modal
         title="View Item Details"
         open={viewModalVisible}
-        onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); }}
-        footer={[<Button key="close" onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); }}>Close</Button>]}
+        onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}
+        footer={[<Button key="close" onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}>Close</Button>]}
         width={960}
       >
         {viewingItem && (
@@ -1239,74 +1243,124 @@ const viewItem = async (item) => {
             )}
             
             <div style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-              <h4 style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <HistoryOutlined /> Transaction History
-              </h4>
               {loadingHistory ? (
-                <div style={{ textAlign: 'center', padding: 20 }}>
-                  <Spin />
-                </div>
-              ) : itemHistory.length > 0 ? (
-                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-                  <Timeline>
-                    {itemHistory.map((log, index) => {
-                      const getEventColor = (type) => {
-                        if (type?.includes('RECEIVED')) return 'green';
-                        if (type?.includes('SHIPPED')) return 'red';
-                        if (type?.includes('RESERVED')) return 'orange';
-                        if (type?.includes('ADJUSTED')) return 'blue';
-                        if (type?.includes('TRANSFER')) return 'purple';
-                        return 'gray';
-                      };
-                      
-                      const getEventLabel = (type) => {
-                        if (type?.includes('RECEIVED')) return 'Stock Received';
-                        if (type?.includes('SHIPPED')) return 'Stock Shipped';
-                        if (type?.includes('RESERVED')) return 'Stock Reserved';
-                        if (type?.includes('CANCELLED')) return 'Reservation Cancelled';
-                        if (type?.includes('ADJUSTED')) return 'Stock Adjusted';
-                        if (type?.includes('TRANSFER_IN')) return 'Transfer In';
-                        if (type?.includes('TRANSFER_OUT')) return 'Transfer Out';
-                        return type;
-                      };
-                      
-                      return (
-                        <Timeline.Item key={index} color={getEventColor(log.operation_type)}>
-                          <div style={{ marginBottom: 8 }}>
-                            <Tag color={getEventColor(log.operation_type)}>{getEventLabel(log.operation_type)}</Tag>
-                            <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
-                              {new Date(log.operation_date).toLocaleString()}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: 13 }}>
-                            {log.warehouse_name && (
-                              <div>Warehouse: <strong>{log.warehouse_name}</strong></div>
-                            )}
-                            {log.quantity_change && (
-                              <div>Change: <strong style={{ color: log.quantity_change > 0 ? '#52c41a' : '#ff4d4f' }}>
-                                {log.quantity_change > 0 ? '+' : ''}{log.quantity_change}
-                              </strong></div>
-                            )}
-                            {log.balance_after !== null && log.balance_after !== undefined && (
-                              <div>Balance After: <strong>{log.balance_after}</strong></div>
-                            )}
-                            {log.unit_cost && (
-                              <div>Unit Cost: <strong>{formatPrice(log.unit_cost, currency, 'USD')}</strong></div>
-                            )}
-                            {log.reference_number && (
-                              <div style={{ color: '#8c8c8c', fontSize: 12 }}>Ref: {log.reference_number}</div>
-                            )}
-                            {log.notes && (
-                              <div style={{ color: '#8c8c8c', fontSize: 12 }}>Notes: {log.notes}</div>
-                            )}
-                          </div>
-                        </Timeline.Item>
-                      );
-                    })}
-                  </Timeline>
-                </div>
+                <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>
               ) : (
-                <Empty description="No transaction history available" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <Tabs items={[
+                  {
+                    key: 'transactions',
+                    label: <span><HistoryOutlined /> Transaction History</span>,
+                    children: itemHistory.length > 0 ? (
+                      <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                        <Timeline>
+                          {itemHistory.map((log, index) => {
+                            const getEventColor = (type) => {
+                              if (type?.includes('RECEIVED')) return 'green';
+                              if (type?.includes('SHIPPED')) return 'red';
+                              if (type?.includes('RESERVED')) return 'orange';
+                              if (type?.includes('ADJUSTED')) return 'blue';
+                              if (type?.includes('TRANSFER')) return 'purple';
+                              return 'gray';
+                            };
+                            const getEventLabel = (type) => {
+                              if (type?.includes('RECEIVED')) return 'Stock Received';
+                              if (type?.includes('SHIPPED')) return 'Stock Shipped';
+                              if (type?.includes('RESERVED')) return 'Stock Reserved';
+                              if (type?.includes('CANCELLED')) return 'Reservation Cancelled';
+                              if (type?.includes('ADJUSTED')) return 'Stock Adjusted';
+                              if (type?.includes('TRANSFER_IN')) return 'Transfer In';
+                              if (type?.includes('TRANSFER_OUT')) return 'Transfer Out';
+                              return type;
+                            };
+                            return (
+                              <Timeline.Item key={index} color={getEventColor(log.operation_type)}>
+                                <div style={{ marginBottom: 8 }}>
+                                  <Tag color={getEventColor(log.operation_type)}>{getEventLabel(log.operation_type)}</Tag>
+                                  <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
+                                    {new Date(log.operation_date).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: 13 }}>
+                                  {log.warehouse_name && <div>Warehouse: <strong>{log.warehouse_name}</strong></div>}
+                                  {log.quantity_change && (
+                                    <div>Change: <strong style={{ color: log.quantity_change > 0 ? '#52c41a' : '#ff4d4f' }}>
+                                      {log.quantity_change > 0 ? '+' : ''}{log.quantity_change}
+                                    </strong></div>
+                                  )}
+                                  {log.balance_after != null && <div>Balance After: <strong>{log.balance_after}</strong></div>}
+                                  {log.unit_cost && <div>Unit Cost: <strong>{formatPrice(log.unit_cost, currency, 'USD')}</strong></div>}
+                                  {log.reference_number && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Ref: {log.reference_number}</div>}
+                                  {log.notes && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Notes: {log.notes}</div>}
+                                </div>
+                              </Timeline.Item>
+                            );
+                          })}
+                        </Timeline>
+                      </div>
+                    ) : <Empty description="No transaction history available" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  },
+                  {
+                    key: 'price-history',
+                    label: <span><DollarOutlined /> Price History</span>,
+                    children: priceHistory.length > 0 ? (
+                      <Table
+                        size="small"
+                        rowKey={(r, i) => i}
+                        dataSource={priceHistory}
+                        pagination={{ pageSize: 10, size: 'small' }}
+                        columns={[
+                          {
+                            title: 'Price Type',
+                            dataIndex: 'price_type',
+                            key: 'price_type',
+                            render: (v) => ({ cost: 'Cost Price', selling: 'Selling Price', mrp: 'MRP' }[v] || v)
+                          },
+                          {
+                            title: 'Old Price',
+                            dataIndex: 'old_price',
+                            key: 'old_price',
+                            render: (v) => v != null ? formatPrice(v, currency, 'USD') : '-'
+                          },
+                          {
+                            title: 'New Price',
+                            dataIndex: 'new_price',
+                            key: 'new_price',
+                            render: (v, r) => {
+                              const diff = r.old_price != null ? v - r.old_price : null;
+                              return (
+                                <span>
+                                  {formatPrice(v, currency, 'USD')}
+                                  {diff != null && (
+                                    <Tag color={diff > 0 ? 'red' : 'green'} style={{ marginLeft: 8 }}>
+                                      {diff > 0 ? '+' : ''}{formatPrice(diff, currency, 'USD')}
+                                    </Tag>
+                                  )}
+                                </span>
+                              );
+                            }
+                          },
+                          {
+                            title: 'Changed By',
+                            key: 'changed_by',
+                            render: (_, r) => r.first_name ? `${r.first_name} ${r.last_name || ''}`.trim() : '-'
+                          },
+                          {
+                            title: 'Reason',
+                            dataIndex: 'change_reason',
+                            key: 'change_reason',
+                            render: (v) => v || '-'
+                          },
+                          {
+                            title: 'Date',
+                            dataIndex: 'changed_at',
+                            key: 'changed_at',
+                            render: (v) => new Date(v).toLocaleString()
+                          }
+                        ]}
+                      />
+                    ) : <Empty description="No price history available" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  }
+                ]} />
               )}
             </div>
           </div>

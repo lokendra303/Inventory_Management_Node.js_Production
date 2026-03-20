@@ -238,11 +238,11 @@ class ItemActivityService {
           i.sku,
           i.name as item_name,
           w.name as warehouse_name,
-          u.username as performed_by
+          CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as performed_by
         FROM event_store es
         JOIN items i ON JSON_EXTRACT(es.event_data, '$.itemId') = i.id
         LEFT JOIN warehouses w ON JSON_EXTRACT(es.event_data, '$.warehouseId') = w.id
-        LEFT JOIN users u ON JSON_EXTRACT(es.metadata, '$.userId') = u.id
+        LEFT JOIN institution_users u ON JSON_EXTRACT(es.metadata, '$.userId') = u.id
         WHERE ${whereConditions.join(' AND ')}
         ORDER BY es.created_at DESC
         LIMIT 1000`,
@@ -281,11 +281,11 @@ class ItemActivityService {
           i.sku,
           i.name as item_name,
           w.name as warehouse_name,
-          u.username as performed_by
+          CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as performed_by
         FROM inventory_adjustments ia
         JOIN items i ON ia.item_id = i.id
         LEFT JOIN warehouses w ON ia.warehouse_id = w.id
-        LEFT JOIN users u ON ia.adjusted_by = u.id
+        LEFT JOIN institution_users u ON ia.adjusted_by = u.id
         WHERE ${adjWhereConditions.join(' AND ')}
         ORDER BY ia.created_at DESC
         LIMIT 1000`,

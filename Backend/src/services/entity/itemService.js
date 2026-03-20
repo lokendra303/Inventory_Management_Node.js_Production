@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const itemFieldService = require('./itemFieldService');
+const itemPriceHistoryService = require('./itemPriceHistoryService');
 
 class ItemService {
   async createItem(institutionId, itemData, userId) {
@@ -129,6 +130,12 @@ class ItemService {
 
     const updateFields = [];
     const updateValues = [];
+
+    // Fetch current prices before update for price history tracking
+    const [oldItem] = await db.query(
+      'SELECT cost_price, selling_price, mrp FROM items WHERE institution_id = ? AND id = ?',
+      [institutionId, itemId]
+    );
 
     if (sku !== undefined) {
       updateFields.push('sku = ?');
@@ -260,6 +267,15 @@ class ItemService {
 
     if (result.affectedRows === 0) {
       throw new Error('Item not found');
+    }
+
+    // Record price history if any price field changed
+    if (costPrice !== undefined || sellingPrice !== undefined || mrp !== undefined) {
+      await itemPriceHistoryService.recordPriceChange(
+        institutionId, itemId, userId,
+        { cost_price: oldItem.cost_price, selling_price: oldItem.selling_price, mrp: oldItem.mrp },
+        { cost_price: costPrice, selling_price: sellingPrice, mrp }
+      );
     }
 
     // Update inventory projections if cost price changed

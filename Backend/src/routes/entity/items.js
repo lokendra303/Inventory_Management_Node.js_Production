@@ -1,5 +1,6 @@
 const express = require('express');
 const itemController = require('../../controllers/entity/itemController');
+const itemPriceHistoryController = require('../../controllers/entity/itemPriceHistoryController');
 const { requirePermission, auditLog } = require('../../middleware/auth');
 
 const router = express.Router();
@@ -35,6 +36,12 @@ router.put('/field-config/:itemType/:fieldName/options',
   requirePermission('item_management'),
   auditLog('field_options_updated'),
   itemController.updateItemFieldConfig
+);
+
+// GET /api/items/:id/price-history
+router.get('/:id/price-history',
+  requirePermission('item_view'),
+  itemPriceHistoryController.getPriceHistory
 );
 
 // GET /api/items/:id
