@@ -4,9 +4,9 @@ import apiService from '../services/apiService';
 
 const AuthContext = createContext();
 
-const TOKEN_REFRESH_INTERVAL = parseInt(process.env.REACT_APP_TOKEN_REFRESH_INTERVAL); // 13 minutes
-const INACTIVITY_TIMEOUT = parseInt(process.env.REACT_APP_INACTIVITY_TIMEOUT);         // 30 minutes
+const INACTIVITY_TIMEOUT = parseInt(process.env.REACT_APP_INACTIVITY_TIMEOUT);        // 15 minutes
 const ACTIVITY_THROTTLE = parseInt(process.env.REACT_APP_ACTIVITY_THROTTLE);           // 30 seconds
+const TOKEN_REFRESH_THRESHOLD = parseInt(process.env.REACT_APP_TOKEN_REFRESH_THRESHOLD); // refresh if token expires within 5 min
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -17,31 +17,32 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sessionSecondsLeft, setSessionSecondsLeft] = useState(null);
   const sessionCheckRef = useRef(null);
   const tokenRefreshRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
   const lastActivityWriteRef = useRef(0);
   const isRefreshingRef = useRef(false);
+  const tokenExpiresAtRef = useRef(null);
 
-  const updateActivity = useCallback(() => {
-    const now = Date.now();
-    lastActivityRef.current = now;
-    // Throttle sessionStorage writes
-    if (now - lastActivityWriteRef.current > ACTIVITY_THROTTLE) {
-      sessionStorage.setItem('lastActivity', now.toString());
-      lastActivityWriteRef.current = now;
-    }
-  }, []);
+  // Decode JWT expiry from token without verifying signature
+  const getTokenExpiresAt = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.exp ? payload.exp * 1000 : null;
+    } catch { return null; }
+  };
 
   const refreshToken = useCallback(async () => {
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
     try {
-      const response = await apiService.post('/auth/extend-session');
+      const response = await apiService.post('/auth/heartbeat');
       if (response.success && response.data?.token) {
         const newToken = response.data.token;
         sessionStorage.setItem('token', newToken);
         apiService.setAuthToken(newToken);
+        tokenExpiresAtRef.current = getTokenExpiresAt(newToken);
         setUser(prev => prev ? { ...prev, token: newToken } : prev);
       }
     } catch (error) {
@@ -50,6 +51,28 @@ export const AuthProvider = ({ children }) => {
       isRefreshingRef.current = false;
     }
   }, []);
+
+  const updateActivity = useCallback(() => {
+    const now = Date.now();
+    lastActivityRef.current = now;
+
+    // Throttle sessionStorage writes
+    if (now - lastActivityWriteRef.current > ACTIVITY_THROTTLE) {
+      sessionStorage.setItem('lastActivity', now.toString());
+      lastActivityWriteRef.current = now;
+    }
+
+    // If token is expiring within threshold, refresh it now because user is active
+    if (
+      tokenExpiresAtRef.current &&
+      tokenExpiresAtRef.current - now < TOKEN_REFRESH_THRESHOLD
+    ) {
+      refreshToken();
+    }
+
+    // Reset countdown display immediately on activity
+    setSessionSecondsLeft(Math.ceil(INACTIVITY_TIMEOUT / 1000));
+  }, [refreshToken]);
 
   const logout = useCallback(() => {
     sessionStorage.removeItem('token');
@@ -74,37 +97,28 @@ export const AuthProvider = ({ children }) => {
   }, [logout]);
 
   const setupSessionManagement = useCallback(() => {
-    // Clear any existing intervals
     clearInterval(sessionCheckRef.current);
     clearInterval(tokenRefreshRef.current);
 
-    // Activity events — update lastActivity on any user interaction
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
     events.forEach(e => window.addEventListener(e, updateActivity, { passive: true }));
 
-    // Check inactivity every minute
+    // Tick every second: update countdown and check inactivity
     sessionCheckRef.current = setInterval(() => {
-      const timeSinceActivity = Date.now() - lastActivityRef.current;
-      if (timeSinceActivity > INACTIVITY_TIMEOUT) {
+      const secondsLeft = Math.ceil((INACTIVITY_TIMEOUT - (Date.now() - lastActivityRef.current)) / 1000);
+      if (secondsLeft <= 0) {
+        setSessionSecondsLeft(0);
         showSessionExpiredModal();
+      } else {
+        setSessionSecondsLeft(secondsLeft);
       }
-    }, 60 * 1000);
-
-    // Proactively refresh JWT every 13 minutes while user is logged in
-    tokenRefreshRef.current = setInterval(() => {
-      // Only refresh if user was active in the last TOKEN_REFRESH_INTERVAL window
-      const timeSinceActivity = Date.now() - lastActivityRef.current;
-      if (timeSinceActivity < INACTIVITY_TIMEOUT) {
-        refreshToken();
-      }
-    }, TOKEN_REFRESH_INTERVAL);
+    }, 1000);
 
     return () => {
       events.forEach(e => window.removeEventListener(e, updateActivity));
       clearInterval(sessionCheckRef.current);
-      clearInterval(tokenRefreshRef.current);
     };
-  }, [updateActivity, refreshToken, showSessionExpiredModal]);
+  }, [updateActivity, showSessionExpiredModal]);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -114,6 +128,8 @@ export const AuthProvider = ({ children }) => {
           sessionStorage.setItem('institutionId', response.data.institutionId);
         }
         const token = sessionStorage.getItem('token');
+        tokenExpiresAtRef.current = getTokenExpiresAt(token);
+        setSessionSecondsLeft(Math.ceil(INACTIVITY_TIMEOUT / 1000));
         setUser({ ...response.data, token });
         setupSessionManagement();
       } else {
@@ -153,6 +169,8 @@ export const AuthProvider = ({ children }) => {
         apiService.setAuthToken(token);
         setUser({ ...userData, token });
         lastActivityRef.current = Date.now();
+        tokenExpiresAtRef.current = getTokenExpiresAt(token);
+        setSessionSecondsLeft(Math.ceil(INACTIVITY_TIMEOUT / 1000));
         sessionStorage.setItem('lastActivity', lastActivityRef.current.toString());
         setupSessionManagement();
         message.success('Login successful');
@@ -186,7 +204,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, fetchProfile }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, register, fetchProfile, sessionSecondsLeft }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,15 +1,24 @@
 import React from 'react';
 import { Layout, Button, Dropdown, Avatar, Space, Typography } from 'antd';
-import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, SettingOutlined } from '@ant-design/icons';
+import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useNavigate } from 'react-router-dom';
 
 const { Header: AntHeader } = Layout;
 const { Text } = Typography;
 
+const formatCountdown = (seconds) => {
+  if (seconds == null || seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
 const Header = ({ collapsed, setCollapsed, user, isMobile }) => {
-  const { logout } = useAuth();
+  const { logout, sessionSecondsLeft } = useAuth();
   const navigate = useNavigate();
+
+  const isWarning = sessionSecondsLeft != null && sessionSecondsLeft <= 120; // red under 2 min
 
   const userMenuItems = [
     {
@@ -79,10 +88,26 @@ const Header = ({ collapsed, setCollapsed, user, isMobile }) => {
             <div style={{ 
               fontSize: '12px', 
               color: '#8c8c8c',
-              textTransform: 'capitalize'
+              textTransform: 'capitalize',
+              marginBottom: '2px'
             }}>
               {user?.role}
             </div>
+            {sessionSecondsLeft != null && (
+              <div style={{
+                fontSize: '11px',
+                color: isWarning ? '#ff4d4f' : '#8c8c8c',
+                fontWeight: isWarning ? '600' : '400',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '3px',
+                transition: 'color 0.3s'
+              }}>
+                <ClockCircleOutlined />
+                Session expires in {formatCountdown(sessionSecondsLeft)}
+              </div>
+            )}
           </div>
         )}
         <Dropdown 

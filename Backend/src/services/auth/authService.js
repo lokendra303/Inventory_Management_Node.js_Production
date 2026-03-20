@@ -199,10 +199,12 @@ class AuthService {
       } catch (err) {
         if (err.name === 'TokenExpiredError') {
           decoded = jwt.decode(token);
+          if (!decoded || !decoded.exp) throw err;
           const expiredAgo = Math.floor(Date.now() / 1000) - decoded.exp;
           if (expiredAgo > allowExpiredGraceSecs) {
-            throw new Error('Token expired beyond grace period');
+            throw err; // preserve TokenExpiredError so callers can distinguish
           }
+          // within grace period — decoded is set, continue to issue new token
         } else {
           throw err;
         }
