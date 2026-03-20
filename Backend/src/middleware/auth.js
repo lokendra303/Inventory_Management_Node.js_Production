@@ -408,7 +408,7 @@ module.exports = {
   validateInstitutionConsistency,
   requireWarehouseAccess,
   rateLimit,
-  checkSessionTimeout: (timeoutMs = 15 * 60 * 1000) => {
+  checkSessionTimeout: (timeoutMs = parseInt(process.env.SESSION_TIMEOUT_MS)) => {
     return (req, res, next) => {
       if (!req.user || !req.user.sessionTimestamp) {
         return next();
