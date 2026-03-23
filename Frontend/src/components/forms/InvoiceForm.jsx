@@ -593,96 +593,67 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '8px' }}>
       <Card>
-        <Title level={3}>
+        <Title level={4} style={{ marginBottom: 16 }}>
           {invoiceId ? 'Edit' : 'Create'} {type === 'purchase' ? 'Purchase' : 'Sales'} Invoice
         </Title>
         
         <Form form={form} layout="vertical">
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                name="invoiceNumber"
-                label="Invoice Number"
-                rules={[{ required: true, message: 'Please enter invoice number' }]}
-              >
+          <Row gutter={[16, 0]}>
+            <Col xs={24} sm={8}>
+              <Form.Item name="invoiceNumber" label="Invoice Number" rules={[{ required: true, message: 'Please enter invoice number' }]}>
                 <Input placeholder="Auto-generated if empty" />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="invoiceDate"
-                label="Invoice Date"
-                rules={[{ required: true, message: 'Please select invoice date' }]}
-              >
+            <Col xs={24} sm={8}>
+              <Form.Item name="invoiceDate" label="Invoice Date" rules={[{ required: true, message: 'Please select invoice date' }]}>
                 <DatePicker style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="dueDate"
-                label="Due Date"
-                rules={[{ required: true, message: 'Please select due date' }]}
-              >
+            <Col xs={24} sm={8}>
+              <Form.Item name="dueDate" label="Due Date" rules={[{ required: true, message: 'Please select due date' }]}>
                 <DatePicker style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
+          <Row gutter={[16, 0]}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name={type === 'purchase' ? 'vendorId' : 'customerId'}
                 label={type === 'purchase' ? 'Vendor' : 'Customer'}
                 rules={[{ required: true, message: `Please select ${type === 'purchase' ? 'vendor' : 'customer'}` }]}
               >
-                <Select
-                  showSearch
-                  placeholder={`Select ${type === 'purchase' ? 'vendor' : 'customer'}`}
-                  optionFilterProp="children"
-                  onSelect={handlePartySelect}
-                  filterOption={false}
-                >
+                <Select showSearch placeholder={`Select ${type === 'purchase' ? 'vendor' : 'customer'}`}
+                  optionFilterProp="children" onSelect={handlePartySelect} filterOption={false}>
                   {parties.map(party => (
-                    <Option key={party.id} value={party.id}>
-                      {party.displayText}
-                    </Option>
+                    <Option key={party.id} value={party.id}>{party.displayText}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={24} sm={6}>
               <Form.Item name={type === 'purchase' ? 'vendorName' : 'customerName'} label={`${type === 'purchase' ? 'Vendor' : 'Customer'} Name`} style={{ display: 'none' }}>
                 <Input />
               </Form.Item>
               <Form.Item name="currency" label="Currency">
-                <Select 
-                  value={invoiceCurrency}
-                  onChange={(value) => setInvoiceCurrency(value)}
-                >
+                <Select value={invoiceCurrency} onChange={(value) => setInvoiceCurrency(value)}>
                   {getCurrencies().map(curr => (
-                    <Option key={curr.code} value={curr.code}>
-                      {curr.symbol} {curr.code} - {curr.name}
-                    </Option>
+                    <Option key={curr.code} value={curr.code}>{curr.symbol} {curr.code} - {curr.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col xs={24} sm={6}>
               <Form.Item name="exchangeRate" label="Exchange Rate">
-                <InputNumber
-                  min={0}
-                  precision={4}
-                  placeholder="1.0000"
-                  style={{ width: '100%' }}
-                  onChange={(value) => setExchangeRate(value || 1)}
-                />
+                <InputNumber min={0} precision={4} placeholder="1.0000" style={{ width: '100%' }}
+                  onChange={(value) => setExchangeRate(value || 1)} />
               </Form.Item>
             </Col>
           </Row>
 
-          <Row gutter={16}>
+          <Row gutter={[16, 0]}>
             <Col span={24}>
               <Form.Item name="reference" label="Reference">
                 <Input placeholder="Reference number" />
@@ -693,14 +664,14 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           {selectedParty && (
             <Card size="small" style={{ marginBottom: 16, backgroundColor: '#f9f9f9' }}>
               <Title level={5}>{type === 'purchase' ? 'Vendor' : 'Customer'} Details</Title>
-              <Row gutter={16}>
-                <Col span={12}>
+              <Row gutter={[16, 8]}>
+                <Col xs={24} sm={12}>
                   <Text strong>Company:</Text> {selectedParty.companyName}<br/>
                   <Text strong>Contact:</Text> {selectedParty.contact.person}<br/>
                   <Text strong>Email:</Text> {selectedParty.contact.email}<br/>
                   <Text strong>Phone:</Text> {selectedParty.contact.phone}
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                   <Text strong>Billing Address:</Text><br/>
                   {selectedParty.billingAddress.line1}<br/>
                   {selectedParty.billingAddress.city}, {selectedParty.billingAddress.state}<br/>
@@ -712,26 +683,24 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
           <Divider>Invoice Items</Divider>
           
-          <Table
-            columns={lineColumns}
-            dataSource={invoiceLines}
-            pagination={false}
-            size="small"
-          />
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <Table
+              columns={lineColumns}
+              dataSource={invoiceLines}
+              pagination={false}
+              size="small"
+              scroll={{ x: 'max-content' }}
+            />
+          </div>
           
           <div style={{ marginTop: 16, marginBottom: 16 }}>
-            <Button
-              type="dashed"
-              onClick={addInvoiceLine}
-              icon={<PlusOutlined />}
-              style={{ width: '100%' }}
-            >
+            <Button type="dashed" onClick={addInvoiceLine} icon={<PlusOutlined />} style={{ width: '100%' }}>
               Add Line Item
             </Button>
           </div>
 
           <Row justify="end">
-            <Col span={8}>
+            <Col xs={24} sm={12} md={8}>
               <Card size="small">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <Text>Subtotal:</Text>
@@ -754,7 +723,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             </Col>
           </Row>
 
-          <Row gutter={16} style={{ marginTop: 16 }}>
+          <Row gutter={[16, 0]} style={{ marginTop: 16 }}>
             <Col span={24}>
               <Form.Item name="notes" label="Notes">
                 <TextArea rows={3} placeholder="Additional notes or terms" />
@@ -762,7 +731,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             </Col>
           </Row>
 
-          <div style={{ marginTop: 24, textAlign: 'right' }}>
+          <div style={{ marginTop: 16, textAlign: 'right' }}>
             <Space>
               <Button type="primary" onClick={handleSave} loading={loading} icon={<SaveOutlined />}>
                 {invoiceId ? 'Update' : 'Create'} Invoice

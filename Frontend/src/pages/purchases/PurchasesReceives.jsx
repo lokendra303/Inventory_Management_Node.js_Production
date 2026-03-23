@@ -336,54 +336,21 @@ const PurchasesReceives = () => {
       children: (
         <>
           <Space style={{ marginBottom: 12, flexWrap: 'wrap' }}>
-            <Input
-              placeholder="Search by PO number or vendor..."
-              prefix={<SearchOutlined />}
-              value={searchText}
-              onChange={e => setSearchText(e.target.value)}
-              style={{ width: 280 }}
-              allowClear
-            />
-            <DatePicker
-              placeholder="From Date"
-              value={fromDate}
-              onChange={date => setFromDate(date)}
-              style={{ width: 150 }}
-              allowClear
-            />
-            <DatePicker
-              placeholder="To Date"
-              value={toDate}
-              onChange={date => setToDate(date)}
-              style={{ width: 150 }}
-              allowClear
-            />
-            <Select
-              placeholder="All Statuses"
-              value={statusFilter}
-              onChange={val => setStatusFilter(val)}
-              style={{ width: 200 }}
-              allowClear
-            >
+            <Input placeholder="Search PO or vendor..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 220 }} allowClear />
+            <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
+            <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
+            <Select placeholder="All Statuses" value={statusFilter} onChange={val => setStatusFilter(val)} style={{ width: 180 }} allowClear>
               <Select.Option value="confirmed">Confirmed (not yet received)</Select.Option>
               <Select.Option value="partially_received">Partially Received</Select.Option>
             </Select>
           </Space>
-          <Table
-            columns={pendingColumns}
-            dataSource={pendingPOs.filter(po => {
-              const textMatch = !searchText ||
-                po.po_number?.toLowerCase().includes(searchText.toLowerCase()) ||
-                po.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
-              const dateMatch = (!fromDate || !toDate) || (() => {
-                const d = new Date(po.order_date);
-                return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
-              })();
+          <Table columns={pendingColumns} dataSource={pendingPOs.filter(po => {
+              const textMatch = !searchText || po.po_number?.toLowerCase().includes(searchText.toLowerCase()) || po.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
+              const dateMatch = (!fromDate || !toDate) || (() => { const d = new Date(po.order_date); return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate(); })();
               const statusMatch = !statusFilter || po.status === statusFilter;
               return textMatch && dateMatch && statusMatch;
             })}
-            loading={loading}
-            rowKey="id"
+            loading={loading} rowKey="id" scroll={{ x: 'max-content' }} size="small"
             locale={{ emptyText: 'No pending receipts — all confirmed POs have been fully received' }}
           />
         </>
@@ -395,44 +362,16 @@ const PurchasesReceives = () => {
       children: (
         <>
           <Space style={{ marginBottom: 12, flexWrap: 'wrap' }}>
-            <Input
-              placeholder="Search by GRN number, PO number or vendor..."
-              prefix={<SearchOutlined />}
-              value={searchText}
-              onChange={e => setSearchText(e.target.value)}
-              style={{ width: 280 }}
-              allowClear
-            />
-            <DatePicker
-              placeholder="From Date"
-              value={fromDate}
-              onChange={date => setFromDate(date)}
-              style={{ width: 150 }}
-              allowClear
-            />
-            <DatePicker
-              placeholder="To Date"
-              value={toDate}
-              onChange={date => setToDate(date)}
-              style={{ width: 150 }}
-              allowClear
-            />
+            <Input placeholder="Search GRN, PO or vendor..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 220 }} allowClear />
+            <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
+            <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
           </Space>
-          <Table
-            columns={grnColumns}
-            dataSource={grns.filter(grn => {
-              const textMatch = !searchText ||
-                grn.grn_number?.toLowerCase().includes(searchText.toLowerCase()) ||
-                grn.po_number?.toLowerCase().includes(searchText.toLowerCase()) ||
-                grn.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
-              const dateMatch = (!fromDate || !toDate) || (() => {
-                const d = new Date(grn.receipt_date);
-                return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
-              })();
+          <Table columns={grnColumns} dataSource={grns.filter(grn => {
+              const textMatch = !searchText || grn.grn_number?.toLowerCase().includes(searchText.toLowerCase()) || grn.po_number?.toLowerCase().includes(searchText.toLowerCase()) || grn.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
+              const dateMatch = (!fromDate || !toDate) || (() => { const d = new Date(grn.receipt_date); return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate(); })();
               return textMatch && dateMatch;
             })}
-            loading={loading}
-            rowKey="id"
+            loading={loading} rowKey="id" scroll={{ x: 'max-content' }} size="small"
             locale={{ emptyText: 'No goods received yet' }}
           />
         </>
@@ -441,20 +380,15 @@ const PurchasesReceives = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h1>Purchase Receives</h1>
+    <div style={{ padding: '16px' }}>
+      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Purchase Receives</h1>
       <Card>
         <Tabs items={tabItems} />
       </Card>
 
-      {/* ── Receive Goods Modal ── */}
-      <Modal
-        title={`Receive Goods — PO: ${selectedPO?.po_number}`}
-        open={receiveModalVisible}
+      <Modal title={`Receive Goods — PO: ${selectedPO?.po_number}`} open={receiveModalVisible}
         onCancel={() => { setReceiveModalVisible(false); setSelectedPO(null); receiveForm.resetFields(); }}
-        footer={null}
-        width={1100}
-      >
+        footer={null} width="min(1100px, 96vw)" style={{ top: 16 }}>
         <Alert
           style={{ marginBottom: 12 }}
           type="info"
@@ -469,11 +403,11 @@ const PurchasesReceives = () => {
         />
 
         <Form form={receiveForm} layout="vertical" onFinish={handleReceiveGoods}>
-          <Space style={{ width: '100%' }} size={16}>
-            <Form.Item name="grnNumber" label="GRN Number" rules={[{ required: true }]} style={{ flex: 1, minWidth: 200 }}>
+          <Space style={{ width: '100%', flexWrap: 'wrap' }} size={16}>
+            <Form.Item name="grnNumber" label="GRN Number" rules={[{ required: true }]} style={{ flex: 1, minWidth: 160 }}>
               <Input placeholder="GRN Number" />
             </Form.Item>
-            <Form.Item name="receiptDate" label="Receipt Date" rules={[{ required: true }]} style={{ flex: 1, minWidth: 160 }}>
+            <Form.Item name="receiptDate" label="Receipt Date" rules={[{ required: true }]} style={{ flex: 1, minWidth: 140 }}>
               <Input type="date" />
             </Form.Item>
           </Space>
@@ -495,7 +429,7 @@ const PurchasesReceives = () => {
                     <Form.Item name={[name, 'warehouseId']} hidden><Input /></Form.Item>
                     <Form.Item name={[name, 'quantityOrdered']} hidden><Input /></Form.Item>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', gap: 12, alignItems: 'end' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
                       <Form.Item label="Item">
                         <Form.Item name={[name, 'itemName']} noStyle>
                           <Input disabled />
@@ -611,70 +545,32 @@ const PurchasesReceives = () => {
         />
       </Modal>
 
-      {/* ── View GRN Modal ── */}
-      <Modal
-        title={`GRN Details — ${viewingGRN?.grn_number}`}
-        open={viewModalVisible}
+      <Modal title={`GRN Details — ${viewingGRN?.grn_number}`} open={viewModalVisible}
         onCancel={() => { setViewModalVisible(false); setViewingGRN(null); }}
-        footer={[
-          <Button key="close" onClick={() => { setViewModalVisible(false); setViewingGRN(null); }}>Close</Button>
-        ]}
-        width={900}
-      >
+        footer={[<Button key="close" onClick={() => { setViewModalVisible(false); setViewingGRN(null); }}>Close</Button>]}
+        width="min(900px, 96vw)" style={{ top: 16 }}>
         {viewingGRN && (
           <div>
-            <div style={{ marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 16 }}>
               <div><strong>GRN Number:</strong> {viewingGRN.grn_number}</div>
               <div><strong>PO Number:</strong> {viewingGRN.po_number}</div>
               <div><strong>Vendor:</strong> {viewingGRN.vendor_name}</div>
               <div><strong>Receipt Date:</strong> {viewingGRN.receipt_date}</div>
-              <div>
-                <strong>Status:</strong>{' '}
-                <Tag color="green">{viewingGRN.status?.toUpperCase()}</Tag>
-              </div>
+              <div><strong>Status:</strong> <Tag color="green">{viewingGRN.status?.toUpperCase()}</Tag></div>
               {viewingGRN.notes && <div><strong>Notes:</strong> {viewingGRN.notes}</div>}
             </div>
-
             <h4>Received Items:</h4>
-            <Table
-              dataSource={viewingGRN.lines || []}
-              rowKey="id"
-              pagination={false}
+            <Table dataSource={viewingGRN.lines || []} rowKey="id" pagination={false} size="small" scroll={{ x: 'max-content' }}
               columns={[
-                { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-                { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-                { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
-                { title: 'Qty Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered' },
-                { title: 'Qty Received', dataIndex: 'quantity_received', key: 'quantity_received' },
-                {
-                  title: 'Unit Cost',
-                  dataIndex: 'unit_cost',
-                  key: 'unit_cost',
-                  render: (val) => `${currency} ${formatAmount(val)}`
-                },
-                {
-                  title: 'Line Total',
-                  dataIndex: 'line_total',
-                  key: 'line_total',
-                  render: (val) => `${currency} ${formatAmount(val)}`
-                },
-                {
-                  title: (
-                    <span>
-                      Quality{' '}
-                      <Tooltip title="Accepted = inventory was updated. Rejected = inventory was NOT updated.">
-                        <InfoCircleOutlined style={{ color: '#1890ff' }} />
-                      </Tooltip>
-                    </span>
-                  ),
-                  dataIndex: 'quality_status',
-                  key: 'quality_status',
-                  render: (val) => (
-                    <Tooltip title={val === 'accepted' ? 'Inventory updated for this line' : 'Inventory NOT updated — goods failed inspection'}>
-                      <Tag color={val === 'accepted' ? 'green' : 'red'}>{val?.toUpperCase()}</Tag>
-                    </Tooltip>
-                  )
-                }
+                { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 130, ellipsis: true },
+                { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 90, ellipsis: true },
+                { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 110, ellipsis: true },
+                { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 80 },
+                { title: 'Received', dataIndex: 'quantity_received', key: 'quantity_received', width: 80 },
+                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', width: 100, render: v => `${currency} ${formatAmount(v)}` },
+                { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100, render: v => `${currency} ${formatAmount(v)}` },
+                { title: 'Quality', dataIndex: 'quality_status', key: 'quality_status', width: 90,
+                  render: v => <Tag color={v === 'accepted' ? 'green' : 'red'}>{v?.toUpperCase()}</Tag> }
               ]}
             />
           </div>

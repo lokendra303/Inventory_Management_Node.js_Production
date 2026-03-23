@@ -110,23 +110,30 @@ const Dashboard = () => {
       title: 'Item',
       dataIndex: 'item_name',
       key: 'item_name',
+      ellipsis: true,
+      width: 120,
     },
     {
       title: 'SKU',
       dataIndex: 'sku',
       key: 'sku',
+      ellipsis: true,
+      width: 90,
     },
     {
       title: 'Warehouse',
       dataIndex: 'warehouse_name',
       key: 'warehouse_name',
+      ellipsis: true,
+      width: 100,
     },
     {
-      title: 'Available',
+      title: 'Qty',
       dataIndex: 'quantity_available',
       key: 'quantity_available',
+      width: 60,
       render: (value) => (
-        <span style={{ color: value <= 5 ? '#ff4d4f' : '#faad14' }}>
+        <span style={{ color: value <= 5 ? '#ff4d4f' : '#faad14', fontWeight: 600 }}>
           {value}
         </span>
       ),
@@ -142,12 +149,12 @@ const Dashboard = () => {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h1>Dashboard</h1>
+    <div style={{ padding: '16px' }}>
+      <h1 style={{ fontSize: '20px', marginBottom: '16px' }}>Dashboard</h1>
       
       {/* Key Metrics */}
-      <Row gutter={16} style={{ marginBottom: '24px' }}>
-        <Col span={5}>
+      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+        <Col xs={12} sm={12} md={8} lg={5}>
           <Card>
             <Statistic
               title="Active Items"
@@ -157,7 +164,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col xs={12} sm={12} md={8} lg={5}>
           <Card>
             <Statistic
               title="Inactive Items"
@@ -166,7 +173,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col xs={12} sm={12} md={8} lg={5}>
           <Card>
             <Statistic
               title="Total Quantity"
@@ -175,7 +182,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col xs={12} sm={12} md={12} lg={5}>
           <Card>
             <Statistic
               title="Available Quantity"
@@ -184,7 +191,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={4}>
+        <Col xs={24} sm={12} md={12} lg={4}>
           <Card>
             <Statistic
               title="Reserved Quantity"
@@ -195,8 +202,8 @@ const Dashboard = () => {
         </Col>
       </Row>
 
-      <Row gutter={16} style={{ marginBottom: '24px' }}>
-        <Col span={8}>
+      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+        <Col xs={24} sm={8}>
           <Card>
             <Statistic
               title="Low Stock Items"
@@ -206,7 +213,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={12} sm={8}>
           <Card>
             <Statistic
               title="Active Warehouses"
@@ -216,7 +223,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={12} sm={8}>
           <Card>
             <Statistic
               title="Inactive Warehouses"
@@ -229,14 +236,14 @@ const Dashboard = () => {
       </Row>
 
       {/* Charts and Tables */}
-      <Row gutter={16}>
-        <Col span={16}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={16}>
           <Card title="Inventory Value Trend" style={{ marginBottom: '24px' }}>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={dashboardData.stockTrend}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(value) => [formatCurrency(value, true), 'Value']} />
                 <Line 
                   type="monotone" 
@@ -250,7 +257,7 @@ const Dashboard = () => {
           </Card>
         </Col>
         
-        <Col span={8}>
+        <Col xs={24} lg={8}>
           <Card title="Low Stock Alert" style={{ marginBottom: '24px' }}>
             {dashboardData.lowStockItems.length > 0 ? (
               <Table
@@ -258,7 +265,7 @@ const Dashboard = () => {
                 columns={lowStockColumns}
                 pagination={false}
                 size="small"
-                scroll={{ y: 250 }}
+                scroll={{ x: 'max-content', y: 250 }}
                 rowKey="id"
               />
             ) : (
@@ -274,7 +281,7 @@ const Dashboard = () => {
 
       {/* Recent Activity */}
       <Row>
-        <Col span={24}>
+        <Col xs={24}>
           <Card title="Recent Activity">
             <Alert
               message="Recent inventory movements will be displayed here"

@@ -30,6 +30,7 @@
 .ant-layout > .ant-layout {
   height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .ant-layout-content {
@@ -37,33 +38,92 @@
   padding: 16px;
   background: #fff;
   border-radius: 6px;
+  min-width: 0;
 }
 
-/* Mobile Responsive */
-@media (max-width: 768px) {
-  .ant-layout-content {
-    margin: 8px;
-    padding: 12px;
-  }
-  
-  .ant-table-wrapper {
-    overflow-x: auto;
-  }
-  
-  .ant-form-item {
-    margin-bottom: 16px;
-  }
-  
-  .ant-btn {
-    margin-bottom: 8px;
-  }
-}
-
-/* Tablet Responsive */
+/* Tablet */
 @media (max-width: 1024px) and (min-width: 769px) {
   .ant-layout-content {
     margin: 12px;
     padding: 14px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .ant-layout-content {
+    margin: 6px;
+    padding: 10px;
+  }
+
+  /* Tables scroll horizontally */
+  .ant-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    padding: 8px 6px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* Cards */
+  .ant-card {
+    margin-bottom: 12px;
+  }
+  .ant-card-body {
+    padding: 12px;
+  }
+  .ant-card-head-title {
+    font-size: 15px;
+  }
+
+  /* Forms */
+  .ant-form-item-label {
+    text-align: left;
+    padding-bottom: 2px;
+  }
+  .ant-form-item {
+    margin-bottom: 14px;
+  }
+
+  /* Modals — full width on mobile */
+  .ant-modal {
+    max-width: calc(100vw - 16px) !important;
+    margin: 8px auto !important;
+  }
+  .ant-modal-content {
+    border-radius: 8px;
+  }
+  .ant-modal-body {
+    padding: 12px;
+    max-height: 75vh;
+    overflow-y: auto;
+  }
+
+  /* Space wraps on mobile */
+  .ant-space {
+    flex-wrap: wrap;
+  }
+
+  /* Search inputs fill width */
+  .mobile-search {
+    width: 100% !important;
+  }
+
+  /* Toolbar rows wrap */
+  .mobile-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .mobile-toolbar .ant-input-affix-wrapper,
+  .mobile-toolbar .ant-input-search {
+    flex: 1;
+    min-width: 160px;
   }
 }
 
@@ -73,13 +133,11 @@
     margin: 4px;
     padding: 8px;
   }
-  
-  .ant-card {
-    margin-bottom: 12px;
+  .ant-card-body {
+    padding: 10px;
   }
-  
-  .ant-form-item-label {
-    text-align: left;
+  .ant-modal-body {
+    padding: 8px;
   }
 }
 
@@ -87,77 +145,12 @@
 .mobile-hidden {
   display: block;
 }
-
 .mobile-only {
   display: none;
 }
-
 @media (max-width: 768px) {
-  .mobile-hidden {
-    display: none;
-  }
-  
-  .mobile-only {
-    display: block;
-  }
-}
-
-/* Responsive Tables */
-.responsive-table {
-  overflow-x: auto;
-}
-
-@media (max-width: 768px) {
-  .ant-table-thead > tr > th {
-    padding: 8px 4px;
-    font-size: 12px;
-  }
-  
-  .ant-table-tbody > tr > td {
-    padding: 8px 4px;
-    font-size: 12px;
-  }
-}
-
-/* Responsive Forms */
-@media (max-width: 768px) {
-  .ant-form-item-label {
-    text-align: left;
-    padding-bottom: 4px;
-  }
-  
-  .ant-col {
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-}
-
-/* Responsive Cards */
-@media (max-width: 768px) {
-  .ant-card {
-    margin-bottom: 12px;
-  }
-  
-  .ant-card-head-title {
-    font-size: 16px;
-  }
-  
-  .ant-card-body {
-    padding: 16px;
-  }
-}
-
-/* Responsive Buttons */
-@media (max-width: 768px) {
-  .ant-btn-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .ant-btn-group .ant-btn {
-    width: 100%;
-  }
+  .mobile-hidden { display: none; }
+  .mobile-only { display: block; }
 }
 
 .App-logo {

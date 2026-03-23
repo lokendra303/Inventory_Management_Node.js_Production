@@ -58,17 +58,17 @@ export default function Putaways() {
   const totalPending = pendingReceipts.reduce((s, r) => s + (parseFloat(r.pending_quantity || r.quantity_ordered) || 0), 0);
 
   const columns = [
-    { title: 'PO #', dataIndex: 'po_number', key: 'po_number', width: 140 },
-    { title: 'GRN #', dataIndex: 'grn_number', key: 'grn_number', width: 140 },
-    { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 110 },
-    { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name' },
-    { title: 'Qty Pending', key: 'qty', width: 110,
+    { title: 'PO #', dataIndex: 'po_number', key: 'po_number', width: 120, ellipsis: true },
+    { title: 'GRN #', dataIndex: 'grn_number', key: 'grn_number', width: 120, ellipsis: true },
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 140, ellipsis: true },
+    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 100, ellipsis: true },
+    { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name', width: 120, ellipsis: true },
+    { title: 'Qty Pending', key: 'qty', width: 100,
       render: (_, r) => <Tag color="orange">{parseFloat(r.pending_quantity || r.quantity_ordered || 0).toFixed(2)}</Tag> },
     { title: 'Receipt Date', dataIndex: 'receipt_date', key: 'receipt_date', width: 120,
       render: v => v ? dayjs(v).format('DD MMM YYYY') : '-' },
     {
-      title: 'Actions', key: 'actions', width: 120,
+      title: 'Actions', key: 'actions', width: 110, fixed: 'right',
       render: (_, r) => (
         <Tooltip title="Put Away">
           <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => openPutaway(r)}>
@@ -80,32 +80,34 @@ export default function Putaways() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Putaways</h2>
+    <div style={{ padding: 16 }}>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: '18px' }}>Putaways</h2>
       </div>
 
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={8}>
           <Card>
             <Statistic title="Pending Putaways" value={pendingReceipts.length}
               prefix={<InboxOutlined />} valueStyle={{ color: '#fa8c16' }} />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={12} sm={8}>
           <Card>
-            <Statistic title="Total Units Pending" value={totalPending.toFixed(2)} />
+            <Statistic title="Units Pending" value={totalPending.toFixed(2)} />
           </Card>
         </Col>
       </Row>
 
       <Table columns={columns} dataSource={pendingReceipts} rowKey={(r) => `${r.po_number}-${r.item_id}`}
-        loading={loading} size="small" pagination={{ pageSize: 20 }}
+        loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'No pending putaways — all received goods have been put away' }} />
 
       <Modal title={`Put Away — ${selected?.item_name}`} open={putawayModal}
         onCancel={() => { setPutawayModal(false); form.resetFields(); }}
-        onOk={() => form.submit()} okText="Complete Putaway">
+        onOk={() => form.submit()} okText="Complete Putaway"
+        width="min(480px, 96vw)" style={{ top: 16 }}>
         {selected && (
           <div style={{ marginBottom: 16, padding: 12, background: '#f6f8fa', borderRadius: 6 }}>
             <strong>Item:</strong> {selected.item_name} ({selected.sku})<br />

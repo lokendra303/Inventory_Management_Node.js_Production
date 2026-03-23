@@ -151,8 +151,8 @@ const NewVendor = () => {
   ];
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '8px', fontSize: '28px', fontWeight: '600' }}>New Vendor</h1>
+    <div style={{ padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
+      <h1 style={{ marginBottom: '8px', fontSize: '20px', fontWeight: '600' }}>New Vendor</h1>
       
       {/* Info Banner */}
       <Card 

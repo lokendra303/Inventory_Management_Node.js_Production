@@ -320,137 +320,43 @@ const PurchaseInvoices = () => {
   };
 
   const columns = [
-    {
-      title: 'Invoice Number',
-      dataIndex: 'invoice_number',
-      key: 'invoice_number',
-    },
-    {
-      title: 'Vendor',
-      dataIndex: 'vendor_name',
-      key: 'vendor_name',
-    },
-    {
-      title: 'Invoice Date',
-      dataIndex: 'invoice_date',
-      key: 'invoice_date',
-      render: (date) => new Date(date).toLocaleDateString(),
-    },
-    {
-      title: 'Due Date',
-      dataIndex: 'due_date',
-      key: 'due_date',
-      render: (date) => date ? new Date(date).toLocaleDateString() : '-',
-    },
-    {
-      title: 'Amount',
-      dataIndex: 'total_amount',
-      key: 'total_amount',
-      render: (amount) => formatCurrency(amount),
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
+    { title: 'Invoice #', dataIndex: 'invoice_number', key: 'invoice_number', width: 130, ellipsis: true },
+    { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name', width: 140, ellipsis: true },
+    { title: 'Invoice Date', dataIndex: 'invoice_date', key: 'invoice_date', width: 110, render: (date) => new Date(date).toLocaleDateString() },
+    { title: 'Due Date', dataIndex: 'due_date', key: 'due_date', width: 100, render: (date) => date ? new Date(date).toLocaleDateString() : '-' },
+    { title: 'Amount', dataIndex: 'total_amount', key: 'total_amount', width: 110, render: (amount) => formatCurrency(amount) },
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 120,
       render: (status) => {
-        const colors = {
-          draft: 'orange',
-          posted: 'blue',
-          partially_paid: 'purple',
-          paid: 'green',
-          cancelled: 'red'
-        };
-        return (
-          <Tag color={colors[status] || 'default'}>
-            {status?.toUpperCase() || 'UNKNOWN'}
-          </Tag>
-        );
+        const colors = { draft: 'orange', posted: 'blue', partially_paid: 'purple', paid: 'green', cancelled: 'red' };
+        return <Tag color={colors[status] || 'default'}>{status?.toUpperCase() || 'UNKNOWN'}</Tag>;
       },
     },
     {
-      title: 'Actions',
-      key: 'actions',
-      width: 250,
+      title: 'Actions', key: 'actions', width: 160,
       render: (_, record) => (
-        <Space>
-          <Button
-            type="text"
-            icon={<EditOutlined />}
-            onClick={() => handleEditInvoice(record.id)}
-            title="Edit Invoice"
-          />
-          <Button
-            type="text"
-            icon={<EyeOutlined />}
-            onClick={() => handleViewStandardFormat(record.id)}
-            title="View Standard Format"
-          />
-          <Button
-            type="text"
-            icon={<MailOutlined />}
-            onClick={() => handleEmailInvoice(record)}
-            title="Email Invoice"
-          />
-          <Button
-            type="text"
-            icon={<PrinterOutlined />}
-            onClick={() => handlePrintPDF(record.id)}
-            title="Print PDF"
-          />
-          <Button
-            type="text"
-            icon={<FilePdfOutlined />}
-            onClick={() => handleDownloadPDF(record.id, record.invoice_number)}
-            title="Download PDF"
-          />
+        <Space size={2}>
+          <Button type="text" icon={<EditOutlined />} onClick={() => handleEditInvoice(record.id)} title="Edit" />
+          <Button type="text" icon={<EyeOutlined />} onClick={() => handleViewStandardFormat(record.id)} title="View" />
+          <Button type="text" icon={<MailOutlined />} onClick={() => handleEmailInvoice(record)} title="Email" />
+          <Button type="text" icon={<PrinterOutlined />} onClick={() => handlePrintPDF(record.id)} title="Print" />
+          <Button type="text" icon={<FilePdfOutlined />} onClick={() => handleDownloadPDF(record.id, record.invoice_number)} title="PDF" />
         </Space>
       ),
     },
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <Title level={2}>
-          <ShoppingCartOutlined /> Purchase Invoices
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateInvoice}>
-          Create Invoice
-        </Button>
+    <div style={{ padding: '16px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}><ShoppingCartOutlined /> Purchase Invoices</Title>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateInvoice}>Create Invoice</Button>
       </div>
-
       <Card>
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Input
-            placeholder="Search by invoice number or vendor..."
-            prefix={<SearchOutlined />}
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            style={{ width: 300 }}
-            allowClear
-          />
-          <DatePicker
-            placeholder="From Date"
-            value={fromDate}
-            onChange={date => setFromDate(date)}
-            style={{ width: 150 }}
-            allowClear
-          />
-          
-          <DatePicker
-            placeholder="To Date"
-            value={toDate}
-            onChange={date => setToDate(date)}
-            style={{ width: 150 }}
-            allowClear
-          />
-          <Select
-            placeholder="All Statuses"
-            value={statusFilter}
-            onChange={val => setStatusFilter(val)}
-            style={{ width: 160 }}
-            allowClear
-          >
+          <Input placeholder="Search invoice or vendor..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 240 }} allowClear />
+          <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
+          <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
+          <Select placeholder="All Statuses" value={statusFilter} onChange={val => setStatusFilter(val)} style={{ width: 150 }} allowClear>
             <Select.Option value="draft">Draft</Select.Option>
             <Select.Option value="posted">Posted</Select.Option>
             <Select.Option value="partially_paid">Partially Paid</Select.Option>
@@ -458,63 +364,26 @@ const PurchaseInvoices = () => {
             <Select.Option value="cancelled">Cancelled</Select.Option>
           </Select>
         </Space>
-        <Table 
-          columns={columns} 
-          dataSource={invoices.filter(inv => {
-            const textMatch = !searchText ||
-              inv.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) ||
-              inv.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
-            const dateMatch = (!fromDate || !toDate) || (() => {
-              const d = new Date(inv.invoice_date);
-              return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
-            })();
+        <Table columns={columns} dataSource={invoices.filter(inv => {
+            const textMatch = !searchText || inv.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) || inv.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
+            const dateMatch = (!fromDate || !toDate) || (() => { const d = new Date(inv.invoice_date); return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate(); })();
             const statusMatch = !statusFilter || inv.status === statusFilter;
             return textMatch && dateMatch && statusMatch;
           })}
           loading={loading}
-          pagination={{
-            current: pagination.current,
-            pageSize: pagination.pageSize,
-            total: pagination.total,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} items`,
-          }}
-          onChange={handleTableChange}
-          rowKey="id"
+          pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: pagination.total, showSizeChanger: true, size: 'small' }}
+          onChange={handleTableChange} rowKey="id"
+          scroll={{ x: 'max-content' }} size="small"
         />
       </Card>
-
-      <Modal
-        title={`${modalMode === 'create' ? 'Create' : 'Edit'} Purchase Invoice`}
-        visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        width={1200}
-        footer={null}
-        destroyOnClose
-      >
-        <InvoiceForm
-          type="purchase"
-          invoiceId={selectedInvoiceId}
-          onSave={handleModalSave}
-        />
+      <Modal title={`${modalMode === 'create' ? 'Create' : 'Edit'} Purchase Invoice`} open={modalVisible}
+        onCancel={() => setModalVisible(false)} width="min(1200px, 96vw)" style={{ top: 16 }} footer={null} destroyOnClose>
+        <InvoiceForm type="purchase" invoiceId={selectedInvoiceId} onSave={handleModalSave} />
       </Modal>
-
-      <Modal
-        title="Email Invoice"
-        visible={emailModalVisible}
-        onCancel={() => setEmailModalVisible(false)}
-        onOk={handleSendEmail}
-        okText="Send Email"
-        confirmLoading={loading}
-      >
+      <Modal title="Email Invoice" open={emailModalVisible} onCancel={() => setEmailModalVisible(false)}
+        onOk={handleSendEmail} okText="Send Email" confirmLoading={loading}>
         <p>Send invoice <strong>{selectedInvoiceForEmail?.invoice_number}</strong> to:</p>
-        <Input
-          placeholder="Enter email address"
-          value={emailAddress}
-          onChange={(e) => setEmailAddress(e.target.value)}
-          onPressEnter={handleSendEmail}
-        />
+        <Input placeholder="Enter email address" value={emailAddress} onChange={(e) => setEmailAddress(e.target.value)} onPressEnter={handleSendEmail} />
       </Modal>
     </div>
   );

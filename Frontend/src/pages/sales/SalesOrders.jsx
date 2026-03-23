@@ -60,61 +60,24 @@ const SalesOrders = () => {
   };
 
   const columns = [
-    { title: "SO Number", dataIndex: "so_number", key: "so_number" },
-    { title: "Customer", dataIndex: "customer_name", key: "customer_name" },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
+    { title: "SO Number", dataIndex: "so_number", key: "so_number", width: 130, ellipsis: true },
+    { title: "Customer", dataIndex: "customer_name", key: "customer_name", width: 150, ellipsis: true },
+    { title: "Status", dataIndex: "status", key: "status", width: 100,
       render: (status) => {
-        const colors = {
-          draft: "gray",
-          confirmed: "blue",
-          shipped: "green",
-          delivered: "green",
-          cancelled: "red",
-        };
-        return (
-          <span style={{ color: colors[status] || "black" }}>
-            {status?.toUpperCase()}
-          </span>
-        );
+        const colors = { draft: "gray", confirmed: "blue", shipped: "green", delivered: "green", cancelled: "red" };
+        return <span style={{ color: colors[status] || "black" }}>{status?.toUpperCase()}</span>;
       },
     },
+    { title: "Total", dataIndex: "total_amount", key: "total_amount", width: 110, render: (val) => formatCurrency(val) },
+    { title: "Order Date", dataIndex: "order_date", key: "order_date", width: 110 },
     {
-      title: "Total",
-      dataIndex: "total_amount",
-      key: "total_amount",
-      render: (val) => formatCurrency(val),
-    },
-    { title: "Order Date", dataIndex: "order_date", key: "order_date" },
-    {
-      title: "Actions",
-      key: "actions",
+      title: "Actions", key: "actions", width: 180,
       render: (_, record) => (
-        <Space>
-          <Button size="small" onClick={() => viewSO(record)}>
-            View
-          </Button>
-          {record.status === "draft" && (
-            <Button
-              size="small"
-              type="primary"
-              onClick={() => confirmSO(record)}
-            >
-              Confirm
-            </Button>
-          )}
-          {record.status === "confirmed" && (
-            <Button size="small" onClick={() => shipSO(record)}>
-              Ship
-            </Button>
-          )}
-          {record.status === "draft" && (
-            <Button size="small" danger onClick={() => cancelSO(record)}>
-              Cancel
-            </Button>
-          )}
+        <Space size={4} wrap>
+          <Button size="small" onClick={() => viewSO(record)}>View</Button>
+          {record.status === "draft" && <Button size="small" type="primary" onClick={() => confirmSO(record)}>Confirm</Button>}
+          {record.status === "confirmed" && <Button size="small" onClick={() => shipSO(record)}>Ship</Button>}
+          {record.status === "draft" && <Button size="small" danger onClick={() => cancelSO(record)}>Cancel</Button>}
         </Space>
       ),
     },
@@ -377,46 +340,15 @@ const SalesOrders = () => {
   }, []);
 
   return (
-    <div style={{ padding: "24px" }}>
-      <h1>Sales Orders</h1>
+    <div style={{ padding: '16px' }}>
+      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Sales Orders</h1>
       <Card>
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setModalVisible(true)}
-          >
-            Create SO
-          </Button>
-          <Input
-            placeholder="Search by SO number or customer..."
-            prefix={<SearchOutlined />}
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            style={{ width: 260 }}
-            allowClear
-          />
-          <DatePicker
-            placeholder="From Date"
-            value={fromDate}
-            onChange={date => setFromDate(date)}
-            style={{ width: 150 }}
-            allowClear
-          />
-          <DatePicker
-            placeholder="To Date"
-            value={toDate}
-            onChange={date => setToDate(date)}
-            style={{ width: 150 }}
-            allowClear
-          />
-          <Select
-            placeholder="All Statuses"
-            value={statusFilter}
-            onChange={val => setStatusFilter(val)}
-            style={{ width: 160 }}
-            allowClear
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>Create SO</Button>
+          <Input placeholder="Search SO or customer..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 220 }} allowClear />
+          <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
+          <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
+          <Select placeholder="All Statuses" value={statusFilter} onChange={val => setStatusFilter(val)} style={{ width: 150 }} allowClear>
             <Select.Option value="draft">Draft</Select.Option>
             <Select.Option value="confirmed">Confirmed</Select.Option>
             <Select.Option value="shipped">Shipped</Select.Option>
@@ -427,28 +359,20 @@ const SalesOrders = () => {
         <Table
           columns={columns}
           dataSource={sos.filter(so => {
-            const textMatch = !searchText ||
-              so.so_number?.toLowerCase().includes(searchText.toLowerCase()) ||
-              so.customer_name?.toLowerCase().includes(searchText.toLowerCase());
-            const dateMatch = (!fromDate || !toDate) || (() => {
-              const d = new Date(so.order_date);
-              return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
-            })();
+            const textMatch = !searchText || so.so_number?.toLowerCase().includes(searchText.toLowerCase()) || so.customer_name?.toLowerCase().includes(searchText.toLowerCase());
+            const dateMatch = (!fromDate || !toDate) || (() => { const d = new Date(so.order_date); return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate(); })();
             const statusMatch = !statusFilter || so.status === statusFilter;
             return textMatch && dateMatch && statusMatch;
           })}
           loading={loading}
           rowKey="id"
+          scroll={{ x: 'max-content' }}
+          size="small"
+          pagination={{ size: 'small' }}
         />
       </Card>
 
-      <Modal
-        title="Create Sales Order"
-        open={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        footer={null}
-        width={800}
-      >
+      <Modal title="Create Sales Order" open={modalVisible} onCancel={() => setModalVisible(false)} footer={null} width="min(800px, 96vw)" style={{ top: 16 }}>
         <Form form={form} layout="vertical" onFinish={handleCreateSO}>
           <Form.Item
             name="soNumber"
@@ -887,116 +811,38 @@ const SalesOrders = () => {
         </Form>
       </Modal>
 
-      {/* View SO Modal */}
-      <Modal
-        title={`Sales Order Details - ${selectedSOForView?.so_number}`}
-        open={viewModalVisible}
-        onCancel={() => {
-          setViewModalVisible(false);
-          setSelectedSOForView(null);
-        }}
-        footer={[
-          <Button 
-            key="email"
-            icon={<MailOutlined />}
-            onClick={() => handleEmailSO(selectedSOForView)}
-          >
-            Email
-          </Button>,
-          <Button 
-            key="print" 
-            type="primary"
-            icon={<PrinterOutlined />}
-            onClick={() => printSO(selectedSOForView)}
-          >
-            Print
-          </Button>,
-          <Button 
-            key="download" 
-            icon={<DownloadOutlined />}
-            onClick={() => downloadPDF(selectedSOForView)}
-          >
-            Download PDF
-          </Button>,
-          <Button
-            key="close"
-            onClick={() => {
-              setViewModalVisible(false);
-              setSelectedSOForView(null);
-            }}
-          >
-            Close
-          </Button>,
-        ]}
-        width={1000}
-      >
+      <Modal title={`Sales Order Details - ${selectedSOForView?.so_number}`} open={viewModalVisible} onCancel={() => { setViewModalVisible(false); setSelectedSOForView(null); }} footer={[
+          <Button key="email" icon={<MailOutlined />} onClick={() => handleEmailSO(selectedSOForView)}>Email</Button>,
+          <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={() => printSO(selectedSOForView)}>Print</Button>,
+          <Button key="download" icon={<DownloadOutlined />} onClick={() => downloadPDF(selectedSOForView)}>PDF</Button>,
+          <Button key="close" onClick={() => { setViewModalVisible(false); setSelectedSOForView(null); }}>Close</Button>,
+        ]} width="min(1000px, 96vw)" style={{ top: 16 }}>
         {selectedSOForView && (
           <div>
             <div style={{ marginBottom: 16 }}>
-              <strong>Customer:</strong> {selectedSOForView.customer_name}
-              <br />
-              <strong>Warehouse:</strong> {selectedSOForView.warehouse_name}
-              <br />
-              <strong>Status:</strong> {selectedSOForView.status?.toUpperCase()}
-              <br />
-              <strong>Order Date:</strong> {selectedSOForView.order_date}
-              <br />
-              <strong>Expected Ship Date:</strong>{" "}
-              {selectedSOForView.expected_ship_date}
-              <br />
-              <strong>Currency:</strong> {selectedSOForView.currency}
-              <br />
-              <strong>Channel:</strong> {selectedSOForView.channel}
-              <br />
+              <strong>Customer:</strong> {selectedSOForView.customer_name}<br />
+              <strong>Status:</strong> {selectedSOForView.status?.toUpperCase()}<br />
+              <strong>Order Date:</strong> {selectedSOForView.order_date}<br />
+              <strong>Expected Ship Date:</strong> {selectedSOForView.expected_ship_date}<br />
+              <strong>Currency:</strong> {selectedSOForView.currency}<br />
               <strong>Total Amount:</strong> {formatCurrency(selectedSOForView.total_amount)}
               {selectedSOForView.status === 'cancelled' && selectedSOForView.cancellation_reason && (
-                <>
-                  <br />
-                  <div style={{ marginTop: 12, padding: 12, backgroundColor: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
-                    <strong style={{ color: '#d4380d' }}>Cancellation Reason:</strong>
-                    <div style={{ marginTop: 4, color: '#595959' }}>{selectedSOForView.cancellation_reason}</div>
-                  </div>
-                </>
+                <div style={{ marginTop: 12, padding: 12, backgroundColor: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
+                  <strong style={{ color: '#d4380d' }}>Cancellation Reason:</strong>
+                  <div style={{ marginTop: 4, color: '#595959' }}>{selectedSOForView.cancellation_reason}</div>
+                </div>
               )}
             </div>
-
             <h4>Line Items:</h4>
-            <Table
-              dataSource={selectedSOForView.lines || []}
-              rowKey="id"
-              pagination={false}
+            <Table dataSource={selectedSOForView.lines || []} rowKey="id" pagination={false} size="small" scroll={{ x: 'max-content' }}
               columns={[
-                { title: "Item", dataIndex: "item_name", key: "item_name" },
-                { title: "HSN Code", dataIndex: "hsn_code", key: "hsn_code", render: (val) => val || '-' },
-                {
-                  title: "Qty Ordered",
-                  dataIndex: "quantity_ordered",
-                  key: "quantity_ordered",
-                },
-                {
-                  title: "Shipped",
-                  dataIndex: "quantity_shipped",
-                  key: "quantity_shipped",
-                  render: (val) => val || 0,
-                },
-                {
-                  title: "Unit Price",
-                  dataIndex: "unit_price",
-                  key: "unit_price",
-                  render: (val) => formatCurrency(val),
-                },
-                {
-                  title: "Line Total",
-                  dataIndex: "line_total",
-                  key: "line_total",
-                  render: (val) => formatCurrency(val),
-                },
-                {
-                  title: "Status",
-                  dataIndex: "status",
-                  key: "status",
-                  render: (val) => val?.toUpperCase(),
-                },
+                { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 140, ellipsis: true },
+                { title: 'HSN', dataIndex: 'hsn_code', key: 'hsn_code', width: 80, render: v => v || '-' },
+                { title: 'Qty', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 70 },
+                { title: 'Shipped', dataIndex: 'quantity_shipped', key: 'quantity_shipped', width: 80, render: v => v || 0 },
+                { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', width: 100, render: v => formatCurrency(v) },
+                { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100, render: v => formatCurrency(v) },
+                { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: v => v?.toUpperCase() },
               ]}
             />
           </div>

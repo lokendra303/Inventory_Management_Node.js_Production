@@ -430,10 +430,10 @@ const viewItem = async (item) => {
   }, [modalVisible]);
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h1>Items</h1>
+    <div style={{ padding: '16px' }}>
+      <h1 style={{ fontSize: '20px', marginBottom: '16px' }}>Items</h1>
       <Card>
-        <Space style={{ marginBottom: 16 }}>
+        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
           {canManageItems && (
             <Button 
               type="primary" 
@@ -448,7 +448,7 @@ const viewItem = async (item) => {
             prefix={<SearchOutlined />}
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
-            style={{ width: 300 }}
+            style={{ width: '100%', maxWidth: 300 }}
             allowClear
           />
         </Space>
@@ -462,6 +462,7 @@ const viewItem = async (item) => {
           )} 
           loading={loading}
           rowKey="id"
+          scroll={{ x: 'max-content' }}
         />
       </Card>
 
@@ -476,7 +477,8 @@ const viewItem = async (item) => {
           form.resetFields();
         }}
         footer={null}
-        width={900}
+        width="min(900px, 96vw)"
+        style={{ top: 16 }}
       >
         <Form
           form={form}
@@ -484,7 +486,7 @@ const viewItem = async (item) => {
           onFinish={handleSubmit}
         >
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="sku"
                 label="SKU"
@@ -493,7 +495,7 @@ const viewItem = async (item) => {
                 <Input placeholder="Enter SKU" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="name"
                 label="Name"
@@ -505,9 +507,9 @@ const viewItem = async (item) => {
           </Row>
 
           <Row gutter={16}>
-            <Col span={16}>
+            <Col xs={24} md={16}>
               <Row gutter={16}>
-                <Col span={8}>
+                <Col xs={24} sm={8}>
                   <Form.Item
                     name="type"
                     label="Type"
@@ -521,7 +523,7 @@ const viewItem = async (item) => {
                     </Select>
                   </Form.Item>
                 </Col>
-                <Col span={8}>
+                <Col xs={24} sm={8}>
                   <Form.Item name="category" label="Category">
                     {categories.length > 0 ? (
                       <Select 
@@ -592,7 +594,7 @@ const viewItem = async (item) => {
                     )}
                   </Form.Item>
                 </Col>
-                <Col span={8}>
+                <Col xs={24} sm={8}>
                   <Form.Item name="unit" label="Unit" initialValue="pcs">
                     <Select 
                       placeholder="Select unit"
@@ -682,7 +684,7 @@ const viewItem = async (item) => {
               </Row>
             </Col>
             
-            <Col span={8}>
+            <Col xs={24} md={8}>
               <Form.Item name="image" label="Item Image">
                 <Upload
                   name="image"
@@ -743,7 +745,7 @@ const viewItem = async (item) => {
           </Row>
 
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item label="Dimensions (L × W × H)">
                 <Input.Group compact>
                   <Form.Item name="length" noStyle>
@@ -758,12 +760,12 @@ const viewItem = async (item) => {
                 </Input.Group>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="weight" label="Weight">
                 <Input placeholder="Weight in kg" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="manufacturer" label="Manufacturer">
                     <Select 
                       placeholder="Select or Add Manufacturer" 
@@ -846,12 +848,12 @@ const viewItem = async (item) => {
           </Row>
 
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="upc" label="UPC">
                 <Input placeholder="Enter UPC" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="brand" label="Brand">
                 <Select 
                   placeholder="Select or Add Brand" 
@@ -931,7 +933,7 @@ const viewItem = async (item) => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="mpn" label="MPN">
                 <Input placeholder="Enter MPN" />
               </Form.Item>
@@ -939,7 +941,7 @@ const viewItem = async (item) => {
           </Row>
 
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="ean" label="EAN">
                 <Input.Search
                   placeholder="Enter EAN to lookup product"
@@ -988,19 +990,19 @@ const viewItem = async (item) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="isbn" label="ISBN">
                 <Input placeholder="Enter ISBN" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="barcode" label="Barcode">
                 <Input placeholder="Enter Barcode" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="hsnCode" label="HSN Code">
                 <Input placeholder="Enter HSN Code" />
               </Form.Item>
@@ -1011,7 +1013,7 @@ const viewItem = async (item) => {
             <h3>Sales Information</h3>
           </div>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="sellingPrice" label="Selling Price" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
@@ -1023,7 +1025,7 @@ const viewItem = async (item) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="mrp" label="MRP" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
@@ -1035,7 +1037,7 @@ const viewItem = async (item) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="account" label="Account">
                 <Select placeholder="Select account">
                   <Select.Option value="sales">Sales</Select.Option>
@@ -1045,7 +1047,7 @@ const viewItem = async (item) => {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="taxRate" label="Tax Rate (%)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
@@ -1058,7 +1060,7 @@ const viewItem = async (item) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={16}>
+            <Col xs={24} sm={16}>
               <Form.Item name="salesDescription" label="Description">
                 <Input.TextArea placeholder="Sales description" rows={2} />
               </Form.Item>
@@ -1069,7 +1071,7 @@ const viewItem = async (item) => {
             <h3>Purchase Information</h3>
           </div>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="costPrice" label="Cost Price (can be set later via Purchase Order)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
@@ -1090,7 +1092,7 @@ const viewItem = async (item) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="purchaseAccount" label="Account">
                 <Select placeholder="Select account">
                   <Select.Option value="cogs">Cost of Goods Sold</Select.Option>
@@ -1098,7 +1100,7 @@ const viewItem = async (item) => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="purchaseTaxRate" label="Tax Rate (%)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
@@ -1113,12 +1115,12 @@ const viewItem = async (item) => {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="purchaseDescription" label="Description">
                 <Input.TextArea placeholder="Purchase description" rows={2} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="preferredVendor" label="Preferred Vendor">
                 <Select 
                   placeholder="Select Vendor" 
@@ -1144,7 +1146,7 @@ const viewItem = async (item) => {
             </Form.Item>
           </div>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="inventoryAccount" label="Inventory Account">
                 <Select placeholder="Select an account">
                   <Select.Option value="inventory">Inventory Asset</Select.Option>
@@ -1152,7 +1154,7 @@ const viewItem = async (item) => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="minStockLevel" label="Min Stock Level">
                 <InputNumber 
                   min={0} 
@@ -1162,7 +1164,7 @@ const viewItem = async (item) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="maxStockLevel" label="Max Stock Level">
                 <InputNumber 
                   min={0} 
@@ -1174,7 +1176,7 @@ const viewItem = async (item) => {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="openingStock" label="Opening Stock">
                 <InputNumber 
                   min={0} 
@@ -1192,7 +1194,7 @@ const viewItem = async (item) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item 
                 name="openingValue" 
                 label="Opening Value (Auto-calculated)"
@@ -1207,7 +1209,7 @@ const viewItem = async (item) => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item
                 name="warehouseId"
                 label="Warehouse"
@@ -1224,7 +1226,7 @@ const viewItem = async (item) => {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="valuationMethod" label="Inventory Valuation Method">
                 <Select placeholder="Select valuation method">
                   <Select.Option value="fifo">FIFO</Select.Option>
@@ -1266,14 +1268,15 @@ const viewItem = async (item) => {
         open={viewModalVisible}
         onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}
         footer={[<Button key="close" onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}>Close</Button>]}
-        width={960}
+        width="min(960px, 96vw)"
+        style={{ top: 16 }}
       >
         {viewingItem && (
           <div>
             <Row gutter={16}>
-              <Col span={16}>
+              <Col xs={24} md={16}>
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <p><strong>SKU:</strong> {viewingItem.sku}</p>
                     <p><strong>Name:</strong> {viewingItem.name}</p>
                     <p><strong>Type:</strong> {viewingItem.type}</p>
@@ -1285,7 +1288,7 @@ const viewItem = async (item) => {
                     <p><strong>HSN Code:</strong> {viewingItem.hsn_code || 'N/A'}</p>
                     <p><strong>Status:</strong> <span style={{ color: viewingItem.status === 'active' ? '#52c41a' : '#ff4d4f' }}>{viewingItem.status}</span></p>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <p><strong>Cost Price:</strong> {viewingItem.cost_price ? formatPrice(viewingItem.cost_price, currency, 'USD') : 'N/A'}</p>
                     <p><strong>Selling Price:</strong> {viewingItem.selling_price ? formatPrice(viewingItem.selling_price, currency, 'USD') : 'N/A'}</p>
                     <p><strong>MRP:</strong> {viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'}</p>
@@ -1300,11 +1303,11 @@ const viewItem = async (item) => {
                   </Col>
                 </Row>
                 <Row gutter={16} style={{ marginTop: 8 }}>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <p><strong>Weight:</strong> {viewingItem.weight ? `${viewingItem.weight} ${viewingItem.weight_unit || 'kg'}` : 'N/A'}</p>
                     <p><strong>Dimensions (L×W×H):</strong> {viewingItem.dimensions ? `${viewingItem.dimensions.length || 0} × ${viewingItem.dimensions.width || 0} × ${viewingItem.dimensions.height || 0}` : 'N/A'}</p>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} sm={12}>
                     <p><strong>UPC:</strong> {viewingItem.upc || 'N/A'}</p>
                     <p><strong>EAN:</strong> {viewingItem.ean || 'N/A'}</p>
                     <p><strong>ISBN:</strong> {viewingItem.isbn || 'N/A'}</p>
@@ -1312,7 +1315,7 @@ const viewItem = async (item) => {
                   </Col>
                 </Row>
               </Col>
-              <Col span={8}>
+              <Col xs={24} md={8}>
                 <div style={{ textAlign: 'center' }}>
                   <p><strong>Item Image</strong></p>
                   {viewingItem.image ? (

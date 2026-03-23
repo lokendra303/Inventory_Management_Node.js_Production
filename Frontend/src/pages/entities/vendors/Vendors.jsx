@@ -140,95 +140,34 @@ const Vendors = () => {
       title: 'Vendor Name',
       dataIndex: 'vendorName',
       key: 'vendorName',
+      width: 160, ellipsis: true,
       render: (text, record) => (
-        <Button 
-          type="link"
-          onClick={() => navigate(`/purchases/vendors/${record.id}`)}
-          style={{ padding: 0, height: 'auto' }}
-        >
+        <Button type="link" onClick={() => navigate(`/purchases/vendors/${record.id}`)} style={{ padding: 0, height: 'auto' }}>
           {text}
         </Button>
       )
     },
+    { title: 'Email', dataIndex: 'email', key: 'email', width: 160, ellipsis: true, responsive: ['md'] },
+    { title: 'Phone', dataIndex: 'workPhone', key: 'workPhone', width: 120, ellipsis: true, responsive: ['lg'] },
+    { title: 'GSTIN', dataIndex: 'gstin', key: 'gstin', width: 140, ellipsis: true, responsive: ['lg'] },
     {
-      title: 'Email',
-      dataIndex: 'email',
-      key: 'email'
-    },
-    {
-      title: 'Phone',
-      dataIndex: 'phone',
-      key: 'phone'
-    },
-    {
-      title: 'City',
-      dataIndex: 'city',
-      key: 'city'
-    },
-    {
-      title: 'State',
-      dataIndex: 'state',
-      key: 'state'
-    },
-    {
-      title: 'GSTIN',
-      dataIndex: 'gstin',
-      key: 'gstin'
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
+      title: 'Status', dataIndex: 'status', key: 'status', width: 90,
       render: (status) => (
-        <span style={{ color: status === 'Active' ? '#52c41a' : '#ff4d4f', fontWeight: '500' }}>
-          {status}
-        </span>
+        <span style={{ color: status === 'Active' ? '#52c41a' : '#ff4d4f', fontWeight: '500' }}>{status}</span>
       )
     },
     {
-      title: 'Action',
-      key: 'action',
+      title: 'Action', key: 'action', width: 160,
       render: (_, record) => (
-        <Space size="small">
-          <Button 
-            type="primary" 
-            size="small" 
-            icon={<EyeOutlined />}
-            onClick={() => navigate(`/purchases/vendors/${record.id}`)}
-          >
-            View
-          </Button>
+        <Space size={4} wrap>
+          <Button type="primary" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/purchases/vendors/${record.id}`)}>View</Button>
           {record.status === 'Active' ? (
-            <Popconfirm
-              title="Deactivate Vendor"
-              description="Are you sure you want to deactivate this vendor?"
-              onConfirm={() => handleStatusChange(record.id, 'inactive')}
-              okText="Yes"
-              cancelText="No"
-            >
-              <Button 
-                danger 
-                size="small"
-                loading={actionLoading}
-              >
-                Deactivate
-              </Button>
+            <Popconfirm title="Deactivate Vendor" description="Are you sure?" onConfirm={() => handleStatusChange(record.id, 'inactive')} okText="Yes" cancelText="No">
+              <Button danger size="small" loading={actionLoading}>Deactivate</Button>
             </Popconfirm>
           ) : (
-            <Popconfirm
-              title="Activate Vendor"
-              description="Are you sure you want to activate this vendor?"
-              onConfirm={() => handleStatusChange(record.id, 'active')}
-              okText="Yes"
-              cancelText="No"
-            >
-              <Button 
-                type="default" 
-                size="small"
-                loading={actionLoading}
-              >
-                Activate
-              </Button>
+            <Popconfirm title="Activate Vendor" description="Are you sure?" onConfirm={() => handleStatusChange(record.id, 'active')} okText="Yes" cancelText="No">
+              <Button size="small" loading={actionLoading}>Activate</Button>
             </Popconfirm>
           )}
         </Space>
@@ -237,47 +176,22 @@ const Vendors = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '16px' }}>
       <Card>
-        {/* Header */}
-        <Row gutter={16} style={{ marginBottom: '24px' }}>
-          <Col xs={24} sm={12}>
-            <h2 style={{ margin: 0 }}>Vendors</h2>
-          </Col>
-          <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => navigate('/purchases/vendors/new')}
-            >
-              New Vendor
-            </Button>
-          </Col>
-        </Row>
-
-        {/* Search Bar */}
-        <Row gutter={16} style={{ marginBottom: '24px' }}>
-          <Col xs={24} sm={12}>
-            <Input
-              placeholder="Search vendors..."
-              prefix={<SearchOutlined />}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-            />
-          </Col>
-        </Row>
-
-        {/* Vendors Table */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 style={{ margin: 0 }}>Vendors</h2>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/purchases/vendors/new')}>New Vendor</Button>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <Input placeholder="Search vendors..." prefix={<SearchOutlined />} value={searchText} onChange={(e) => setSearchText(e.target.value)} style={{ maxWidth: 300 }} />
+        </div>
         <Spin spinning={loading}>
-          <Table
-            columns={columns}
-            dataSource={vendors.filter(v => 
+          <Table columns={columns} dataSource={vendors.filter(v =>
               v.vendorName.toLowerCase().includes(searchText.toLowerCase()) ||
               v.email.toLowerCase().includes(searchText.toLowerCase())
             )}
-            rowKey="id"
-            pagination={{ pageSize: 10 }}
-            scroll={{ x: 800 }}
+            rowKey="id" pagination={{ pageSize: 10, size: 'small' }}
+            scroll={{ x: 500 }} size="small"
           />
         </Spin>
       </Card>

@@ -110,11 +110,11 @@ const MoveOrders = () => {
   };
 
   const columns = [
-    { title: 'Item', dataIndex: 'item_name', key: 'item_name', render: (v, r) => v ? `${v} (${r.sku})` : r.itemId },
-    { title: 'From', dataIndex: 'from_warehouse_name', key: 'from_warehouse_name', render: (v, r) => v || r.fromWarehouseId },
-    { title: 'To', dataIndex: 'to_warehouse_name', key: 'to_warehouse_name', render: (v, r) => v || r.toWarehouseId },
-    { title: 'Qty', dataIndex: 'quantity', key: 'quantity' },
-    { title: 'Date', dataIndex: 'created_at', key: 'created_at', render: (v) => v ? new Date(v).toLocaleString() : '-' }
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', ellipsis: true, width: 160, render: (v, r) => v ? `${v} (${r.sku})` : r.itemId },
+    { title: 'From', dataIndex: 'from_warehouse_name', key: 'from_warehouse_name', ellipsis: true, width: 130, render: (v, r) => v || r.fromWarehouseId },
+    { title: 'To', dataIndex: 'to_warehouse_name', key: 'to_warehouse_name', ellipsis: true, width: 130, render: (v, r) => v || r.toWarehouseId },
+    { title: 'Qty', dataIndex: 'quantity', key: 'quantity', width: 70 },
+    { title: 'Date', dataIndex: 'created_at', key: 'created_at', width: 150, render: (v) => v ? new Date(v).toLocaleString() : '-' }
   ];
 
   const filteredList = list.filter(r => {
@@ -129,23 +129,25 @@ const MoveOrders = () => {
   });
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Move Orders</h1>
+    <div style={{ padding: 16 }}>
+      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Move Orders</h1>
       <Card>
-        <Space style={{ marginBottom: 16 }}>
+        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             Create Move Order
           </Button>
           <Input
-            placeholder="Search by move number..."
+            placeholder="Search..."
             prefix={<SearchOutlined />}
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
-            style={{ width: 240 }}
+            style={{ width: '100%', maxWidth: 240 }}
             allowClear
           />
         </Space>
-        <Table dataSource={filteredList} columns={columns} rowKey="id" loading={historyLoading} />
+        <Table dataSource={filteredList} columns={columns} rowKey="id" loading={historyLoading}
+          scroll={{ x: 'max-content' }} size="small"
+          pagination={{ pageSize: 20, size: 'small' }} />
       </Card>
 
       <Modal
@@ -153,14 +155,15 @@ const MoveOrders = () => {
         open={modalVisible}
         onCancel={() => { setModalVisible(false); form.resetFields(); }}
         footer={null}
-        width={900}
+        width="min(900px, 96vw)"
+        style={{ top: 16 }}
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Space style={{ width: '100%' }} size="middle">
-            <Form.Item name="moveNumber" label="Move Order #" rules={[{ required: true }]} style={{ flex: 1, marginBottom: 0 }}>
+          <Space style={{ width: '100%', flexWrap: 'wrap' }} size="middle">
+            <Form.Item name="moveNumber" label="Move Order #" rules={[{ required: true }]} style={{ flex: 1, minWidth: 180, marginBottom: 0 }}>
               <Input />
             </Form.Item>
-            <Form.Item name="moveDate" label="Date" style={{ flex: 1, marginBottom: 0 }}>
+            <Form.Item name="moveDate" label="Date" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
               <DatePicker style={{ width: '100%' }} />
             </Form.Item>
           </Space>

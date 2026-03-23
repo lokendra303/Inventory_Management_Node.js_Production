@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Tag, Space, Modal, Form, Select, DatePicker,
-  InputNumber, Input, message, Tooltip, Divider
+  InputNumber, Input, message, Tooltip, Divider, Row, Col
 } from 'antd';
 import { PlusOutlined, CheckOutlined, CloseOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
@@ -156,77 +156,67 @@ export default function PurchaseReturns() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Purchase Returns</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>
-          New Return
-        </Button>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: '18px' }}>Purchase Returns</h2>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>New Return</Button>
       </div>
-
       <Table columns={columns} dataSource={returns} rowKey="id"
-        loading={loading} size="small" pagination={{ pageSize: 20 }} />
-
-      {/* Create Modal */}
-      <Modal title="New Purchase Return" open={createModal} width={900}
+        loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }} scroll={{ x: 'max-content' }} />
+      <Modal title="New Purchase Return" open={createModal} width="min(900px, 96vw)" style={{ top: 16 }}
         onCancel={() => { setCreateModal(false); form.resetFields(); setLines([{ itemId: '', warehouseId: '', quantity: 1, unitCost: 0, returnReason: '' }]); }}
         onOk={() => form.submit()} okText="Create Return">
         <Form form={form} layout="vertical" onFinish={handleCreate}>
-          <Space style={{ width: '100%' }} size="large">
-            <Form.Item name="vendorId" label="Vendor" style={{ flex: 1 }} rules={[{ required: true }]}>
-              <Select showSearch optionFilterProp="children" placeholder="Select vendor">
-                {vendors.map(v => <Option key={v.id} value={v.id}>{v.display_name}</Option>)}
-              </Select>
-            </Form.Item>
-            <Form.Item name="returnDate" label="Return Date" style={{ flex: 1 }} initialValue={dayjs()}>
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-          </Space>
-          <Form.Item name="reason" label="Return Reason">
-            <Input.TextArea rows={2} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="vendorId" label="Vendor" rules={[{ required: true }]}>
+                <Select showSearch optionFilterProp="children" placeholder="Select vendor">
+                  {vendors.map(v => <Option key={v.id} value={v.id}>{v.display_name}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="returnDate" label="Return Date" initialValue={dayjs()}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="reason" label="Return Reason"><Input.TextArea rows={2} /></Form.Item>
         </Form>
-
         <Divider>Return Lines</Divider>
         {lines.map((line, idx) => (
-          <Space key={idx} style={{ display: 'flex', marginBottom: 8 }} align="start">
-            <Select showSearch optionFilterProp="children" placeholder="Item" style={{ width: 200 }}
-              value={line.itemId || undefined}
-              onChange={v => updateLine(idx, 'itemId', v)}>
+          <div key={idx} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: 8, border: '1px solid #f0f0f0', borderRadius: 4 }}>
+            <Select showSearch optionFilterProp="children" placeholder="Item" style={{ flex: 1, minWidth: 130 }}
+              value={line.itemId || undefined} onChange={v => updateLine(idx, 'itemId', v)}>
               {items.map(i => <Option key={i.id} value={i.id}>{i.name}</Option>)}
             </Select>
-            <Select placeholder="Warehouse" style={{ width: 150 }}
-              value={line.warehouseId || undefined}
-              onChange={v => updateLine(idx, 'warehouseId', v)}>
+            <Select placeholder="Warehouse" style={{ flex: 1, minWidth: 110 }}
+              value={line.warehouseId || undefined} onChange={v => updateLine(idx, 'warehouseId', v)}>
               {warehouses.map(w => <Option key={w.id} value={w.id}>{w.name}</Option>)}
             </Select>
-            <InputNumber placeholder="Qty" min={0.01} step={0.01} style={{ width: 80 }}
+            <InputNumber placeholder="Qty" min={0.01} step={0.01} style={{ width: 75 }}
               value={line.quantity} onChange={v => updateLine(idx, 'quantity', v)} />
-            <InputNumber placeholder="Unit Cost" min={0} step={0.01} style={{ width: 100 }}
+            <InputNumber placeholder="Unit Cost" min={0} step={0.01} style={{ width: 90 }}
               value={line.unitCost} onChange={v => updateLine(idx, 'unitCost', v)} />
-            <Input placeholder="Reason" style={{ width: 150 }}
+            <Input placeholder="Reason" style={{ flex: 1, minWidth: 110 }}
               value={line.returnReason} onChange={e => updateLine(idx, 'returnReason', e.target.value)} />
             <Button danger icon={<DeleteOutlined />} onClick={() => removeLine(idx)} disabled={lines.length === 1} />
-          </Space>
+          </div>
         ))}
-        <Button type="dashed" icon={<PlusOutlined />} onClick={addLine} style={{ marginTop: 8 }}>
-          Add Line
-        </Button>
+        <Button type="dashed" icon={<PlusOutlined />} onClick={addLine} style={{ marginTop: 8 }}>Add Line</Button>
       </Modal>
-
-      {/* Detail Modal */}
-      <Modal title={`Return: ${selectedReturn?.return_number}`} open={detailModal} width={800}
+      <Modal title={`Return: ${selectedReturn?.return_number}`} open={detailModal} width="min(800px, 96vw)" style={{ top: 16 }}
         onCancel={() => setDetailModal(false)} footer={null}>
         {selectedReturn && (
           <>
-            <Space style={{ marginBottom: 16 }}>
+            <Space wrap style={{ marginBottom: 16 }}>
               <Tag>Vendor: {selectedReturn.vendor_display_name || selectedReturn.vendor_name}</Tag>
               <Tag>Date: {dayjs(selectedReturn.return_date).format('DD MMM YYYY')}</Tag>
               <Tag color={STATUS_COLORS[selectedReturn.status]}>{selectedReturn.status?.toUpperCase()}</Tag>
               {selectedReturn.debit_note_number && <Tag color="blue">DN: {selectedReturn.debit_note_number}</Tag>}
             </Space>
             <Table columns={detailLineColumns} dataSource={selectedReturn.lines || []}
-              rowKey="id" size="small" pagination={false} />
+              rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
             <div style={{ textAlign: 'right', marginTop: 8, fontWeight: 'bold' }}>
               Total: {formatCurrency(selectedReturn.total_amount || 0)}
             </div>

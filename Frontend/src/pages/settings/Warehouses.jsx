@@ -34,17 +34,18 @@ const Warehouses = () => {
   };
 
   const columns = [
-    { title: 'Code', dataIndex: 'code', key: 'code' },
-    { title: 'Name', dataIndex: 'name', key: 'name' },
-    { title: 'Type', dataIndex: 'type_name', key: 'type_name' },
-    { title: 'Address', dataIndex: 'address', key: 'address' },
-    { title: 'Contact', dataIndex: 'contact_person', key: 'contact_person' },
-    { 
-      title: 'Status', 
-      dataIndex: 'status', 
+    { title: 'Name', dataIndex: 'name', key: 'name', width: 150, ellipsis: true },
+    { title: 'Code', dataIndex: 'code', key: 'code', width: 80, ellipsis: true, responsive: ['sm'] },
+    { title: 'Type', dataIndex: 'type_name', key: 'type_name', width: 100, ellipsis: true, responsive: ['md'] },
+    { title: 'Address', dataIndex: 'address', key: 'address', width: 150, ellipsis: true, responsive: ['lg'] },
+    { title: 'Contact', dataIndex: 'contact_person', key: 'contact_person', width: 110, ellipsis: true, responsive: ['lg'] },
+    {
+      title: 'Status',
+      dataIndex: 'status',
       key: 'status',
+      width: 80,
       render: (status) => (
-        <span style={{ color: status === 'active' ? '#52c41a' : '#ff4d4f' }}>
+        <span style={{ color: status === 'active' ? '#52c41a' : '#ff4d4f', fontWeight: 500 }}>
           {status === 'active' ? 'Active' : 'Inactive'}
         </span>
       )
@@ -52,28 +53,15 @@ const Warehouses = () => {
     {
       title: 'Actions',
       key: 'actions',
-      width: 250,
-      fixed: 'right',
+      width: 160,
       render: (_, record) => (
-        <Space>
-          <Button 
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => viewWarehouseDetails(record)}
-          >
-            View
-          </Button>
+        <Space size={4} wrap>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => viewWarehouseDetails(record)}>View</Button>
           {canManageWarehouses && (
-            <Button 
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => editWarehouse(record)}
-            >
-              Edit
-            </Button>
+            <Button size="small" icon={<EditOutlined />} onClick={() => editWarehouse(record)}>Edit</Button>
           )}
           {canManageWarehouses && (
-            <Button 
+            <Button
               size="small"
               type={record.status === 'active' ? 'default' : 'primary'}
               onClick={() => toggleWarehouseStatus(record)}
@@ -191,48 +179,46 @@ const fetchWarehouses = async () => {
   }, []);
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h1>Warehouses</h1>
+    <div style={{ padding: '16px' }}>
+      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Warehouses</h1>
       <Card>
-        {canManageWarehouses && (
-          <Button 
-            type="primary" 
-            icon={<PlusOutlined />}
-            onClick={() => setModalVisible(true)}
-            style={{ marginBottom: 16 }}
-          >
-            Add Warehouse
-          </Button>
-        )}
-        <Input
-          placeholder="Search by name or code..."
-          prefix={<SearchOutlined />}
-          value={searchText}
-          onChange={e => setSearchText(e.target.value)}
-          style={{ marginBottom: 16, maxWidth: 300, marginLeft: canManageWarehouses ? 8 : 0 }}
-          allowClear
-        />
-        <Table 
-          columns={columns} 
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {canManageWarehouses && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
+              Add Warehouse
+            </Button>
+          )}
+          <Input
+            placeholder="Search by name or code..."
+            prefix={<SearchOutlined />}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            style={{ flex: 1, maxWidth: 300 }}
+            allowClear
+          />
+        </div>
+        <Table
+          columns={columns}
           dataSource={warehouses.filter(wh =>
             !searchText ||
             wh.name?.toLowerCase().includes(searchText.toLowerCase()) ||
             wh.code?.toLowerCase().includes(searchText.toLowerCase())
-          )} 
+          )}
           loading={loading}
           rowKey="id"
+          scroll={{ x: 400 }}
+          size="small"
+          pagination={{ size: 'small' }}
         />
       </Card>
 
       <Modal
         title={editingWarehouse ? "Edit Warehouse" : "Add New Warehouse"}
         open={modalVisible}
-        onCancel={() => {
-          setModalVisible(false);
-          setEditingWarehouse(null);
-          form.resetFields();
-        }}
+        onCancel={() => { setModalVisible(false); setEditingWarehouse(null); form.resetFields(); }}
         footer={null}
+        width="min(520px, 96vw)"
+        style={{ top: 16 }}
       >
         <Form
           form={form}
@@ -445,18 +431,14 @@ const fetchWarehouses = async () => {
       <Modal
         title={`Warehouse Details - ${selectedWarehouse?.name}`}
         open={detailsModalVisible}
-        onCancel={() => {
-          setDetailsModalVisible(false);
-          setSelectedWarehouse(null);
-          setWarehouseDetails(null);
-        }}
+        onCancel={() => { setDetailsModalVisible(false); setSelectedWarehouse(null); setWarehouseDetails(null); }}
         footer={null}
-        width={1000}
+        width="min(1000px, 96vw)"
+        style={{ top: 16 }}
       >
         {warehouseDetails && (
           <div>
-            {/* Basic Info */}
-            <Descriptions title="Basic Information" bordered column={2} style={{ marginBottom: 24 }}>
+            <Descriptions title="Basic Information" bordered column={{ xs: 1, sm: 2 }} style={{ marginBottom: 24 }}>
               <Descriptions.Item label="Code">{warehouseDetails.code}</Descriptions.Item>
               <Descriptions.Item label="Name">{warehouseDetails.name}</Descriptions.Item>
               <Descriptions.Item label="Type">{warehouseDetails.type_name || 'Standard'}</Descriptions.Item>
@@ -470,46 +452,28 @@ const fetchWarehouses = async () => {
               <Descriptions.Item label="Phone">{warehouseDetails.phone || 'N/A'}</Descriptions.Item>
             </Descriptions>
 
-            {/* Inventory Summary */}
             <Card title="Inventory Summary" style={{ marginBottom: 24 }}>
-              <Row gutter={16}>
-                <Col span={6}>
-                  <Statistic 
-                    title="Total Items" 
-                    value={warehouseDetails.summary?.total_items || 0} 
-                  />
+              <Row gutter={[16, 16]}>
+                <Col xs={12} sm={6}>
+                  <Statistic title="Total Items" value={warehouseDetails.summary?.total_items || 0} />
                 </Col>
-                <Col span={6}>
-                  <Statistic 
-                    title="Total Quantity" 
-                    value={warehouseDetails.summary?.total_quantity || 0} 
-                  />
+                <Col xs={12} sm={6}>
+                  <Statistic title="Total Qty" value={warehouseDetails.summary?.total_quantity || 0} />
                 </Col>
-                <Col span={6}>
-                  <Statistic 
-                    title="Available Quantity" 
-                    value={warehouseDetails.summary?.total_available || 0}
-                    valueStyle={{ color: '#52c41a' }}
-                  />
+                <Col xs={12} sm={6}>
+                  <Statistic title="Available" value={warehouseDetails.summary?.total_available || 0} valueStyle={{ color: '#52c41a' }} />
                 </Col>
-                <Col span={6}>
-                  <Statistic 
-                    title="Reserved Quantity" 
-                    value={warehouseDetails.summary?.total_reserved || 0}
-                    valueStyle={{ color: '#faad14' }}
-                  />
+                <Col xs={12} sm={6}>
+                  <Statistic title="Reserved" value={warehouseDetails.summary?.total_reserved || 0} valueStyle={{ color: '#faad14' }} />
                 </Col>
               </Row>
-              <Row gutter={16} style={{ marginTop: 16 }}>
-                <Col span={12}>
-                  <Statistic 
-                    title="Total Value" 
-                    value={formatPrice(warehouseDetails.summary?.total_value || 0)} 
-                  />
+              <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+                <Col xs={12} sm={12}>
+                  <Statistic title="Total Value" value={formatPrice(warehouseDetails.summary?.total_value || 0)} />
                 </Col>
-                <Col span={12}>
-                  <Statistic 
-                    title="Low Stock Items" 
+                <Col xs={12} sm={12}>
+                  <Statistic
+                    title="Low Stock Items"
                     value={warehouseDetails.summary?.low_stock_items || 0}
                     valueStyle={{ color: warehouseDetails.summary?.low_stock_items > 0 ? '#cf1322' : '#3f8600' }}
                   />
@@ -517,51 +481,36 @@ const fetchWarehouses = async () => {
               </Row>
             </Card>
 
-            {/* Items by Category */}
             <Card title="Items by Category" style={{ marginBottom: 24 }}>
               <Table
                 dataSource={warehouseDetails.categories || []}
                 columns={[
-                  { title: 'Category', dataIndex: 'category', key: 'category' },
-                  { title: 'Item Count', dataIndex: 'item_count', key: 'item_count' },
-                  { title: 'Total Quantity', dataIndex: 'total_quantity', key: 'total_quantity' },
-                  { 
-                    title: 'Total Value', 
-                    dataIndex: 'total_value', 
-                    key: 'total_value',
-                    render: (value) => formatPrice(value)
-                  }
+                  { title: 'Category', dataIndex: 'category', key: 'category', ellipsis: true },
+                  { title: 'Items', dataIndex: 'item_count', key: 'item_count', width: 70 },
+                  { title: 'Total Qty', dataIndex: 'total_quantity', key: 'total_quantity', width: 90 },
+                  { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', width: 120, render: (v) => formatPrice(v) }
                 ]}
                 pagination={false}
                 size="small"
+                scroll={{ x: 'max-content' }}
               />
             </Card>
 
-            {/* Top Items by Value */}
             <Card title="Top Items by Value">
               <Table
                 dataSource={warehouseDetails.topItems || []}
                 columns={[
-                  { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-                  { title: 'Name', dataIndex: 'name', key: 'name' },
-                  { title: 'Category', dataIndex: 'category', key: 'category' },
-                  { title: 'Quantity', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand' },
-                  { title: 'Unit', dataIndex: 'unit', key: 'unit' },
-                  { 
-                    title: 'Avg Cost', 
-                    dataIndex: 'average_cost', 
-                    key: 'average_cost',
-                    render: (value) => formatPrice(value)
-                  },
-                  { 
-                    title: 'Total Value', 
-                    dataIndex: 'total_value', 
-                    key: 'total_value',
-                    render: (value) => formatPrice(value)
-                  }
+                  { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 90, ellipsis: true },
+                  { title: 'Name', dataIndex: 'name', key: 'name', width: 130, ellipsis: true },
+                  { title: 'Category', dataIndex: 'category', key: 'category', width: 110, ellipsis: true },
+                  { title: 'Qty', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand', width: 70 },
+                  { title: 'Unit', dataIndex: 'unit', key: 'unit', width: 60 },
+                  { title: 'Avg Cost', dataIndex: 'average_cost', key: 'average_cost', width: 110, render: (v) => formatPrice(v) },
+                  { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', width: 120, render: (v) => formatPrice(v) }
                 ]}
-                pagination={{ pageSize: 10 }}
+                pagination={{ pageSize: 10, size: 'small' }}
                 size="small"
+                scroll={{ x: 'max-content' }}
               />
             </Card>
           </div>

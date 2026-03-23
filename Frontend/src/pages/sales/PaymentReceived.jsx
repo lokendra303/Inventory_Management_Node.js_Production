@@ -82,15 +82,15 @@ export default function PaymentReceived() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>Payments Received</h2>
-
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginBottom: 16, fontSize: '18px' }}>Payments Received</h2>
       <Table columns={columns} dataSource={invoices} rowKey="id"
-        loading={loading} size="small" pagination={{ pageSize: 20 }} />
-
+        loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
+        scroll={{ x: 'max-content' }} />
       <Modal title={`Record Payment — ${selected?.invoice_number}`} open={payModal}
         onCancel={() => { setPayModal(false); form.resetFields(); }}
-        onOk={() => form.submit()} okText="Record Payment">
+        onOk={() => form.submit()} okText="Record Payment"
+        width="min(480px, 96vw)" style={{ top: 16 }}>
         {selected && (
           <p style={{ marginBottom: 16 }}>
             Balance Due: <strong>{currency} {formatAmount(selected.balance_amount)}</strong>

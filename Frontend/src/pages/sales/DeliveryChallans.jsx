@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Tag, Space, Modal, Form, Select, DatePicker,
-  InputNumber, Input, message, Tooltip, Divider
+  InputNumber, Input, message, Tooltip, Divider, Row, Col
 } from 'antd';
 import { PlusOutlined, EyeOutlined, CheckOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
@@ -163,48 +163,42 @@ export default function DeliveryChallans() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Delivery Challans</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>
-          New Challan
-        </Button>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: '18px' }}>Delivery Challans</h2>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>New Challan</Button>
       </div>
-
-      <Table columns={columns} dataSource={challans} rowKey="id"
-        loading={loading} size="small" pagination={{ pageSize: 20 }} />
-
-      {/* Create Modal */}
-      <Modal title="New Delivery Challan" open={createModal} width={900}
+      <Table columns={columns} dataSource={challans} rowKey="id" loading={loading} size="small"
+        pagination={{ pageSize: 20, size: 'small' }} scroll={{ x: 'max-content' }} />
+      <Modal title="New Delivery Challan" open={createModal} width="min(900px, 96vw)" style={{ top: 16 }}
         onCancel={() => { setCreateModal(false); form.resetFields(); setLines([{ itemId: '', warehouseId: '', quantity: 1, unitPrice: 0 }]); }}
         onOk={() => form.submit()} okText="Create Challan">
         <Form form={form} layout="vertical" onFinish={handleCreate}>
-          <Space style={{ width: '100%' }} size="large">
-            <Form.Item name="customerId" label="Customer" style={{ flex: 1 }} rules={[{ required: true }]}>
-              <Select showSearch optionFilterProp="children" placeholder="Select customer">
-                {customers.map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
-              </Select>
-            </Form.Item>
-            <Form.Item name="challanDate" label="Challan Date" style={{ flex: 1 }} initialValue={dayjs()}>
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-          </Space>
-          <Form.Item name="deliveryAddress" label="Delivery Address">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item name="notes" label="Notes">
-            <Input.TextArea rows={2} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="customerId" label="Customer" rules={[{ required: true }]}>
+                <Select showSearch optionFilterProp="children" placeholder="Select customer">
+                  {customers.map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="challanDate" label="Challan Date" initialValue={dayjs()}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="deliveryAddress" label="Delivery Address"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="notes" label="Notes"><Input.TextArea rows={2} /></Form.Item>
         </Form>
-
         <Divider>Challan Lines</Divider>
         {lines.map((line, idx) => (
-          <Space key={idx} style={{ display: 'flex', marginBottom: 8 }} align="start">
-            <Select showSearch optionFilterProp="children" placeholder="Item" style={{ width: 200 }}
+          <div key={idx} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: 8, border: '1px solid #f0f0f0', borderRadius: 4 }}>
+            <Select showSearch optionFilterProp="children" placeholder="Item" style={{ flex: 1, minWidth: 140 }}
               value={line.itemId || undefined} onChange={v => updateLine(idx, 'itemId', v)}>
               {items.map(i => <Option key={i.id} value={i.id}>{i.name}</Option>)}
             </Select>
-            <Select placeholder="Warehouse" style={{ width: 150 }}
+            <Select placeholder="Warehouse" style={{ flex: 1, minWidth: 120 }}
               value={line.warehouseId || undefined} onChange={v => updateLine(idx, 'warehouseId', v)}>
               {warehouses.map(w => <Option key={w.id} value={w.id}>{w.name}</Option>)}
             </Select>
@@ -213,28 +207,21 @@ export default function DeliveryChallans() {
             <InputNumber placeholder="Unit Price" min={0} step={0.01} style={{ width: 100 }}
               value={line.unitPrice} onChange={v => updateLine(idx, 'unitPrice', v)} />
             <Button danger icon={<DeleteOutlined />} onClick={() => removeLine(idx)} disabled={lines.length === 1} />
-          </Space>
+          </div>
         ))}
-        <Button type="dashed" icon={<PlusOutlined />} onClick={addLine} style={{ marginTop: 8 }}>
-          Add Line
-        </Button>
+        <Button type="dashed" icon={<PlusOutlined />} onClick={addLine} style={{ marginTop: 8 }}>Add Line</Button>
       </Modal>
-
-      {/* Detail Modal */}
-      <Modal title={`Challan: ${selected?.challan_number}`} open={detailModal} width={800}
+      <Modal title={`Challan: ${selected?.challan_number}`} open={detailModal} width="min(800px, 96vw)" style={{ top: 16 }}
         onCancel={() => setDetailModal(false)} footer={null}>
         {selected && (
           <>
-            <Space style={{ marginBottom: 16 }}>
+            <Space wrap style={{ marginBottom: 16 }}>
               <Tag>Customer: {selected.customer_name}</Tag>
               <Tag>Date: {selected.challan_date ? dayjs(selected.challan_date).format('DD MMM YYYY') : '-'}</Tag>
               <Tag color={STATUS_COLORS[selected.status]}>{selected.status?.toUpperCase()}</Tag>
             </Space>
-            {selected.delivery_address && (
-              <p style={{ marginBottom: 12 }}><strong>Delivery Address:</strong> {selected.delivery_address}</p>
-            )}
-            <Table columns={detailLineColumns} dataSource={selected.lines || []}
-              rowKey="id" size="small" pagination={false} />
+            {selected.delivery_address && <p style={{ marginBottom: 12 }}><strong>Delivery Address:</strong> {selected.delivery_address}</p>}
+            <Table columns={detailLineColumns} dataSource={selected.lines || []} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
           </>
         )}
       </Modal>

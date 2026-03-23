@@ -110,41 +110,45 @@ const InventoryAdjustments = () => {
       title: 'Item',
       dataIndex: 'item_name',
       key: 'item_name',
+      ellipsis: true,
+      width: 160,
       render: (name, r) => `${name} (${r.sku})`
     },
-    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', render: v => v || '-' },
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', ellipsis: true, width: 120, render: v => v || '-' },
     {
       title: 'Type',
       dataIndex: 'adjustment_type',
       key: 'adjustment_type',
+      width: 100,
       render: (v) => (
         <Tag color={v === 'increase' ? 'green' : 'red'} icon={v === 'increase' ? <PlusOutlined /> : <MinusOutlined />}>
           {v === 'increase' ? 'Increase' : 'Decrease'}
         </Tag>
       )
     },
-    { title: 'Qty', dataIndex: 'quantity_change', key: 'quantity_change' },
-    { title: 'Reason Type', dataIndex: 'loss_type', key: 'loss_type', render: v => v || '-' },
-    { title: 'Reason', dataIndex: 'reason', key: 'reason', render: v => v || '-' },
-    { title: 'Adjusted By', dataIndex: 'adjusted_by_name', key: 'adjusted_by_name', render: v => v?.trim() || '-' },
-    { title: 'Ref', dataIndex: 'reference_number', key: 'reference_number' },
+    { title: 'Qty', dataIndex: 'quantity_change', key: 'quantity_change', width: 70 },
+    { title: 'Reason Type', dataIndex: 'loss_type', key: 'loss_type', width: 120, render: v => v || '-' },
+    { title: 'Reason', dataIndex: 'reason', key: 'reason', ellipsis: true, width: 160, render: v => v || '-' },
+    { title: 'Adjusted By', dataIndex: 'adjusted_by_name', key: 'adjusted_by_name', width: 120, render: v => v?.trim() || '-' },
+    { title: 'Ref', dataIndex: 'reference_number', key: 'reference_number', width: 120 },
     {
       title: 'Date',
       dataIndex: 'created_at',
       key: 'created_at',
+      width: 160,
       render: v => new Date(v).toLocaleString()
     }
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Inventory Adjustments</h1>
+    <div style={{ padding: 16 }}>
+      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Inventory Adjustments</h1>
 
       {canAdjust && (
         <Card title="New Adjustment" style={{ marginBottom: 16 }}>
           <Form form={form} layout="vertical" onFinish={onFinish}>
-            <Row gutter={16}>
-              <Col span={8}>
+            <Row gutter={[16, 0]}>
+              <Col xs={24} sm={8}>
                 <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
                   <Select
                     placeholder="Select item"
@@ -158,7 +162,7 @@ const InventoryAdjustments = () => {
                   </Select>
                 </Form.Item>
               </Col>
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
                   <Select placeholder="Select warehouse" onChange={onItemOrWarehouseChange}>
                     {warehouses.map(w => (
@@ -167,7 +171,7 @@ const InventoryAdjustments = () => {
                   </Select>
                 </Form.Item>
               </Col>
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Form.Item name="adjustmentType" label="Adjustment Type" rules={[{ required: true }]}>
                   <Select onChange={() => form.setFieldsValue({ adjustmentReason: undefined })}>
                     <Select.Option value="increase">Increase</Select.Option>
@@ -178,29 +182,29 @@ const InventoryAdjustments = () => {
             </Row>
 
             {currentStock && (
-              <Row gutter={16} style={{ marginBottom: 16 }}>
-                <Col span={6}>
+              <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+                <Col xs={12} sm={6}>
                   <Statistic title="On Hand" value={currentStock.quantity_on_hand ?? 0} />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} sm={6}>
                   <Statistic title="Available" value={currentStock.quantity_available ?? 0} />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} sm={6}>
                   <Statistic title="Reserved" value={currentStock.quantity_reserved ?? 0} />
                 </Col>
-                <Col span={6}>
+                <Col xs={12} sm={6}>
                   <Statistic title="Avg Cost" value={formatPrice(currentStock.average_cost ?? 0, currency, 'USD')} />
                 </Col>
               </Row>
             )}
 
-            <Row gutter={16}>
-              <Col span={8}>
+            <Row gutter={[16, 0]}>
+              <Col xs={24} sm={8}>
                 <Form.Item name="quantityChange" label="Quantity" rules={[{ required: true }]}>
                   <InputNumber min={0.01} step={1} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Form.Item
                   noStyle
                   shouldUpdate={(prev, curr) => prev.adjustmentType !== curr.adjustmentType}
@@ -219,7 +223,7 @@ const InventoryAdjustments = () => {
                   }}
                 </Form.Item>
               </Col>
-              <Col span={8}>
+              <Col xs={24} sm={8}>
                 <Form.Item name="reason" label="Reason" rules={[{ required: true, message: 'Please provide a reason' }]}>
                   <Input placeholder="e.g. Physical count correction" />
                 </Form.Item>
@@ -227,7 +231,7 @@ const InventoryAdjustments = () => {
             </Row>
 
             <Form.Item>
-              <Space>
+              <Space wrap>
                 <Button type="primary" htmlType="submit" loading={submitting}>Submit Adjustment</Button>
                 <Button onClick={() => { form.resetFields(); setCurrentStock(null); }}>Reset</Button>
               </Space>
@@ -242,7 +246,8 @@ const InventoryAdjustments = () => {
           columns={columns}
           rowKey="id"
           loading={loading}
-          pagination={{ pageSize: 20, showSizeChanger: true }}
+          pagination={{ pageSize: 20, showSizeChanger: true, size: 'small' }}
+          scroll={{ x: 'max-content' }}
         />
       </Card>
     </div>

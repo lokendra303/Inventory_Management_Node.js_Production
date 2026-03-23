@@ -74,21 +74,17 @@ export default function VendorCredits() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Vendor Credits</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>
-          New Vendor Credit
-        </Button>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: '18px' }}>Vendor Credits</h2>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>New Vendor Credit</Button>
       </div>
-
       <Table columns={columns} dataSource={credits} rowKey="id"
-        loading={loading} size="small" pagination={{ pageSize: 20 }} />
-
-      {/* Create Modal */}
+        loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }} scroll={{ x: 'max-content' }} />
       <Modal title="New Vendor Credit" open={createModal}
         onCancel={() => { setCreateModal(false); form.resetFields(); }}
-        onOk={() => form.submit()} okText="Create">
+        onOk={() => form.submit()} okText="Create"
+        width="min(480px, 96vw)" style={{ top: 16 }}>
         <Form form={form} layout="vertical" onFinish={handleCreate}>
           <Form.Item name="originalInvoiceId" label="Original Bill">
             <Select showSearch optionFilterProp="children" placeholder="Select bill (optional)" allowClear>
@@ -104,18 +100,15 @@ export default function VendorCredits() {
           <Form.Item name="reason" label="Reason" rules={[{ required: true }]}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="notes" label="Notes">
-            <Input.TextArea rows={2} />
-          </Form.Item>
+          <Form.Item name="notes" label="Notes"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
-
-      {/* Detail Modal */}
       <Modal title={`Vendor Credit: ${selected?.invoice_number}`} open={detailModal}
-        onCancel={() => setDetailModal(false)} footer={null}>
+        onCancel={() => setDetailModal(false)} footer={null}
+        width="min(480px, 96vw)" style={{ top: 16 }}>
         {selected && (
           <Space direction="vertical" style={{ width: '100%' }}>
-            <Space>
+            <Space wrap>
               <Tag>Vendor: {selected.vendor_name}</Tag>
               <Tag color={STATUS_COLORS[selected.status] || 'default'}>{selected.status?.toUpperCase()}</Tag>
             </Space>

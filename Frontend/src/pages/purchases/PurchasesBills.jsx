@@ -352,30 +352,17 @@ const PurchasesBills = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>Purchase Bills</Title>
+    <div style={{ padding: '16px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>Purchase Bills</Title>
       </div>
 
       <Card>
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Input
-            placeholder="Search by bill # or vendor..."
-            prefix={<SearchOutlined />}
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            style={{ width: 280 }}
-            allowClear
-          />
-          <DatePicker placeholder="From Date" value={fromDate} onChange={setFromDate} style={{ width: 150 }} allowClear />
-          <DatePicker placeholder="To Date" value={toDate} onChange={setToDate} style={{ width: 150 }} allowClear />
-          <Select
-            placeholder="All Statuses"
-            value={statusFilter}
-            onChange={setStatusFilter}
-            style={{ width: 160 }}
-            allowClear
-          >
+          <Input placeholder="Search bill # or vendor..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 220 }} allowClear />
+          <DatePicker placeholder="From Date" value={fromDate} onChange={setFromDate} style={{ width: 140 }} allowClear />
+          <DatePicker placeholder="To Date" value={toDate} onChange={setToDate} style={{ width: 140 }} allowClear />
+          <Select placeholder="All Statuses" value={statusFilter} onChange={setStatusFilter} style={{ width: 150 }} allowClear>
             <Select.Option value="draft">Draft</Select.Option>
             <Select.Option value="posted">Posted</Select.Option>
             <Select.Option value="partially_paid">Partially Paid</Select.Option>
@@ -383,53 +370,30 @@ const PurchasesBills = () => {
             <Select.Option value="cancelled">Cancelled</Select.Option>
           </Select>
         </Space>
-
-        <Table
-          columns={columns}
-          dataSource={filteredBills}
-          loading={loading}
-          rowKey="id"
-          pagination={{
-            current: pagination.current,
-            pageSize: pagination.pageSize,
-            total: pagination.total,
-            showSizeChanger: true,
-            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} items`,
-          }}
+        <Table columns={columns} dataSource={filteredBills} loading={loading} rowKey="id"
+          pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: pagination.total, showSizeChanger: true, size: 'small' }}
           onChange={p => setPagination(prev => ({ ...prev, current: p.current, pageSize: p.pageSize }))}
+          scroll={{ x: 'max-content' }} size="small"
         />
       </Card>
 
-      {/* Review / View Modal */}
-      <Modal
-        title={`Review Bill — ${viewingBill?.invoice_number}`}
-        open={viewModalVisible}
-        onCancel={closeViewModal}
-        width={1100}
+      <Modal title={`Review Bill — ${viewingBill?.invoice_number}`} open={viewModalVisible} onCancel={closeViewModal}
+        width="min(1100px, 96vw)" style={{ top: 16 }}
         footer={[
           viewingBill?.status === 'draft' && (
-            <Popconfirm
-              key="post"
-              title="Post this bill?"
-              description="This confirms it as an official liability and creates accounting entries."
-              onConfirm={() => handlePostBill(viewingBill.id)}
-              okText="Post"
-              cancelText="Cancel"
-            >
-              <Button type="primary" icon={<SendOutlined />} loading={postLoading}>
-                Post Bill
-              </Button>
+            <Popconfirm key="post" title="Post this bill?" description="This confirms it as an official liability and creates accounting entries."
+              onConfirm={() => handlePostBill(viewingBill.id)} okText="Post" cancelText="Cancel">
+              <Button type="primary" icon={<SendOutlined />} loading={postLoading}>Post Bill</Button>
             </Popconfirm>
           ),
           <Button key="close" onClick={closeViewModal}>Close</Button>,
-        ].filter(Boolean)}
-      >
+        ].filter(Boolean)}>
         {viewLoading ? (
           <div style={{ textAlign: 'center', padding: 40 }}>Loading & matching with master items...</div>
         ) : viewingBill && (
           <>
             {/* Bill Header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 16 }}>
               <div><strong>Bill #:</strong> {viewingBill.invoice_number}</div>
               <div><strong>Vendor:</strong> {viewingBill.vendor_name}</div>
               <div><strong>Bill Date:</strong> {viewingBill.invoice_date ? new Date(viewingBill.invoice_date).toLocaleDateString() : '-'}</div>
@@ -466,12 +430,7 @@ const PurchasesBills = () => {
 
             {/* Line Items with master comparison */}
             <h4>Line Items (vs Master Item Data)</h4>
-            <Table
-              dataSource={billLines}
-              rowKey="id"
-              pagination={false}
-              size="small"
-              columns={buildReviewColumns()}
+            <Table dataSource={billLines} rowKey="id" pagination={false} size="small" scroll={{ x: 'max-content' }} columns={buildReviewColumns()}
               rowClassName={record => {
                 const master = masterItems[record.item_id];
                 if (!master) return '';
@@ -491,19 +450,14 @@ const PurchasesBills = () => {
               </Space>
             </div>
 
-            {/* Payment History */}
             {billPayments.length > 0 && (
               <>
                 <h4 style={{ marginTop: 16 }}>Payment History</h4>
-                <Table
-                  dataSource={billPayments}
-                  rowKey="id"
-                  pagination={false}
-                  size="small"
+                <Table dataSource={billPayments} rowKey="id" pagination={false} size="small" scroll={{ x: 'max-content' }}
                   columns={[
-                    { title: 'Date', dataIndex: 'payment_date', key: 'payment_date', render: d => new Date(d).toLocaleDateString() },
-                    { title: 'Amount', dataIndex: 'amount', key: 'amount', render: v => `${currency} ${formatAmount(v)}` },
-                    { title: 'Method', dataIndex: 'payment_method', key: 'payment_method' },
+                    { title: 'Date', dataIndex: 'payment_date', key: 'payment_date', width: 100, render: d => new Date(d).toLocaleDateString() },
+                    { title: 'Amount', dataIndex: 'amount', key: 'amount', width: 110, render: v => `${currency} ${formatAmount(v)}` },
+                    { title: 'Method', dataIndex: 'payment_method', key: 'payment_method', width: 110 },
                     { title: 'Reference', dataIndex: 'reference', key: 'reference', render: v => v || '-' },
                   ]}
                 />
@@ -513,13 +467,9 @@ const PurchasesBills = () => {
         )}
       </Modal>
 
-      {/* Payment Modal */}
-      <Modal
-        title={`Record Payment — ${payingBill?.invoice_number}`}
-        open={paymentModalVisible}
+      <Modal title={`Record Payment — ${payingBill?.invoice_number}`} open={paymentModalVisible}
         onCancel={() => { setPaymentModalVisible(false); paymentForm.resetFields(); }}
-        footer={null}
-      >
+        footer={null} width="min(480px, 96vw)" style={{ top: 16 }}>
         {payingBill && (
           <p style={{ marginBottom: 16 }}>
             Balance Due: <strong>{currency} {formatAmount(payingBill.balance_amount)}</strong>

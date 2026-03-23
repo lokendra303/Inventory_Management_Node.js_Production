@@ -313,31 +313,31 @@ const Inventory = () => {
       return (
         <div style={{ padding: '16px 0' }}>
           <Row gutter={[16, 16]}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>Item</div>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>{viewingRecord.item_name}</div>
               </div>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>SKU</div>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>{viewingRecord.sku}</div>
               </div>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>Unit</div>
                 <div style={{ fontSize: 14 }}>{viewingRecord.unit}</div>
               </div>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>Warehouse</div>
                 <div style={{ fontSize: 14 }}>{viewingRecord.warehouse_name}</div>
               </div>
             </Col>
-            <Col span={8}>
+            <Col xs={8}>
               <Card size="small" style={{ background: '#f0f5ff', border: '1px solid #adc6ff' }}>
                 <Statistic
                   title="On Hand"
@@ -346,7 +346,7 @@ const Inventory = () => {
                 />
               </Card>
             </Col>
-            <Col span={8}>
+            <Col xs={8}>
               <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
                 <Statistic
                   title="Available"
@@ -355,7 +355,7 @@ const Inventory = () => {
                 />
               </Card>
             </Col>
-            <Col span={8}>
+            <Col xs={8}>
               <Card size="small" style={{ background: '#fff7e6', border: '1px solid #ffd591' }}>
                 <Statistic
                   title="Reserved"
@@ -364,7 +364,7 @@ const Inventory = () => {
                 />
               </Card>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <div style={{ marginTop: 8 }}>
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>Average Cost</div>
                 <div style={{ fontSize: 16, fontWeight: 500, color: '#1890ff' }}>
@@ -374,7 +374,7 @@ const Inventory = () => {
                 </div>
               </div>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <div style={{ marginTop: 8 }}>
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>Total Value</div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: '#52c41a' }}>
@@ -440,11 +440,11 @@ const Inventory = () => {
   }; 
 
   return (
-    <div style={{ padding: '24px', background: '#f0f2f5', minHeight: '100vh' }}>
-      <h1 style={{ marginBottom: 24 }}>Inventory Overview</h1>
+    <div style={{ padding: '16px', background: '#f0f2f5', minHeight: '100vh' }}>
+      <h1 style={{ marginBottom: 16, fontSize: '20px' }}>Inventory Overview</h1>
       
       {/* Stats Cards */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
@@ -457,7 +457,7 @@ const Inventory = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={12} sm={8}>
           <Card>
             <Statistic
               title="Total Items"
@@ -467,10 +467,10 @@ const Inventory = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={12} sm={8}>
           <Card>
             <Statistic
-              title="Low Stock Items"
+              title="Low Stock"
               value={stats.lowStockCount}
               valueStyle={{ color: stats.lowStockCount > 0 ? '#cf1322' : '#3f8600' }}
               suffix={<WarningOutlined />}
@@ -481,40 +481,34 @@ const Inventory = () => {
 
       {/* Main Inventory Table */}
       <Card>
-        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <Space wrap>
-            {showManualButtons && canReceive && (
-              <Button 
-                type="primary" 
-                icon={<PlusOutlined />}
-                onClick={() => openModal('receive')}
-              >
-                Manual Receive
-              </Button>
-            )}
-            <Input
-              placeholder="Search by item name or SKU"
-              prefix={<SearchOutlined />}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              style={{ width: 250 }}
-              allowClear
-            />
-          </Space>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>Warehouse:</span>
-            <Select
-              value={selectedWarehouse}
-              onChange={handleWarehouseChange}
-              style={{ width: 200 }}
+        <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          {showManualButtons && canReceive && (
+            <Button 
+              type="primary" 
+              icon={<PlusOutlined />}
+              onClick={() => openModal('receive')}
             >
-              <Select.Option value="all">All Warehouses</Select.Option>
-              {warehouses.filter(wh => wh.status === 'active').map(wh => (
-                <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
-              ))}
-            </Select>
-          </div>
+              Manual Receive
+            </Button>
+          )}
+          <Input
+            placeholder="Search item or SKU"
+            prefix={<SearchOutlined />}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            style={{ flex: 1, minWidth: 140, maxWidth: 260 }}
+            allowClear
+          />
+          <Select
+            value={selectedWarehouse}
+            onChange={handleWarehouseChange}
+            style={{ flex: 1, minWidth: 140, maxWidth: 220 }}
+          >
+            <Select.Option value="all">All Warehouses</Select.Option>
+            {warehouses.filter(wh => wh.status === 'active').map(wh => (
+              <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
+            ))}
+          </Select>
         </div>
         <Table 
           columns={columns} 
@@ -525,7 +519,8 @@ const Inventory = () => {
             pageSize: 20,
             showSizeChanger: true,
             showTotal: (total) => `Total ${total} items`,
-            pageSizeOptions: ['10', '20', '50', '100']
+            pageSizeOptions: ['10', '20', '50', '100'],
+            size: 'small'
           }}
           locale={{
             emptyText: (
@@ -535,7 +530,7 @@ const Inventory = () => {
               />
             )
           }}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 1000 }}
         />
       </Card>
 
@@ -556,7 +551,8 @@ const Inventory = () => {
             Close
           </Button>
         ]}
-        width={700}
+        width="min(700px, 96vw)"
+        style={{ top: 16 }}
       >
         {renderModalContent()}
       </Modal>
@@ -565,6 +561,8 @@ const Inventory = () => {
         open={modalVisible && modalType === 'receive'}
         onCancel={() => setModalVisible(false)}
         footer={null}
+        width="min(520px, 96vw)"
+        style={{ top: 16 }}
       >
         <Form
           form={form}

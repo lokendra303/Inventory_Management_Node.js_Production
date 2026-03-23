@@ -133,16 +133,12 @@ const OutstandingInvoices = () => {
   ] : [];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <ClockCircleOutlined style={{ marginRight: 8 }} />
-          Outstanding Invoices
-        </Title>
+    <div style={{ padding: '16px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}><ClockCircleOutlined style={{ marginRight: 8 }} />Outstanding Invoices</Title>
         <div style={{ textAlign: 'right' }}>
-          <Text type="secondary">{totalCount} invoice{totalCount !== 1 ? 's' : ''} outstanding</Text>
-          <br />
-          <Text strong style={{ fontSize: 18, color: '#f5222d' }}>{formatCurrency(totalOutstanding)}</Text>
+          <Text type="secondary">{totalCount} invoice{totalCount !== 1 ? 's' : ''} outstanding</Text><br />
+          <Text strong style={{ fontSize: 16, color: '#f5222d' }}>{formatCurrency(totalOutstanding)}</Text>
         </div>
       </div>
 
@@ -192,12 +188,10 @@ const OutstandingInvoices = () => {
           </span>
         }
       >
-        <Table
-          columns={columns}
-          dataSource={allInvoices}
-          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} invoices` }}
+        <Table columns={columns} dataSource={allInvoices}
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${total} invoices`, size: 'small' }}
           rowKey={(record, index) => `${record.invoice_number}-${index}`}
-          size="middle"
+          size="small" scroll={{ x: 'max-content' }}
           locale={{ emptyText: (
             <div style={{ padding: '32px', textAlign: 'center' }}>
               <CheckCircleOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 8 }} />

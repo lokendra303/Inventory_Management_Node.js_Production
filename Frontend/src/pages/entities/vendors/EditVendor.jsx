@@ -210,17 +210,11 @@ const EditVendor = () => {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <Space style={{ marginBottom: '16px' }}>
-        <Button 
-          type="text" 
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate(`/purchases/vendors/${vendorId}`)}
-        >
-          Back
-        </Button>
+    <div style={{ padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
+      <Space style={{ marginBottom: '12px' }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate(`/purchases/vendors/${vendorId}`)}>Back</Button>
       </Space>
-      <h1 style={{ marginBottom: '24px', fontSize: '28px', fontWeight: '600' }}>Edit Vendor</h1>
+      <h1 style={{ marginBottom: '16px', fontSize: '20px', fontWeight: '600' }}>Edit Vendor</h1>
 
       <Form form={form} layout="vertical" autoComplete="off">
         <Card style={{ marginBottom: '24px', borderRadius: '4px' }}>

@@ -57,48 +57,50 @@ export default function Shipments() {
   const totalShipped = shipments.reduce((s, r) => s + (parseFloat(r.quantity) || 0), 0);
 
   const columns = [
-    { title: 'Item', dataIndex: 'item_name', key: 'item_name',
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 140, ellipsis: true,
       render: (v, r) => v || r.item_id },
-    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 110 },
-    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name',
+    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 100, ellipsis: true },
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 130, ellipsis: true,
       render: (v, r) => v || r.warehouse_id },
-    { title: 'Qty Shipped', dataIndex: 'quantity', key: 'quantity', width: 110,
+    { title: 'Qty Shipped', dataIndex: 'quantity', key: 'quantity', width: 100,
       render: v => <Tag color="blue">{parseFloat(v || 0).toFixed(2)}</Tag> },
-    { title: 'Reference', dataIndex: 'reference', key: 'reference',
+    { title: 'Reference', dataIndex: 'reference', key: 'reference', width: 130, ellipsis: true,
       render: v => v || '-' },
-    { title: 'Date', dataIndex: 'created_at', key: 'created_at', width: 130,
+    { title: 'Date', dataIndex: 'created_at', key: 'created_at', width: 150,
       render: v => v ? dayjs(v).format('DD MMM YYYY HH:mm') : '-' }
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Shipments</h2>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: '18px' }}>Shipments</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>
           Ship Stock
         </Button>
       </div>
 
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={8}>
           <Card>
             <Statistic title="Total Shipments" value={shipments.length} prefix={<SendOutlined />} />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={12} sm={8}>
           <Card>
-            <Statistic title="Total Units Shipped" value={totalShipped.toFixed(2)} />
+            <Statistic title="Units Shipped" value={totalShipped.toFixed(2)} />
           </Card>
         </Col>
       </Row>
 
       <Table columns={columns} dataSource={shipments} rowKey={(r, i) => r.id || i}
-        loading={loading} size="small" pagination={{ pageSize: 20 }}
+        loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'No shipments recorded yet' }} />
 
       <Modal title="Ship Stock" open={createModal}
         onCancel={() => { setCreateModal(false); form.resetFields(); }}
-        onOk={() => form.submit()} okText="Ship">
+        onOk={() => form.submit()} okText="Ship"
+        width="min(480px, 96vw)" style={{ top: 16 }}>
         <Form form={form} layout="vertical" onFinish={handleShip}>
           <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="children" placeholder="Select item">

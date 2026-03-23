@@ -138,19 +138,19 @@ export default function StockCount() {
   };
 
   const countColumns = [
-    { title: 'Count #', dataIndex: 'count_number', key: 'count_number', width: 140 },
-    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
-    { title: 'Type', dataIndex: 'count_type', key: 'count_type',
+    { title: 'Count #', dataIndex: 'count_number', key: 'count_number', width: 140, ellipsis: true },
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 130, ellipsis: true },
+    { title: 'Type', dataIndex: 'count_type', key: 'count_type', width: 90,
       render: v => <Tag>{v?.toUpperCase()}</Tag> },
-    { title: 'Status', dataIndex: 'status', key: 'status',
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 130,
       render: v => <Tag color={STATUS_COLORS[v]}>{v?.replace('_', ' ').toUpperCase()}</Tag> },
-    { title: 'Lines', dataIndex: 'total_lines', key: 'total_lines', width: 80 },
-    { title: 'Counted', key: 'progress', width: 100,
+    { title: 'Lines', dataIndex: 'total_lines', key: 'total_lines', width: 70 },
+    { title: 'Counted', key: 'progress', width: 90,
       render: (_, r) => `${r.counted_lines || 0} / ${r.total_lines || 0}` },
-    { title: 'Scheduled', dataIndex: 'scheduled_date', key: 'scheduled_date',
+    { title: 'Scheduled', dataIndex: 'scheduled_date', key: 'scheduled_date', width: 120,
       render: v => v ? dayjs(v).format('DD MMM YYYY') : '-' },
     {
-      title: 'Actions', key: 'actions', width: 160,
+      title: 'Actions', key: 'actions', width: 120, fixed: 'right',
       render: (_, r) => (
         <Space>
           <Tooltip title="View / Count"><Button size="small" icon={<EyeOutlined />} onClick={() => openDetail(r)} /></Tooltip>
@@ -172,16 +172,16 @@ export default function StockCount() {
   const BUCKET_ORDER = { '0-30': 0, '31-60': 1, '61-90': 2, '91-120': 3, '120+': 4 };
 
   const agingColumns = [
-    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 120,
+    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 110, ellipsis: true,
       sorter: (a, b) => (a.sku || '').localeCompare(b.sku || '') },
-    { title: 'Item', dataIndex: 'item_name', key: 'item_name',
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 150, ellipsis: true,
       sorter: (a, b) => (a.item_name || '').localeCompare(b.item_name || '') },
-    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name',
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 120, ellipsis: true,
       sorter: (a, b) => (a.warehouse_name || '').localeCompare(b.warehouse_name || '') },
     { title: 'On Hand', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand', width: 90,
       sorter: (a, b) => parseFloat(a.quantity_on_hand || 0) - parseFloat(b.quantity_on_hand || 0),
       render: v => parseFloat(v || 0).toFixed(2) },
-    { title: 'Last Movement', dataIndex: 'last_movement_date', key: 'last_movement_date',
+    { title: 'Last Movement', dataIndex: 'last_movement_date', key: 'last_movement_date', width: 130,
       sorter: (a, b) => dayjs(a.last_movement_date || 0).unix() - dayjs(b.last_movement_date || 0).unix(),
       render: v => v ? dayjs(v).format('DD MMM YYYY') : 'Never' },
     { title: 'Days Idle', dataIndex: 'days_since_movement', key: 'days_since_movement', width: 90,
@@ -239,9 +239,9 @@ export default function StockCount() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Stock Count & Inventory Aging</h2>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: '18px' }}>Stock Count & Inventory Aging</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>
           New Stock Count
         </Button>
@@ -252,14 +252,16 @@ export default function StockCount() {
           <Table
             columns={countColumns} dataSource={counts} rowKey="id"
             loading={loading} size="small"
-            pagination={{ pageSize: 20, showSizeChanger: true }}
+            pagination={{ pageSize: 20, showSizeChanger: true, size: 'small' }}
+            scroll={{ x: 'max-content' }}
           />
         </TabPane>
         <TabPane tab={<span><BarChartOutlined /> Inventory Aging</span>} key="aging">
           <Table
             columns={agingColumns} dataSource={aging} rowKey={r => `${r.item_id}-${r.warehouse_name}`}
             size="small"
-            pagination={{ pageSize: 50, showSizeChanger: true }}
+            pagination={{ pageSize: 50, showSizeChanger: true, size: 'small' }}
+            scroll={{ x: 'max-content' }}
           />
         </TabPane>
       </Tabs>
@@ -269,6 +271,8 @@ export default function StockCount() {
         title="New Stock Count" open={createModal}
         onCancel={() => { setCreateModal(false); form.resetFields(); }}
         onOk={() => form.submit()} okText="Create"
+        width="min(480px, 96vw)"
+        style={{ top: 16 }}
       >
         <Form form={form} layout="vertical" onFinish={handleCreate}>
           <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
@@ -295,7 +299,9 @@ export default function StockCount() {
       {/* Detail / Count Entry Modal */}
       <Modal
         title={`Stock Count: ${selectedCount?.count_number}`}
-        open={detailModal} width={900}
+        open={detailModal}
+        width="min(900px, 96vw)"
+        style={{ top: 16 }}
         onCancel={() => setDetailModal(false)}
         footer={
           selectedCount?.status === 'in_progress' || selectedCount?.status === 'draft'
@@ -307,16 +313,17 @@ export default function StockCount() {
         }
       >
         {selectedCount && (
-          <Row gutter={16} style={{ marginBottom: 16 }}>
-            <Col span={6}><Statistic title="Warehouse" value={selectedCount.warehouse_name} /></Col>
-            <Col span={6}><Statistic title="Type" value={selectedCount.count_type?.toUpperCase()} /></Col>
-            <Col span={6}><Statistic title="Status" value={selectedCount.status?.replace('_', ' ').toUpperCase()} /></Col>
-            <Col span={6}><Statistic title="Total Lines" value={countLines.length} /></Col>
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={12} sm={6}><Statistic title="Warehouse" value={selectedCount.warehouse_name} /></Col>
+            <Col xs={12} sm={6}><Statistic title="Type" value={selectedCount.count_type?.toUpperCase()} /></Col>
+            <Col xs={12} sm={6}><Statistic title="Status" value={selectedCount.status?.replace('_', ' ').toUpperCase()} /></Col>
+            <Col xs={12} sm={6}><Statistic title="Total Lines" value={countLines.length} /></Col>
           </Row>
         )}
         <Table
           columns={lineColumns} dataSource={countLines} rowKey="id"
-          size="small" pagination={{ pageSize: 20 }}
+          size="small" pagination={{ pageSize: 20, size: 'small' }}
+          scroll={{ x: 'max-content' }}
         />
       </Modal>
     </div>

@@ -55,10 +55,11 @@ export default function PurchasesPaymentMade() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>Payments Made</h2>
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginBottom: 16, fontSize: '18px' }}>Payments Made</h2>
       <Table columns={columns} dataSource={payments} rowKey="id"
-        loading={loading} size="small" pagination={{ pageSize: 20 }} />
+        loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
+        scroll={{ x: 'max-content' }} />
     </div>
   );
 }

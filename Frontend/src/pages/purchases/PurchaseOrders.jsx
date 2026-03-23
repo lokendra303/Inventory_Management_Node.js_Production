@@ -55,47 +55,26 @@ const PurchaseOrders = () => {
   };
 
   const columns = [
-    { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
-    { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name' },
-    { 
-      title: 'Status', 
-      dataIndex: 'status', 
-      key: 'status',
+    { title: 'PO Number', dataIndex: 'po_number', key: 'po_number', width: 130, ellipsis: true },
+    { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name', width: 140, ellipsis: true },
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 110,
       render: (status) => {
-        const colors = {
-          draft: 'gray',
-          sent: 'blue', 
-          confirmed: 'orange',
-          partially_received: 'yellow',
-          received: 'green',
-          cancelled: 'red'
-        };
+        const colors = { draft: 'gray', sent: 'blue', confirmed: 'orange', partially_received: 'yellow', received: 'green', cancelled: 'red' };
         return <span style={{ color: colors[status] || 'black' }}>{status?.toUpperCase()}</span>;
       }
     },
-    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val) => formatCurrency(val) },
-    { title: 'Order Date', dataIndex: 'order_date', key: 'order_date' },
+    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', width: 110, render: (val) => formatCurrency(val) },
+    { title: 'Order Date', dataIndex: 'order_date', key: 'order_date', width: 110 },
     {
-      title: 'Actions',
-      key: 'actions',
+      title: 'Actions', key: 'actions', width: 220,
       render: (_, record) => (
-        <Space>
+        <Space size={4} wrap>
           <Button size="small" onClick={() => viewPO(record)}>View</Button>
-          {(record.status === 'draft' || record.status === 'sent') && (
-            <Button size="small" onClick={() => editPO(record)}>Edit</Button>
-          )}
-          {record.status === 'draft' && (
-            <Button size="small" type="primary" onClick={() => sendPO(record)}>Send</Button>
-          )}
-          {record.status === 'sent' && (
-            <Button size="small" onClick={() => confirmPO(record)}>Confirm</Button>
-          )}
-          {(record.status === 'confirmed' || record.status === 'partially_received') && (
-            <Button size="small" type="primary" onClick={() => receivePO(record)}>Receive Goods</Button>
-          )}
-          {(record.status === 'draft' || record.status === 'sent') && (
-            <Button size="small" danger onClick={() => cancelPO(record)}>Cancel</Button>
-          )}
+          {(record.status === 'draft' || record.status === 'sent') && <Button size="small" onClick={() => editPO(record)}>Edit</Button>}
+          {record.status === 'draft' && <Button size="small" type="primary" onClick={() => sendPO(record)}>Send</Button>}
+          {record.status === 'sent' && <Button size="small" onClick={() => confirmPO(record)}>Confirm</Button>}
+          {(record.status === 'confirmed' || record.status === 'partially_received') && <Button size="small" type="primary" onClick={() => receivePO(record)}>Receive</Button>}
+          {(record.status === 'draft' || record.status === 'sent') && <Button size="small" danger onClick={() => cancelPO(record)}>Cancel</Button>}
         </Space>
       )
     }
@@ -449,46 +428,15 @@ const PurchaseOrders = () => {
   }, []);
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h1>Purchase Orders</h1>
+    <div style={{ padding: '16px' }}>
+      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Purchase Orders</h1>
       <Card>
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Button 
-            type="primary" 
-            icon={<PlusOutlined />}
-            onClick={() => setModalVisible(true)}
-          >
-            Create PO
-          </Button>
-          <Input
-            placeholder="Search by PO number or vendor..."
-            prefix={<SearchOutlined />}
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            style={{ width: 260 }}
-            allowClear
-          />
-          <DatePicker
-            placeholder="From Date"
-            value={fromDate}
-            onChange={date => setFromDate(date)}
-            style={{ width: 150 }}
-            allowClear
-          />
-          <DatePicker
-            placeholder="To Date"
-            value={toDate}
-            onChange={date => setToDate(date)}
-            style={{ width: 150 }}
-            allowClear
-          />
-          <Select
-            placeholder="All Statuses"
-            value={statusFilter}
-            onChange={val => setStatusFilter(val)}
-            style={{ width: 180 }}
-            allowClear
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>Create PO</Button>
+          <Input placeholder="Search PO or vendor..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 220 }} allowClear />
+          <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
+          <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
+          <Select placeholder="All Statuses" value={statusFilter} onChange={val => setStatusFilter(val)} style={{ width: 160 }} allowClear>
             <Select.Option value="draft">Draft</Select.Option>
             <Select.Option value="sent">Sent</Select.Option>
             <Select.Option value="confirmed">Confirmed</Select.Option>
@@ -497,35 +445,20 @@ const PurchaseOrders = () => {
             <Select.Option value="cancelled">Cancelled</Select.Option>
           </Select>
         </Space>
-        <Table 
-          columns={columns} 
-          dataSource={pos.filter(po => {
-            const textMatch = !searchText ||
-              po.po_number?.toLowerCase().includes(searchText.toLowerCase()) ||
-              po.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
-            const dateMatch = (!fromDate || !toDate) || (() => {
-              const d = new Date(po.order_date);
-              return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
-            })();
+        <Table columns={columns} dataSource={pos.filter(po => {
+            const textMatch = !searchText || po.po_number?.toLowerCase().includes(searchText.toLowerCase()) || po.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
+            const dateMatch = (!fromDate || !toDate) || (() => { const d = new Date(po.order_date); return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate(); })();
             const statusMatch = !statusFilter || po.status === statusFilter;
             return textMatch && dateMatch && statusMatch;
-          })} 
-          loading={loading}
-          rowKey="id"
+          })}
+          loading={loading} rowKey="id"
+          scroll={{ x: 'max-content' }} size="small" pagination={{ size: 'small' }}
         />
       </Card>
 
-      <Modal
-        title={editingPO ? 'Edit Purchase Order' : 'Create Purchase Order'}
-        open={modalVisible}
-        onCancel={() => {
-          setModalVisible(false);
-          setEditingPO(null);
-          form.resetFields();
-        }}
-        footer={null}
-        width={800}
-      >
+      <Modal title={editingPO ? 'Edit Purchase Order' : 'Create Purchase Order'} open={modalVisible}
+        onCancel={() => { setModalVisible(false); setEditingPO(null); form.resetFields(); }}
+        footer={null} width="min(800px, 96vw)" style={{ top: 16 }}>
         <Form
           form={form}
           layout="vertical"
@@ -758,18 +691,9 @@ const PurchaseOrders = () => {
         </Form>
       </Modal>
 
-      {/* Goods Receipt Modal */}
-      <Modal
-        title={`Receive Goods - PO: ${selectedPO?.po_number}`}
-        open={receiveModalVisible}
-        onCancel={() => {
-          setReceiveModalVisible(false);
-          setSelectedPO(null);
-          receiveForm.resetFields();
-        }}
-        footer={null}
-        width={1000}
-      >
+      <Modal title={`Receive Goods - PO: ${selectedPO?.po_number}`} open={receiveModalVisible}
+        onCancel={() => { setReceiveModalVisible(false); setSelectedPO(null); receiveForm.resetFields(); }}
+        footer={null} width="min(1000px, 96vw)" style={{ top: 16 }}>
         <Form
           form={receiveForm}
           layout="vertical"
@@ -805,7 +729,7 @@ const PurchaseOrders = () => {
                       <Input />
                     </Form.Item>
                     
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', gap: '16px', alignItems: 'end' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
                       <Form.Item label="Item">
                         <Form.Item name={[name, 'itemName']} noStyle>
                           <Input disabled />
@@ -886,48 +810,15 @@ const PurchaseOrders = () => {
         </Form>
       </Modal>
 
-      {/* View PO Modal */}
-      <Modal
-        title={`Purchase Order Details - ${selectedPOForView?.po_number}`}
-        open={viewModalVisible}
-        onCancel={() => {
-          setViewModalVisible(false);
-          setSelectedPOForView(null);
-          setPOHistory([]);
-        }}
+      <Modal title={`Purchase Order Details - ${selectedPOForView?.po_number}`} open={viewModalVisible}
+        onCancel={() => { setViewModalVisible(false); setSelectedPOForView(null); setPOHistory([]); }}
         footer={[
-          <Button 
-            key="email"
-            icon={<MailOutlined />}
-            onClick={() => handleEmailPO(selectedPOForView)}
-          >
-            Email
-          </Button>,
-          <Button 
-            key="print" 
-            type="primary"
-            icon={<PrinterOutlined />}
-            onClick={() => printPO(selectedPOForView)}
-          >
-            Print
-          </Button>,
-          <Button 
-            key="download" 
-            icon={<DownloadOutlined />}
-            onClick={() => downloadPDF(selectedPOForView)}
-          >
-            Download PDF
-          </Button>,
-          <Button key="close" onClick={() => {
-            setViewModalVisible(false);
-            setSelectedPOForView(null);
-            setPOHistory([]);
-          }}>
-            Close
-          </Button>
+          <Button key="email" icon={<MailOutlined />} onClick={() => handleEmailPO(selectedPOForView)}>Email</Button>,
+          <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={() => printPO(selectedPOForView)}>Print</Button>,
+          <Button key="download" icon={<DownloadOutlined />} onClick={() => downloadPDF(selectedPOForView)}>PDF</Button>,
+          <Button key="close" onClick={() => { setViewModalVisible(false); setSelectedPOForView(null); setPOHistory([]); }}>Close</Button>
         ]}
-        width={1000}
-      >
+        width="min(1000px, 96vw)" style={{ top: 16 }}>
         {selectedPOForView && (
           <div>
             <div style={{ marginBottom: 16 }}>
@@ -938,52 +829,36 @@ const PurchaseOrders = () => {
               <strong>Currency:</strong> {selectedPOForView.currency}<br/>
               <strong>Total Amount:</strong> {formatCurrency(selectedPOForView.total_amount)}
               {selectedPOForView.status === 'cancelled' && selectedPOForView.cancellation_reason && (
-                <>
-                  <br />
-                  <div style={{ marginTop: 12, padding: 12, backgroundColor: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
-                    <strong style={{ color: '#d4380d' }}>Cancellation Reason:</strong>
-                    <div style={{ marginTop: 4, color: '#595959' }}>{selectedPOForView.cancellation_reason}</div>
-                  </div>
-                </>
+                <div style={{ marginTop: 12, padding: 12, backgroundColor: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
+                  <strong style={{ color: '#d4380d' }}>Cancellation Reason:</strong>
+                  <div style={{ marginTop: 4, color: '#595959' }}>{selectedPOForView.cancellation_reason}</div>
+                </div>
               )}
             </div>
-            
             <h4>Line Items:</h4>
-            <Table
-              dataSource={selectedPOForView.lines || []}
-              rowKey="id"
-              pagination={false}
+            <Table dataSource={selectedPOForView.lines || []} rowKey="id" pagination={false} size="small" scroll={{ x: 'max-content' }}
               columns={[
-                { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-                { title: 'HSN Code', dataIndex: 'hsn_code', key: 'hsn_code', render: (val) => val || '-' },
-                { title: 'Qty Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered', render: (val) => formatQuantity(val) },
-                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', render: (val) => formatCurrency(val) },
-                { title: 'Line Total', dataIndex: 'line_total', key: 'line_total', render: (val) => formatCurrency(val) },
-                { title: 'Status', dataIndex: 'status', key: 'status', render: (val) => val?.toUpperCase() }
+                { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 140, ellipsis: true },
+                { title: 'HSN', dataIndex: 'hsn_code', key: 'hsn_code', width: 80, render: v => v || '-' },
+                { title: 'Qty', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 70, render: v => formatQuantity(v) },
+                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', width: 100, render: v => formatCurrency(v) },
+                { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100, render: v => formatCurrency(v) },
+                { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: v => v?.toUpperCase() }
               ]}
             />
-            
             {selectedPOForView.grns && selectedPOForView.grns.length > 0 && (
               <div style={{ marginTop: 16 }}>
                 <h4>Goods Receipt Notes:</h4>
-                <Table
-                  dataSource={selectedPOForView.grns}
-                  rowKey="id"
-                  pagination={false}
+                <Table dataSource={selectedPOForView.grns} rowKey="id" pagination={false} size="small" scroll={{ x: 'max-content' }}
                   columns={[
-                    { title: 'GRN Number', dataIndex: 'grn_number', key: 'grn_number' },
-                    { title: 'Receipt Date', dataIndex: 'receipt_date', key: 'receipt_date' },
-                    { title: 'Status', dataIndex: 'status', key: 'status', render: (val) => val?.toUpperCase() }
+                    { title: 'GRN Number', dataIndex: 'grn_number', key: 'grn_number', width: 140 },
+                    { title: 'Receipt Date', dataIndex: 'receipt_date', key: 'receipt_date', width: 120 },
+                    { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: v => v?.toUpperCase() }
                   ]}
                 />
               </div>
             )}
-            
-            <TransactionHistory 
-              data={poHistory} 
-              loading={loadingHistory} 
-              currency={selectedPOForView.currency || currency}
-            />
+            <TransactionHistory data={poHistory} loading={loadingHistory} currency={selectedPOForView.currency || currency} />
           </div>
         )}
       </Modal>

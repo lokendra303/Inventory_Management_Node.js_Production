@@ -134,7 +134,7 @@ const CompanySettings = () => {
   };
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '16px' }}>
       <Card>
         <Title level={3}>Company Settings</Title>
         <Text type="secondary">
@@ -157,7 +157,7 @@ const CompanySettings = () => {
                 <>
                   <Form form={form} layout="vertical">
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="companyName"
                           label="Company Name"
@@ -166,7 +166,7 @@ const CompanySettings = () => {
                           <Input placeholder="Enter company name" />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="email"
                           label="Email"
@@ -178,7 +178,7 @@ const CompanySettings = () => {
                     </Row>
 
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="phone"
                           label="Phone"
@@ -186,7 +186,7 @@ const CompanySettings = () => {
                           <Input placeholder="+1-000-000-0000" />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="address"
                           label="Address"
@@ -197,7 +197,7 @@ const CompanySettings = () => {
                     </Row>
 
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="authorizedSignatoryName"
                           label="Authorized Signatory Name"
@@ -205,7 +205,7 @@ const CompanySettings = () => {
                           <Input placeholder="Enter signatory name" />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="authorizedSignatoryDesignation"
                           label="Authorized Signatory Designation"
@@ -218,7 +218,7 @@ const CompanySettings = () => {
                     <Divider orientation="left">Bank Details</Divider>
 
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="bankName"
                           label="Bank Name"
@@ -226,7 +226,7 @@ const CompanySettings = () => {
                           <Input placeholder="Enter bank name" />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="accountNumber"
                           label="Account Number"
@@ -237,7 +237,7 @@ const CompanySettings = () => {
                     </Row>
 
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="ifscCode"
                           label="IFSC Code"
@@ -245,7 +245,7 @@ const CompanySettings = () => {
                           <Input placeholder="Enter IFSC code" />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           name="swiftCode"
                           label="SWIFT Code"
@@ -272,9 +272,9 @@ const CompanySettings = () => {
                     Upload logo, stamp, and signature for professional invoices (Max 5MB, PNG/JPG/SVG)
                   </Text>
 
-                  <Row gutter={24} style={{ marginTop: 24 }}>
+                  <Row gutter={[24, 16]} style={{ marginTop: 24 }}>
                     {/* Logo Upload */}
-                    <Col span={8}>
+                    <Col xs={24} sm={12} md={8}>
                       <Card size="small" title="Company Logo">
                         {settings.logo_path ? (
                           <div style={{ textAlign: 'center' }}>
@@ -316,7 +316,7 @@ const CompanySettings = () => {
                     </Col>
 
                     {/* Stamp Upload */}
-                    <Col span={8}>
+                    <Col xs={24} sm={12} md={8}>
                       <Card size="small" title="Company Stamp">
                         {settings.stamp_path ? (
                           <div style={{ textAlign: 'center' }}>
@@ -358,7 +358,7 @@ const CompanySettings = () => {
                     </Col>
 
                     {/* Signature Upload */}
-                    <Col span={8}>
+                    <Col xs={24} sm={12} md={8}>
                       <Card size="small" title="Authorized Signature">
                         {settings.signature_path ? (
                           <div style={{ textAlign: 'center' }}>
