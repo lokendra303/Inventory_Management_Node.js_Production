@@ -26,6 +26,12 @@
   min-height: 100vh;
 }
 
+/* Inner layout (right of sidebar) scrolls, not the whole page */
+.ant-layout > .ant-layout {
+  height: 100vh;
+  overflow-y: auto;
+}
+
 .ant-layout-content {
   margin: 16px;
   padding: 16px;

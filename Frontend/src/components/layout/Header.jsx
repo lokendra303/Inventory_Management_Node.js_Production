@@ -47,7 +47,10 @@ const Header = ({ collapsed, setCollapsed, user, isMobile }) => {
       justifyContent: 'space-between',
       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
       borderBottom: '1px solid #f0f0f0',
-      height: '64px'
+      height: '64px',
+      position: 'sticky',
+      top: 0,
+      zIndex: 100
     }}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <Button

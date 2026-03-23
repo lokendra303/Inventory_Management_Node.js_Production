@@ -24,6 +24,22 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
   const location = useLocation();
   const { user } = useAuth();
 
+  // Find which parent menu key contains the current path
+  const getOpenKeys = () => {
+    const parentMap = {
+      inventory: ['/inventory', '/inventory/adjustments', '/inventory/stock-count', '/inventory/batch-tracking', '/inventory/packages', '/inventory/shipments', '/inventory/move-orders', '/inventory/putaways'],
+      items: ['/items', '/item-groups'],
+      sales: ['/sales/customers', '/sales-orders', '/sales-invoices', '/sales/delivery-challans', '/sales/payments-received', '/sales/returns', '/sales/credit-notes'],
+      purchases: ['/purchases/vendors', '/purchase-orders', '/purchase-invoices', '/purchases/receives', '/purchases/bills', '/purchases/payments-made', '/purchases/vendor-credits', '/purchases/returns'],
+      invoices: ['/invoices/dashboard', '/invoices/purchase', '/invoices/sales', '/invoices/outstanding', '/invoices/payments'],
+      reports: ['/reports', '/profit-loss'],
+      'settings-menu': ['/company-settings', '/settings/exchange-rate']
+    };
+    return Object.entries(parentMap)
+      .filter(([, paths]) => paths.some(p => location.pathname.startsWith(p)))
+      .map(([key]) => key);
+  };
+
   // Helper function to check permissions
   const hasPermission = (permission) => {
     if (!user?.permissions) return false;
@@ -219,6 +235,8 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         theme="dark"
         mode="inline"
         selectedKeys={[location.pathname]}
+        defaultOpenKeys={getOpenKeys()}
+        openKeys={collapsed && !isMobile ? [] : undefined}
         items={menuItems}
         onClick={handleMenuClick}
       />
@@ -243,7 +261,13 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
   }
 
   return (
-    <Sider trigger={null} collapsible collapsed={collapsed} breakpoint="lg">
+    <Sider
+      trigger={null}
+      collapsible
+      collapsed={collapsed}
+      breakpoint="lg"
+      style={{ position: 'sticky', top: 0, height: '100vh', overflowY: 'auto', overflowX: 'hidden' }}
+    >
       {sidebarContent}
     </Sider>
   );
