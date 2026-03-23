@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Select, message } from 'antd';
 import { getCurrencies } from '../../utils/currency';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -13,11 +13,10 @@ const CurrencySelector = () => {
       if (success) {
         message.success(`Currency updated to ${newCurrency}`);
       } else {
-        message.error('Failed to update currency. Please try again.');
+        message.error('Failed to update currency');
       }
-    } catch (error) {
-      console.error('Currency change error:', error);
-      message.error('Failed to update currency. Please try again.');
+    } catch {
+      message.error('Failed to update currency');
     }
   };
 
@@ -29,12 +28,8 @@ const CurrencySelector = () => {
         loading={loading}
         style={{ width: '100%' }}
         size="small"
-        placeholder="Select Currency"
         showSearch
         optionFilterProp="children"
-        filterOption={(input, option) =>
-          option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-        }
       >
         {currencies.map(curr => (
           <Select.Option key={curr.code} value={curr.code}>

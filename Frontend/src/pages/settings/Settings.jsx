@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Form, Select, Button, message, Space } from 'antd';
 import apiService from '../../services/apiService';
 import { getCurrencies } from '../../utils/currency';
+import { useCurrency } from '../../contexts/CurrencyContext';
 import { useNavigate } from 'react-router-dom';
 import '../../styles/Settings.css';
 
@@ -9,6 +10,7 @@ const Settings = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [currencies] = useState(getCurrencies());
+  const { fetchCurrency } = useCurrency();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,11 +36,10 @@ const Settings = () => {
   const handleSubmit = async (values) => {
     try {
       setLoading(true);
-      const response = await apiService.put('/settings', values);
+      const response = await apiService.put('/settings', { currency: values.currency });
       if (response.success) {
         message.success('Settings updated successfully');
-        // Refresh the page to apply currency changes
-        window.location.reload();
+        await fetchCurrency();
       }
     } catch (error) {
       message.error('Failed to update settings');

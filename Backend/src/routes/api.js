@@ -36,11 +36,21 @@ router.use('/purchase-invoices', require('./invoice/purchase-invoices'));
 router.use('/sales-invoices', require('./invoice/sales-invoices'));
 router.use('/grn', require('./order/grn'));
 router.use('/reorder-levels', require('./inventory/reorder-levels'));
+router.use('/batch-serial', require('./inventory/batch-serial'));
+router.use('/inventory', require('./inventory/batch-serial'));
+router.use('/stock-counts', require('./inventory/stock-counts'));
+router.use('/purchase-returns', require('./order/purchase-returns'));
+router.use('/data', require('./master-data/all-data'));
 router.use('/reports', require('./reports/reports'));
 router.use('/profit-loss', require('./reports/profit-loss'));
 router.use('/settings', require('./settings/settings'));
 router.use('/company-settings', require('./settings/company-settings'));
 router.use('/documents', require('./documents/documents'));
+router.use('/delivery-challans', require('./order/delivery-challans'));
+router.use('/transfer-approvals', require('./inventory/transfer-approvals'));
+router.use('/analytics', require('./reports/analytics'));
+router.use('/notifications', require('./notification/notifications'));
+router.use('/audit', require('./audit/audit'));
 
 // Error handling middleware
 router.use((error, req, res, next) => {

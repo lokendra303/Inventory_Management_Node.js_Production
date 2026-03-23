@@ -172,9 +172,11 @@ class VendorService {
     let query = 'SELECT * FROM vendors WHERE institution_id = ?';
     const params = [institutionId];
 
-    if (filters.status) {
+    if (filters.status === 'all') {
+      // no status filter
+    } else {
       query += ' AND status = ?';
-      params.push(filters.status);
+      params.push(filters.status || 'active');
     }
 
     if (filters.search) {
@@ -182,7 +184,7 @@ class VendorService {
       params.push(`%${filters.search}%`, `%${filters.search}%`);
     }
 
-    query += ' ORDER BY CASE WHEN status = "active" THEN 0 ELSE 1 END, display_name';
+    query += ' ORDER BY display_name';
 
     return await db.query(query, params);
   }

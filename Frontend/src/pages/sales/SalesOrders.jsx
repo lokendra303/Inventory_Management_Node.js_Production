@@ -15,10 +15,9 @@ import {
 import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from "@ant-design/icons";
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
-import { formatPrice } from '../../utils/currency';
 
 const SalesOrders = () => {
-  const { currency } = useCurrency();
+  const { formatCurrency } = useCurrency();
   const [sos, setSOs] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -86,8 +85,7 @@ const SalesOrders = () => {
       title: "Total",
       dataIndex: "total_amount",
       key: "total_amount",
-      render: (val, record) =>
-        formatPrice(val, currency, record.currency || "USD"),
+      render: (val) => formatCurrency(val),
     },
     { title: "Order Date", dataIndex: "order_date", key: "order_date" },
     {
@@ -950,8 +948,7 @@ const SalesOrders = () => {
               <br />
               <strong>Channel:</strong> {selectedSOForView.channel}
               <br />
-              <strong>Total Amount:</strong> {selectedSOForView.currency}{" "}
-              {selectedSOForView.total_amount}
+              <strong>Total Amount:</strong> {formatCurrency(selectedSOForView.total_amount)}
               {selectedSOForView.status === 'cancelled' && selectedSOForView.cancellation_reason && (
                 <>
                   <br />
@@ -986,13 +983,13 @@ const SalesOrders = () => {
                   title: "Unit Price",
                   dataIndex: "unit_price",
                   key: "unit_price",
-                  render: (val) => `${selectedSOForView.currency} ${val}`,
+                  render: (val) => formatCurrency(val),
                 },
                 {
                   title: "Line Total",
                   dataIndex: "line_total",
                   key: "line_total",
-                  render: (val) => `${selectedSOForView.currency} ${val}`,
+                  render: (val) => formatCurrency(val),
                 },
                 {
                   title: "Status",

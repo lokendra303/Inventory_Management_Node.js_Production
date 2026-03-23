@@ -27,7 +27,7 @@ const Vendors = () => {
     try {
       setLoading(true);
       console.log('Fetching vendors from API...');
-      const response = await apiService.get('/vendors');
+      const response = await apiService.get('/vendors', { params: { status: 'all' } });
       
       console.log('Vendors API response:', response);
       

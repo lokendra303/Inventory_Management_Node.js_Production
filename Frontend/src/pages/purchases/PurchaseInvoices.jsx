@@ -4,13 +4,12 @@ import { ShoppingCartOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditO
 import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
-import { formatPrice } from '../../utils/currency';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
 
 const { Title } = Typography;
 
 const PurchaseInvoices = () => {
-  const { currency } = useCurrency();
+  const { formatCurrency } = useCurrency();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
@@ -347,7 +346,7 @@ const PurchaseInvoices = () => {
       title: 'Amount',
       dataIndex: 'total_amount',
       key: 'total_amount',
-      render: (amount) => formatPrice(amount, currency),
+      render: (amount) => formatCurrency(amount),
     },
     {
       title: 'Status',

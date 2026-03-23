@@ -212,12 +212,14 @@ class WarehouseService {
                  WHERE w.institution_id = ?`;
     const params = [institutionId];
 
-    if (filters.status) {
+    if (filters.status === 'all') {
+      // no status filter — return everything
+    } else {
       query += ' AND w.status = ?';
-      params.push(filters.status);
+      params.push(filters.status || 'active');
     }
 
-    query += ' ORDER BY w.status = "active" DESC, w.name';
+    query += ' ORDER BY w.name';
 
     return await db.query(query, params);
   }

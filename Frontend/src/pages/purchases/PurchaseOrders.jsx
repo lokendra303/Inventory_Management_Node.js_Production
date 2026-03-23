@@ -4,12 +4,11 @@ import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOu
 import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
-import { formatPrice } from '../../utils/currency';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
 import TransactionHistory from '../../components/inventory/TransactionHistory';
 
 const PurchaseOrders = () => {
-  const { currency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [pos, setPOs] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -74,7 +73,7 @@ const PurchaseOrders = () => {
         return <span style={{ color: colors[status] || 'black' }}>{status?.toUpperCase()}</span>;
       }
     },
-    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val, record) => formatPrice(val, currency, record.currency || 'USD') },
+    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val) => formatCurrency(val) },
     { title: 'Order Date', dataIndex: 'order_date', key: 'order_date' },
     {
       title: 'Actions',
@@ -937,7 +936,7 @@ const PurchaseOrders = () => {
               <strong>Order Date:</strong> {selectedPOForView.order_date}<br/>
               <strong>Expected Date:</strong> {selectedPOForView.expected_date}<br/>
               <strong>Currency:</strong> {selectedPOForView.currency}<br/>
-              <strong>Total Amount:</strong> {selectedPOForView.currency} {selectedPOForView.total_amount}
+              <strong>Total Amount:</strong> {formatCurrency(selectedPOForView.total_amount)}
               {selectedPOForView.status === 'cancelled' && selectedPOForView.cancellation_reason && (
                 <>
                   <br />
@@ -958,8 +957,8 @@ const PurchaseOrders = () => {
                 { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
                 { title: 'HSN Code', dataIndex: 'hsn_code', key: 'hsn_code', render: (val) => val || '-' },
                 { title: 'Qty Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered', render: (val) => formatQuantity(val) },
-                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', render: (val) => `${selectedPOForView.currency} ${formatAmount(val)}` },
-                { title: 'Line Total', dataIndex: 'line_total', key: 'line_total', render: (val) => `${selectedPOForView.currency} ${formatAmount(val)}` },
+                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', render: (val) => formatCurrency(val) },
+                { title: 'Line Total', dataIndex: 'line_total', key: 'line_total', render: (val) => formatCurrency(val) },
                 { title: 'Status', dataIndex: 'status', key: 'status', render: (val) => val?.toUpperCase() }
               ]}
             />

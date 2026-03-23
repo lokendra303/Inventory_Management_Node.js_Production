@@ -425,12 +425,14 @@ class ItemService {
                  WHERE i.institution_id = ?`;
     const params = [institutionId];
 
-    if (filters.status) {
+    if (filters.status === 'all') {
+      // no status filter — return everything
+    } else {
       query += ' AND i.status = ?';
-      params.push(filters.status);
+      params.push(filters.status || 'active');
     }
 
-    query += ' GROUP BY i.id ORDER BY CASE WHEN i.status = "active" THEN 0 ELSE 1 END, i.name';
+    query += ' GROUP BY i.id ORDER BY i.name';
 
     const items = await db.query(query, params);
 

@@ -39,3 +39,9 @@ export const formatAmount = (value, decimals = 2) => {
   
   return num.toFixed(decimals);
 };
+
+// Format currency value without hardcoded symbol
+export const formatCurrency = (value) => {
+  const num = parseFloat(value) || 0;
+  return new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+};

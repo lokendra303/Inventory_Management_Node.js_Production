@@ -4,7 +4,17 @@ const { requirePermission } = require('../../middleware/auth');
 
 const router = express.Router();
 
-router.get('/:entityType/:entityId', 
+router.get('/trail',
+  requirePermission('audit_view'),
+  auditController.getAuditTrail
+);
+
+router.get('/summary',
+  requirePermission('audit_view'),
+  auditController.getAuditSummary
+);
+
+router.get('/:entityType/:entityId',
   requirePermission('audit_view'),
   auditController.getEntityAuditLog
 );

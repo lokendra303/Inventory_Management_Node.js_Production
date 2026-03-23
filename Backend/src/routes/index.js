@@ -15,6 +15,9 @@ const allDataRoutes = require('./master-data/all-data');
 const purchaseInvoiceRoutes = require('./invoice/purchase-invoices');
 const salesInvoiceRoutes = require('./invoice/sales-invoices');
 const invoiceRoutes = require('./invoice/invoices');
+const batchSerialRoutes = require('./inventory/batch-serial');
+const stockCountRoutes = require('./inventory/stock-counts');
+const purchaseReturnRoutes = require('./order/purchase-returns');
 
 const { requireAuth, requirePermission, validateInstitutionConsistency, auditLog } = require('../middleware/auth');
 const { validate, schemas } = require('../utils/validation');
@@ -467,6 +470,15 @@ router.use('/data', allDataRoutes);
 router.use('/purchase-invoices', purchaseInvoiceRoutes);
 router.use('/sales-invoices', salesInvoiceRoutes);
 router.use('/invoices', invoiceRoutes);
+
+// Batch & Serial Tracking + Expiry Alerts
+router.use('/inventory', batchSerialRoutes);
+
+// Physical Stock Count & Inventory Aging
+router.use('/stock-counts', stockCountRoutes);
+
+// Purchase Returns & Auto-PO
+router.use('/purchase-returns', purchaseReturnRoutes);
 
 // Error handling middleware
 router.use((error, req, res, next) => {

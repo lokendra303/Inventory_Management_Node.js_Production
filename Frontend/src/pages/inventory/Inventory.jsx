@@ -4,9 +4,11 @@ import { PlusOutlined, EyeOutlined, SearchOutlined, InboxOutlined, WarningOutlin
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { formatNumber } from '../../utils/currency.js';
+import { useCurrency } from '../../contexts/CurrencyContext';
 
 const Inventory = () => {
   const { user } = useAuth();
+  const { formatCurrency } = useCurrency();
   const [inventory, setInventory] = useState([]);
   const [items, setItems] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -15,8 +17,6 @@ const Inventory = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState('receive');
   const [form] = Form.useForm();
-
-  const [currency, setCurrency] = useState('₹');
   const [viewingRecord, setViewingRecord] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [stats, setStats] = useState({ totalValue: 0, totalItems: 0, lowStockCount: 0 });
@@ -88,7 +88,7 @@ const Inventory = () => {
       title: 'Avg Cost', 
       dataIndex: 'average_cost', 
       key: 'average_cost', 
-      render: (val, record) => (val && !isNaN(Number(val))) ? `${record.currency || currency}${formatNumber(val)}` : '-',
+      render: (val) => (val && !isNaN(Number(val))) ? formatCurrency(val) : '-',
       sorter: (a, b) => (a.average_cost || 0) - (b.average_cost || 0),
       align: 'right'
     },
@@ -102,7 +102,7 @@ const Inventory = () => {
         const calculatedValue = quantity * avgCost;
         return calculatedValue > 0 ? (
           <span style={{ fontWeight: 500, color: '#1890ff' }}>
-            {record.currency || currency}{formatNumber(calculatedValue)}
+            {formatCurrency(calculatedValue)}
           </span>
         ) : '-';
       },
@@ -156,13 +156,7 @@ const Inventory = () => {
         })
       ]);
       
-      // Get currency from user settings or first inventory item
       if (inventoryRes.success && inventoryRes.data.length > 0) {
-        const firstItem = inventoryRes.data[0];
-        if (firstItem.currency) {
-          setCurrency(firstItem.currency);
-        }
-        
         // Calculate stats
         const totalValue = inventoryRes.data.reduce((sum, item) => {
           const quantity = parseFloat(item.quantity_on_hand) || 0;
@@ -375,7 +369,7 @@ const Inventory = () => {
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 4 }}>Average Cost</div>
                 <div style={{ fontSize: 16, fontWeight: 500, color: '#1890ff' }}>
                   {viewingRecord.average_cost && !isNaN(Number(viewingRecord.average_cost)) 
-                    ? `${viewingRecord.currency || currency}${formatNumber(viewingRecord.average_cost)}` 
+                    ? formatCurrency(viewingRecord.average_cost)
                     : '-'}
                 </div>
               </div>
@@ -389,7 +383,7 @@ const Inventory = () => {
                     const avgCost = parseFloat(viewingRecord.average_cost) || 0;
                     const calculatedValue = quantity * avgCost;
                     return calculatedValue > 0 
-                      ? `${viewingRecord.currency || currency}${formatNumber(calculatedValue)}` 
+                      ? formatCurrency(calculatedValue)
                       : '-';
                   })()}
                 </div>
@@ -424,7 +418,7 @@ const Inventory = () => {
                           <div>Change: <strong>{event.event_data.quantityChange > 0 ? '+' : ''}{event.event_data.quantityChange}</strong></div>
                         )}
                         {event.event_data?.unitCost && (
-                          <div>Unit Cost: <strong>{currency}{formatNumber(event.event_data.unitCost)}</strong></div>
+                          <div>Unit Cost: <strong>{formatCurrency(event.event_data.unitCost)}</strong></div>
                         )}
                         {event.event_data?.reason && (
                           <div style={{ color: '#8c8c8c', fontSize: 12 }}>Reason: {event.event_data.reason}</div>
@@ -457,7 +451,8 @@ const Inventory = () => {
               title="Total Inventory Value"
               value={stats.totalValue}
               precision={2}
-              prefix={currency}
+              prefix={null}
+              formatter={v => formatCurrency(v)}
               valueStyle={{ color: '#3f8600' }}
             />
           </Card>

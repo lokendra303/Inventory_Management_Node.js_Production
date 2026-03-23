@@ -40,7 +40,7 @@ const Customers = () => {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
-      const response = await apiService.get('/customers');
+      const response = await apiService.get('/customers', { params: { status: 'all' } });
       
       if (response.success) {
         setCustomers(response.data || []);

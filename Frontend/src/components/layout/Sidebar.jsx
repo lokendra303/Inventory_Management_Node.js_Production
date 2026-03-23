@@ -66,6 +66,8 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       children: [
         hasPermission('inventory_view') && { key: '/inventory', label: 'Overview' },
         hasPermission('inventory_adjust') && { key: '/inventory/adjustments', label: 'Inventory Adjustments' },
+        hasPermission('inventory_adjust') && { key: '/inventory/stock-count', label: 'Stock Count' },
+        hasPermission('inventory_view') && { key: '/inventory/batch-tracking', label: 'Batch & Serial' },
         hasPermission('inventory_view') && { key: '/inventory/packages', label: 'Packages' },
         hasPermission('inventory_ship') && { key: '/inventory/shipments', label: 'Shipments' },
         hasPermission('inventory_transfer') && { key: '/inventory/move-orders', label: 'Move Orders' },
@@ -115,7 +117,8 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         hasAnyPermission('purchase_view', 'purchase_management', 'inventory_receive') && { key: '/purchases/receives', label: 'Purchase Receives' },
         hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchases/bills', label: 'Bills' },
         hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchases/payments-made', label: 'Payments Made' },
-        hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchases/vendor-credits', label: 'Vendor Credits' }
+        hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchases/vendor-credits', label: 'Vendor Credits' },
+        hasAnyPermission('purchase_view', 'purchase_management') && { key: '/purchases/returns', label: 'Purchase Returns' }
       ].filter(Boolean)
     },
     // Invoices - Show if user has invoice_view or invoice_management
@@ -182,7 +185,8 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       label: 'Settings',
       children: [
         // { key: '/settings', label: 'General Settings' },
-        hasRole(['admin', 'super_admin']) && { key: '/company-settings', label: 'Company Settings' }
+        hasRole(['admin', 'super_admin']) && { key: '/company-settings', label: 'Company Settings' },
+        hasRole(['admin', 'super_admin']) && { key: '/settings/exchange-rate', label: 'Exchange Rate' }
       ].filter(Boolean)
     }
   ].filter(Boolean);

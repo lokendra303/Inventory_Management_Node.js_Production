@@ -116,7 +116,7 @@ const fetchWarehouses = async () => {
     try {
       setLoading(true);
       const [warehousesResponse, typesResponse] = await Promise.all([
-        apiService.get('/warehouses'),
+        apiService.get('/warehouses', { params: { status: 'all' } }),
         apiService.get('/warehouse-types')
       ]);
       

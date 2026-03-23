@@ -149,7 +149,7 @@ const Items = () => {
       setLoading(true);
       
       // Stagger API calls to prevent 429 errors
-      const itemsResponse = await apiService.get('/items');
+      const itemsResponse = await apiService.get('/items', { params: { status: 'all' } });
       
       if (itemsResponse.success) {
         setItems(itemsResponse.data);
@@ -158,7 +158,7 @@ const Items = () => {
       // Add small delay before next request
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      const warehousesResponse = await apiService.get('/warehouses');
+      const warehousesResponse = await apiService.get('/warehouses', { params: { status: 'all' } });
       
       if (warehousesResponse.success) {
         setWarehouses(warehousesResponse.data);

@@ -325,6 +325,74 @@ class ApiService {
   async getStockAgingReport(params = {}) {
     return this.get('/reports/stock-aging', { params });
   }
+
+  // Batch & Serial Tracking
+  async getBatches(params = {}) { return this.get('/inventory/batches', { params }); }
+  async createBatch(data) { return this.post('/inventory/batches', data); }
+  async consumeBatch(batchId, quantity) { return this.post(`/inventory/batches/${batchId}/consume`, { quantity }); }
+  async updateBatchStatus(batchId, status) { return this.put(`/inventory/batches/${batchId}/status`, { status }); }
+
+  async getSerials(params = {}) { return this.get('/inventory/serials', { params }); }
+  async createSerials(data) { return this.post('/inventory/serials', data); }
+  async updateSerialStatus(serialId, status, soId) { return this.put(`/inventory/serials/${serialId}/status`, { status, soId }); }
+
+  // Expiry Alerts
+  async getExpiryAlerts(params = {}) { return this.get('/inventory/expiry-alerts', { params }); }
+  async acknowledgeExpiryAlert(alertId) { return this.put(`/inventory/expiry-alerts/${alertId}/acknowledge`); }
+  async refreshExpiryAlerts() { return this.post('/inventory/expiry-alerts/refresh'); }
+
+  // Stock Count
+  async getStockCounts(params = {}) { return this.get('/stock-counts', { params }); }
+  async createStockCount(data) { return this.post('/stock-counts', data); }
+  async getStockCount(countId) { return this.get(`/stock-counts/${countId}`); }
+  async submitStockCount(countId, lines) { return this.post(`/stock-counts/${countId}/submit`, { lines }); }
+  async approveStockCount(countId) { return this.post(`/stock-counts/${countId}/approve`); }
+  async cancelStockCount(countId) { return this.post(`/stock-counts/${countId}/cancel`); }
+  async getInventoryAgingReport(params = {}) { return this.get('/stock-counts/aging', { params }); }
+
+  // Purchase Returns
+  async getPurchaseReturns(params = {}) { return this.get('/purchase-returns', { params }); }
+  async createPurchaseReturn(data) { return this.post('/purchase-returns', data); }
+  async getPurchaseReturn(returnId) { return this.get(`/purchase-returns/${returnId}`); }
+  async confirmPurchaseReturn(returnId) { return this.post(`/purchase-returns/${returnId}/confirm`); }
+  async cancelPurchaseReturn(returnId) { return this.post(`/purchase-returns/${returnId}/cancel`); }
+
+  // Auto-PO Generation
+  async previewAutoPOs(warehouseId) { return this.get('/purchase-returns/auto-po/preview', { params: { warehouseId } }); }
+  async generateAutoPOs(warehouseId) { return this.post('/purchase-returns/auto-po/generate', { warehouseId }); }
+
+  // Delivery Challans
+  async getDeliveryChallans(params = {}) { return this.get('/delivery-challans', { params }); }
+  async createDeliveryChallan(data) { return this.post('/delivery-challans', data); }
+  async getDeliveryChallan(challanId) { return this.get(`/delivery-challans/${challanId}`); }
+  async updateChallanStatus(challanId, status) { return this.put(`/delivery-challans/${challanId}/status`, { status }); }
+  async convertChallanToInvoice(challanId) { return this.post(`/delivery-challans/${challanId}/convert-to-invoice`); }
+
+  // Transfer Approvals
+  async requestTransfer(data) { return this.post('/transfer-approvals', data); }
+  async getTransferRequests(params = {}) { return this.get('/transfer-approvals', { params }); }
+  async approveTransfer(requestId) { return this.post(`/transfer-approvals/${requestId}/approve`); }
+  async rejectTransfer(requestId, rejectionReason) { return this.post(`/transfer-approvals/${requestId}/reject`, { rejectionReason }); }
+  async cancelTransferRequest(requestId) { return this.post(`/transfer-approvals/${requestId}/cancel`); }
+
+  // Analytics
+  async getABCAnalysis(params = {}) { return this.get('/analytics/abc-analysis', { params }); }
+  async getSlowMovingStock(days = 90) { return this.get('/analytics/slow-moving', { params: { days } }); }
+  async getDeadStock() { return this.get('/analytics/dead-stock'); }
+  async getDemandForecast(itemId, warehouseId) { return this.get(`/analytics/demand-forecast/${itemId}/${warehouseId}`); }
+  async getAnalyticsProfitLoss(startDate, endDate) { return this.get('/analytics/profit-loss', { params: { startDate, endDate } }); }
+  async getValuationReport(warehouseId) { return this.get('/analytics/valuation', { params: { warehouseId } }); }
+
+  // Notifications
+  async getNotifications(params = {}) { return this.get('/notifications', { params }); }
+  async getUnreadNotificationCount() { return this.get('/notifications/unread-count'); }
+  async markNotificationRead(notificationId) { return this.put(`/notifications/${notificationId}/read`); }
+  async markAllNotificationsRead() { return this.put('/notifications/mark-all-read'); }
+
+  // Audit
+  async getAuditTrail(params = {}) { return this.get('/audit/trail', { params }); }
+  async getAuditSummary() { return this.get('/audit/summary'); }
+  async getEntityAuditLog(entityType, entityId, limit = 50) { return this.get(`/audit/${entityType}/${entityId}`, { params: { limit } }); }
 }
 
 export default new ApiService();

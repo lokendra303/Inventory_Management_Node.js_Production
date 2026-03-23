@@ -351,6 +351,12 @@ class AutomationService {
           case 'whatsapp':
             result = await this.executeWhatsAppAction(institutionId, action, eventData);
             break;
+          case 'create_po':
+            result = await this.executeCreatePOAction(institutionId, action, eventData);
+            break;
+          case 'adjust_stock':
+            result = await this.executeAdjustStockAction(institutionId, action, eventData);
+            break;
           default:
             result = { success: false, error: `Unknown action type: ${action.type}` };
         }
@@ -413,7 +419,6 @@ class AutomationService {
   }
 
   async executeWhatsAppAction(institutionId, action, eventData) {
-    // WhatsApp action implementation would go here
     logger.info('WhatsApp action executed', {
       institutionId,
       to: action.to,
@@ -422,6 +427,37 @@ class AutomationService {
     });
 
     return { success: true, message: 'WhatsApp message sent' };
+  }
+
+  async executeCreatePOAction(institutionId, action, eventData) {
+    try {
+      const autoPOService = require('../order/autoPOService');
+      const result = await autoPOService.generatePOsFromReorderSuggestions(
+        institutionId,
+        action.userId || null,
+        { warehouseId: eventData.warehouseId || action.warehouseId }
+      );
+      logger.info('create_po automation action executed', { institutionId, result });
+      return { success: true, message: `Created ${result.created} PO(s)`, data: result };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  async executeAdjustStockAction(institutionId, action, eventData) {
+    try {
+      const inventoryService = require('../inventory/inventoryService');
+      await inventoryService.adjustStock(institutionId, {
+        itemId: eventData.itemId || action.itemId,
+        warehouseId: eventData.warehouseId || action.warehouseId,
+        quantityChange: action.quantityChange,
+        adjustmentType: action.adjustmentType || 'decrease',
+        reason: action.reason || 'Automation rule'
+      }, action.userId || 'system');
+      return { success: true, message: 'Stock adjusted' };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 
   async deleteRule(institutionId, ruleId, userId) {

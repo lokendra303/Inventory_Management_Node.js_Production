@@ -68,6 +68,8 @@ class PurchaseOrderService {
            formattedOrderDate, formattedExpectedDate, notes || null, createdBy]
         );
 
+        const effectiveExchangeRate = parseFloat(exchangeRate) || 1.0;
+
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           if (!line.warehouseId) {
@@ -75,7 +77,9 @@ class PurchaseOrderService {
           }
           
           const lineId = uuidv4();
-          const lineTotal = Math.round(line.quantity * line.unitCost * 100) / 100;
+          // unit_cost stored in PO currency; line_total converted to base currency
+          const lineTotalForeign = Math.round(line.quantity * line.unitCost * 100) / 100;
+          const lineTotal = Math.round(lineTotalForeign * effectiveExchangeRate * 100) / 100;
           const discountRate = line.discountRate || 0;
           const taxRate = line.taxRate || 0;
           const discountAmount = Math.round((lineTotal * discountRate) / 100 * 100) / 100;
@@ -440,10 +444,12 @@ class PurchaseOrderService {
         );
 
         // Insert new lines
+        const updateExchangeRate = parseFloat(exchangeRate) || 1.0;
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           const lineId = uuidv4();
-          const lineTotal = Math.round(line.quantity * line.unitCost * 100) / 100;
+          const lineTotalForeign = Math.round(line.quantity * line.unitCost * 100) / 100;
+          const lineTotal = Math.round(lineTotalForeign * updateExchangeRate * 100) / 100;
           const discountRate = line.discountRate || 0;
           const taxRate = line.taxRate || 0;
           const discountAmount = Math.round((lineTotal * discountRate) / 100 * 100) / 100;

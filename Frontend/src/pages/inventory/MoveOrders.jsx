@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Select, InputNumber, Input, message, DatePicker } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { formatQuantity } from '../../utils/numberFormat';
@@ -36,8 +36,8 @@ const MoveOrders = () => {
     try {
       setLoading(true);
       const [itemsRes, whRes, stockRes] = await Promise.all([
-        apiService.get('/items'),
-        apiService.get('/warehouses'),
+        apiService.get('/items', { params: { status: 'active' } }),
+        apiService.get('/warehouses', { params: { status: 'active' } }),
         apiService.get('/inventory')
       ]);
       setItems(itemsRes.success ? itemsRes.data : []);
@@ -59,7 +59,7 @@ const MoveOrders = () => {
 
   const openCreate = () => {
     form.resetFields();
-    form.setFieldsValue({ moveNumber: `MO-${Date.now()}`, moveDate: moment(), lines: [] });
+    form.setFieldsValue({ moveNumber: `MO-${Date.now()}`, moveDate: dayjs(), lines: [] });
     setModalVisible(true);
   };
 
@@ -209,7 +209,7 @@ const MoveOrders = () => {
                                 form.setFieldsValue({ lines });
                               }}
                             >
-                              {items.filter(i => i.status === 'active').map(item => {
+                              {items.map(item => {
                                 const totalStock = Object.values(allItemStocks[item.id] || {}).reduce((s, q) => s + q, 0);
                                 return (
                                   <Select.Option key={item.id} value={item.id} label={`${item.name} (${item.sku})`}>
@@ -242,7 +242,7 @@ const MoveOrders = () => {
                                 form.setFieldsValue({ lines });
                               }}
                             >
-                              {warehouses.filter(w => w.status === 'active').map(wh => {
+                              {warehouses.map(wh => {
                                 const stock = itemId ? (allItemStocks[itemId]?.[wh.id] ?? 0) : null;
                                 return (
                                   <Select.Option key={wh.id} value={wh.id} label={wh.name}>
@@ -279,7 +279,7 @@ const MoveOrders = () => {
                               optionFilterProp="label"
                             >
                               {warehouses
-                                .filter(w => w.status === 'active' && w.id !== fromWarehouseId)
+                                .filter(w => w.id !== fromWarehouseId)
                                 .map(wh => {
                                   const stock = itemId ? (allItemStocks[itemId]?.[wh.id] ?? 0) : null;
                                   return (

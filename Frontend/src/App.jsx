@@ -49,6 +49,10 @@ import PurchasesBills from './pages/purchases/PurchasesBills.jsx';
 import PurchasesPaymentMade from './pages/purchases/PurchasesPayamentMade.jsx';
 import VendorCredits from './pages/purchases/VendorCredits.jsx';  
 import InvoicePayments from './pages/sales/InvoiceMayments.jsx';
+import StockCount from './pages/inventory/StockCount.jsx';
+import BatchTracking from './pages/inventory/BatchTracking.jsx';
+import PurchaseReturns from './pages/purchases/PurchaseReturns.jsx';
+import ExchangeRateSettings from './pages/settings/ExchangeRateSettings.jsx';
 
 const { Content } = Layout;
 
@@ -76,6 +80,9 @@ const ProtectedInvoiceDashboard = withPermission('invoice_view')(InvoiceDashboar
 const ProtectedPurchaseInvoices = withPermission('invoice_view')(PurchaseInvoices);
 const ProtectedSalesInvoices = withPermission('invoice_view')(SalesInvoices);
 const ProtectedOutstandingInvoices = withPermission('invoice_view')(OutstandingInvoices);
+const ProtectedStockCount = withPermission('inventory_adjust')(StockCount);
+const ProtectedBatchTracking = withPermission('inventory_view')(BatchTracking);
+const ProtectedPurchaseReturns = withPermission('purchase_view')(PurchaseReturns);
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -133,6 +140,8 @@ function AppContent() {
             <Route path="/inventory/putaways" element={<ProtectedPutaways />} />
             <Route path="/inventory/move-orders" element={<ProtectedMoveOrders />} />
             <Route path="/inventory/packages" element={<ProtectedPackages />} />
+            <Route path="/inventory/stock-count" element={<ProtectedStockCount />} />
+            <Route path="/inventory/batch-tracking" element={<ProtectedBatchTracking />} />
             <Route path="/items" element={<ProtectedItems />} />
             <Route path="/item-groups" element={<ItemGroups />} />
             <Route path="/sales/delivery-challans" element={<DeliveryChallans />} />
@@ -144,6 +153,7 @@ function AppContent() {
             <Route path="/purchases/bills" element={<PurchasesBills />} />
             <Route path="/purchases/payments-made" element={<PurchasesPaymentMade />} />
             <Route path="/purchases/vendor-credits" element={<VendorCredits />} />
+            <Route path="/purchases/returns" element={<ProtectedPurchaseReturns />} />
             <Route path="/invoices/payments" element={<InvoicePayments />} />
 
             <Route path="/warehouses" element={<ProtectedWarehouses />} />
@@ -154,6 +164,7 @@ function AppContent() {
             <Route path="/reports/*" element={<Reports />} />
             <Route path="/profit-loss" element={<ProfitLoss />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/exchange-rate" element={<ExchangeRateSettings />} />
             <Route path="/account-settings" element={<AccountSettings />} />
             <Route path="/company-settings" element={<CompanySettings />} />
             <Route path="/documents" element={<Documents />} />
