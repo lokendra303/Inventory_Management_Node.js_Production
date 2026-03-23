@@ -43,7 +43,10 @@ class Database {
         connection.release();
       }
     } catch (error) {
-      logger.error('Database query error:', { sql, params, error: error.message });
+      // Don't log ignorable DDL errors (e.g. duplicate column on ALTER TABLE)
+      if (error.errno !== 1060 && error.errno !== 1061) {
+        logger.error('Database query error:', { sql, params, error: error.message });
+      }
       throw error;
     }
   }

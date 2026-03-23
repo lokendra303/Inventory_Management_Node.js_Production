@@ -12,7 +12,7 @@ async function ensureTables() {
     'ALTER TABLE institutions ADD COLUMN exchange_rate DECIMAL(15,6) NOT NULL DEFAULT 1',
     "ALTER TABLE institutions ADD COLUMN base_currency VARCHAR(10) NOT NULL DEFAULT 'USD'"
   ]) {
-    try { await db.query(sql); } catch (e) { if (e.code !== 'ER_DUP_FIELDNAME') throw e; }
+    try { await db.query(sql); } catch (e) { if (e.code !== 'ER_DUP_FIELDNAME' && e.errno !== 1060) throw e; }
   }
 
   // currencies master — one row per currency code per institution
