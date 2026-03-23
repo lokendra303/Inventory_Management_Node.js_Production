@@ -48,18 +48,18 @@ const InvoiceDashboard = () => {
               <Col xs={24} md={12}>
                 <Card title="Purchase Invoices">
                   <Row gutter={[16, 16]}>
-                    <Col xs={8}><Statistic title="Total" value={dashboardData.purchase?.total_invoices || 0} /></Col>
-                    <Col xs={8}><Statistic title="Amount" value={formatPrice(dashboardData.purchase?.total_amount || 0, currency)} /></Col>
-                    <Col xs={8}><Statistic title="Outstanding" value={formatPrice(dashboardData.purchase?.outstanding_amount || 0, currency)} /></Col>
+                    <Col xs={24} sm={8}><Statistic title="Total" value={dashboardData.purchase?.total_invoices || 0} /></Col>
+                    <Col xs={12} sm={8}><Statistic title="Amount" value={formatPrice(dashboardData.purchase?.total_amount || 0, currency)} /></Col>
+                    <Col xs={12} sm={8}><Statistic title="Outstanding" value={formatPrice(dashboardData.purchase?.outstanding_amount || 0, currency)} /></Col>
                   </Row>
                 </Card>
               </Col>
               <Col xs={24} md={12}>
                 <Card title="Sales Invoices">
                   <Row gutter={[16, 16]}>
-                    <Col xs={8}><Statistic title="Total" value={dashboardData.sales?.total_invoices || 0} /></Col>
-                    <Col xs={8}><Statistic title="Amount" value={formatPrice(dashboardData.sales?.total_amount || 0, currency)} /></Col>
-                    <Col xs={8}><Statistic title="Outstanding" value={formatPrice(dashboardData.sales?.outstanding_amount || 0, currency)} /></Col>
+                    <Col xs={24} sm={8}><Statistic title="Total" value={dashboardData.sales?.total_invoices || 0} /></Col>
+                    <Col xs={12} sm={8}><Statistic title="Amount" value={formatPrice(dashboardData.sales?.total_amount || 0, currency)} /></Col>
+                    <Col xs={12} sm={8}><Statistic title="Outstanding" value={formatPrice(dashboardData.sales?.outstanding_amount || 0, currency)} /></Col>
                   </Row>
                 </Card>
               </Col>

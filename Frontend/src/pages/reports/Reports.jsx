@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, DatePicker, Select, message, Tabs, Modal, Descriptions } from 'antd';
+import { Card, Table, Button, Space, DatePicker, Select, message, Tabs, Modal, Descriptions, Row, Col } from 'antd';
 import { FileTextOutlined, EyeOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -194,131 +194,98 @@ const Reports = () => {
   }, [activeTab]);
 
   const inventoryColumns = [
-    { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-    { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
-    { title: 'On Hand', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand' },
-    { title: 'Available', dataIndex: 'quantity_available', key: 'quantity_available' },
-    { title: 'Reserved', dataIndex: 'quantity_reserved', key: 'quantity_reserved' },
-    { title: 'Value', dataIndex: 'total_value', key: 'total_value', render: (val) => formatCurrency(val || 0) },
-    {
-      title: 'Action',
-      key: 'action',
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 140, ellipsis: true },
+    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 100, ellipsis: true },
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 120, ellipsis: true },
+    { title: 'On Hand', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand', width: 90 },
+    { title: 'Available', dataIndex: 'quantity_available', key: 'quantity_available', width: 90 },
+    { title: 'Reserved', dataIndex: 'quantity_reserved', key: 'quantity_reserved', width: 90 },
+    { title: 'Value', dataIndex: 'total_value', key: 'total_value', width: 110, render: (val) => formatCurrency(val || 0) },
+    { title: 'Action', key: 'action', width: 80,
       render: (_, record) => (
-        <Button 
-          type="link" 
-          icon={<EyeOutlined />} 
-          onClick={() => setViewModal({ visible: true, data: record, type: 'inventory' })}
-        >
-          View
-        </Button>
+        <Button type="link" icon={<EyeOutlined />} onClick={() => setViewModal({ visible: true, data: record, type: 'inventory' })}>View</Button>
       )
     }
   ];
 
   const purchaseColumns = [
-    { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
-    { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name' },
-    { title: 'Status', dataIndex: 'status', key: 'status' },
-    { title: 'Order Date', dataIndex: 'order_date', key: 'order_date', render: (val) => val ? new Date(val).toLocaleDateString() : 'N/A' },
-    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val) => formatCurrency(val || 0) },
-    {
-      title: 'Action',
-      key: 'action',
+    { title: 'PO Number', dataIndex: 'po_number', key: 'po_number', width: 130, ellipsis: true },
+    { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name', width: 140, ellipsis: true },
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 110 },
+    { title: 'Order Date', dataIndex: 'order_date', key: 'order_date', width: 110, render: (val) => val ? new Date(val).toLocaleDateString() : 'N/A' },
+    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', width: 110, render: (val) => formatCurrency(val || 0) },
+    { title: 'Action', key: 'action', width: 80,
       render: (_, record) => (
-        <Button 
-          type="link" 
-          icon={<EyeOutlined />} 
-          onClick={() => setViewModal({ visible: true, data: record, type: 'purchase' })}
-        >
-          View
-        </Button>
+        <Button type="link" icon={<EyeOutlined />} onClick={() => setViewModal({ visible: true, data: record, type: 'purchase' })}>View</Button>
       )
     }
   ];
 
   const salesColumns = [
-    { title: 'SO Number', dataIndex: 'so_number', key: 'so_number' },
-    { title: 'Customer', dataIndex: 'customer_name', key: 'customer_name' },
-    { title: 'Status', dataIndex: 'status', key: 'status' },
-    { title: 'Order Date', dataIndex: 'order_date', key: 'order_date' },
-    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', render: (val) => formatCurrency(val || 0) },
-    {
-      title: 'Action',
-      key: 'action',
+    { title: 'SO Number', dataIndex: 'so_number', key: 'so_number', width: 130, ellipsis: true },
+    { title: 'Customer', dataIndex: 'customer_name', key: 'customer_name', width: 140, ellipsis: true },
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 100 },
+    { title: 'Order Date', dataIndex: 'order_date', key: 'order_date', width: 110 },
+    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', width: 110, render: (val) => formatCurrency(val || 0) },
+    { title: 'Action', key: 'action', width: 80,
       render: (_, record) => (
-        <Button 
-          type="link" 
-          icon={<EyeOutlined />} 
-          onClick={() => setViewModal({ visible: true, data: record, type: 'sales' })}
-        >
-          View
-        </Button>
+        <Button type="link" icon={<EyeOutlined />} onClick={() => setViewModal({ visible: true, data: record, type: 'sales' })}>View</Button>
       )
     }
   ];
 
   const adjustmentColumns = [
-    { title: 'Date', dataIndex: 'created_at', key: 'created_at', render: (val) => new Date(val).toLocaleDateString() },
-    { title: 'Reference', dataIndex: 'reference_number', key: 'reference_number' },
-    { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-    { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
-    { title: 'Type', dataIndex: 'adjustment_type', key: 'adjustment_type', render: (val) => val?.toUpperCase() },
-    { 
-      title: 'Loss Type', 
-      dataIndex: 'loss_type', 
-      key: 'loss_type', 
+    { title: 'Date', dataIndex: 'created_at', key: 'created_at', width: 100, render: (val) => new Date(val).toLocaleDateString() },
+    { title: 'Reference', dataIndex: 'reference_number', key: 'reference_number', width: 120, ellipsis: true },
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 130, ellipsis: true },
+    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 90, ellipsis: true },
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 120, ellipsis: true },
+    { title: 'Type', dataIndex: 'adjustment_type', key: 'adjustment_type', width: 90, render: (val) => val?.toUpperCase() },
+    { title: 'Loss Type', dataIndex: 'loss_type', key: 'loss_type', width: 100,
       render: (val) => {
-        const colors = {
-          'MISSING': '#ff4d4f',
-          'DAMAGED': '#faad14', 
-          'EXPIRED': '#ff7a45',
-          'MANUAL': '#52c41a',
-          'SYSTEM': '#1890ff'
-        };
+        const colors = { 'MISSING': '#ff4d4f', 'DAMAGED': '#faad14', 'EXPIRED': '#ff7a45', 'MANUAL': '#52c41a', 'SYSTEM': '#1890ff' };
         return <span style={{ color: colors[val] || '#666' }}>{val}</span>;
       }
     },
-    { title: 'Quantity', dataIndex: 'quantity_change', key: 'quantity_change', render: (val) => formatNumber(Math.abs(val)) },
-    { title: 'Reason', dataIndex: 'reason', key: 'reason' },
-    { title: 'Adjusted By', key: 'adjusted_by', render: (_, record) => `${record.first_name || ''} ${record.last_name || ''}`.trim() || 'System' }
+    { title: 'Qty', dataIndex: 'quantity_change', key: 'quantity_change', width: 70, render: (val) => formatNumber(Math.abs(val)) },
+    { title: 'Reason', dataIndex: 'reason', key: 'reason', width: 130, ellipsis: true },
+    { title: 'By', key: 'adjusted_by', width: 100, render: (_, record) => `${record.first_name || ''} ${record.last_name || ''}`.trim() || 'System' }
   ];
 
   const transferColumns = [
-    { title: 'Date', dataIndex: 'created_at', key: 'created_at', render: (val) => new Date(val).toLocaleDateString() },
-    { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-    { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-    { title: 'From Warehouse', dataIndex: 'from_warehouse', key: 'from_warehouse' },
-    { title: 'To Warehouse', dataIndex: 'to_warehouse', key: 'to_warehouse' },
-    { title: 'Quantity', dataIndex: 'quantity', key: 'quantity', render: (val) => formatNumber(val) },
-    { title: 'Transfer ID', dataIndex: 'transfer_id', key: 'transfer_id' }
+    { title: 'Date', dataIndex: 'created_at', key: 'created_at', width: 100, render: (val) => new Date(val).toLocaleDateString() },
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 130, ellipsis: true },
+    { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 90, ellipsis: true },
+    { title: 'From', dataIndex: 'from_warehouse', key: 'from_warehouse', width: 120, ellipsis: true },
+    { title: 'To', dataIndex: 'to_warehouse', key: 'to_warehouse', width: 120, ellipsis: true },
+    { title: 'Qty', dataIndex: 'quantity', key: 'quantity', width: 70, render: (val) => formatNumber(val) },
+    { title: 'Transfer ID', dataIndex: 'transfer_id', key: 'transfer_id', width: 120, ellipsis: true }
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h1>Reports</h1>
-      
+    <div style={{ padding: '16px' }}>
+      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Reports</h1>
+
       {/* Dashboard Summary */}
       <Card title="Dashboard Summary" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <h3>{formatCurrency(dashboardData.inventoryValue || 0)}</h3>
-            <p>Inventory Value</p>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <h3>{dashboardData.totalSales?.count || 0}</h3>
-            <p>Total Sales</p>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <h3>{dashboardData.totalPurchases?.count || 0}</h3>
-            <p>Total Purchases</p>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <h3>{dashboardData.lowStockItems || 0}</h3>
-            <p>Low Stock Items</p>
-          </div>
-        </div>
+        <Row gutter={[16, 16]}>
+          <Col xs={12} sm={6} style={{ textAlign: 'center' }}>
+            <h3 style={{ margin: 0 }}>{formatCurrency(dashboardData.inventoryValue || 0)}</h3>
+            <p style={{ margin: 0, color: '#666', fontSize: 12 }}>Inventory Value</p>
+          </Col>
+          <Col xs={12} sm={6} style={{ textAlign: 'center' }}>
+            <h3 style={{ margin: 0 }}>{dashboardData.totalSales?.count || 0}</h3>
+            <p style={{ margin: 0, color: '#666', fontSize: 12 }}>Total Sales</p>
+          </Col>
+          <Col xs={12} sm={6} style={{ textAlign: 'center' }}>
+            <h3 style={{ margin: 0 }}>{dashboardData.totalPurchases?.count || 0}</h3>
+            <p style={{ margin: 0, color: '#666', fontSize: 12 }}>Total Purchases</p>
+          </Col>
+          <Col xs={12} sm={6} style={{ textAlign: 'center' }}>
+            <h3 style={{ margin: 0 }}>{dashboardData.lowStockItems || 0}</h3>
+            <p style={{ margin: 0, color: '#666', fontSize: 12 }}>Low Stock Items</p>
+          </Col>
+        </Row>
       </Card>
 
       <Tabs defaultActiveKey="inventory" onChange={setActiveTab}>
@@ -334,12 +301,8 @@ const Reports = () => {
                 Refresh Report
               </Button>
             </Space>
-            <Table 
-              columns={inventoryColumns} 
-              dataSource={inventoryData} 
-              loading={loading}
-              rowKey="id"
-            />
+            <Table columns={inventoryColumns} dataSource={inventoryData} loading={loading} rowKey="id"
+              scroll={{ x: 'max-content' }} size="small" pagination={{ size: 'small' }} />
           </Card>
         </TabPane>
 
@@ -354,27 +317,9 @@ const Reports = () => {
               >
                 Refresh Report
               </Button>
-              <DatePicker
-                placeholder="From Date"
-                value={purchaseFromDate}
-                onChange={date => setPurchaseFromDate(date)}
-                style={{ width: 150 }}
-                allowClear
-              />
-              <DatePicker
-                placeholder="To Date"
-                value={purchaseToDate}
-                onChange={date => setPurchaseToDate(date)}
-                style={{ width: 150 }}
-                allowClear
-              />
-              <Select
-                placeholder="All Statuses"
-                value={purchaseStatus}
-                onChange={val => setPurchaseStatus(val)}
-                style={{ width: 180 }}
-                allowClear
-              >
+              <DatePicker placeholder="From Date" value={purchaseFromDate} onChange={date => setPurchaseFromDate(date)} style={{ width: 140 }} allowClear />
+              <DatePicker placeholder="To Date" value={purchaseToDate} onChange={date => setPurchaseToDate(date)} style={{ width: 140 }} allowClear />
+              <Select placeholder="All Statuses" value={purchaseStatus} onChange={val => setPurchaseStatus(val)} style={{ width: 160 }} allowClear>
                 <Select.Option value="draft">Draft</Select.Option>
                 <Select.Option value="sent">Sent</Select.Option>
                 <Select.Option value="confirmed">Confirmed</Select.Option>
@@ -383,19 +328,13 @@ const Reports = () => {
                 <Select.Option value="cancelled">Cancelled</Select.Option>
               </Select>
             </Space>
-            <Table 
-              columns={purchaseColumns} 
-              dataSource={purchaseData.filter(po => {
+            <Table columns={purchaseColumns} dataSource={purchaseData.filter(po => {
                 const statusMatch = !purchaseStatus || po.status === purchaseStatus;
-                const dateMatch = (!purchaseFromDate || !purchaseToDate) || (() => {
-                  const d = new Date(po.order_date);
-                  return d >= purchaseFromDate.startOf('day').toDate() && d <= purchaseToDate.endOf('day').toDate();
-                })();
+                const dateMatch = (!purchaseFromDate || !purchaseToDate) || (() => { const d = new Date(po.order_date); return d >= purchaseFromDate.startOf('day').toDate() && d <= purchaseToDate.endOf('day').toDate(); })();
                 return statusMatch && dateMatch;
-              })} 
-              loading={loading}
-              rowKey="id"
-            />
+              })}
+              loading={loading} rowKey="id"
+              scroll={{ x: 'max-content' }} size="small" pagination={{ size: 'small' }} />
           </Card>
         </TabPane>
 
@@ -410,27 +349,9 @@ const Reports = () => {
               >
                 Refresh Report
               </Button>
-              <DatePicker
-                placeholder="From Date"
-                value={salesFromDate}
-                onChange={date => setSalesFromDate(date)}
-                style={{ width: 150 }}
-                allowClear
-              />
-              <DatePicker
-                placeholder="To Date"
-                value={salesToDate}
-                onChange={date => setSalesToDate(date)}
-                style={{ width: 150 }}
-                allowClear
-              />
-              <Select
-                placeholder="All Statuses"
-                value={salesStatus}
-                onChange={val => setSalesStatus(val)}
-                style={{ width: 160 }}
-                allowClear
-              >
+              <DatePicker placeholder="From Date" value={salesFromDate} onChange={date => setSalesFromDate(date)} style={{ width: 140 }} allowClear />
+              <DatePicker placeholder="To Date" value={salesToDate} onChange={date => setSalesToDate(date)} style={{ width: 140 }} allowClear />
+              <Select placeholder="All Statuses" value={salesStatus} onChange={val => setSalesStatus(val)} style={{ width: 150 }} allowClear>
                 <Select.Option value="draft">Draft</Select.Option>
                 <Select.Option value="confirmed">Confirmed</Select.Option>
                 <Select.Option value="shipped">Shipped</Select.Option>
@@ -438,19 +359,13 @@ const Reports = () => {
                 <Select.Option value="cancelled">Cancelled</Select.Option>
               </Select>
             </Space>
-            <Table 
-              columns={salesColumns} 
-              dataSource={salesData.filter(so => {
+            <Table columns={salesColumns} dataSource={salesData.filter(so => {
                 const statusMatch = !salesStatus || so.status === salesStatus;
-                const dateMatch = (!salesFromDate || !salesToDate) || (() => {
-                  const d = new Date(so.order_date);
-                  return d >= salesFromDate.startOf('day').toDate() && d <= salesToDate.endOf('day').toDate();
-                })();
+                const dateMatch = (!salesFromDate || !salesToDate) || (() => { const d = new Date(so.order_date); return d >= salesFromDate.startOf('day').toDate() && d <= salesToDate.endOf('day').toDate(); })();
                 return statusMatch && dateMatch;
-              })} 
-              loading={loading}
-              rowKey="id"
-            />
+              })}
+              loading={loading} rowKey="id"
+              scroll={{ x: 'max-content' }} size="small" pagination={{ size: 'small' }} />
           </Card>
         </TabPane>
 
@@ -465,46 +380,22 @@ const Reports = () => {
               >
                 Refresh Report
               </Button>
-              <DatePicker
-                placeholder="From Date"
-                value={adjustmentFromDate}
-                onChange={date => setAdjustmentFromDate(date)}
-                style={{ width: 150 }}
-                allowClear
-              />
-              <DatePicker
-                placeholder="To Date"
-                value={adjustmentToDate}
-                onChange={date => setAdjustmentToDate(date)}
-                style={{ width: 150 }}
-                allowClear
-              />
-              <Select
-                placeholder="Filter by Loss Type"
-                value={adjustmentLossType}
-                onChange={val => setAdjustmentLossType(val)}
-                style={{ width: 170 }}
-                allowClear
-              >
-                <Select.Option value="MISSING">Missing Items</Select.Option>
-                <Select.Option value="DAMAGED">Damaged Items</Select.Option>
-                <Select.Option value="EXPIRED">Expired Items</Select.Option>
-                <Select.Option value="ADJUSTMENT">Manual Adjustments</Select.Option>
+              <DatePicker placeholder="From Date" value={adjustmentFromDate} onChange={date => setAdjustmentFromDate(date)} style={{ width: 140 }} allowClear />
+              <DatePicker placeholder="To Date" value={adjustmentToDate} onChange={date => setAdjustmentToDate(date)} style={{ width: 140 }} allowClear />
+              <Select placeholder="Loss Type" value={adjustmentLossType} onChange={val => setAdjustmentLossType(val)} style={{ width: 150 }} allowClear>
+                <Select.Option value="MISSING">Missing</Select.Option>
+                <Select.Option value="DAMAGED">Damaged</Select.Option>
+                <Select.Option value="EXPIRED">Expired</Select.Option>
+                <Select.Option value="ADJUSTMENT">Manual</Select.Option>
               </Select>
             </Space>
-            <Table 
-              columns={adjustmentColumns} 
-              dataSource={adjustmentData.filter(item => {
+            <Table columns={adjustmentColumns} dataSource={adjustmentData.filter(item => {
                 const lossMatch = !adjustmentLossType || item.loss_type === adjustmentLossType;
-                const dateMatch = (!adjustmentFromDate || !adjustmentToDate) || (() => {
-                  const d = new Date(item.created_at);
-                  return d >= adjustmentFromDate.startOf('day').toDate() && d <= adjustmentToDate.endOf('day').toDate();
-                })();
+                const dateMatch = (!adjustmentFromDate || !adjustmentToDate) || (() => { const d = new Date(item.created_at); return d >= adjustmentFromDate.startOf('day').toDate() && d <= adjustmentToDate.endOf('day').toDate(); })();
                 return lossMatch && dateMatch;
-              })} 
-              loading={loading}
-              rowKey={(record) => `${record.created_at}-${record.item_name}`}
-            />
+              })}
+              loading={loading} rowKey={(record) => `${record.created_at}-${record.item_name}`}
+              scroll={{ x: 'max-content' }} size="small" pagination={{ size: 'small' }} />
           </Card>
         </TabPane>
 
@@ -519,44 +410,22 @@ const Reports = () => {
               >
                 Refresh Report
               </Button>
-              <DatePicker
-                placeholder="From Date"
-                value={transferFromDate}
-                onChange={date => setTransferFromDate(date)}
-                style={{ width: 150 }}
-                allowClear
-              />
-              <DatePicker
-                placeholder="To Date"
-                value={transferToDate}
-                onChange={date => setTransferToDate(date)}
-                style={{ width: 150 }}
-                allowClear
-              />
+              <DatePicker placeholder="From Date" value={transferFromDate} onChange={date => setTransferFromDate(date)} style={{ width: 140 }} allowClear />
+              <DatePicker placeholder="To Date" value={transferToDate} onChange={date => setTransferToDate(date)} style={{ width: 140 }} allowClear />
             </Space>
-            <Table 
-              columns={transferColumns} 
-              dataSource={transferData.filter(item => {
-                const dateMatch = (!transferFromDate || !transferToDate) || (() => {
-                  const d = new Date(item.created_at);
-                  return d >= transferFromDate.startOf('day').toDate() && d <= transferToDate.endOf('day').toDate();
-                })();
+            <Table columns={transferColumns} dataSource={transferData.filter(item => {
+                const dateMatch = (!transferFromDate || !transferToDate) || (() => { const d = new Date(item.created_at); return d >= transferFromDate.startOf('day').toDate() && d <= transferToDate.endOf('day').toDate(); })();
                 return dateMatch;
-              })} 
-              loading={loading}
-              rowKey={(record) => `${record.created_at}-${record.transfer_id}`}
-            />
+              })}
+              loading={loading} rowKey={(record) => `${record.created_at}-${record.transfer_id}`}
+              scroll={{ x: 'max-content' }} size="small" pagination={{ size: 'small' }} />
           </Card>
         </TabPane>
       </Tabs>
 
-      <Modal
-        title={`${viewModal.type === 'inventory' ? 'Inventory' : viewModal.type === 'purchase' ? 'Purchase Order' : 'Sales Order'} Details`}
-        open={viewModal.visible}
-        onCancel={() => setViewModal({ visible: false, data: null, type: null })}
-        footer={null}
-        width={600}
-      >
+      <Modal title={`${viewModal.type === 'inventory' ? 'Inventory' : viewModal.type === 'purchase' ? 'Purchase Order' : 'Sales Order'} Details`}
+        open={viewModal.visible} onCancel={() => setViewModal({ visible: false, data: null, type: null })}
+        footer={null} width="min(600px, 96vw)" style={{ top: 16 }}>
         {viewModal.data && (
           <Descriptions column={1} bordered>
             {viewModal.type === 'inventory' && (

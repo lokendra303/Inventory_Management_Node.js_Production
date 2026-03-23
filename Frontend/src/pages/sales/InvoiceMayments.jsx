@@ -10,15 +10,15 @@ const { TabPane } = Tabs;
 const METHOD_COLORS = { bank_transfer: 'blue', cash: 'green', cheque: 'orange', online: 'purple' };
 
 const paymentColumns = (currency) => [
-  { title: 'Invoice #', dataIndex: 'invoice_number', key: 'invoice_number', width: 150 },
-  { title: 'Party', dataIndex: 'party_name', key: 'party_name' },
-  { title: 'Payment Date', dataIndex: 'payment_date', key: 'payment_date', width: 130,
+  { title: 'Invoice #', dataIndex: 'invoice_number', key: 'invoice_number', width: 130, ellipsis: true },
+  { title: 'Party', dataIndex: 'party_name', key: 'party_name', width: 140, ellipsis: true },
+  { title: 'Date', dataIndex: 'payment_date', key: 'payment_date', width: 110,
     render: v => v ? dayjs(v).format('DD MMM YYYY') : '-' },
-  { title: 'Amount', dataIndex: 'amount', key: 'amount', width: 130,
+  { title: 'Amount', dataIndex: 'amount', key: 'amount', width: 120,
     render: v => `${currency} ${formatAmount(v)}` },
-  { title: 'Method', dataIndex: 'payment_method', key: 'payment_method', width: 130,
+  { title: 'Method', dataIndex: 'payment_method', key: 'payment_method', width: 120,
     render: v => <Tag color={METHOD_COLORS[v] || 'default'}>{v?.replace('_', ' ').toUpperCase()}</Tag> },
-  { title: 'Reference', dataIndex: 'reference', key: 'reference', render: v => v || '-' }
+  { title: 'Reference', dataIndex: 'reference', key: 'reference', width: 120, ellipsis: true, render: v => v || '-' }
 ];
 
 export default function InvoicePayments() {
@@ -71,16 +71,18 @@ export default function InvoicePayments() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>Invoice Payments</h2>
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginBottom: 16, fontSize: '18px' }}>Invoice Payments</h2>
       <Tabs defaultActiveKey="sales">
         <TabPane tab={`Sales Payments (${salesPayments.length})`} key="sales">
           <Table columns={paymentColumns(currency)} dataSource={salesPayments} rowKey="id"
-            loading={loading} size="small" pagination={{ pageSize: 20 }} />
+            loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
+            scroll={{ x: 'max-content' }} />
         </TabPane>
         <TabPane tab={`Purchase Payments (${purchasePayments.length})`} key="purchase">
           <Table columns={paymentColumns(currency)} dataSource={purchasePayments} rowKey="id"
-            loading={loading} size="small" pagination={{ pageSize: 20 }} />
+            loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
+            scroll={{ x: 'max-content' }} />
         </TabPane>
       </Tabs>
     </div>
