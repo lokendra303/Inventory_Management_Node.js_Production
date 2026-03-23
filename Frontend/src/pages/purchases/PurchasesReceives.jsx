@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, InputNumber, Select, message, Tag, Tabs, DatePicker } from 'antd';
-import { PlusOutlined, EyeOutlined, FileTextOutlined, SearchOutlined, StopOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, Form, Input, InputNumber, Select, message, Tag, Tabs, DatePicker, Tooltip, Alert } from 'antd';
+import { PlusOutlined, EyeOutlined, FileTextOutlined, SearchOutlined, StopOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatAmount } from '../../utils/numberFormat';
@@ -24,40 +24,40 @@ const PurchasesReceives = () => {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
 
-  // ── fetch all GRNs by loading confirmed/partially_received POs and their grns
   const fetchGRNs = async () => {
     try {
       setLoading(true);
       const response = await apiService.get('/purchase-orders');
-      if (response.success) {
-        const posWithGRNs = response.data.filter(po =>
-          ['partially_received', 'received'].includes(po.status)
-        );
+      if (!response.success) return;
 
-        const grnList = [];
-        await Promise.all(posWithGRNs.map(async (po) => {
-          try {
-            const detail = await apiService.get(`/purchase-orders/${po.id}`);
-            if (detail.success && detail.data.grns) {
-              detail.data.grns.forEach(grn => {
-                grnList.push({
-                  ...grn,
-                  po_number: po.po_number,
-                  vendor_name: po.vendor_name,
-                  po_currency: po.currency
-                });
+      // PENDING tab: confirmed = no goods received yet; partially_received = some received, more pending
+      const pending = response.data.filter(po =>
+        po.status === 'confirmed' || po.status === 'partially_received'
+      );
+      setPendingPOs(pending);
+
+      // RECEIVED tab: collect all GRNs from POs that have at least one receipt
+      const posWithGRNs = response.data.filter(po =>
+        ['partially_received', 'received'].includes(po.status)
+      );
+      const grnList = [];
+      await Promise.all(posWithGRNs.map(async (po) => {
+        try {
+          const detail = await apiService.get(`/purchase-orders/${po.id}`);
+          if (detail.success && detail.data.grns) {
+            detail.data.grns.forEach(grn => {
+              grnList.push({
+                ...grn,
+                po_number: po.po_number,
+                vendor_name: po.vendor_name,
+                po_currency: po.currency
               });
-            }
-          } catch {}
-        }));
-        setGrns(grnList.sort((a, b) => new Date(b.receipt_date) - new Date(a.receipt_date)));
-
-        const pending = response.data.filter(po =>
-          po.status === 'confirmed' || po.status === 'partially_received'
-        );
-        setPendingPOs(pending);
-      }
-    } catch (error) {
+            });
+          }
+        } catch {}
+      }));
+      setGrns(grnList.sort((a, b) => new Date(b.receipt_date) - new Date(a.receipt_date)));
+    } catch {
       message.error('Failed to fetch data');
     } finally {
       setLoading(false);
@@ -67,19 +67,27 @@ const PurchasesReceives = () => {
   const openReceiveModal = async (po) => {
     try {
       const response = await apiService.get(`/purchase-orders/${po.id}`);
-      if (response.success) {
-        const poData = response.data;
-        setSelectedPO({ ...poData, id: poData.id || po.id });
+      if (!response.success) return;
+      const poData = response.data;
+      setSelectedPO({ ...poData, id: poData.id || po.id });
 
-        // only show lines that still have pending qty
-        const pendingLines = poData.lines?.filter(
-          line => (line.quantity_ordered - (line.quantity_received || 0)) > 0
-        ) || [];
+      // Only show lines that still have pending qty — this is what "partially_received" means:
+      // some lines are done, others still have remaining qty to receive
+      const pendingLines = (poData.lines || []).filter(
+        line => (Number(line.quantity_ordered) - Number(line.quantity_received || 0)) > 0
+      );
 
-        receiveForm.setFieldsValue({
-          grnNumber: `GRN-${Date.now()}`,
-          receiptDate: new Date().toISOString().split('T')[0],
-          lines: pendingLines.map(line => ({
+      if (pendingLines.length === 0) {
+        message.info('All items in this PO have already been fully received.');
+        return;
+      }
+
+      receiveForm.setFieldsValue({
+        grnNumber: `GRN-${Date.now()}`,
+        receiptDate: new Date().toISOString().split('T')[0],
+        lines: pendingLines.map(line => {
+          const pending = Number(line.quantity_ordered) - Number(line.quantity_received || 0);
+          return {
             poLineId: line.id,
             itemId: line.item_id,
             warehouseId: line.warehouse_id,
@@ -87,49 +95,67 @@ const PurchasesReceives = () => {
             warehouseName: line.warehouse_name,
             quantityOrdered: line.quantity_ordered,
             alreadyReceived: line.quantity_received || 0,
-            pendingQty: line.quantity_ordered - (line.quantity_received || 0),
-            quantityReceived: line.quantity_ordered - (line.quantity_received || 0),
+            pendingQty: pending,
+            quantityReceived: pending,  // default to full pending qty; user can reduce for partial
             unitCost: line.unit_cost,
             qualityStatus: 'accepted'
-          }))
-        });
-        setReceiveModalVisible(true);
-      }
-    } catch (error) {
+          };
+        })
+      });
+      setReceiveModalVisible(true);
+    } catch {
       message.error('Failed to load PO details');
     }
   };
 
   const handleReceiveGoods = async (values) => {
     try {
+      // Drop lines where user entered 0 — nothing to receive for those
+      const linesToSubmit = (values.lines || []).filter(line => Number(line.quantityReceived) > 0);
+      if (linesToSubmit.length === 0) {
+        message.warning('Please enter a quantity greater than 0 for at least one item.');
+        return;
+      }
+
       const grnData = {
         grnNumber: values.grnNumber,
         poId: selectedPO?.id,
         receiptDate: values.receiptDate,
         notes: values.notes,
-        lines: (values.lines || []).map(line => ({
+        lines: linesToSubmit.map(line => ({
           poLineId: line.poLineId,
           itemId: line.itemId,
           warehouseId: line.warehouseId,
-          itemName: line.itemName,
-          warehouseName: line.warehouseName,
-          quantityOrdered: Number(line.quantityOrdered),
           quantityReceived: Number(line.quantityReceived),
           unitCost: Number(line.unitCost),
-          qualityStatus: line.qualityStatus
+          // qualityStatus controls inventory: accepted = stock updated, rejected = stock NOT updated
+          qualityStatus: line.qualityStatus || 'accepted'
         }))
       };
 
       const response = await apiService.post('/grn', grnData);
       if (response.success) {
-        message.success('Goods received successfully! Inventory updated.');
+        const rejectedCount = linesToSubmit.filter(l => l.qualityStatus === 'rejected').length;
+        const acceptedCount = linesToSubmit.length - rejectedCount;
+
+        if (rejectedCount > 0 && acceptedCount > 0) {
+          message.success(
+            `GRN created. ${acceptedCount} line(s) ACCEPTED → inventory updated. ` +
+            `${rejectedCount} line(s) REJECTED → inventory NOT updated, pending qty unchanged.`
+          );
+        } else if (rejectedCount > 0 && acceptedCount === 0) {
+          message.warning('All items marked as REJECTED. GRN recorded for traceability but inventory was NOT updated.');
+        } else {
+          message.success('Goods received successfully! Inventory and warehouse stock updated.');
+        }
+
         setReceiveModalVisible(false);
         receiveForm.resetFields();
         setSelectedPO(null);
         fetchGRNs();
       }
     } catch (error) {
-      message.error(error.response?.data?.error || 'Failed to receive goods');
+      message.error(error.response?.data?.error || error.message || 'Failed to receive goods');
     }
   };
 
@@ -185,7 +211,7 @@ const PurchasesReceives = () => {
         setViewingGRN({ ...response.data, po_number: grn.po_number, vendor_name: grn.vendor_name });
         setViewModalVisible(true);
       }
-    } catch (error) {
+    } catch {
       message.error('Failed to load GRN details');
     }
   };
@@ -197,6 +223,12 @@ const PurchasesReceives = () => {
     { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
     { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name' },
     { title: 'Receipt Date', dataIndex: 'receipt_date', key: 'receipt_date' },
+    {
+      title: 'Lines',
+      dataIndex: 'line_count',
+      key: 'line_count',
+      render: (val) => val || '-'
+    },
     {
       title: 'Status',
       dataIndex: 'status',
@@ -242,7 +274,13 @@ const PurchasesReceives = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status) => (
-        <Tag color={status === 'confirmed' ? 'orange' : 'gold'}>{status?.toUpperCase()}</Tag>
+        <Tooltip title={
+          status === 'confirmed'
+            ? 'PO confirmed — no goods received yet. Click Receive Goods to start.'
+            : 'Some items received, remaining qty still pending. Click Receive Goods to receive the rest.'
+        }>
+          <Tag style={status === 'partially_received' ? { backgroundColor: '#7c3aed', color: '#fff', borderColor: '#7c3aed' } : {}} color={status === 'confirmed' ? 'orange' : undefined}>{status?.toUpperCase()}</Tag>
+        </Tooltip>
       )
     },
     { title: 'Order Date', dataIndex: 'order_date', key: 'order_date' },
@@ -256,7 +294,17 @@ const PurchasesReceives = () => {
       title: 'Received',
       dataIndex: 'total_quantity_received',
       key: 'total_quantity_received',
-      render: (val) => val || 0
+      render: (val, record) => {
+        const ordered = Number(record.total_quantity_ordered) || 0;
+        const received = Number(val) || 0;
+        const pending = ordered - received;
+        return (
+          <span>
+            {received}
+            {pending > 0 && <Tag style={{ marginLeft: 6, backgroundColor: '#7c3aed', color: '#fff', borderColor: '#7c3aed' }}>{pending} pending</Tag>}
+          </span>
+        );
+      }
     },
     {
       title: 'Actions',
@@ -314,10 +362,10 @@ const PurchasesReceives = () => {
               placeholder="All Statuses"
               value={statusFilter}
               onChange={val => setStatusFilter(val)}
-              style={{ width: 180 }}
+              style={{ width: 200 }}
               allowClear
             >
-              <Select.Option value="confirmed">Confirmed</Select.Option>
+              <Select.Option value="confirmed">Confirmed (not yet received)</Select.Option>
               <Select.Option value="partially_received">Partially Received</Select.Option>
             </Select>
           </Space>
@@ -369,16 +417,6 @@ const PurchasesReceives = () => {
               style={{ width: 150 }}
               allowClear
             />
-            <Select
-              placeholder="All Statuses"
-              value={statusFilter}
-              onChange={val => setStatusFilter(val)}
-              style={{ width: 160 }}
-              allowClear
-            >
-              <Select.Option value="confirmed">Confirmed</Select.Option>
-              <Select.Option value="pending">Pending</Select.Option>
-            </Select>
           </Space>
           <Table
             columns={grnColumns}
@@ -391,8 +429,7 @@ const PurchasesReceives = () => {
                 const d = new Date(grn.receipt_date);
                 return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
               })();
-              const statusMatch = !statusFilter || grn.status === statusFilter;
-              return textMatch && dateMatch && statusMatch;
+              return textMatch && dateMatch;
             })}
             loading={loading}
             rowKey="id"
@@ -410,14 +447,27 @@ const PurchasesReceives = () => {
         <Tabs items={tabItems} />
       </Card>
 
-      {/* Receive Goods Modal */}
+      {/* ── Receive Goods Modal ── */}
       <Modal
         title={`Receive Goods — PO: ${selectedPO?.po_number}`}
         open={receiveModalVisible}
         onCancel={() => { setReceiveModalVisible(false); setSelectedPO(null); receiveForm.resetFields(); }}
         footer={null}
-        width={1000}
+        width={1100}
       >
+        <Alert
+          style={{ marginBottom: 12 }}
+          type="info"
+          showIcon
+          message={
+            <span>
+              <strong>Accepted</strong> lines → warehouse stock increases + average cost recalculated.{' '}
+              <strong>Rejected</strong> lines → GRN recorded for traceability but inventory is <strong>NOT</strong> updated and pending qty stays unchanged (so you can receive again later).
+              If you receive fewer than the pending qty, the PO stays <strong>PARTIALLY RECEIVED</strong> and appears here again for the remainder.
+            </span>
+          }
+        />
+
         <Form form={receiveForm} layout="vertical" onFinish={handleReceiveGoods}>
           <Space style={{ width: '100%' }} size={16}>
             <Form.Item name="grnNumber" label="GRN Number" rules={[{ required: true }]} style={{ flex: 1, minWidth: 200 }}>
@@ -439,14 +489,13 @@ const PurchasesReceives = () => {
                 )}
                 {fields.map(({ key, name }) => (
                   <div key={key} style={{ border: '1px solid #d9d9d9', padding: 16, marginBottom: 8, borderRadius: 6, backgroundColor: '#fafafa' }}>
-                    {/* hidden fields */}
+                    {/* hidden fields — sent to backend */}
                     <Form.Item name={[name, 'poLineId']} hidden><Input /></Form.Item>
                     <Form.Item name={[name, 'itemId']} hidden><Input /></Form.Item>
                     <Form.Item name={[name, 'warehouseId']} hidden><Input /></Form.Item>
                     <Form.Item name={[name, 'quantityOrdered']} hidden><Input /></Form.Item>
-                    <Form.Item name={[name, 'alreadyReceived']} hidden><Input /></Form.Item>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr', gap: 12, alignItems: 'end' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', gap: 12, alignItems: 'end' }}>
                       <Form.Item label="Item">
                         <Form.Item name={[name, 'itemName']} noStyle>
                           <Input disabled />
@@ -459,7 +508,13 @@ const PurchasesReceives = () => {
                         </Form.Item>
                       </Form.Item>
 
-                      <Form.Item label="Ordered">
+                      <Form.Item label="Already Received">
+                        <Form.Item name={[name, 'alreadyReceived']} noStyle>
+                          <InputNumber disabled style={{ width: '100%' }} />
+                        </Form.Item>
+                      </Form.Item>
+
+                      <Form.Item label="Pending Qty">
                         <Form.Item name={[name, 'pendingQty']} noStyle>
                           <InputNumber disabled style={{ width: '100%' }} />
                         </Form.Item>
@@ -492,10 +547,20 @@ const PurchasesReceives = () => {
                         <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
                       </Form.Item>
 
-                      <Form.Item name={[name, 'qualityStatus']} label="Quality">
+                      <Form.Item
+                        name={[name, 'qualityStatus']}
+                        label={
+                          <span>
+                            Quality{' '}
+                            <Tooltip title="Accepted: goods pass inspection → inventory updated. Rejected: goods fail inspection → inventory NOT updated, pending qty unchanged so you can re-receive.">
+                              <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                            </Tooltip>
+                          </span>
+                        }
+                      >
                         <Select style={{ width: '100%' }}>
-                          <Select.Option value="accepted">Accepted</Select.Option>
-                          <Select.Option value="rejected">Rejected</Select.Option>
+                          <Select.Option value="accepted">✅ Accepted</Select.Option>
+                          <Select.Option value="rejected">❌ Rejected</Select.Option>
                         </Select>
                       </Form.Item>
                     </div>
@@ -511,14 +576,14 @@ const PurchasesReceives = () => {
 
           <Form.Item>
             <Space>
-              <Button type="primary" htmlType="submit">Receive & Update Inventory</Button>
+              <Button type="primary" htmlType="submit">Receive &amp; Update Inventory</Button>
               <Button onClick={() => { setReceiveModalVisible(false); setSelectedPO(null); receiveForm.resetFields(); }}>Cancel</Button>
             </Space>
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* Cancel PO Modal */}
+      {/* ── Cancel PO Modal ── */}
       <Modal
         title={`Cancel Purchase Order — ${cancellingPO?.po_number}`}
         open={cancelModalVisible}
@@ -546,7 +611,7 @@ const PurchasesReceives = () => {
         />
       </Modal>
 
-      {/* View GRN Modal */}
+      {/* ── View GRN Modal ── */}
       <Modal
         title={`GRN Details — ${viewingGRN?.grn_number}`}
         open={viewModalVisible}
@@ -594,11 +659,20 @@ const PurchasesReceives = () => {
                   render: (val) => `${currency} ${formatAmount(val)}`
                 },
                 {
-                  title: 'Quality',
+                  title: (
+                    <span>
+                      Quality{' '}
+                      <Tooltip title="Accepted = inventory was updated. Rejected = inventory was NOT updated.">
+                        <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                      </Tooltip>
+                    </span>
+                  ),
                   dataIndex: 'quality_status',
                   key: 'quality_status',
                   render: (val) => (
-                    <Tag color={val === 'accepted' ? 'green' : 'red'}>{val?.toUpperCase()}</Tag>
+                    <Tooltip title={val === 'accepted' ? 'Inventory updated for this line' : 'Inventory NOT updated — goods failed inspection'}>
+                      <Tag color={val === 'accepted' ? 'green' : 'red'}>{val?.toUpperCase()}</Tag>
+                    </Tooltip>
                   )
                 }
               ]}

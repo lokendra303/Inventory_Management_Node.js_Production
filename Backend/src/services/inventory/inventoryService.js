@@ -29,7 +29,9 @@ class InventoryService {
     });
 
     const aggregateId = createAggregateId(itemId, warehouseId);
-    const idempotencyKey = `receive-${poLineId}-${itemId}-${Date.now()}`;
+    // FIX #4: Use deterministic key so retries don't create duplicate events
+    // grnLineId (passed as poLineId from GRN flow) is stable across retries
+    const idempotencyKey = `receive-${poLineId}`;
 
     try {
       const eventId = await eventStore.appendEvent(

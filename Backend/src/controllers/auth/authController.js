@@ -324,15 +324,35 @@ class AuthController {
         return res.status(401).json({ success: false, error: 'Token required' });
       }
 
+      const { lastActivity } = req.body;
+      const inactivityTimeoutMs = parseInt(process.env.SESSION_TIMEOUT_MS) || 900000;
+
+      // If frontend reports lastActivity, validate it server-side
+      if (lastActivity) {
+        const inactiveSince = Date.now() - parseInt(lastActivity);
+        if (inactiveSince > inactivityTimeoutMs) {
+          logger.debug('Heartbeat rejected — frontend inactivity exceeded', { inactiveSince, inactivityTimeoutMs });
+          return res.status(401).json({
+            success: false,
+            error: 'SESSION_EXPIRED',
+            code: 'SESSION_EXPIRED'
+          });
+        }
+      }
+
       const token = authHeader.substring(7);
       const result = await authService.refreshToken(token);
 
+      // Decode new token expiry so frontend can sync its countdown
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.decode(result.token);
+      const sessionExpiresAt = decoded?.exp ? decoded.exp * 1000 : null;
+
       res.json({
         success: true,
-        data: { token: result.token }
+        data: { token: result.token, sessionExpiresAt }
       });
     } catch (error) {
-      // Only log as debug — heartbeat failures are expected when session truly expires
       logger.debug('Heartbeat token refresh failed', { error: error.message });
       res.status(401).json({
         success: false,

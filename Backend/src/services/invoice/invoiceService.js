@@ -115,8 +115,9 @@ class InvoiceService {
 
       // If linked to GRN, validate against GRN
       if (invoiceData.grnId) {
+        // FIX #7: correct table name is goods_receipt_notes, not grn
         const [grn] = await db.query(`
-          SELECT * FROM grn WHERE id = ? AND institution_id = ?
+          SELECT * FROM goods_receipt_notes WHERE id = ? AND institution_id = ?
         `, [invoiceData.grnId, institutionId]);
 
         if (!grn) {
@@ -338,14 +339,15 @@ class InvoiceService {
       }
 
       // Find matching GRNs
+      // FIX #7: correct table name is goods_receipt_notes, not grn
       const grns = await db.query(`
         SELECT g.*, po.vendor_name, COUNT(gl.id) as line_count
-        FROM grn g
+        FROM goods_receipt_notes g
         LEFT JOIN purchase_orders po ON g.po_id = po.id
         LEFT JOIN grn_lines gl ON g.id = gl.grn_id
         WHERE g.institution_id = ?
         AND po.vendor_name LIKE ?
-        AND g.status = 'completed'
+        AND g.status = 'confirmed'
         GROUP BY g.id
         ORDER BY g.receipt_date DESC
         LIMIT 10

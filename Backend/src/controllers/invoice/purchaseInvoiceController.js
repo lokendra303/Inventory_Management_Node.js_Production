@@ -905,9 +905,9 @@ class PurchaseInvoiceController {
       }
 
       if (grnId) {
-        // Get GRN data
+        // FIX #7: correct table name is goods_receipt_notes, not grn
         const [grn] = await db.query(`
-          SELECT * FROM grn WHERE id = ? AND institution_id = ?
+          SELECT * FROM goods_receipt_notes WHERE id = ? AND institution_id = ?
         `, [grnId, institutionId]);
 
         if (grn) {

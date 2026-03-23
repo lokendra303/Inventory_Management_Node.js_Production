@@ -1,7 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
-const inventoryService = require('../inventory/inventoryService');
 const auditLogService = require('../audit/auditLogService');
 
 class PurchaseOrderService {
@@ -122,7 +121,7 @@ class PurchaseOrderService {
     if (!lines || !Array.isArray(lines) || lines.length === 0) {
       throw new Error('lines array is required and must not be empty');
     }
-    
+
     let formattedReceiptDate = receiptDate;
     if (!receiptDate || typeof receiptDate === 'object' || receiptDate === '{}') {
       formattedReceiptDate = new Date().toISOString().split('T')[0];
@@ -133,10 +132,10 @@ class PurchaseOrderService {
     } else {
       formattedReceiptDate = new Date().toISOString().split('T')[0];
     }
-    
+
     const receivedBy = userId || null;
     const grnId = uuidv4();
-    const inventoryUpdates = [];
+    const resolvedGrnNumber = grnNumber || `GRN-${Date.now()}`;
 
     try {
       await db.transaction(async (connection) => {
@@ -144,7 +143,7 @@ class PurchaseOrderService {
           `INSERT INTO goods_receipt_notes 
            (id, institution_id, grn_number, po_id, receipt_date, received_by, notes, status) 
            VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
-          [grnId, institutionId, grnNumber || `GRN-${Date.now()}`, poId, formattedReceiptDate, receivedBy, notes || null]
+          [grnId, institutionId, resolvedGrnNumber, poId, formattedReceiptDate, receivedBy, notes || null]
         );
 
         for (const line of lines) {
@@ -158,17 +157,26 @@ class PurchaseOrderService {
             throw new Error('line.unitCost is required');
           }
 
-          // Validate received qty does not exceed pending qty
+          // FIX #2: Lock PO line row to prevent race condition on concurrent GRN submissions
+          // FIX #2: Also validate GRN warehouse matches PO line warehouse
           const [poLineResult] = await connection.execute(
-            'SELECT quantity_ordered, quantity_received FROM purchase_order_lines WHERE id = ?',
+            'SELECT quantity_ordered, quantity_received, warehouse_id FROM purchase_order_lines WHERE id = ? FOR UPDATE',
             [line.poLineId]
           );
           if (poLineResult.length === 0) throw new Error(`PO line ${line.poLineId} not found`);
+
+          // FIX #2: Enforce warehouse consistency — GRN must receive into the same warehouse as ordered
+          if (poLineResult[0].warehouse_id && poLineResult[0].warehouse_id !== line.warehouseId) {
+            throw new Error(
+              `Warehouse mismatch on PO line ${line.poLineId}: ordered for warehouse ${poLineResult[0].warehouse_id}, but GRN specifies ${line.warehouseId}`
+            );
+          }
+
           const pending = Number(poLineResult[0].quantity_ordered) - Number(poLineResult[0].quantity_received);
           if (Number(line.quantityReceived) > pending) {
             throw new Error(`Cannot receive ${line.quantityReceived} units — only ${pending} units pending for item`);
           }
-          
+
           const grnLineId = uuidv4();
           const lineTotal = Math.round(line.quantityReceived * line.unitCost * 100) / 100;
 
@@ -195,16 +203,50 @@ class PurchaseOrderService {
             );
           }
 
+          // FIX #1: Update inventory INSIDE the transaction so GRN and stock are always in sync
           if (line.qualityStatus === 'accepted' || !line.qualityStatus) {
-            inventoryUpdates.push({
-              itemId: line.itemId,
-              warehouseId: line.warehouseId,
-              quantity: Number(line.quantityReceived),
-              unitCost: Number(line.unitCost),
-              poId,
-              poLineId: line.poLineId,
-              grnNumber: grnNumber || `GRN-${Date.now()}`
-            });
+            const current = await connection.execute(
+              'SELECT quantity_on_hand, quantity_available, average_cost FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+              [institutionId, line.itemId, line.warehouseId]
+            );
+            const qty = Number(line.quantityReceived);
+            const cost = Number(line.unitCost);
+
+            if (current[0].length === 0) {
+              await connection.execute(
+                `INSERT INTO inventory_projections 
+                 (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, 0, ?, ?, NOW(), 1)`,
+                [institutionId, line.itemId, line.warehouseId, qty, qty, cost, qty * cost]
+              );
+            } else {
+              const curr = current[0][0];
+              const newQtyOnHand = Number(curr.quantity_on_hand) + qty;
+              const newTotalValue = Number(curr.quantity_on_hand) * Number(curr.average_cost) + qty * cost;
+              const newAvgCost = newTotalValue / newQtyOnHand;
+              const newQtyAvailable = Number(curr.quantity_available) + qty;
+              await connection.execute(
+                `UPDATE inventory_projections 
+                 SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?,
+                     last_movement_date = NOW(), version = version + 1
+                 WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+                [newQtyOnHand, newQtyAvailable, newAvgCost, newTotalValue, institutionId, line.itemId, line.warehouseId]
+              );
+            }
+
+            // FIX #4: Use deterministic idempotency key (grnLineId) for event store
+            await connection.execute(
+              `INSERT IGNORE INTO event_store (id, institution_id, aggregate_type, aggregate_id, event_type, event_data, metadata, idempotency_key, created_by)
+               VALUES (UUID(), ?, 'inventory', ?, 'PurchaseReceived', ?, ?, ?, ?)`,
+              [
+                institutionId,
+                `${line.itemId}:${line.warehouseId}`,
+                JSON.stringify({ itemId: line.itemId, warehouseId: line.warehouseId, quantity: qty, unitCost: cost, poId, poLineId: line.poLineId, grnNumber: resolvedGrnNumber, receivedDate: new Date().toISOString() }),
+                JSON.stringify({ userId }),
+                `receive-${grnLineId}`,
+                userId
+              ]
+            );
           }
         }
 
@@ -235,59 +277,7 @@ class PurchaseOrderService {
         );
       });
 
-      // Update inventory AFTER transaction completes
-      for (const update of inventoryUpdates) {
-        console.log('Updating inventory:', update);
-        try {
-          await inventoryService.receiveStock(institutionId, update, userId);
-          console.log('✓ Inventory updated successfully for item:', update.itemId);
-          // Auto-update item cost_price from actual purchase price
-          await db.query(
-            'UPDATE items SET cost_price = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?',
-            [update.unitCost, update.itemId, institutionId]
-          );
-        } catch (invError) {
-          console.error('✗ Event-sourced update failed, using direct DB update:', invError.message);
-          // Fallback: Direct database update
-          try {
-            const current = await db.query(
-              'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-              [institutionId, update.itemId, update.warehouseId]
-            );
-
-            if (current.length === 0) {
-              await db.query(
-                `INSERT INTO inventory_projections 
-                 (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, 0, ?, ?, NOW(), 1)`,
-                [institutionId, update.itemId, update.warehouseId, update.quantity, update.quantity, update.unitCost, update.quantity * update.unitCost]
-              );
-            } else {
-              const curr = current[0];
-              const currentValue = Number(curr.quantity_on_hand) * Number(curr.average_cost);
-              const newValue = Number(update.quantity) * Number(update.unitCost);
-              const newQtyOnHand = Number(curr.quantity_on_hand) + Number(update.quantity);
-              const newTotalValue = currentValue + newValue;
-              const newAvgCost = newTotalValue / newQtyOnHand;
-              const newQtyAvailable = Number(curr.quantity_available) + Number(update.quantity);
-
-              await db.query(
-                `UPDATE inventory_projections 
-                 SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?, 
-                     last_movement_date = NOW(), version = version + 1
-                 WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-                [newQtyOnHand, newQtyAvailable, newAvgCost, newTotalValue, institutionId, update.itemId, update.warehouseId]
-              );
-            }
-            console.log('✓ Direct DB update successful for item:', update.itemId);
-          } catch (dbError) {
-            console.error('✗ Direct DB update also failed:', dbError.message);
-            logger.error('Both inventory update methods failed', { update, eventError: invError.message, dbError: dbError.message });
-          }
-        }
-      }
-
-      logger.info('GRN created', { grnId, institutionId, grnNumber, poId, userId });
+      logger.info('GRN created', { grnId, institutionId, grnNumber: resolvedGrnNumber, poId, userId });
       return grnId;
     } catch (error) {
       logger.error('Failed to create GRN', { institutionId, grnNumber, poId, error: error.message });
@@ -425,6 +415,15 @@ class PurchaseOrderService {
           throw new Error('Only draft and sent purchase orders can be edited');
         }
 
+        // FIX #3: Block edit if any GRN already exists — editing lines would break grn_lines.po_line_id references
+        const [existingGRNs] = await connection.execute(
+          'SELECT id FROM goods_receipt_notes WHERE po_id = ? LIMIT 1',
+          [poId]
+        );
+        if (existingGRNs.length > 0) {
+          throw new Error('Cannot edit purchase order lines after goods have been received. Cancel the GRN first.');
+        }
+
         let subtotal = 0;
 
         // Update PO header
@@ -493,8 +492,9 @@ class PurchaseOrderService {
     `;
     const params = [institutionId];
 
+    // FIX #3: warehouse is on purchase_order_lines, not purchase_orders
     if (warehouseId) {
-      query += ' AND po.warehouse_id = ?';
+      query += ' AND pol.warehouse_id = ?';
       params.push(warehouseId);
     }
 

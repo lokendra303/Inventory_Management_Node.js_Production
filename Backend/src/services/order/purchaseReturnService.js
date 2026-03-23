@@ -62,6 +62,29 @@ class PurchaseReturnService {
 
     // Deduct stock for each line
     for (const line of lines) {
+      // FIX #5: Validate return qty does not exceed total received qty minus already returned qty
+      const [receivedResult] = await db.query(
+        `SELECT COALESCE(SUM(gl.quantity_received), 0) as total_received
+         FROM grn_lines gl
+         JOIN goods_receipt_notes grn ON gl.grn_id = grn.id
+         WHERE gl.institution_id = ? AND gl.item_id = ? AND gl.warehouse_id = ?
+           AND gl.quality_status != 'rejected'
+           AND grn.po_id = ?`,
+        [institutionId, line.item_id, line.warehouse_id, returns[0].po_id]
+      );
+      const [alreadyReturnedResult] = await db.query(
+        `SELECT COALESCE(SUM(prl.quantity), 0) as total_returned
+         FROM purchase_return_lines prl
+         JOIN purchase_returns pr ON prl.return_id = pr.id
+         WHERE prl.institution_id = ? AND prl.item_id = ? AND prl.warehouse_id = ?
+           AND pr.po_id = ? AND pr.status = 'confirmed' AND pr.id != ?`,
+        [institutionId, line.item_id, line.warehouse_id, returns[0].po_id, returnId]
+      );
+      const maxReturnable = parseFloat(receivedResult.total_received) - parseFloat(alreadyReturnedResult.total_returned);
+      if (parseFloat(line.quantity) > maxReturnable) {
+        throw new Error(`Cannot return ${line.quantity} units for item ${line.item_id} — only ${maxReturnable} units eligible for return`);
+      }
+
       const [proj] = await db.query(
         'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
         [institutionId, line.item_id, line.warehouse_id]

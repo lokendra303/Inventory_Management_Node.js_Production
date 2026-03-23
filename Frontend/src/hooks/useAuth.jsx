@@ -7,6 +7,7 @@ const AuthContext = createContext();
 const INACTIVITY_TIMEOUT = parseInt(process.env.REACT_APP_INACTIVITY_TIMEOUT);        // 15 minutes
 const ACTIVITY_THROTTLE = parseInt(process.env.REACT_APP_ACTIVITY_THROTTLE);           // 30 seconds
 const TOKEN_REFRESH_THRESHOLD = parseInt(process.env.REACT_APP_TOKEN_REFRESH_THRESHOLD); // refresh if token expires within 5 min
+const TOKEN_REFRESH_INTERVAL = 4 * 60 * 1000; // proactively refresh every 4 min
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -33,47 +34,6 @@ export const AuthProvider = ({ children }) => {
     } catch { return null; }
   };
 
-  const refreshToken = useCallback(async () => {
-    if (isRefreshingRef.current) return;
-    isRefreshingRef.current = true;
-    try {
-      const response = await apiService.post('/auth/heartbeat');
-      if (response.success && response.data?.token) {
-        const newToken = response.data.token;
-        sessionStorage.setItem('token', newToken);
-        apiService.setAuthToken(newToken);
-        tokenExpiresAtRef.current = getTokenExpiresAt(newToken);
-        setUser(prev => prev ? { ...prev, token: newToken } : prev);
-      }
-    } catch (error) {
-      // Silently ignore — inactivity check will handle actual expiry
-    } finally {
-      isRefreshingRef.current = false;
-    }
-  }, []);
-
-  const updateActivity = useCallback(() => {
-    const now = Date.now();
-    lastActivityRef.current = now;
-
-    // Throttle sessionStorage writes
-    if (now - lastActivityWriteRef.current > ACTIVITY_THROTTLE) {
-      sessionStorage.setItem('lastActivity', now.toString());
-      lastActivityWriteRef.current = now;
-    }
-
-    // If token is expiring within threshold, refresh it now because user is active
-    if (
-      tokenExpiresAtRef.current &&
-      tokenExpiresAtRef.current - now < TOKEN_REFRESH_THRESHOLD
-    ) {
-      refreshToken();
-    }
-
-    // Reset countdown display immediately on activity
-    setSessionSecondsLeft(Math.ceil(INACTIVITY_TIMEOUT / 1000));
-  }, [refreshToken]);
-
   const logout = useCallback(() => {
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('lastActivity');
@@ -96,6 +56,57 @@ export const AuthProvider = ({ children }) => {
     });
   }, [logout]);
 
+  const refreshToken = useCallback(async () => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    try {
+      const response = await apiService.post('/auth/heartbeat', {
+        lastActivity: lastActivityRef.current
+      });
+      if (response.success && response.data?.token) {
+        const newToken = response.data.token;
+        sessionStorage.setItem('token', newToken);
+        apiService.setAuthToken(newToken);
+        tokenExpiresAtRef.current = getTokenExpiresAt(newToken);
+        // Sync countdown to backend-confirmed expiry if provided
+        if (response.data.sessionExpiresAt) {
+          const secsLeft = Math.ceil((response.data.sessionExpiresAt - Date.now()) / 1000);
+          setSessionSecondsLeft(Math.max(0, secsLeft));
+        }
+        setUser(prev => prev ? { ...prev, token: newToken } : prev);
+      } else if (!response.success && response.code === 'SESSION_EXPIRED') {
+        showSessionExpiredModal();
+      }
+    } catch (error) {
+      // Silently ignore — inactivity check will handle actual expiry
+    } finally {
+      isRefreshingRef.current = false;
+    }
+  }, [showSessionExpiredModal]);
+
+  const updateActivity = useCallback(() => {
+    const now = Date.now();
+    lastActivityRef.current = now;
+
+    // Throttle sessionStorage writes
+    if (now - lastActivityWriteRef.current > ACTIVITY_THROTTLE) {
+      sessionStorage.setItem('lastActivity', now.toString());
+      lastActivityWriteRef.current = now;
+    }
+
+    // If token is expiring within threshold, refresh it immediately
+    if (
+      tokenExpiresAtRef.current &&
+      tokenExpiresAtRef.current - now < TOKEN_REFRESH_THRESHOLD &&
+      !isRefreshingRef.current
+    ) {
+      refreshToken();
+    }
+
+    // Reset countdown display immediately on activity
+    setSessionSecondsLeft(Math.ceil(INACTIVITY_TIMEOUT / 1000));
+  }, [refreshToken]);
+
   const setupSessionManagement = useCallback(() => {
     clearInterval(sessionCheckRef.current);
     clearInterval(tokenRefreshRef.current);
@@ -114,9 +125,19 @@ export const AuthProvider = ({ children }) => {
       }
     }, 1000);
 
+    // Proactively refresh token every 4 min while user is logged in
+    tokenRefreshRef.current = setInterval(() => {
+      const inactiveSecs = Date.now() - lastActivityRef.current;
+      // Only refresh if user was active recently (within inactivity window)
+      if (inactiveSecs < INACTIVITY_TIMEOUT) {
+        refreshToken();
+      }
+    }, TOKEN_REFRESH_INTERVAL);
+
     return () => {
       events.forEach(e => window.removeEventListener(e, updateActivity));
       clearInterval(sessionCheckRef.current);
+      clearInterval(tokenRefreshRef.current);
     };
   }, [updateActivity, showSessionExpiredModal]);
 
