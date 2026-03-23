@@ -53,6 +53,7 @@ import StockCount from './pages/inventory/StockCount.jsx';
 import BatchTracking from './pages/inventory/BatchTracking.jsx';
 import PurchaseReturns from './pages/purchases/PurchaseReturns.jsx';
 import ExchangeRateSettings from './pages/settings/ExchangeRateSettings.jsx';
+import MobileScanner from './pages/scanner/MobileScanner.jsx';
 
 const { Content } = Layout;
 
@@ -182,6 +183,7 @@ function AppContent() {
             <Route path="/invoices/outstanding" element={<ProtectedOutstandingInvoices />} />
             <Route path="/purchase-invoices" element={<ProtectedPurchaseInvoices />} />
             <Route path="/sales-invoices" element={<ProtectedSalesInvoices />} />
+            <Route path="/scan" element={<MobileScanner />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Content>
@@ -191,6 +193,17 @@ function AppContent() {
 }
 
 function App() {
+  // Render mobile scanner BEFORE any providers — no auth, no loading
+  if (window.location.pathname === '/scan') {
+    return (
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          <Route path="/scan" element={<MobileScanner />} />
+        </Routes>
+      </Router>
+    );
+  }
+
   return (
     <ConfigProvider
       theme={{

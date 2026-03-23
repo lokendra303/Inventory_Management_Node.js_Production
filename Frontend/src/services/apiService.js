@@ -395,4 +395,5 @@ class ApiService {
   async getEntityAuditLog(entityType, entityId, limit = 50) { return this.get(`/audit/${entityType}/${entityId}`, { params: { limit } }); }
 }
 
-export default new ApiService();
+const apiService = new ApiService();
+export default apiService;

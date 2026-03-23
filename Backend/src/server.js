@@ -29,9 +29,19 @@ class Server {
 
     // CORS
     this.app.use(cors({
-      origin: process.env.NODE_ENV === 'production' 
-        ? ['https://*.yourdomain.com'] 
-        : ['http://localhost:3000', 'http://localhost:3001'],
+      origin: process.env.NODE_ENV === 'production'
+        ? ['https://*.yourdomain.com']
+        : [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            // Allow any device on local network
+            /^http:\/\/192\.168\./,
+            /^http:\/\/172\./,
+            /^http:\/\/10\./,
+            // Allow ngrok tunnels
+            /\.ngrok-free\.app$/,
+            /\.ngrok\.io$/
+          ],
       credentials: true
     }));
 
@@ -66,7 +76,12 @@ class Server {
 
     // Institution context extraction (skip for public routes)
     this.app.use('/api', (req, res, next) => {
-      if (req.path === '/auth/register-institution' || req.path === '/auth/login' || req.path === '/health') {
+      if (
+        req.path === '/auth/register-institution' ||
+        req.path === '/auth/login' ||
+        req.path === '/health' ||
+        req.path.startsWith('/barcode')
+      ) {
         return next();
       }
       return extractInstitutionContext(req, res, next);
@@ -80,6 +95,9 @@ class Server {
   }
 
   setupRoutes() {
+    // Barcode scan session routes (public — mobile scanner needs no auth)
+    this.app.use('/api/barcode', require('./routes/barcode'));
+
     // API routes
     this.app.use('/api', require('./routes/api'));
 
@@ -155,6 +173,12 @@ class Server {
       });
 
       this.server = server;
+
+      // Attach WebSocket server for real-time barcode push
+      const { attachWebSocketServer } = require('./services/barcodeScanService');
+      attachWebSocketServer(server);
+      logger.info('WebSocket barcode server attached');
+
       return server;
     } catch (error) {
       logger.error('Failed to start server:', error);

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined } from '@ant-design/icons';
+import { lookupProductByBarcode } from '../../utils/openFoodFacts';
+import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -33,6 +35,8 @@ const Items = () => {
   const [priceHistory, setPriceHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -356,15 +360,49 @@ const viewItem = async (item) => {
     setModalVisible(true);
   };
 
+  const handleBarcodeScan = async (barcode) => {
+    setScannerOpen(false);
+    // Fill EAN field first
+    form.setFieldsValue({ ean: barcode });
+    // Then trigger Open Food Facts lookup
+    setBarcodeLoading(true);
+    try {
+      const product = await lookupProductByBarcode(barcode);
+      if (!product) {
+        message.warning('Product not found in Open Food Facts database.');
+        return;
+      }
+      const updates = { ean: barcode };
+      if (product.name) updates.name = product.name;
+      if (product.brand) {
+        const matchedBrand = brandOptions.find(b => b.name?.toLowerCase() === product.brand?.toLowerCase());
+        if (matchedBrand) updates.brand = matchedBrand.id;
+      }
+      if (product.category) updates.category = product.category;
+      if (product.weight) updates.weight = product.weight;
+      if (product.manufacturer) {
+        const matchedMfr = manufacturerOptions.find(m => m.name?.toLowerCase() === product.manufacturer?.toLowerCase());
+        if (matchedMfr) updates.manufacturer = matchedMfr.id;
+      }
+      if (product.image) setImageUrl(product.image);
+      form.setFieldsValue(updates);
+      message.success(`Product found: ${product.name || 'details auto-filled'}!`);
+    } catch (err) {
+      message.error(err.message || 'Barcode lookup failed.');
+    } finally {
+      setBarcodeLoading(false);
+    }
+  };
+
   const openCreateModal = async () => {
     setEditingItem(null);
     setPriceCurrency(currency);
     setImageUrl('');
     setImageFile(null);
     form.resetFields();
-    
+
     await fetchDropdownOptions();
-    
+
     setModalVisible(true);
   };
 
@@ -903,7 +941,51 @@ const viewItem = async (item) => {
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="ean" label="EAN">
-                <Input placeholder="Enter EAN" />
+                <Input.Search
+                  placeholder="Enter EAN to lookup product"
+                  enterButton={<span><BarcodeOutlined /> Lookup</span>}
+                  loading={barcodeLoading}
+                  addonBefore={
+                    <span
+                      style={{ cursor: 'pointer', color: '#1890ff' }}
+                      onClick={() => setScannerOpen(true)}
+                      title="Scan with mobile"
+                    >
+                      📱
+                    </span>
+                  }
+                  onSearch={async (value) => {
+                    if (!value) return;
+                    setBarcodeLoading(true);
+                    try {
+                      const product = await lookupProductByBarcode(value);
+                      if (!product) {
+                        message.warning('Product not found in Open Food Facts database.');
+                        return;
+                      }
+                      const updates = {};
+                      if (product.name) updates.name = product.name;
+                      if (product.brand) {
+                        const matchedBrand = brandOptions.find(b => b.name?.toLowerCase() === product.brand?.toLowerCase());
+                        if (matchedBrand) updates.brand = matchedBrand.id;
+                      }
+                      if (product.category) updates.category = product.category;
+                      if (product.weight) updates.weight = product.weight;
+                      if (product.ean) updates.ean = product.ean;
+                      if (product.manufacturer) {
+                        const matchedMfr = manufacturerOptions.find(m => m.name?.toLowerCase() === product.manufacturer?.toLowerCase());
+                        if (matchedMfr) updates.manufacturer = matchedMfr.id;
+                      }
+                      if (product.image) setImageUrl(product.image);
+                      form.setFieldsValue(updates);
+                      message.success(`Product found: ${product.name || 'details auto-filled'}!`);
+                    } catch (err) {
+                      message.error(err.message || 'Barcode lookup failed.');
+                    } finally {
+                      setBarcodeLoading(false);
+                    }
+                  }}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -1375,6 +1457,11 @@ const viewItem = async (item) => {
           </div>
         )}
       </Modal>
+      <BarcodeScannerModal
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onBarcode={handleBarcodeScan}
+      />
     </div>
   );
 };

@@ -16,8 +16,8 @@
     "test": "jest",
     "migrate": "node src/database/migrate.js",
     "seed": "node src/database/seed.js",
-    "debug": "node debug-session.js"
-    
+    "debug": "node debug-session.js",
+    "mobile": "node ../start-ngrok.js"
   },
   "dependencies": {
     "axios": "^1.6.2",
@@ -39,7 +39,8 @@
     "redis": "^4.6.10",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

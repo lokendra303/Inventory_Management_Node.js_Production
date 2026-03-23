@@ -10,6 +10,7 @@ router.get('/health', (req, res) => {
 
 // Public routes (no authentication required)
 router.use('/auth', require('./auth/auth'));
+router.use('/barcode', require('./barcode'));
 
 // Protected routes (authentication required)
 router.use(requireAuth);
