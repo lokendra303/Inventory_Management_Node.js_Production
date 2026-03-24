@@ -217,20 +217,20 @@ const EditCustomer = () => {
     );
   }
 
+  const isMobile = window.innerWidth <= 768;
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '24px' }}>
-        <Space>
-          <Button 
-            icon={<ArrowLeftOutlined />} 
-            onClick={() => navigate(`/sales/customers/${id}`)}
-          >
-            Back to Customer
-          </Button>
-        </Space>
+    <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <Button 
+          icon={<ArrowLeftOutlined />} 
+          onClick={() => navigate(`/sales/customers/${id}`)}
+        >
+          Back to Customer
+        </Button>
       </div>
 
-      <h1 style={{ marginBottom: '8px', fontSize: '28px', fontWeight: '600' }}>Edit Customer</h1>
+      <h1 style={{ marginBottom: '8px', fontSize: isMobile ? '20px' : '28px', fontWeight: '600' }}>Edit Customer</h1>
 
       <Form form={form} layout="vertical" autoComplete="off">
         <Card style={{ marginBottom: '24px', borderRadius: '4px' }}>
@@ -636,28 +636,24 @@ const EditCustomer = () => {
           ]}
         />
 
-        <Row gutter={16} style={{ marginTop: '24px', marginBottom: '24px' }}>
-          <Col>
-            <Button 
-              type="primary" 
-              onClick={handleSave}
-              loading={loading}
-              disabled={loading}
-              style={{ minWidth: '100px', height: '40px', fontSize: '14px', fontWeight: '500' }}
-            >
-              Update
-            </Button>
-          </Col>
-          <Col>
-            <Button 
-              style={{ minWidth: '100px', height: '40px', fontSize: '14px' }}
-              disabled={loading}
-              onClick={() => navigate(`/sales/customers/${id}`)}
-            >
-              Cancel
-            </Button>
-          </Col>
-        </Row>
+        <div style={{ marginTop: '24px', marginBottom: '24px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <Button 
+            type="primary" 
+            onClick={handleSave}
+            loading={loading}
+            disabled={loading}
+            style={{ flex: isMobile ? '1' : 'unset', minWidth: '100px', height: '40px', fontSize: '14px', fontWeight: '500' }}
+          >
+            Update
+          </Button>
+          <Button 
+            style={{ flex: isMobile ? '1' : 'unset', minWidth: '100px', height: '40px', fontSize: '14px' }}
+            disabled={loading}
+            onClick={() => navigate(`/sales/customers/${id}`)}
+          >
+            Cancel
+          </Button>
+        </div>
       </Form>
     </div>
   );

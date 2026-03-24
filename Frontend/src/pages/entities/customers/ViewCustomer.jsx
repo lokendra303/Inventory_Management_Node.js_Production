@@ -65,30 +65,30 @@ const ViewCustomer = () => {
     return null;
   }
 
+  const isMobile = window.innerWidth <= 768;
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '24px' }}>
-        <Space>
-          <Button 
-            icon={<ArrowLeftOutlined />} 
-            onClick={() => navigate('/sales/customers')}
-          >
-            Back to Customers
-          </Button>
-          <Button 
-            type="primary" 
-            icon={<EditOutlined />}
-            onClick={() => navigate(`/sales/customers/${id}/edit`)}
-          >
-            Edit Customer
-          </Button>
-        </Space>
+    <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        <Button 
+          icon={<ArrowLeftOutlined />} 
+          onClick={() => navigate('/sales/customers')}
+        >
+          Back to Customers
+        </Button>
+        <Button 
+          type="primary" 
+          icon={<EditOutlined />}
+          onClick={() => navigate(`/sales/customers/${id}/edit`)}
+        >
+          Edit Customer
+        </Button>
       </div>
 
       <Row gutter={[24, 24]}>
         <Col xs={24} lg={16}>
           <Card title="Customer Information" style={{ marginBottom: '24px' }}>
-            <Descriptions column={2} bordered>
+            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label="Display Name" span={2}>
                 <strong>{customer.display_name}</strong>
               </Descriptions.Item>
@@ -114,7 +114,7 @@ const ViewCustomer = () => {
           </Card>
 
           <Card title="Contact Information" style={{ marginBottom: '24px' }}>
-            <Descriptions column={2} bordered>
+            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label={<><MailOutlined /> Email</>}>
                 {customer.email || '-'}
               </Descriptions.Item>
@@ -141,7 +141,7 @@ const ViewCustomer = () => {
           </Card>
 
           <Card title="Business Information" style={{ marginBottom: '24px' }}>
-            <Descriptions column={2} bordered>
+            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label="PAN">
                 {customer.pan || '-'}
               </Descriptions.Item>

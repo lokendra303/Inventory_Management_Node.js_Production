@@ -1,184 +1,247 @@
-/* Global Responsive Styles */
-* {
-  box-sizing: border-box;
+/* ─── Reset ─────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+
+/* ─── Layout ─────────────────────────────────────────────── */
+.ant-layout { min-height: 100vh; background: #f5f6fa; }
+
+/* Inner layout (right of sidebar) scrolls independently */
+.ant-layout > .ant-layout {
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #f5f6fa;
 }
 
-.App {
-  text-align: center;
+/* Content area */
+.ant-layout-content {
+  margin: 16px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  min-width: 0;
 }
 
-/* Loading Container */
+/* ─── Sidebar ─────────────────────────────────────────────── */
+.ant-layout-sider {
+  box-shadow: 2px 0 20px rgba(0,0,0,0.3) !important;
+}
+
+/* Custom sidebar scrollbar */
+.ant-layout-sider ::-webkit-scrollbar { width: 4px; }
+.ant-layout-sider ::-webkit-scrollbar-track { background: transparent; }
+.ant-layout-sider ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+/* ─── Header ─────────────────────────────────────────────── */
+.ant-layout-header {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
+  z-index: 100;
+}
+
+/* ─── Cards ─────────────────────────────────────────────────*/
+.ant-card {
+  border-radius: 16px !important;
+  border: none !important;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07) !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid #f0f0f0 !important;
+  padding: 0 20px !important;
+  min-height: 52px !important;
+}
+
+.ant-card-head-title {
+  font-weight: 600 !important;
+  font-size: 15px !important;
+  color: #1a1a2e !important;
+}
+
+.ant-card-body {
+  padding: 20px !important;
+}
+
+/* ─── Tables ─────────────────────────────────────────────── */
+.ant-table-thead > tr > th {
+  background: #f8f9ff !important;
+  font-weight: 600 !important;
+  color: #555 !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.4px !important;
+  border-bottom: 2px solid #eef0f8 !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #f0f4ff !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid #f5f5f5 !important;
+}
+
+.table-row-light td { background: #fafbff !important; }
+
+/* ─── Buttons ─────────────────────────────────────────────── */
+.ant-btn-primary {
+  background: linear-gradient(135deg, #667eea, #764ba2) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 2px 8px rgba(102,126,234,0.35) !important;
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, #5a6fd6, #6a3f96) !important;
+  box-shadow: 0 4px 12px rgba(102,126,234,0.5) !important;
+}
+
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-link):not(.ant-btn-text) {
+  border-radius: 8px !important;
+}
+
+/* ─── Inputs ─────────────────────────────────────────────── */
+.ant-input, .ant-input-password, .ant-input-affix-wrapper {
+  border-radius: 8px !important;
+}
+
+.ant-input:focus, .ant-input-focused,
+.ant-input-affix-wrapper:focus, .ant-input-affix-wrapper-focused {
+  border-color: #667eea !important;
+  box-shadow: 0 0 0 2px rgba(102,126,234,0.15) !important;
+}
+
+.ant-select-selector {
+  border-radius: 8px !important;
+}
+
+.ant-select-focused .ant-select-selector {
+  border-color: #667eea !important;
+  box-shadow: 0 0 0 2px rgba(102,126,234,0.15) !important;
+}
+
+/* ─── Tabs ─────────────────────────────────────────────────── */
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #667eea !important;
+  font-weight: 600 !important;
+}
+
+.ant-tabs-ink-bar {
+  background: linear-gradient(135deg, #667eea, #764ba2) !important;
+  height: 3px !important;
+  border-radius: 2px !important;
+}
+
+/* ─── Tags ─────────────────────────────────────────────────── */
+.ant-tag {
+  border-radius: 6px !important;
+  font-weight: 500 !important;
+  font-size: 11px !important;
+}
+
+/* ─── Modals ─────────────────────────────────────────────── */
+.ant-modal-content {
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+.ant-modal-header {
+  border-bottom: 1px solid #f0f0f0 !important;
+  padding: 16px 24px !important;
+}
+
+.ant-modal-title {
+  font-weight: 600 !important;
+  font-size: 16px !important;
+}
+
+/* ─── Loading ─────────────────────────────────────────────── */
 .loading-container {
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
-  width: 100%;
+  background: #f5f6fa;
 }
 
-.loading-spinner {
-  font-size: 18px;
-  color: #1890ff;
-}
+.loading-spinner { font-size: 18px; color: #667eea; }
 
-/* Responsive Layout */
-.ant-layout {
-  min-height: 100vh;
-}
+/* ─── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #c5c5d2; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a0a0b0; }
 
-/* Inner layout (right of sidebar) scrolls, not the whole page */
-.ant-layout > .ant-layout {
-  height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.ant-layout-content {
-  margin: 16px;
-  padding: 16px;
-  background: #fff;
-  border-radius: 6px;
-  min-width: 0;
-}
-
-/* Tablet */
+/* ─── Tablet ─────────────────────────────────────────────── */
 @media (max-width: 1024px) and (min-width: 769px) {
-  .ant-layout-content {
-    margin: 12px;
-    padding: 14px;
-  }
+  .ant-layout-content { margin: 12px; }
+  .ant-card-body { padding: 16px !important; }
 }
 
-/* Mobile */
+/* ─── Mobile ─────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .ant-layout-content {
-    margin: 6px;
-    padding: 10px;
-  }
+  .ant-layout-content { margin: 8px; }
 
-  /* Tables scroll horizontally */
-  .ant-table-wrapper {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+  .ant-card { border-radius: 12px !important; margin-bottom: 12px; }
+  .ant-card-body { padding: 12px !important; }
+  .ant-card-head { padding: 0 12px !important; min-height: 44px !important; }
+  .ant-card-head-title { font-size: 14px !important; }
 
+  .ant-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .ant-table-thead > tr > th,
-  .ant-table-tbody > tr > td {
-    padding: 8px 6px;
-    font-size: 12px;
-    white-space: nowrap;
-  }
+  .ant-table-tbody > tr > td { padding: 8px 8px !important; font-size: 12px !important; }
 
-  /* Cards */
-  .ant-card {
-    margin-bottom: 12px;
-  }
-  .ant-card-body {
-    padding: 12px;
-  }
-  .ant-card-head-title {
-    font-size: 15px;
-  }
+  .ant-form-item-label { text-align: left; padding-bottom: 2px; }
+  .ant-form-item { margin-bottom: 14px; }
 
-  /* Forms */
-  .ant-form-item-label {
-    text-align: left;
-    padding-bottom: 2px;
-  }
-  .ant-form-item {
-    margin-bottom: 14px;
-  }
+  .ant-modal { max-width: calc(100vw - 16px) !important; margin: 8px auto !important; }
+  .ant-modal-content { border-radius: 12px !important; }
+  .ant-modal-body { padding: 12px !important; max-height: 75vh; overflow-y: auto; }
 
-  /* Modals — full width on mobile */
-  .ant-modal {
-    max-width: calc(100vw - 16px) !important;
-    margin: 8px auto !important;
-  }
-  .ant-modal-content {
-    border-radius: 8px;
-  }
-  .ant-modal-body {
-    padding: 12px;
-    max-height: 75vh;
-    overflow-y: auto;
-  }
+  .ant-space { flex-wrap: wrap; }
 
-  /* Space wraps on mobile */
-  .ant-space {
-    flex-wrap: wrap;
-  }
-
-  /* Search inputs fill width */
-  .mobile-search {
-    width: 100% !important;
-  }
-
-  /* Toolbar rows wrap */
-  .mobile-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-  .mobile-toolbar .ant-input-affix-wrapper,
-  .mobile-toolbar .ant-input-search {
-    flex: 1;
-    min-width: 160px;
-  }
+  .ant-btn { font-size: 13px !important; }
 }
 
-/* Small Mobile */
+/* ─── Small Mobile ─────────────────────────────────────────── */
 @media (max-width: 480px) {
-  .ant-layout-content {
-    margin: 4px;
-    padding: 8px;
-  }
-  .ant-card-body {
-    padding: 10px;
-  }
-  .ant-modal-body {
-    padding: 8px;
-  }
+  .ant-layout-content { margin: 4px; }
+  .ant-card-body { padding: 10px !important; }
 }
 
-/* Utility Classes */
-.mobile-hidden {
-  display: block;
-}
-.mobile-only {
-  display: none;
-}
+/* ─── Utility ─────────────────────────────────────────────── */
+.mobile-hidden { display: block; }
+.mobile-only { display: none; }
+
 @media (max-width: 768px) {
   .mobile-hidden { display: none; }
   .mobile-only { display: block; }
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+.mobile-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+.mobile-toolbar .ant-input-affix-wrapper,
+.mobile-toolbar .ant-input-search {
+  flex: 1;
+  min-width: 160px;
 }
 
-.App-header {
-  background-color: #282c34;
-  padding: 20px;
-  color: white;
+/* ─── Page backgrounds ─────────────────────────────────────── */
+.page-container {
+  padding: 16px 16px 32px;
+  background: #f5f6fa;
+  min-height: 100vh;
 }
 
-.App-link {
-  color: #61dafb;
+/* ─── Gradient stat card hover ─────────────────────────────── */
+.stat-card {
+  transition: transform 0.2s, box-shadow 0.2s;
 }
-
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.18) !important;
 }

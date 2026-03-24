@@ -1,88 +1,59 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Typography, Button, Table, Space, Tag, message, Modal, Input, DatePicker, Select } from 'antd';
-import { ShoppingCartOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined, EditOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from '@ant-design/icons';
+import { Card, Button, Table, Tag, message, Modal, Input, DatePicker, Select, Row, Col, Tooltip } from 'antd';
+import {
+  ContainerOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined,
+  EditOutlined, PrinterOutlined, MailOutlined, SearchOutlined, ReloadOutlined
+} from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
 
-const { Title } = Typography;
+const STATUS_CONFIG = {
+  draft:          { color: 'orange',  label: 'Draft' },
+  posted:         { color: 'blue',    label: 'Posted' },
+  partially_paid: { color: 'purple',  label: 'Partial' },
+  paid:           { color: 'success', label: 'Paid' },
+  cancelled:      { color: 'error',   label: 'Cancelled' },
+};
 
 const PurchaseInvoices = () => {
   const { formatCurrency } = useCurrency();
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
-  const [modalVisible, setModalVisible] = useState(false);
-  const [emailModalVisible, setEmailModalVisible] = useState(false);
-  const [emailAddress, setEmailAddress] = useState('');
+  const [invoices, setInvoices]                               = useState([]);
+  const [loading, setLoading]                                 = useState(true);
+  const [pagination, setPagination]                           = useState({ current: 1, pageSize: 10, total: 0 });
+  const [modalVisible, setModalVisible]                       = useState(false);
+  const [emailModalVisible, setEmailModalVisible]             = useState(false);
+  const [emailAddress, setEmailAddress]                       = useState('');
   const [selectedInvoiceForEmail, setSelectedInvoiceForEmail] = useState(null);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
-  const [modalMode, setModalMode] = useState('create');
-  const [searchText, setSearchText] = useState('');
-  const [fromDate, setFromDate] = useState(null);
-  const [toDate, setToDate] = useState(null);
-  const [statusFilter, setStatusFilter] = useState(null);
+  const [selectedInvoiceId, setSelectedInvoiceId]             = useState(null);
+  const [modalMode, setModalMode]                             = useState('create');
+  const [searchText, setSearchText]                           = useState('');
+  const [fromDate, setFromDate]                               = useState(null);
+  const [toDate, setToDate]                                   = useState(null);
+  const [statusFilter, setStatusFilter]                       = useState(null);
 
   const fetchInvoices = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('Fetching purchase invoices...');
-      
       const response = await apiService.get('/purchase-invoices', {
-        params: {
-          page: pagination.current,
-          limit: pagination.pageSize
-        },
-        timeout: 10000 // 10 second timeout
+        params: { page: pagination.current, limit: pagination.pageSize }, timeout: 10000
       });
-      
-      console.log('Purchase invoices response:', response);
-      
       if (response.success) {
         setInvoices(response.data?.invoices || []);
-        setPagination(prev => ({
-          ...prev,
-          total: response.data?.pagination?.total || 0
-        }));
+        setPagination(prev => ({ ...prev, total: response.data?.pagination?.total || 0 }));
       } else {
         message.error(response.error || 'Failed to fetch purchase invoices');
         setInvoices([]);
       }
-    } catch (error) {
-      console.error('Error fetching invoices:', error);
-      if (error.code === 'ECONNABORTED') {
-        message.error('Request timeout - Server is taking too long to respond');
-      } else if (error.response?.status === 404) {
-        message.warning('Purchase invoices endpoint not found');
-        setInvoices([]);
-      } else if (error.response?.status === 500) {
-        message.error('Server error - Please check backend logs');
-        setInvoices([]);
-      } else {
-        message.error('Error loading invoices: ' + (error.message || 'Unknown error'));
-        setInvoices([]);
-      }
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) {
+      if (e.code === 'ECONNABORTED') message.error('Request timeout');
+      else message.error('Error loading invoices: ' + (e.message || 'Unknown error'));
+      setInvoices([]);
+    } finally { setLoading(false); }
   }, [pagination.current, pagination.pageSize]);
 
-  useEffect(() => {
-    fetchInvoices();
-  }, [fetchInvoices]);
-
-  const handleCreateInvoice = () => {
-    setSelectedInvoiceId(null);
-    setModalMode('create');
-    setModalVisible(true);
-  };
-
-  const handleEditInvoice = (invoiceId) => {
-    setSelectedInvoiceId(invoiceId);
-    setModalMode('edit');
-    setModalVisible(true);
-  };
+  useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
   const handleViewStandardFormat = async (invoiceId) => {
     try {
@@ -91,44 +62,28 @@ const PurchaseInvoices = () => {
         apiService.get(`/purchase-invoices/${invoiceId}/standard-format`),
         apiService.get('/company-settings')
       ]);
-      
       if (invoiceResponse.success) {
         const data = invoiceResponse.data;
         const settings = settingsResponse.data || {};
-        
-        const companyName = settings.company_name || data.header.companyName;
-        const address = settings.address || `${data.header.address.line1}, ${data.header.address.city}, ${data.header.address.state}`;
-        const phone = settings.phone || data.header.contact.phone;
-        const email = settings.email || data.header.contact.email;
-        const logoUrl = settings.logo_path ? `http://localhost:5000${settings.logo_path}` : data.header.branding?.logoUrl;
-        const stampUrl = settings.stamp_path ? `http://localhost:5000${settings.stamp_path}` : data.header.branding?.stampUrl;
+        const companyName  = settings.company_name || data.header.companyName;
+        const address      = settings.address || `${data.header.address.line1}, ${data.header.address.city}, ${data.header.address.state}`;
+        const phone        = settings.phone || data.header.contact.phone;
+        const email        = settings.email || data.header.contact.email;
+        const logoUrl      = settings.logo_path      ? `http://localhost:5000${settings.logo_path}`      : data.header.branding?.logoUrl;
+        const stampUrl     = settings.stamp_path     ? `http://localhost:5000${settings.stamp_path}`     : data.header.branding?.stampUrl;
         const signatureUrl = settings.signature_path ? `http://localhost:5000${settings.signature_path}` : data.header.branding?.signatureUrl;
-        
         Modal.info({
-          title: 'Invoice Preview',
-          width: 900,
+          title: 'Invoice Preview', width: 900,
           content: (
             <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-              {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
-                <div>
-                  {logoUrl && (
-                    <img src={logoUrl} alt="Logo" style={{ maxHeight: '60px', marginBottom: '10px' }} />
-                  )}
-                </div>
+                <div>{logoUrl && <img src={logoUrl} alt="Logo" style={{ maxHeight: '60px', marginBottom: '10px' }} />}</div>
                 <div style={{ textAlign: 'right' }}>
                   <h2 style={{ margin: 0 }}>{companyName}</h2>
-                  <p style={{ margin: '5px 0', fontSize: '12px' }}>
-                    {address}<br/>
-                    {phone} | {email}
-                  </p>
-                  {data.header.taxInfo.taxId && (
-                    <p style={{ margin: '5px 0', fontSize: '11px' }}>Tax ID: {data.header.taxInfo.taxId}</p>
-                  )}
+                  <p style={{ margin: '5px 0', fontSize: '12px' }}>{address}<br />{phone} | {email}</p>
+                  {data.header.taxInfo.taxId && <p style={{ margin: '5px 0', fontSize: '11px' }}>Tax ID: {data.header.taxInfo.taxId}</p>}
                 </div>
               </div>
-
-              {/* Invoice Details */}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                 <div>
                   <h4 style={{ margin: '0 0 10px 0' }}>Vendor Details</h4>
@@ -144,20 +99,14 @@ const PurchaseInvoices = () => {
                   <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Due Date:</strong> {new Date(data.details.dueDate).toLocaleDateString()}</p>
                 </div>
               </div>
-
-              {/* Line Items */}
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '12px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f0f0f0' }}>
-                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>#</th>
-                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>Item</th>
-                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>Qty</th>
-                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>Rate</th>
-                    <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>Amount</th>
+                    {['#','Item','Qty','Rate','Amount'].map(h => <th key={h} style={{ border: '1px solid #ddd', padding: '8px', textAlign: h === '#' || h === 'Item' ? 'left' : 'right' }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
-                  {data.lineItems.map((item) => (
+                  {data.lineItems.map(item => (
                     <tr key={item.sno}>
                       <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.sno}</td>
                       <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.itemName}</td>
@@ -168,8 +117,6 @@ const PurchaseInvoices = () => {
                   ))}
                 </tbody>
               </table>
-
-              {/* Totals */}
               <div style={{ textAlign: 'right', marginTop: '20px' }}>
                 <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {data.details.currency} {formatAmount(data.totals.subtotal)}</p>
                 <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {data.details.currency} {formatAmount(data.totals.totalTaxAmount)}</p>
@@ -177,33 +124,20 @@ const PurchaseInvoices = () => {
                 <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {data.details.currency} {formatAmount(data.totals.grandTotal)}</h3>
                 <p style={{ margin: '5px 0', fontSize: '12px', fontStyle: 'italic' }}>Amount in words: {data.totals.amountInWords}</p>
               </div>
-
-              {/* Bank Details */}
               {(data.partyDetails.bankDetails?.bankName || data.partyDetails.bankDetails?.accountNumber) && (
                 <div style={{ marginTop: '30px', padding: '15px', backgroundColor: '#f9f9f9', border: '1px solid #ddd' }}>
                   <h4 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Vendor Bank Details</h4>
-                  {data.partyDetails.bankDetails.bankName && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Bank Name:</strong> {data.partyDetails.bankDetails.bankName}</p>}
-                  {data.partyDetails.bankDetails.branchName && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Branch:</strong> {data.partyDetails.bankDetails.branchName}</p>}
-                  {data.partyDetails.bankDetails.accountNumber && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Account Number:</strong> {data.partyDetails.bankDetails.accountNumber}</p>}
-                  {data.partyDetails.bankDetails.accountType && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Account Type:</strong> {data.partyDetails.bankDetails.accountType}</p>}
-                  {data.partyDetails.bankDetails.ifscCode && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>IFSC Code:</strong> {data.partyDetails.bankDetails.ifscCode}</p>}
-                  {data.partyDetails.bankDetails.swiftCode && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>SWIFT Code:</strong> {data.partyDetails.bankDetails.swiftCode}</p>}
+                  {data.partyDetails.bankDetails.bankName      && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Bank:</strong> {data.partyDetails.bankDetails.bankName}</p>}
+                  {data.partyDetails.bankDetails.accountNumber && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Account:</strong> {data.partyDetails.bankDetails.accountNumber}</p>}
+                  {data.partyDetails.bankDetails.ifscCode      && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>IFSC:</strong> {data.partyDetails.bankDetails.ifscCode}</p>}
                 </div>
               )}
-
-              {/* Footer with Signature */}
               <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                {stampUrl && (
-                  <div>
-                    <img src={stampUrl} alt="Stamp" style={{ maxHeight: '80px' }} />
-                  </div>
-                )}
+                {stampUrl && <img src={stampUrl} alt="Stamp" style={{ maxHeight: '80px' }} />}
                 <div style={{ textAlign: 'right' }}>
-                  {signatureUrl && (
-                    <img src={signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginBottom: '5px' }} />
-                  )}
+                  {signatureUrl && <img src={signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginBottom: '5px' }} />}
                   <p style={{ margin: '5px 0', fontSize: '12px', borderTop: '1px solid #333', paddingTop: '5px', textAlign: 'left' }}>
-                    <strong>Name:</strong> {settings.authorized_signatory_name || 'N/A'}<br/>
+                    <strong>Name:</strong> {settings.authorized_signatory_name || 'N/A'}<br />
                     <strong>Designation:</strong> {settings.authorized_signatory_designation || 'N/A'}
                   </p>
                 </div>
@@ -212,178 +146,152 @@ const PurchaseInvoices = () => {
           )
         });
       }
-    } catch (error) {
-      message.error('Failed to generate standard format');
-    } finally {
-      setLoading(false);
-    }
+    } catch { message.error('Failed to generate standard format'); }
+    finally { setLoading(false); }
   };
 
   const handleDownloadPDF = async (invoiceId, invoiceNumber) => {
     try {
       setLoading(true);
-      const response = await apiService.get(`/purchase-invoices/${invoiceId}/pdf?download=true`, {
-        responseType: 'blob'
-      });
-      
+      const response = await apiService.get(`/purchase-invoices/${invoiceId}/pdf?download=true`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `PI_${invoiceNumber}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      link.href = url; link.setAttribute('download', `PI_${invoiceNumber}.pdf`);
+      document.body.appendChild(link); link.click(); link.remove();
       window.URL.revokeObjectURL(url);
-      
-      message.success('PDF downloaded successfully');
-    } catch (error) {
-      message.error('Failed to download PDF');
-    } finally {
-      setLoading(false);
-    }
+      message.success('PDF downloaded');
+    } catch { message.error('Failed to download PDF'); }
+    finally { setLoading(false); }
   };
 
   const handlePrintPDF = async (invoiceId) => {
     try {
       setLoading(true);
-      const response = await apiService.get(`/purchase-invoices/${invoiceId}/pdf?download=true`, {
-        responseType: 'blob'
-      });
-      
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
-      
-      const printWindow = window.open(blobUrl, '_blank');
-      if (!printWindow) {
-        message.error('Please allow pop-ups to print');
-        URL.revokeObjectURL(blobUrl);
-        return;
-      }
-      
-      printWindow.onload = function() {
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-        }, 250);
-      };
-    } catch (error) {
-      console.error('Print error:', error);
-      message.error('Failed to print PDF');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmailInvoice = (invoice) => {
-    setSelectedInvoiceForEmail(invoice);
-    setEmailAddress('');
-    setEmailModalVisible(true);
+      const response = await apiService.get(`/purchase-invoices/${invoiceId}/pdf?download=true`, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const w = window.open(blobUrl, '_blank');
+      if (!w) { message.error('Allow pop-ups to print'); URL.revokeObjectURL(blobUrl); return; }
+      w.onload = () => { w.focus(); setTimeout(() => w.print(), 250); };
+    } catch { message.error('Failed to print PDF'); }
+    finally { setLoading(false); }
   };
 
   const handleSendEmail = async () => {
-    if (!emailAddress) {
-      message.warning('Please enter an email address');
-      return;
-    }
-
+    if (!emailAddress) { message.warning('Please enter an email address'); return; }
     try {
       setLoading(true);
-      const response = await apiService.post(`/purchase-invoices/${selectedInvoiceForEmail.id}/email`, {
-        email: emailAddress
-      });
-
-      if (response.success) {
-        message.success(`Invoice sent to ${emailAddress}`);
-        setEmailModalVisible(false);
-      } else {
-        message.error(response.error || 'Failed to send email');
-      }
-    } catch (error) {
-      message.error('Failed to send email');
-    } finally {
-      setLoading(false);
-    }
+      const response = await apiService.post(`/purchase-invoices/${selectedInvoiceForEmail.id}/email`, { email: emailAddress });
+      if (response.success) { message.success(`Invoice sent to ${emailAddress}`); setEmailModalVisible(false); }
+      else message.error(response.error || 'Failed to send email');
+    } catch { message.error('Failed to send email'); }
+    finally { setLoading(false); }
   };
 
-  const handleModalSave = (savedInvoice) => {
-    setModalVisible(false);
-    fetchInvoices();
-    message.success(`Invoice ${modalMode === 'create' ? 'created' : 'updated'} successfully`);
-  };
+  const filteredInvoices = invoices.filter(inv => {
+    const textMatch   = !searchText   || inv.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) || inv.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
+    const statusMatch = !statusFilter || inv.status === statusFilter;
+    const dateMatch   = (!fromDate || !toDate) || (() => { const d = new Date(inv.invoice_date); return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate(); })();
+    return textMatch && statusMatch && dateMatch;
+  });
 
-  const handleTableChange = (paginationInfo) => {
-    setPagination({
-      current: paginationInfo.current,
-      pageSize: paginationInfo.pageSize,
-      total: paginationInfo.total
-    });
-  };
+  const paidCount    = invoices.filter(i => i.status === 'paid').length;
+  const pendingCount = invoices.filter(i => ['draft','posted','partially_paid'].includes(i.status)).length;
 
   const columns = [
-    { title: 'Invoice #', dataIndex: 'invoice_number', key: 'invoice_number', width: 130, ellipsis: true },
-    { title: 'Vendor', dataIndex: 'vendor_name', key: 'vendor_name', width: 140, ellipsis: true },
-    { title: 'Invoice Date', dataIndex: 'invoice_date', key: 'invoice_date', width: 110, render: (date) => new Date(date).toLocaleDateString() },
-    { title: 'Due Date', dataIndex: 'due_date', key: 'due_date', width: 100, render: (date) => date ? new Date(date).toLocaleDateString() : '-' },
-    { title: 'Amount', dataIndex: 'total_amount', key: 'total_amount', width: 110, render: (amount) => formatCurrency(amount) },
-    { title: 'Status', dataIndex: 'status', key: 'status', width: 120,
-      render: (status) => {
-        const colors = { draft: 'orange', posted: 'blue', partially_paid: 'purple', paid: 'green', cancelled: 'red' };
-        return <Tag color={colors[status] || 'default'}>{status?.toUpperCase() || 'UNKNOWN'}</Tag>;
-      },
+    { title: 'Invoice #', dataIndex: 'invoice_number', key: 'invoice_number', width: 130, ellipsis: true,
+      render: v => <span style={{ fontWeight: 600, color: '#667eea' }}>{v}</span> },
+    { title: 'Vendor',       dataIndex: 'vendor_name',   key: 'vendor_name',   width: 140, ellipsis: true },
+    { title: 'Invoice Date', dataIndex: 'invoice_date',  key: 'invoice_date',  width: 110, render: d => new Date(d).toLocaleDateString() },
+    { title: 'Due Date',     dataIndex: 'due_date',      key: 'due_date',      width: 100, render: d => d ? new Date(d).toLocaleDateString() : '-', responsive: ['sm'] },
+    { title: 'Amount',       dataIndex: 'total_amount',  key: 'total_amount',  width: 115, render: v => <span style={{ fontWeight: 600 }}>{formatCurrency(v)}</span> },
+    { title: 'Status',       dataIndex: 'status',        key: 'status',        width: 120,
+      render: s => { const c = STATUS_CONFIG[s] || {}; return <Tag color={c.color || 'default'} style={{ fontWeight: 600 }}>{c.label || s?.toUpperCase()}</Tag>; }
     },
-    {
-      title: 'Actions', key: 'actions', width: 160,
+    { title: 'Actions', key: 'actions', width: 170,
       render: (_, record) => (
-        <Space size={2}>
-          <Button type="text" icon={<EditOutlined />} onClick={() => handleEditInvoice(record.id)} title="Edit" />
-          <Button type="text" icon={<EyeOutlined />} onClick={() => handleViewStandardFormat(record.id)} title="View" />
-          <Button type="text" icon={<MailOutlined />} onClick={() => handleEmailInvoice(record)} title="Email" />
-          <Button type="text" icon={<PrinterOutlined />} onClick={() => handlePrintPDF(record.id)} title="Print" />
-          <Button type="text" icon={<FilePdfOutlined />} onClick={() => handleDownloadPDF(record.id, record.invoice_number)} title="PDF" />
-        </Space>
-      ),
+        <div style={{ display: 'flex', gap: 2 }}>
+          {[
+            { icon: <EditOutlined />,    title: 'Edit',     color: '#667eea', onClick: () => { setSelectedInvoiceId(record.id); setModalMode('edit'); setModalVisible(true); } },
+            { icon: <EyeOutlined />,     title: 'View',     color: '#11998e', onClick: () => handleViewStandardFormat(record.id) },
+            { icon: <MailOutlined />,    title: 'Email',    color: '#f7971e', onClick: () => { setSelectedInvoiceForEmail(record); setEmailAddress(''); setEmailModalVisible(true); } },
+            { icon: <PrinterOutlined />, title: 'Print',    color: '#764ba2', onClick: () => handlePrintPDF(record.id) },
+            { icon: <FilePdfOutlined />, title: 'Download', color: '#f5576c', onClick: () => handleDownloadPDF(record.id, record.invoice_number) },
+          ].map(btn => (
+            <Tooltip title={btn.title} key={btn.title}>
+              <Button type="text" icon={btn.icon} onClick={btn.onClick} style={{ color: btn.color, padding: '4px 6px' }} />
+            </Tooltip>
+          ))}
+        </div>
+      )
     },
   ];
 
   return (
-    <div style={{ padding: '16px' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><ShoppingCartOutlined /> Purchase Invoices</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateInvoice}>Create Invoice</Button>
+    <div style={{ padding: '16px 16px 32px', background: '#f5f6fa', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div>
+          <h1 style={{ fontSize: 'clamp(18px,4vw,26px)', fontWeight: 700, margin: 0, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <ContainerOutlined style={{ fontSize: 22, color: '#667eea' }} /> Purchase Invoices
+          </h1>
+          <p style={{ margin: '4px 0 0', color: '#888', fontSize: 13 }}>Manage and track all vendor invoices</p>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} size="large"
+          onClick={() => { setSelectedInvoiceId(null); setModalMode('create'); setModalVisible(true); }}
+          style={{ borderRadius: 10, height: 42, fontWeight: 600 }}>
+          Create Invoice
+        </Button>
       </div>
-      <Card>
-        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Input placeholder="Search invoice or vendor..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 240 }} allowClear />
-          <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
-          <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
-          <Select placeholder="All Statuses" value={statusFilter} onChange={val => setStatusFilter(val)} style={{ width: 150 }} allowClear>
-            <Select.Option value="draft">Draft</Select.Option>
-            <Select.Option value="posted">Posted</Select.Option>
-            <Select.Option value="partially_paid">Partially Paid</Select.Option>
-            <Select.Option value="paid">Paid</Select.Option>
-            <Select.Option value="cancelled">Cancelled</Select.Option>
+
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        {[
+          { label: 'Total',    value: invoices.length,         gradient: 'linear-gradient(135deg,#667eea,#764ba2)', shadow: 'rgba(102,126,234,0.3)' },
+          { label: 'Paid',     value: paidCount,               gradient: 'linear-gradient(135deg,#11998e,#38ef7d)', shadow: 'rgba(17,153,142,0.3)' },
+          { label: 'Pending',  value: pendingCount,            gradient: 'linear-gradient(135deg,#f7971e,#ffd200)', shadow: 'rgba(247,151,30,0.3)' },
+          { label: 'Filtered', value: filteredInvoices.length, gradient: 'linear-gradient(135deg,#f093fb,#f5576c)', shadow: 'rgba(245,87,108,0.3)' },
+        ].map(s => (
+          <Col xs={12} sm={6} key={s.label}>
+            <div style={{ background: s.gradient, borderRadius: 12, padding: '12px 16px', boxShadow: `0 3px 12px ${s.shadow}` }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)' }}>{s.label}</div>
+            </div>
+          </Col>
+        ))}
+      </Row>
+
+      <Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} bodyStyle={{ padding: 0 }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f5f5f5', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+          <Input placeholder="Search invoice or vendor..." prefix={<SearchOutlined style={{ color: '#bbb' }} />}
+            value={searchText} onChange={e => setSearchText(e.target.value)}
+            style={{ width: 220, borderRadius: 8 }} allowClear />
+          <DatePicker placeholder="From Date" value={fromDate} onChange={setFromDate} style={{ width: 130, borderRadius: 8 }} allowClear />
+          <DatePicker placeholder="To Date"   value={toDate}   onChange={setToDate}   style={{ width: 130, borderRadius: 8 }} allowClear />
+          <Select placeholder="All Statuses" value={statusFilter} onChange={setStatusFilter} style={{ width: 150 }} allowClear>
+            {Object.entries(STATUS_CONFIG).map(([v, c]) => <Select.Option key={v} value={v}>{c.label}</Select.Option>)}
           </Select>
-        </Space>
-        <Table columns={columns} dataSource={invoices.filter(inv => {
-            const textMatch = !searchText || inv.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) || inv.vendor_name?.toLowerCase().includes(searchText.toLowerCase());
-            const dateMatch = (!fromDate || !toDate) || (() => { const d = new Date(inv.invoice_date); return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate(); })();
-            const statusMatch = !statusFilter || inv.status === statusFilter;
-            return textMatch && dateMatch && statusMatch;
-          })}
-          loading={loading}
+          <Button icon={<ReloadOutlined />} onClick={fetchInvoices} loading={loading} style={{ borderRadius: 8 }}>Refresh</Button>
+        </div>
+        <Table columns={columns} dataSource={filteredInvoices} loading={loading}
           pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: pagination.total, showSizeChanger: true, size: 'small' }}
-          onChange={handleTableChange} rowKey="id"
-          scroll={{ x: 'max-content' }} size="small"
+          onChange={p => setPagination({ current: p.current, pageSize: p.pageSize, total: p.total })}
+          rowKey="id" scroll={{ x: 'max-content' }} size="small"
+          rowClassName={(_, i) => i % 2 === 0 ? 'table-row-light' : ''}
         />
       </Card>
-      <Modal title={`${modalMode === 'create' ? 'Create' : 'Edit'} Purchase Invoice`} open={modalVisible}
-        onCancel={() => setModalVisible(false)} width="min(1200px, 96vw)" style={{ top: 16 }} footer={null} destroyOnClose>
-        <InvoiceForm type="purchase" invoiceId={selectedInvoiceId} onSave={handleModalSave} />
+
+      <Modal title={<span style={{ fontWeight: 700 }}>{modalMode === 'create' ? <><PlusOutlined style={{ marginRight: 6 }} />Create</> : <><EditOutlined style={{ marginRight: 6 }} />Edit</>} Purchase Invoice</span>}
+        open={modalVisible} onCancel={() => setModalVisible(false)}
+        width="min(1200px,96vw)" style={{ top: 16 }} footer={null} destroyOnClose>
+        <InvoiceForm type="purchase" invoiceId={selectedInvoiceId}
+          onSave={() => { setModalVisible(false); fetchInvoices(); message.success(`Invoice ${modalMode === 'create' ? 'created' : 'updated'}`); }} />
       </Modal>
-      <Modal title="Email Invoice" open={emailModalVisible} onCancel={() => setEmailModalVisible(false)}
-        onOk={handleSendEmail} okText="Send Email" confirmLoading={loading}>
+
+      <Modal title={<span style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><MailOutlined />Email Invoice</span>} open={emailModalVisible} onCancel={() => setEmailModalVisible(false)}
+        onOk={handleSendEmail} okText="Send Email" confirmLoading={loading}
+        okButtonProps={{ style: { background: 'linear-gradient(135deg,#667eea,#764ba2)', border: 'none', borderRadius: 8 } }}>
         <p>Send invoice <strong>{selectedInvoiceForEmail?.invoice_number}</strong> to:</p>
-        <Input placeholder="Enter email address" value={emailAddress} onChange={(e) => setEmailAddress(e.target.value)} onPressEnter={handleSendEmail} />
+        <Input placeholder="Enter email address" value={emailAddress}
+          onChange={e => setEmailAddress(e.target.value)} onPressEnter={handleSendEmail}
+          prefix={<MailOutlined style={{ color: '#bbb' }} />} style={{ borderRadius: 8 }} />
       </Modal>
     </div>
   );

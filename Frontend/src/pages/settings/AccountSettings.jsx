@@ -81,8 +81,10 @@ const AccountSettings = () => {
     }
   };
 
+  const isMobile = window.innerWidth <= 768;
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '1200px', margin: '0 auto' }}>
       <h1>Account Settings</h1>
       
       <Tabs defaultActiveKey="profile">
@@ -97,7 +99,7 @@ const AccountSettings = () => {
               onFinish={handleProfileUpdate}
             >
               <h3>Personal Information</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
                 <Form.Item
                   name="firstName"
                   label="First Name"
@@ -160,7 +162,7 @@ const AccountSettings = () => {
                   <Input.TextArea rows={2} placeholder="Street Address" />
                 </Form.Item>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
                   <Form.Item
                     name="city"
                     label="City"

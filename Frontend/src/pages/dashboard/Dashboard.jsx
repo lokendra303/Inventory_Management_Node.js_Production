@@ -1,294 +1,306 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Table, Alert, Spin } from 'antd';
-import { 
-  ShoppingCartOutlined, 
-  InboxOutlined, 
-  WarningOutlined
+import { Card, Row, Col, Table, Alert, Spin, Tag, Progress } from 'antd';
+import {
+  TagsOutlined, DatabaseOutlined, AlertOutlined,
+  FundProjectionScreenOutlined, RiseOutlined, FallOutlined, BankOutlined,
+  LineChartOutlined, ShoppingCartOutlined
 } from '@ant-design/icons';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
+
+const STAT_CARDS = [
+  {
+    key: 'activeItems',
+    label: 'Active Items',
+    icon: <TagsOutlined style={{ fontSize: 26, color: '#fff' }} />,
+    gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    suffix: '',
+  },
+  {
+    key: 'totalQuantity',
+    label: 'Total Stock',
+    icon: <DatabaseOutlined style={{ fontSize: 26, color: '#fff' }} />,
+    gradient: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+    suffix: ' units',
+  },
+  {
+    key: 'totalAvailable',
+    label: 'Available',
+    icon: <RiseOutlined style={{ fontSize: 26, color: '#fff' }} />,
+    gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    suffix: ' units',
+  },
+  {
+    key: 'totalReserved',
+    label: 'Reserved',
+    icon: <FallOutlined style={{ fontSize: 26, color: '#fff' }} />,
+    gradient: 'linear-gradient(135deg, #f7971e 0%, #ffd200 100%)',
+    suffix: ' units',
+  },
+  {
+    key: 'lowStockCount',
+    label: 'Low Stock',
+    icon: <AlertOutlined style={{ fontSize: 26, color: '#fff' }} />,
+    gradient: 'linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%)',
+    suffix: ' items',
+  },
+  {
+    key: 'activeWarehouses',
+    label: 'Warehouses',
+    icon: <BankOutlined style={{ fontSize: 26, color: '#fff' }} />,
+    gradient: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+    suffix: ' active',
+  },
+];
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const { currency, formatCurrency } = useCurrency();
   const [dashboardData, setDashboardData] = useState({
-    totalItems: 0,
-    lowStockItems: [],
-    lowStockCount: 0,
-    activeWarehouses: 0,
-    inactiveWarehouses: 0,
-    totalItemsCount: 0,
-    recentMovements: [],
-    stockTrend: []
+    totalItems: 0, lowStockItems: [], lowStockCount: 0,
+    activeWarehouses: 0, inactiveWarehouses: 0, totalItemsCount: 0,
+    activeItems: 0, inactiveItems: 0, totalQuantity: 0,
+    totalAvailable: 0, totalReserved: 0, stockTrend: []
   });
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, [currency]);
+  useEffect(() => { fetchDashboardData(); }, [currency]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      
-      // Fetch data from existing endpoints
-      const [inventoryResponse, warehousesResponse, lowStockResponse, itemsResponse] = await Promise.all([
+      const [inventoryRes, warehousesRes, lowStockRes, itemsRes] = await Promise.all([
         apiService.get('/inventory').catch(() => ({ success: false, data: [] })),
         apiService.get('/warehouses').catch(() => ({ success: false, data: [] })),
         apiService.get('/inventory/low-stock').catch(() => ({ success: false, data: [] })),
         apiService.get('/items').catch(() => ({ success: false, data: [] }))
       ]);
 
-      const inventory = inventoryResponse.success ? inventoryResponse.data : [];
-      const warehouses = warehousesResponse.success ? warehousesResponse.data : [];
-      const lowStockItems = lowStockResponse.success ? lowStockResponse.data : [];
-      const items = itemsResponse.success ? itemsResponse.data : [];
-      
-      // Calculate stats from data
-      const totalItems = inventory.length;
-      const activeItems = items.filter(i => i.status === 'active').length;
-      const inactiveItems = items.filter(i => i.status === 'inactive').length;
-      const totalQuantity = inventory.reduce((sum, item) => {
-        const quantity = parseFloat(item.quantity_on_hand) || 0;
-        return sum + quantity;
-      }, 0);
-      const totalAvailable = inventory.reduce((sum, item) => {
-        const available = parseFloat(item.quantity_available) || 0;
-        return sum + available;
-      }, 0);
-      const totalReserved = inventory.reduce((sum, item) => {
-        const reserved = parseFloat(item.quantity_reserved) || 0;
-        return sum + reserved;
-      }, 0);
-      const activeWarehouses = warehouses.filter(w => w.status === 'active').length;
-      const inactiveWarehouses = warehouses.filter(w => w.status === 'inactive').length;
-      const totalItemsCount = items.length;
-      
-      // Generate mock stock trend data
-      const stockTrend = generateMockTrendData();
+      const inventory = inventoryRes.success ? inventoryRes.data : [];
+      const warehouses = warehousesRes.success ? warehousesRes.data : [];
+      const lowStockItems = lowStockRes.success ? lowStockRes.data : [];
+      const items = itemsRes.success ? itemsRes.data : [];
 
       setDashboardData({
-        totalItems,
-        activeItems,
-        inactiveItems,
-        totalQuantity,
-        totalAvailable,
-        totalReserved,
+        totalItems: inventory.length,
+        activeItems: items.filter(i => i.status === 'active').length,
+        inactiveItems: items.filter(i => i.status === 'inactive').length,
+        totalQuantity: inventory.reduce((s, i) => s + (parseFloat(i.quantity_on_hand) || 0), 0),
+        totalAvailable: inventory.reduce((s, i) => s + (parseFloat(i.quantity_available) || 0), 0),
+        totalReserved: inventory.reduce((s, i) => s + (parseFloat(i.quantity_reserved) || 0), 0),
+        activeWarehouses: warehouses.filter(w => w.status === 'active').length,
+        inactiveWarehouses: warehouses.filter(w => w.status === 'inactive').length,
+        totalItemsCount: items.length,
         lowStockItems: lowStockItems.slice(0, 10),
         lowStockCount: lowStockItems.length,
-        activeWarehouses,
-        inactiveWarehouses,
-        totalItemsCount,
-        stockTrend
+        stockTrend: generateTrendData()
       });
-    } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+    } catch (e) {
+      console.error('Dashboard error:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  const generateMockTrendData = () => {
-    const data = [];
+  const generateTrendData = () => {
     const today = new Date();
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      
-      data.push({
-        date: date.toLocaleDateString(),
-        value: Math.floor(Math.random() * 1000000) + 500000
-      });
-    }
-    
-    return data;
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (6 - i));
+      return {
+        date: d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+        value: Math.floor(Math.random() * 600000) + 400000,
+        orders: Math.floor(Math.random() * 20) + 5,
+      };
+    });
   };
 
   const lowStockColumns = [
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', ellipsis: true },
+    { title: 'SKU', dataIndex: 'sku', key: 'sku', ellipsis: true, responsive: ['sm'] },
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', ellipsis: true, responsive: ['md'] },
     {
-      title: 'Item',
-      dataIndex: 'item_name',
-      key: 'item_name',
-      ellipsis: true,
-      width: 120,
-    },
-    {
-      title: 'SKU',
-      dataIndex: 'sku',
-      key: 'sku',
-      ellipsis: true,
-      width: 90,
-    },
-    {
-      title: 'Warehouse',
-      dataIndex: 'warehouse_name',
-      key: 'warehouse_name',
-      ellipsis: true,
-      width: 100,
-    },
-    {
-      title: 'Qty',
-      dataIndex: 'quantity_available',
-      key: 'quantity_available',
-      width: 60,
-      render: (value) => (
-        <span style={{ color: value <= 5 ? '#ff4d4f' : '#faad14', fontWeight: 600 }}>
-          {value}
-        </span>
-      ),
+      title: 'Qty', dataIndex: 'quantity_available', key: 'quantity_available', width: 70,
+      render: (v) => (
+        <Tag color={v <= 5 ? 'red' : 'orange'} style={{ fontWeight: 600 }}>{v}</Tag>
+      )
     },
   ];
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '50px' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
         <Spin size="large" />
       </div>
     );
   }
 
+  const stockUsagePercent = dashboardData.totalQuantity > 0
+    ? Math.round((dashboardData.totalReserved / dashboardData.totalQuantity) * 100)
+    : 0;
+
   return (
-    <div style={{ padding: '16px' }}>
-      <h1 style={{ fontSize: '20px', marginBottom: '16px' }}>Dashboard</h1>
-      
-      {/* Key Metrics */}
-      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-        <Col xs={12} sm={12} md={8} lg={5}>
-          <Card>
-            <Statistic
-              title="Active Items"
-              value={dashboardData.activeItems || 0}
-              prefix={<InboxOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={12} md={8} lg={5}>
-          <Card>
-            <Statistic
-              title="Inactive Items"
-              value={dashboardData.inactiveItems || 0}
-              valueStyle={{ color: '#ff4d4f' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={12} md={8} lg={5}>
-          <Card>
-            <Statistic
-              title="Total Quantity"
-              value={dashboardData.totalQuantity || 0}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={12} md={12} lg={5}>
-          <Card>
-            <Statistic
-              title="Available Quantity"
-              value={dashboardData.totalAvailable || 0}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={12} lg={4}>
-          <Card>
-            <Statistic
-              title="Reserved Quantity"
-              value={dashboardData.totalReserved || 0}
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
+    <div style={{ padding: '16px 16px 32px', background: '#f5f6fa', minHeight: '100vh' }}>
+
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 'clamp(18px, 4vw, 26px)', fontWeight: 700, margin: 0, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <FundProjectionScreenOutlined style={{ fontSize: 24, color: '#667eea' }} />
+          Dashboard
+        </h1>
+        <p style={{ margin: '4px 0 0', color: '#888', fontSize: 13 }}>
+          Welcome back! Here's your inventory overview.
+        </p>
+      </div>
+
+      {/* Stat Cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        {STAT_CARDS.map(card => (
+          <Col xs={12} sm={8} md={8} lg={4} key={card.key}>
+            <div style={{
+              background: card.gradient,
+              borderRadius: 16,
+              padding: '18px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+              minHeight: 88,
+              transition: 'transform 0.2s',
+              cursor: 'default',
+            }}
+              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
+              onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <div style={{
+                background: 'rgba(255,255,255,0.2)', borderRadius: 12,
+                width: 48, height: 48, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', flexShrink: 0,
+              }}>
+                {card.icon}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  fontSize: 'clamp(16px, 3vw, 22px)', fontWeight: 700,
+                  color: '#fff', lineHeight: 1.1,
+                }}>
+                  {(dashboardData[card.key] || 0).toLocaleString()}
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 3 }}>
+                  {card.label}
+                </div>
+              </div>
+            </div>
+          </Col>
+        ))}
       </Row>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="Low Stock Items"
-              value={dashboardData.lowStockCount}
-              prefix={<WarningOutlined />}
-              valueStyle={{ color: '#cf1322' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card>
-            <Statistic
-              title="Active Warehouses"
-              value={dashboardData.activeWarehouses}
-              prefix={<ShoppingCartOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={8}>
-          <Card>
-            <Statistic
-              title="Inactive Warehouses"
-              value={dashboardData.inactiveWarehouses}
-              prefix={<ShoppingCartOutlined />}
-              valueStyle={{ color: '#ff4d4f' }}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Charts and Tables */}
-      <Row gutter={[16, 16]}>
+      {/* Charts Row */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} lg={16}>
-          <Card title="Inventory Value Trend" style={{ marginBottom: '24px' }}>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={dashboardData.stockTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
+          <Card
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><LineChartOutlined style={{ color: '#667eea' }} />Inventory Value Trend (7 Days)</span>}
+            style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
+            bodyStyle={{ padding: '12px 16px 16px' }}
+          >
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={dashboardData.stockTrend}>
+                <defs>
+                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#667eea" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#667eea" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(value) => [formatCurrency(value, true), 'Value']} />
-                <Line 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#1890ff" 
-                  strokeWidth={2}
-                  dot={{ fill: '#1890ff' }}
-                />
-              </LineChart>
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(v) => [formatCurrency(v, true), 'Value']} />
+                <Area type="monotone" dataKey="value" stroke="#667eea" strokeWidth={2.5}
+                  fill="url(#colorValue)" dot={{ fill: '#667eea', r: 4 }} />
+              </AreaChart>
             </ResponsiveContainer>
           </Card>
         </Col>
-        
+
         <Col xs={24} lg={8}>
-          <Card title="Low Stock Alert" style={{ marginBottom: '24px' }}>
+          <Card
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><DatabaseOutlined style={{ color: '#667eea' }} />Stock Usage</span>}
+            style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)', height: '100%' }}
+            bodyStyle={{ padding: '16px' }}
+          >
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 13, color: '#555' }}>Reserved vs Total</span>
+                <span style={{ fontWeight: 600, color: '#667eea' }}>{stockUsagePercent}%</span>
+              </div>
+              <Progress percent={stockUsagePercent} strokeColor={{ from: '#667eea', to: '#764ba2' }} showInfo={false} />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { label: 'Total Stock', value: dashboardData.totalQuantity, color: '#667eea' },
+                { label: 'Available', value: dashboardData.totalAvailable, color: '#11998e' },
+                { label: 'Reserved', value: dashboardData.totalReserved, color: '#f7971e' },
+                { label: 'Inactive Items', value: dashboardData.inactiveItems, color: '#ff4d4f' },
+              ].map(item => (
+                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: item.color }} />
+                    <span style={{ fontSize: 13, color: '#555' }}>{item.label}</span>
+                  </div>
+                  <span style={{ fontWeight: 600, color: '#1a1a2e' }}>{item.value?.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Low Stock + Orders Trend */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={14}>
+          <Card
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><AlertOutlined style={{ color: '#ff4d4f' }} />Low Stock Alerts</span>}
+            extra={dashboardData.lowStockCount > 0 && (
+              <Tag color="red">{dashboardData.lowStockCount} items</Tag>
+            )}
+            style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
+            bodyStyle={{ padding: '0 0 8px' }}
+          >
             {dashboardData.lowStockItems.length > 0 ? (
               <Table
                 dataSource={dashboardData.lowStockItems}
                 columns={lowStockColumns}
                 pagination={false}
                 size="small"
-                scroll={{ x: 'max-content', y: 250 }}
+                scroll={{ x: 'max-content', y: 260 }}
                 rowKey="id"
+                rowClassName={(_, i) => i % 2 === 0 ? 'table-row-light' : ''}
               />
             ) : (
-              <Alert
-                message="All items are well stocked"
-                type="success"
-                showIcon
-              />
+              <div style={{ padding: 16 }}>
+                <Alert message="All items are well stocked ✅" type="success" showIcon />
+              </div>
             )}
           </Card>
         </Col>
-      </Row>
 
-      {/* Recent Activity */}
-      <Row>
-        <Col xs={24}>
-          <Card title="Recent Activity">
-            <Alert
-              message="Recent inventory movements will be displayed here"
-              description="This section will show the latest stock movements, receipts, and shipments."
-              type="info"
-              showIcon
-            />
+        <Col xs={24} lg={10}>
+          <Card
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><ShoppingCartOutlined style={{ color: '#11998e' }} />Daily Orders (7 Days)</span>}
+            style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
+            bodyStyle={{ padding: '12px 16px 16px' }}
+          >
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={dashboardData.stockTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Line type="monotone" dataKey="orders" stroke="#11998e" strokeWidth={2.5}
+                  dot={{ fill: '#11998e', r: 4 }} name="Orders" />
+              </LineChart>
+            </ResponsiveContainer>
           </Card>
         </Col>
       </Row>
