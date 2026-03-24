@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Form, Input, Button, Row, Col, message } from 'antd';
+import { Form, Input, Row, Col } from 'antd';
 import {
   MobileOutlined, LockOutlined, MailOutlined, ShopOutlined,
   ArrowRightOutlined, CheckCircleFilled, IdcardOutlined,
@@ -317,22 +317,49 @@ const CSS = `
 
   .ims-submit-btn {
     width: 100%;
-    height: 52px !important;
-    border-radius: 14px !important;
-    font-size: 15px !important;
-    font-weight: 700 !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    border: none !important;
-    box-shadow: 0 4px 20px rgba(102,126,234,0.4) !important;
-    transition: all 0.25s !important;
+    height: 52px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    box-shadow: 0 4px 20px rgba(102,126,234,0.4);
+    transition: all 0.25s ease;
     letter-spacing: 0.3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     margin-top: 4px;
+    outline: none;
   }
   .ims-submit-btn:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 28px rgba(102,126,234,0.55) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(102,126,234,0.55);
+    background: linear-gradient(135deg, #7b8ff5 0%, #8a5cb8 100%);
   }
-  .ims-submit-btn:active { transform: translateY(0) !important; }
+  .ims-submit-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 20px rgba(102,126,234,0.4);
+  }
+  .ims-submit-btn:disabled {
+    opacity: 0.75;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .ims-spin {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: ims-spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes ims-spin {
+    to { transform: rotate(360deg); }
+  }
 
   .ims-divider {
     display: flex; align-items: center; gap: 12px;
@@ -498,9 +525,15 @@ export default function Login() {
                   </Form.Item>
 
                   <Form.Item style={{ marginBottom: 0 }}>
-                    <Button htmlType="submit" loading={loading} className="ims-submit-btn" type="primary">
-                      {!loading && <span>Sign In <ArrowRightOutlined style={{ marginLeft: 6 }} /></span>}
-                    </Button>
+                    <button
+                      type="submit"
+                      className="ims-submit-btn"
+                      disabled={loading}
+                    >
+                      {loading
+                        ? <><div className="ims-spin" /> Signing in...</>
+                        : <>Sign In <ArrowRightOutlined /></>}
+                    </button>
                   </Form.Item>
                 </Form>
 
@@ -583,9 +616,15 @@ export default function Login() {
                   </Form.Item>
 
                   <Form.Item style={{ marginBottom: 0 }}>
-                    <Button htmlType="submit" loading={loading} className="ims-submit-btn" type="primary">
-                      {!loading && <span>Create Account <ArrowRightOutlined style={{ marginLeft: 6 }} /></span>}
-                    </Button>
+                    <button
+                      type="submit"
+                      className="ims-submit-btn"
+                      disabled={loading}
+                    >
+                      {loading
+                        ? <><div className="ims-spin" /> Creating account...</>
+                        : <>Create Account <ArrowRightOutlined /></>}
+                    </button>
                   </Form.Item>
                 </Form>
 
