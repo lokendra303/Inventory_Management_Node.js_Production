@@ -1,6 +1,16 @@
 import axios from 'axios';
 import { Modal } from 'antd';
 
+// Auto-select API URL based on where the app is accessed from
+const getApiBaseUrl = () => {
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+  }
+  // Accessed from mobile or another device on LAN / ngrok
+  return process.env.REACT_APP_LAN_API_URL || `http://${hostname}:5000/api`;
+};
+
 // Simple rate limiter to prevent 429 errors
 class RateLimiter {
   constructor(maxRequests = 10, windowMs = 1000) {
@@ -48,10 +58,11 @@ class ApiService {
     this.retryCount = new Map(); // Track retry attempts per request
     
     this.api = axios.create({
-      baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+      baseURL: getApiBaseUrl(),
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
       },
     });
 
