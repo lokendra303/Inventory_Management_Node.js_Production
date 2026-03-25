@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
 import apiService from '../../services/apiService';
@@ -43,66 +43,84 @@ const Items = () => {
   const canManageItems = user?.permissions?.item_management || user?.permissions?.all;
 
   const columns = [
-    { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-    { title: 'Name', dataIndex: 'name', key: 'name' },
-    { title: 'Type', dataIndex: 'type', key: 'type' },
-    { title: 'Category', dataIndex: 'category', key: 'category' },
-    { title: 'Unit', dataIndex: 'unit', key: 'unit' },
-    { 
-      title: 'On Hand Stock', 
-      dataIndex: 'current_stock', 
+    {
+      title: 'Item',
+      key: 'item',
+      render: (_, record) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {record.image ? (
+            <img src={record.image} alt={record.name} style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover', border: '1px solid #f0f0f0' }} />
+          ) : (
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: 'linear-gradient(135deg, #667eea22, #764ba222)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#764ba2', fontSize: 16 }}><InboxOutlined /></div>
+          )}
+          <div>
+            <div style={{ fontWeight: 600, color: '#1a1a2e', fontSize: 13 }}>{record.name}</div>
+            <div style={{ fontSize: 11, color: '#8c8c8c' }}>{record.sku}</div>
+          </div>
+        </div>
+      )
+    },
+    { title: 'Type', dataIndex: 'type', key: 'type', render: v => v ? <Tag color="blue" style={{ borderRadius: 20, textTransform: 'capitalize' }}>{v}</Tag> : '-' },
+    { title: 'Category', dataIndex: 'category', key: 'category', render: v => v ? <Tag color="orange" style={{ borderRadius: 20 }}>{v}</Tag> : '-' },
+    { title: 'Unit', dataIndex: 'unit', key: 'unit', render: v => v || '-' },
+    {
+      title: 'On Hand',
+      dataIndex: 'current_stock',
       key: 'current_stock',
       render: (val, record) => {
         const stock = val || 0;
-        const displayValue = stock % 1 === 0 ? Math.floor(stock) : stock.toFixed(2);
+        const low = stock <= (record.min_stock_level || 0);
+        const display = stock % 1 === 0 ? Math.floor(stock) : stock.toFixed(2);
         return (
-          <span style={{ 
-            fontWeight: 'bold',
-            color: stock <= (record.min_stock_level || 0) ? '#ff4d4f' : '#52c41a'
-          }}>
-            {displayValue}
-          </span>
+          <Tag color={low ? 'red' : 'green'} style={{ borderRadius: 20, fontWeight: 700, minWidth: 40, textAlign: 'center' }}>
+            {low && <WarningOutlined style={{ marginRight: 4 }} />}{display}
+          </Tag>
         );
       }
     },
-    { title: 'Cost Price', dataIndex: 'cost_price', key: 'cost_price', render: (val) => val ? formatPrice(val, currency, 'USD') : '-' },
-    { title: 'Selling Price', dataIndex: 'selling_price', key: 'selling_price', render: (val) => val ? formatPrice(val, currency, 'USD') : '-' },
-    { 
-      title: 'Status', 
-      dataIndex: 'status', 
+    { title: 'Cost Price', dataIndex: 'cost_price', key: 'cost_price', render: val => val ? <span style={{ fontWeight: 600, color: '#595959' }}>{formatPrice(val, currency, 'USD')}</span> : '-' },
+    { title: 'Selling Price', dataIndex: 'selling_price', key: 'selling_price', render: val => val ? <span style={{ fontWeight: 700, color: '#667eea' }}>{formatPrice(val, currency, 'USD')}</span> : '-' },
+    {
+      title: 'Status',
+      dataIndex: 'status',
       key: 'status',
-      render: (status) => (
-        <span style={{ color: status === 'active' ? '#52c41a' : '#ff4d4f' }}>
-          {status === 'active' ? 'Active' : 'Inactive'}
-        </span>
-      )
+      render: status => <Badge status={status === 'active' ? 'success' : 'error'} text={<span style={{ fontWeight: 500, textTransform: 'capitalize' }}>{status}</span>} />
     },
     {
       title: 'Actions',
       key: 'actions',
+      fixed: 'right',
+      width: 200,
       render: (_, record) => (
-        <Space>
-          <Button 
-            icon={<EyeOutlined />} 
+        <Space size={6}>
+          <Button
+            icon={<EyeOutlined />}
             size="small"
             onClick={() => viewItem(record)}
+            style={{ borderRadius: 6, background: '#f0f0ff', borderColor: '#667eea', color: '#667eea', fontWeight: 600 }}
           >
             View
           </Button>
           {canManageItems && (
-            <Button 
-              icon={<EditOutlined />} 
+            <Button
+              icon={<EditOutlined />}
               size="small"
               onClick={() => editItem(record)}
+              style={{ borderRadius: 6, background: '#667eea', border: 'none', color: '#fff', fontWeight: 600 }}
             >
               Edit
             </Button>
           )}
           {canManageItems && (
-            <Button 
+            <Button
               size="small"
-              type={record.status === 'active' ? 'default' : 'primary'}
               onClick={() => toggleItemStatus(record)}
+              style={{
+                borderRadius: 6, fontWeight: 600,
+                ...(record.status === 'active'
+                  ? { background: '#fff1f0', borderColor: '#ff4d4f', color: '#ff4d4f' }
+                  : { background: '#52c41a', border: 'none', color: '#fff' })
+              }}
             >
               {record.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
@@ -429,102 +447,183 @@ const viewItem = async (item) => {
     };
   }, [modalVisible]);
 
+  const sectionStyle = {
+    background: '#fff',
+    border: '1px solid #e8e8ff',
+    borderRadius: 12,
+    padding: '20px 20px 8px',
+    marginBottom: 16,
+  };
+  const sectionHeader = {
+    fontWeight: 700,
+    fontSize: 14,
+    color: '#667eea',
+    marginBottom: 16,
+    display: 'flex',
+    alignItems: 'center',
+  };
+
+  const filteredItems = items.filter(item =>
+    !searchText ||
+    item.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+    item.sku?.toLowerCase().includes(searchText.toLowerCase()) ||
+    item.category?.toLowerCase().includes(searchText.toLowerCase())
+  );
+  const activeCount = items.filter(i => i.status === 'active').length;
+  const lowStockCount = items.filter(i => (i.current_stock || 0) <= (i.min_stock_level || 0)).length;
+
   return (
-    <div style={{ padding: '16px' }}>
-      <h1 style={{ fontSize: '20px', marginBottom: '16px' }}>Items</h1>
-      <Card>
-        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          {canManageItems && (
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />}
-              onClick={openCreateModal}
-            >
-              Add Item
-            </Button>
-          )}
-          <Input
-            placeholder="Search by name, SKU or category..."
-            prefix={<SearchOutlined />}
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            style={{ width: '100%', maxWidth: 300 }}
-            allowClear
-          />
-        </Space>
-        <Table 
-          columns={columns} 
-          dataSource={items.filter(item =>
-            !searchText ||
-            item.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-            item.sku?.toLowerCase().includes(searchText.toLowerCase()) ||
-            item.category?.toLowerCase().includes(searchText.toLowerCase())
-          )} 
+    <div style={{ padding: '24px', background: '#f0f2f5', minHeight: '100vh' }}>
+      {/* Header */}
+      <div style={{
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        borderRadius: 16, padding: '24px 28px', marginBottom: 24,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '10px 14px' }}>
+            <ShopOutlined style={{ fontSize: 28, color: '#fff' }} />
+          </div>
+          <div>
+            <div style={{ color: '#fff', fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>Items</div>
+            <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>Manage your inventory items</div>
+          </div>
+        </div>
+        {canManageItems && (
+          <Button
+            icon={<PlusOutlined />}
+            size="large"
+            onClick={openCreateModal}
+            style={{ background: '#fff', color: '#764ba2', border: '2px solid rgba(255,255,255,0.6)', fontWeight: 700, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: 15 }}
+          >
+            Add Item
+          </Button>
+        )}
+      </div>
+
+      {/* Stat Cards */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        {[
+          { title: 'Total Items', value: items.length, icon: <InboxOutlined />, color: '#667eea', bg: '#f0f0ff' },
+          { title: 'Active Items', value: activeCount, icon: <AppstoreOutlined />, color: '#52c41a', bg: '#f6ffed' },
+          { title: 'Categories', value: categories.length, icon: <TagsOutlined />, color: '#fa8c16', bg: '#fff7e6' },
+          { title: 'Low Stock', value: lowStockCount, icon: <WarningOutlined />, color: '#ff4d4f', bg: '#fff1f0' },
+        ].map(s => (
+          <Col xs={12} sm={6} key={s.title}>
+            <Card bordered={false} style={{ borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} bodyStyle={{ padding: '18px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ background: s.bg, borderRadius: 10, padding: 10, fontSize: 22, color: s.color }}>{s.icon}</div>
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', lineHeight: 1.1 }}>{s.value}</div>
+                  <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>{s.title}</div>
+                </div>
+              </div>
+            </Card>
+          </Col>
+        ))}
+      </Row>
+
+      {/* Table Card */}
+      <Card
+        bordered={false}
+        style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
+        bodyStyle={{ padding: 0 }}
+      >
+        <div style={{ padding: '18px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ fontWeight: 600, fontSize: 16, color: '#1a1a2e' }}>
+            All Items <Tag color="purple" style={{ marginLeft: 8, borderRadius: 20 }}>{filteredItems.length}</Tag>
+          </div>
+          <Space wrap>
+            <Input
+              placeholder="Search by name, SKU or category..."
+              prefix={<SearchOutlined style={{ color: '#bbb' }} />}
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              style={{ width: 260, borderRadius: 10 }}
+              allowClear
+            />
+            {canManageItems && (
+              <Button
+                icon={<PlusOutlined />}
+                onClick={openCreateModal}
+                style={{
+                  background: '#52c41a',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: 14,
+                  boxShadow: '0 3px 10px rgba(82,196,26,0.4)',
+                  padding: '0 20px',
+                  height: 38,
+                }}
+              >
+                Add Item
+              </Button>
+            )}
+          </Space>
+        </div>
+        <div style={{ padding: '16px 24px 24px' }}>
+        <Table
+          columns={columns}
+          dataSource={filteredItems}
           loading={loading}
           rowKey="id"
           scroll={{ x: 'max-content' }}
+          rowClassName={(_, i) => i % 2 === 0 ? 'table-row-light' : 'table-row-dark'}
+          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `Total ${t} items`, style: { marginTop: 16 } }}
         />
+        </div>
       </Card>
 
       <Modal
-        title={editingItem ? "Edit Item" : "Add New Item"}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: 16 }}>
+              {editingItem ? <EditOutlined /> : <PlusOutlined />}
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 17 }}>{editingItem ? 'Edit Item' : 'Add New Item'}</span>
+          </div>
+        }
         open={modalVisible}
-        onCancel={() => {
-          setModalVisible(false);
-          setEditingItem(null);
-          setImageUrl('');
-          setImageFile(null);
-          form.resetFields();
-        }}
+        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); form.resetFields(); }}
         footer={null}
         width="min(900px, 96vw)"
         style={{ top: 16 }}
+        styles={{ body: { background: '#fafbff', borderRadius: '0 0 12px 12px' } }}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSubmit}
-        >
-          <Row gutter={16}>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                name="sku"
-                label="SKU"
-                rules={[{ required: true, message: 'Please input SKU!' }]}
-              >
-                <Input placeholder="Enter SKU" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                name="name"
-                label="Name"
-                rules={[{ required: true, message: 'Please input name!' }]}
-              >
-                <Input placeholder="Enter item name" />
-              </Form.Item>
-            </Col>
-          </Row>
+        <Form form={form} layout="vertical" onFinish={handleSubmit}>
 
-          <Row gutter={16}>
-            <Col xs={24} md={16}>
-              <Row gutter={16}>
-                <Col xs={24} sm={8}>
-                  <Form.Item
-                    name="type"
-                    label="Type"
-                    initialValue="simple"
-                  >
-                    <Select>
-                      <Select.Option value="simple">Simple</Select.Option>
-                      <Select.Option value="variant">Variant</Select.Option>
-                      <Select.Option value="composite">Composite</Select.Option>
-                      <Select.Option value="service">Service</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Form.Item name="category" label="Category">
+          {/* ── Section: Basic Info ── */}
+          <div style={sectionStyle}>
+            <div style={sectionHeader}><AppstoreOutlined style={{ marginRight: 8 }} />Basic Information</div>
+            <Row gutter={16}>
+              <Col xs={24} md={16}>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="sku" label="SKU" rules={[{ required: true, message: 'Please input SKU!' }]}>
+                      <Input placeholder="Enter SKU" size="middle" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="name" label="Item Name" rules={[{ required: true, message: 'Please input name!' }]}>
+                      <Input placeholder="Enter item name" size="middle" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col xs={24} sm={8}>
+                    <Form.Item name="type" label="Type" initialValue="simple">
+                      <Select>
+                        <Select.Option value="simple">Simple</Select.Option>
+                        <Select.Option value="variant">Variant</Select.Option>
+                        <Select.Option value="composite">Composite</Select.Option>
+                        <Select.Option value="service">Service</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item name="category" label="Category">
                     {categories.length > 0 ? (
                       <Select 
                         placeholder="Select category"
@@ -592,10 +691,10 @@ const viewItem = async (item) => {
                     ) : (
                       <Input placeholder="Enter category name" />
                     )}
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Form.Item name="unit" label="Unit" initialValue="pcs">
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item name="unit" label="Unit" initialValue="pcs">
                     <Select 
                       placeholder="Select unit"
                       dropdownRender={(menu) => (
@@ -671,102 +770,60 @@ const viewItem = async (item) => {
                         </Select.Option>
                       ))}
                     </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Row gutter={16}>
-                <Col span={24}>
-                  <Form.Item name="returnableItem" label="" valuePropName="checked">
-                    <input type="checkbox" /> Returnable Item
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Col>
-            
-            <Col xs={24} md={8}>
-              <Form.Item name="image" label="Item Image">
-                <Upload
-                  name="image"
-                  listType="picture-card"
-                  className="avatar-uploader"
-                  showUploadList={false}
-                  beforeUpload={(file) => {
-                    const isJpgOrPng = file.type === 'image/jpeg' || file.type === 'image/png';
-                    if (!isJpgOrPng) {
-                      message.error('You can only upload JPG/PNG file!');
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Form.Item name="returnableItem" label="" valuePropName="checked" style={{ marginBottom: 0 }}>
+                      <input type="checkbox" style={{ marginRight: 6 }} /> Returnable Item
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item name="image" label="Item Image">
+                  <Upload name="image" listType="picture-card" showUploadList={false}
+                    beforeUpload={(file) => {
+                      if (!['image/jpeg','image/png'].includes(file.type)) { message.error('JPG/PNG only!'); return false; }
+                      if (file.size / 1024 / 1024 > 2) { message.error('Max 2MB!'); return false; }
+                      const reader = new FileReader();
+                      reader.onload = e => setImageUrl(e.target.result);
+                      reader.readAsDataURL(file);
+                      setImageFile(file);
                       return false;
-                    }
-                    const isLt2M = file.size / 1024 / 1024 < 2;
-                    if (!isLt2M) {
-                      message.error('Image must smaller than 2MB!');
-                      return false;
-                    }
-                    
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                      setImageUrl(e.target.result);
-                    };
-                    reader.readAsDataURL(file);
-                    setImageFile(file);
-                    
-                    return false;
-                  }}
-                >
-                  {imageUrl ? (
-                    <img 
-                      src={imageUrl} 
-                      alt="item" 
-                      style={{ width: '100%', height: '150px', objectFit: 'cover' }} 
-                    />
-                  ) : (
-                    <div style={{ 
-                      border: '2px dashed #d9d9d9', 
-                      borderRadius: '6px', 
-                      width: '150px', 
-                      height: '150px', 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      cursor: 'pointer'
-                    }}>
-                      <UploadOutlined style={{ fontSize: '24px', color: '#999' }} />
-                      <div style={{ marginTop: 8, color: '#999', fontSize: '12px', textAlign: 'center' }}>
-                        Drag and drop or click to upload<br/>
-                        Browse Images<br/>
-                        <small>Maximum 2 MB and JPG/PNG only</small>
+                    }}
+                  >
+                    {imageUrl ? (
+                      <img src={imageUrl} alt="item" style={{ width: '100%', height: 150, objectFit: 'cover', borderRadius: 8 }} />
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 150, color: '#aaa' }}>
+                        <UploadOutlined style={{ fontSize: 28, marginBottom: 8 }} />
+                        <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>Click or drag to upload<br /><small>JPG/PNG, max 2MB</small></div>
                       </div>
-                    </div>
-                  )}
-                </Upload>
-              </Form.Item>
-            </Col>
-          </Row>
+                    )}
+                  </Upload>
+                </Form.Item>
+              </Col>
+            </Row>
 
-          <Row gutter={16}>
-            <Col xs={24} sm={8}>
-              <Form.Item label="Dimensions (L × W × H)">
-                <Input.Group compact>
-                  <Form.Item name="length" noStyle>
-                    <InputNumber placeholder="Length" style={{ width: '33%' }} min={0} />
-                  </Form.Item>
-                  <Form.Item name="width" noStyle>
-                    <InputNumber placeholder="Width" style={{ width: '33%' }} min={0} />
-                  </Form.Item>
-                  <Form.Item name="height" noStyle>
-                    <InputNumber placeholder="Height" style={{ width: '34%' }} min={0} />
-                  </Form.Item>
-                </Input.Group>
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item name="weight" label="Weight">
-                <Input placeholder="Weight in kg" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item name="manufacturer" label="Manufacturer">
+            <Row gutter={16}>
+              <Col xs={24} sm={8}>
+                <Form.Item label="Dimensions (L × W × H)">
+                  <Input.Group compact>
+                    <Form.Item name="length" noStyle><InputNumber placeholder="L" style={{ width: '33%' }} min={0} /></Form.Item>
+                    <Form.Item name="width" noStyle><InputNumber placeholder="W" style={{ width: '33%' }} min={0} /></Form.Item>
+                    <Form.Item name="height" noStyle><InputNumber placeholder="H" style={{ width: '34%' }} min={0} /></Form.Item>
+                  </Input.Group>
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="weight" label="Weight">
+                  <Input placeholder="Weight in kg" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="manufacturer" label="Manufacturer">
                     <Select 
                       placeholder="Select or Add Manufacturer" 
                       allowClear
@@ -843,18 +900,18 @@ const viewItem = async (item) => {
                         </Select.Option>
                       ))}
                     </Select>
-              </Form.Item>
-            </Col>
-          </Row>
+                </Form.Item>
+              </Col>
+            </Row>
 
-          <Row gutter={16}>
-            <Col xs={24} sm={8}>
-              <Form.Item name="upc" label="UPC">
-                <Input placeholder="Enter UPC" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item name="brand" label="Brand">
+            <Row gutter={16}>
+              <Col xs={24} sm={8}>
+                <Form.Item name="upc" label="UPC">
+                  <Input placeholder="Enter UPC" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="brand" label="Brand">
                 <Select 
                   placeholder="Select or Add Brand" 
                   allowClear
@@ -931,19 +988,19 @@ const viewItem = async (item) => {
                     </Select.Option>
                   ))}
                 </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item name="mpn" label="MPN">
-                <Input placeholder="Enter MPN" />
-              </Form.Item>
-            </Col>
-          </Row>
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="mpn" label="MPN">
+                  <Input placeholder="Enter MPN" />
+                </Form.Item>
+              </Col>
+            </Row>
 
-          <Row gutter={16}>
-            <Col xs={24} sm={8}>
-              <Form.Item name="ean" label="EAN">
-                <Input.Search
+            <Row gutter={16}>
+              <Col xs={24} sm={8}>
+                <Form.Item name="ean" label="EAN">
+                  <Input.Search
                   placeholder="Enter EAN to lookup product"
                   enterButton={<span><BarcodeOutlined /> Lookup</span>}
                   loading={barcodeLoading}
@@ -987,31 +1044,32 @@ const viewItem = async (item) => {
                       setBarcodeLoading(false);
                     }
                   }}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item name="isbn" label="ISBN">
-                <Input placeholder="Enter ISBN" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item name="barcode" label="Barcode">
-                <Input placeholder="Enter Barcode" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col xs={24} sm={8}>
-              <Form.Item name="hsnCode" label="HSN Code">
-                <Input placeholder="Enter HSN Code" />
-              </Form.Item>
-            </Col>
-          </Row>
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="isbn" label="ISBN">
+                  <Input placeholder="Enter ISBN" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="barcode" label="Barcode">
+                  <Input placeholder="Enter Barcode" />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={8}>
+                <Form.Item name="hsnCode" label="HSN Code">
+                  <Input placeholder="Enter HSN Code" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </div>{/* end Basic Info section */}
 
-          <div style={{ marginTop: 24, marginBottom: 16 }}>
-            <h3>Sales Information</h3>
-          </div>
+          {/* ── Section: Sales ── */}
+          <div style={sectionStyle}>
+            <div style={sectionHeader}><DollarOutlined style={{ marginRight: 8 }} />Sales Information</div>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="sellingPrice" label="Selling Price" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
@@ -1067,9 +1125,11 @@ const viewItem = async (item) => {
             </Col>
           </Row>
 
-          <div style={{ marginTop: 24, marginBottom: 16 }}>
-            <h3>Purchase Information</h3>
-          </div>
+          </div>{/* end Sales section */}
+
+          {/* ── Section: Purchase ── */}
+          <div style={sectionStyle}>
+            <div style={sectionHeader}><ShopOutlined style={{ marginRight: 8 }} />Purchase Information</div>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="costPrice" label="Cost Price (can be set later via Purchase Order)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
@@ -1140,11 +1200,16 @@ const viewItem = async (item) => {
             </Col>
           </Row>
 
-          <div style={{ marginTop: 24, marginBottom: 16 }}>
-            <Form.Item name="trackInventory" label="" valuePropName="checked">
-              <input type="checkbox" /> Track Inventory for this Item
-            </Form.Item>
-          </div>
+          </div>{/* end Purchase section */}
+
+          {/* ── Section: Inventory ── */}
+          <div style={sectionStyle}>
+            <div style={sectionHeader}><InboxOutlined style={{ marginRight: 8 }} />Inventory Tracking</div>
+            <div style={{ marginBottom: 16 }}>
+              <Form.Item name="trackInventory" label="" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <input type="checkbox" style={{ marginRight: 6 }} /> Track Inventory for this Item
+              </Form.Item>
+            </div>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="inventoryAccount" label="Inventory Account">
@@ -1237,24 +1302,26 @@ const viewItem = async (item) => {
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Item name="description" label="Description">
-                <Input.TextArea placeholder="Enter description" rows={3} />
-              </Form.Item>
-            </Col>
-          </Row>
-          
-          <Form.Item>
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.Item name="description" label="Notes / Description">
+                  <Input.TextArea placeholder="Enter description" rows={3} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </div>{/* end Inventory section */}
+
+          <Form.Item style={{ marginTop: 8, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
             <Space>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                size="large"
+                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', border: 'none', borderRadius: 10, fontWeight: 600, paddingInline: 32 }}
+              >
                 {editingItem ? 'Update Item' : 'Create Item'}
               </Button>
-              <Button onClick={() => {
-                setModalVisible(false);
-                setEditingItem(null);
-                form.resetFields();
-              }}>
+              <Button size="large" style={{ borderRadius: 10 }} onClick={() => { setModalVisible(false); setEditingItem(null); form.resetFields(); }}>
                 Cancel
               </Button>
             </Space>
@@ -1262,78 +1329,91 @@ const viewItem = async (item) => {
         </Form>
       </Modal>
 
-{/* View Item Modal */}
       <Modal
-        title="View Item Details"
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: 16 }}>
+              <EyeOutlined />
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 17 }}>Item Details</span>
+          </div>
+        }
         open={viewModalVisible}
         onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}
-        footer={[<Button key="close" onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}>Close</Button>]}
+        footer={[<Button key="close" style={{ borderRadius: 10 }} onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}>Close</Button>]}
         width="min(960px, 96vw)"
         style={{ top: 16 }}
+        styles={{ body: { background: '#fafbff' } }}
       >
         {viewingItem && (
           <div>
-            <Row gutter={16}>
-              <Col xs={24} md={16}>
-                <Row gutter={16}>
-                  <Col xs={24} sm={12}>
-                    <p><strong>SKU:</strong> {viewingItem.sku}</p>
-                    <p><strong>Name:</strong> {viewingItem.name}</p>
-                    <p><strong>Type:</strong> {viewingItem.type}</p>
-                    <p><strong>Category:</strong> {viewingItem.category || 'N/A'}</p>
-                    <p><strong>Unit:</strong> {viewingItem.unit}</p>
-                    <p><strong>Brand:</strong> {viewingItem.brand || 'N/A'}</p>
-                    <p><strong>Manufacturer:</strong> {viewingItem.manufacturer || 'N/A'}</p>
-                    <p><strong>Barcode:</strong> {viewingItem.barcode || 'N/A'}</p>
-                    <p><strong>HSN Code:</strong> {viewingItem.hsn_code || 'N/A'}</p>
-                    <p><strong>Status:</strong> <span style={{ color: viewingItem.status === 'active' ? '#52c41a' : '#ff4d4f' }}>{viewingItem.status}</span></p>
-                  </Col>
-                  <Col xs={24} sm={12}>
-                    <p><strong>Cost Price:</strong> {viewingItem.cost_price ? formatPrice(viewingItem.cost_price, currency, 'USD') : 'N/A'}</p>
-                    <p><strong>Selling Price:</strong> {viewingItem.selling_price ? formatPrice(viewingItem.selling_price, currency, 'USD') : 'N/A'}</p>
-                    <p><strong>MRP:</strong> {viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'}</p>
-                    <p><strong>Tax Rate:</strong> {viewingItem.tax_rate ? `${viewingItem.tax_rate}%` : 'N/A'}</p>
-                    <p><strong>Tax Type:</strong> {viewingItem.tax_type || 'N/A'}</p>
-                    <p><strong>On Hand Stock:</strong> <span style={{ fontWeight: 'bold', color: (viewingItem.current_stock || 0) <= (viewingItem.min_stock_level || 0) ? '#ff4d4f' : '#52c41a' }}>{(() => { const s = viewingItem.current_stock || 0; return s % 1 === 0 ? Math.floor(s) : s.toFixed(2); })()}</span></p>
-                    <p><strong>Min Stock Level:</strong> {viewingItem.min_stock_level ?? 'N/A'}</p>
-                    <p><strong>Max Stock Level:</strong> {viewingItem.max_stock_level ?? 'N/A'}</p>
-                    <p><strong>Opening Stock:</strong> {viewingItem.opening_stock ?? 'N/A'}</p>
-                    <p><strong>Opening Value:</strong> {viewingItem.opening_value ? formatPrice(viewingItem.opening_value, currency, 'USD') : 'N/A'}</p>
-                    <p><strong>Valuation Method:</strong> {viewingItem.valuation_method || 'N/A'}</p>
-                  </Col>
-                </Row>
-                <Row gutter={16} style={{ marginTop: 8 }}>
-                  <Col xs={24} sm={12}>
-                    <p><strong>Weight:</strong> {viewingItem.weight ? `${viewingItem.weight} ${viewingItem.weight_unit || 'kg'}` : 'N/A'}</p>
-                    <p><strong>Dimensions (L×W×H):</strong> {viewingItem.dimensions ? `${viewingItem.dimensions.length || 0} × ${viewingItem.dimensions.width || 0} × ${viewingItem.dimensions.height || 0}` : 'N/A'}</p>
-                  </Col>
-                  <Col xs={24} sm={12}>
-                    <p><strong>UPC:</strong> {viewingItem.upc || 'N/A'}</p>
-                    <p><strong>EAN:</strong> {viewingItem.ean || 'N/A'}</p>
-                    <p><strong>ISBN:</strong> {viewingItem.isbn || 'N/A'}</p>
-                    <p><strong>MPN:</strong> {viewingItem.mpn || 'N/A'}</p>
-                  </Col>
-                </Row>
-              </Col>
-              <Col xs={24} md={8}>
-                <div style={{ textAlign: 'center' }}>
-                  <p><strong>Item Image</strong></p>
-                  {viewingItem.image ? (
-                    <img src={viewingItem.image} alt={viewingItem.name} style={{ width: '150px', height: '150px', objectFit: 'cover', border: '1px solid #d9d9d9', borderRadius: '6px' }} />
-                  ) : (
-                    <div style={{ width: '150px', height: '150px', border: '2px dashed #d9d9d9', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '12px', margin: '0 auto' }}>
-                      No Image Available
-                    </div>
-                  )}
+            {/* Top hero strip */}
+            <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, padding: '20px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+              {viewingItem.image ? (
+                <img src={viewingItem.image} alt={viewingItem.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 12, border: '3px solid rgba(255,255,255,0.4)' }} />
+              ) : (
+                <div style={{ width: 80, height: 80, borderRadius: 12, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: '#fff' }}><InboxOutlined /></div>
+              )}
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#fff', fontSize: 20, fontWeight: 700 }}>{viewingItem.name}</div>
+                <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 2 }}>SKU: {viewingItem.sku}</div>
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <Tag color={viewingItem.status === 'active' ? 'success' : 'error'} style={{ borderRadius: 20 }}>{viewingItem.status}</Tag>
+                  {viewingItem.type && <Tag color="blue" style={{ borderRadius: 20 }}>{viewingItem.type}</Tag>}
+                  {viewingItem.category && <Tag color="orange" style={{ borderRadius: 20 }}>{viewingItem.category}</Tag>}
                 </div>
-              </Col>
+              </div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                {[{ label: 'Selling Price', val: viewingItem.selling_price ? formatPrice(viewingItem.selling_price, currency, 'USD') : '—' },
+                  { label: 'On Hand', val: (() => { const s = viewingItem.current_stock || 0; return s % 1 === 0 ? Math.floor(s) : s.toFixed(2); })() }].map(x => (
+                  <div key={x.label} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 16px', textAlign: 'center' }}>
+                    <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>{x.val}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11 }}>{x.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Detail grid */}
+            <Row gutter={16}>
+              {[[
+                ['Cost Price', viewingItem.cost_price ? formatPrice(viewingItem.cost_price, currency, 'USD') : 'N/A'],
+                ['MRP', viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'],
+                ['Tax Rate', viewingItem.tax_rate ? `${viewingItem.tax_rate}%` : 'N/A'],
+                ['Unit', viewingItem.unit || 'N/A'],
+                ['Brand', viewingItem.brand || 'N/A'],
+                ['Manufacturer', viewingItem.manufacturer || 'N/A'],
+              ], [
+                ['Min Stock', viewingItem.min_stock_level ?? 'N/A'],
+                ['Max Stock', viewingItem.max_stock_level ?? 'N/A'],
+                ['Opening Stock', viewingItem.opening_stock ?? 'N/A'],
+                ['Valuation', viewingItem.valuation_method || 'N/A'],
+                ['HSN Code', viewingItem.hsn_code || 'N/A'],
+                ['Barcode', viewingItem.barcode || 'N/A'],
+              ], [
+                ['UPC', viewingItem.upc || 'N/A'],
+                ['EAN', viewingItem.ean || 'N/A'],
+                ['ISBN', viewingItem.isbn || 'N/A'],
+                ['MPN', viewingItem.mpn || 'N/A'],
+                ['Weight', viewingItem.weight ? `${viewingItem.weight} ${viewingItem.weight_unit || 'kg'}` : 'N/A'],
+                ['Dimensions', viewingItem.dimensions ? `${viewingItem.dimensions.length||0}×${viewingItem.dimensions.width||0}×${viewingItem.dimensions.height||0}` : 'N/A'],
+              ]].map((group, gi) => (
+                <Col xs={24} sm={8} key={gi}>
+                  <Card bordered={false} style={{ borderRadius: 12, background: '#fff', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', marginBottom: 12 }} bodyStyle={{ padding: '14px 18px' }}>
+                    {group.map(([label, val]) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f5f5f5', fontSize: 13 }}>
+                        <span style={{ color: '#8c8c8c' }}>{label}</span>
+                        <span style={{ fontWeight: 600, color: '#1a1a2e', maxWidth: '55%', textAlign: 'right', wordBreak: 'break-word' }}>{val}</span>
+                      </div>
+                    ))}
+                  </Card>
+                </Col>
+              ))}
             </Row>
             {viewingItem.description && (
-              <Row gutter={16} style={{ marginTop: 8 }}>
-                <Col span={24}>
-                  <p><strong>Description:</strong> {viewingItem.description}</p>
-                </Col>
-              </Row>
+              <div style={{ background: '#fff', borderRadius: 12, padding: '12px 18px', marginBottom: 12, boxShadow: '0 1px 8px rgba(0,0,0,0.06)', fontSize: 13, color: '#595959' }}>
+                <strong>Description:</strong> {viewingItem.description}
+              </div>
             )}
             
             <div style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
