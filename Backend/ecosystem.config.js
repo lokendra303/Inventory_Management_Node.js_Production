@@ -9,11 +9,13 @@ module.exports = {
     max_memory_restart: '1G',
     env_development: {
       NODE_ENV: 'development',
-      PORT: 5000
+      PORT: 5000,
+      HOST: '0.0.0.0'
     },
     env_production: {
       NODE_ENV: 'production',
-      PORT: 5000
+      PORT: 5000,
+      HOST: '0.0.0.0'
     },
     error_file: './logs/pm2-error.log',
     out_file: './logs/pm2-out.log',

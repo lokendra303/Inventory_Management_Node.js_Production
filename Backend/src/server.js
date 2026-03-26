@@ -168,8 +168,8 @@ class Server {
       logger.info('Database connected successfully');
 
       // Start server
-      const server = this.app.listen(config.server.port, () => {
-        logger.info(`Server started on port ${config.server.port} in ${config.server.env} mode`);
+      const server = this.app.listen(config.server.port, config.server.host, () => {
+        logger.info(`Server started on ${config.server.host}:${config.server.port} in ${config.server.env} mode`);
       });
 
       this.server = server;
