@@ -6,6 +6,7 @@ import { CurrencyProvider } from './contexts/CurrencyContext.jsx';
 import { withPermission } from './components/common/PermissionWrapper.jsx';
 import ErrorBoundary from './components/common/ErrorBoundary.jsx';
 import Login from './pages/auth/Login.jsx';
+import PlatformAdminLogin from './pages/auth/PlatformAdminLogin.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
 import Inventory from './pages/inventory/Inventory.jsx';
 import Packages from './pages/inventory/Packages.jsx';
@@ -50,6 +51,7 @@ import PurchasesPaymentMade from './pages/purchases/PurchasesPayamentMade.jsx';
 import VendorCredits from './pages/purchases/VendorCredits.jsx';  
 import InvoicePayments from './pages/sales/InvoiceMayments.jsx';
 import StockCount from './pages/inventory/StockCount.jsx';
+import ReorderLevels from './pages/inventory/ReorderLevels.jsx';
 import BatchTracking from './pages/inventory/BatchTracking.jsx';
 import PurchaseReturns from './pages/purchases/PurchaseReturns.jsx';
 import ExchangeRateSettings from './pages/settings/ExchangeRateSettings.jsx';
@@ -143,6 +145,7 @@ function AppContent() {
             <Route path="/inventory/packages" element={<ProtectedPackages />} />
             <Route path="/inventory/stock-count" element={<ProtectedStockCount />} />
             <Route path="/inventory/batch-tracking" element={<ProtectedBatchTracking />} />
+            <Route path="/inventory/reorder-levels" element={<ReorderLevels />} />
             <Route path="/items" element={<ProtectedItems />} />
             <Route path="/item-groups" element={<ItemGroups />} />
             <Route path="/sales/delivery-challans" element={<DeliveryChallans />} />
@@ -193,12 +196,22 @@ function AppContent() {
 }
 
 function App() {
-  // Render mobile scanner BEFORE any providers — no auth, no loading
-  if (window.location.pathname === '/scan') {
+  // Render isolated pages BEFORE any providers — no auth, no loading
+  const path = window.location.pathname;
+  if (path === '/scan') {
     return (
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/scan" element={<MobileScanner />} />
+        </Routes>
+      </Router>
+    );
+  }
+  if (path === '/platform/login') {
+    return (
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          <Route path="/platform/login" element={<PlatformAdminLogin />} />
         </Routes>
       </Router>
     );

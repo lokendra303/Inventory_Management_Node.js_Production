@@ -449,6 +449,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         hasPermission('inventory_adjust')   && { key: '/inventory/adjustments',   label: 'Adjustments' },
         hasPermission('inventory_adjust')   && { key: '/inventory/stock-count',   label: 'Stock Count' },
         hasPermission('inventory_view')     && { key: '/inventory/batch-tracking',label: 'Batch & Serial' },
+        hasPermission('inventory_view')     && { key: '/inventory/reorder-levels', label: 'Reorder Levels' },
         hasPermission('inventory_view')     && { key: '/inventory/packages',      label: 'Packages' },
         hasPermission('inventory_ship')     && { key: '/inventory/shipments',     label: 'Shipments' },
         hasPermission('inventory_transfer') && { key: '/inventory/move-orders',   label: 'Move Orders' },
