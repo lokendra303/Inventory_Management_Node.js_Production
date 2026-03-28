@@ -207,13 +207,14 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     });
 
     const grandTotal = subtotal - totalDiscount + totalTax;
-    const rate = exchangeRate || 1;
+    // Only apply exchange rate if invoice currency differs from system currency
+    const rate = (invoiceCurrency !== currency && exchangeRate > 0) ? exchangeRate : 1;
 
     setTotals({
-      subtotal: Math.round(subtotal * rate * 100) / 100,
+      subtotal:      Math.round(subtotal      * rate * 100) / 100,
       totalDiscount: Math.round(totalDiscount * rate * 100) / 100,
-      totalTax: Math.round(totalTax * rate * 100) / 100,
-      grandTotal: Math.round(grandTotal * rate * 100) / 100
+      totalTax:      Math.round(totalTax      * rate * 100) / 100,
+      grandTotal:    Math.round(grandTotal    * rate * 100) / 100
     });
   }, [invoiceLines, exchangeRate, type]);
 
@@ -638,7 +639,14 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 <Input />
               </Form.Item>
               <Form.Item name="currency" label="Currency">
-                <Select value={invoiceCurrency} onChange={(value) => setInvoiceCurrency(value)}>
+                <Select value={invoiceCurrency} onChange={(value) => {
+                  setInvoiceCurrency(value);
+                  // Reset exchange rate to 1 when currency matches system currency
+                  if (value === currency) {
+                    setExchangeRate(1);
+                    form.setFieldsValue({ exchangeRate: 1 });
+                  }
+                }}>
                   {getCurrencies().map(curr => (
                     <Option key={curr.code} value={curr.code}>{curr.symbol} {curr.code} - {curr.name}</Option>
                   ))}
@@ -646,10 +654,17 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               </Form.Item>
             </Col>
             <Col xs={24} sm={6}>
-              <Form.Item name="exchangeRate" label="Exchange Rate">
-                <InputNumber min={0} precision={4} placeholder="1.0000" style={{ width: '100%' }}
-                  onChange={(value) => setExchangeRate(value || 1)} />
-              </Form.Item>
+              {invoiceCurrency !== currency && (
+                <Form.Item
+                  name="exchangeRate"
+                  label={`Exchange Rate (1 ${invoiceCurrency} = ? ${currency})`}
+                  initialValue={1}
+                  rules={[{ required: true, message: 'Exchange rate is required' }]}
+                >
+                  <InputNumber min={0.0001} precision={4} style={{ width: '100%' }}
+                    onChange={(value) => setExchangeRate(value || 1)} />
+                </Form.Item>
+              )}
             </Col>
           </Row>
 

@@ -35,10 +35,10 @@ class SalesInvoiceController {
         let customerName = invoiceData.customerName;
         if (!customerName && invoiceData.customerId) {
           const [customer] = await connection.execute(
-            'SELECT name, company_name FROM customers WHERE id = ? AND institution_id = ?',
+            'SELECT display_name, company_name FROM customers WHERE id = ? AND institution_id = ?',
             [invoiceData.customerId, institutionId]
           );
-          customerName = customer ? (customer.name || customer.company_name) : 'Unknown Customer';
+          customerName = customer ? (customer.display_name || customer.company_name) : 'Unknown Customer';
         }
 
         const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
@@ -464,14 +464,20 @@ class SalesInvoiceController {
         }
 
         // Add payment record
+        const paymentDate = paymentData.paymentDate 
+          ? (paymentData.paymentDate instanceof Date 
+              ? paymentData.paymentDate.toISOString().split('T')[0]
+              : String(paymentData.paymentDate).split('T')[0])
+          : new Date().toISOString().split('T')[0];
+
         await connection.execute(`
           INSERT INTO invoice_payments (
             institution_id, invoice_type, invoice_id, payment_date, amount,
             payment_method, reference, notes, created_by
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-          institutionId, 'sales', id, paymentData.paymentDate, paymentData.amount,
-          paymentData.paymentMethod, paymentData.reference, paymentData.notes, user.userId
+          institutionId, 'sales', id, paymentDate, paymentData.amount,
+          paymentData.paymentMethod || null, paymentData.reference || null, paymentData.notes || null, user.userId
         ]);
 
         // Update invoice amounts with precision handling

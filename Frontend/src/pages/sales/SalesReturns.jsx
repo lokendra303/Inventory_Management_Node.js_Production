@@ -48,7 +48,7 @@ export default function SalesReturns() {
       // Post as a sales order with status 'returned' or use a dedicated endpoint if available
       await apiService.post('/sales-orders', {
         customerId: values.customerId,
-        customerName: customers.find(c => c.id === values.customerId)?.name,
+        customerName: customers.find(c => c.id === values.customerId)?.display_name,
         orderDate: values.returnDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
         notes: `SALES RETURN - ${values.reason || ''}`,
         status: 'returned',
@@ -113,7 +113,7 @@ export default function SalesReturns() {
             <Col xs={24} sm={12}>
               <Form.Item name="customerId" label="Customer" rules={[{ required: true }]}>
                 <Select showSearch optionFilterProp="children" placeholder="Select customer">
-                  {customers.map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
+                  {customers.map(c => <Option key={c.id} value={c.id}>{c.display_name}</Option>)}
                 </Select>
               </Form.Item>
             </Col>

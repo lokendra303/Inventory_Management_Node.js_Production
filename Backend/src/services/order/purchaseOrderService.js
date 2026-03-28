@@ -320,9 +320,11 @@ class PurchaseOrderService {
 
   async getPurchaseOrder(institutionId, poId) {
     const pos = await db.query(
-      `SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name
+      `SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name,
+              CONCAT(u.first_name, ' ', u.last_name) as created_by_name
        FROM purchase_orders po
        LEFT JOIN vendors v ON po.vendor_id = v.id
+       LEFT JOIN institution_users u ON po.created_by = u.id
        WHERE po.institution_id = ? AND po.id = ?`,
       [institutionId, poId]
     );

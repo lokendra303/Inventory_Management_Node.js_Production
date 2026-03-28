@@ -824,10 +824,12 @@ const PurchaseOrders = () => {
             <div style={{ marginBottom: 16 }}>
               <strong>Vendor:</strong> {selectedPOForView.vendor_name}<br/>
               <strong>Status:</strong> {selectedPOForView.status?.toUpperCase()}<br/>
-              <strong>Order Date:</strong> {selectedPOForView.order_date}<br/>
-              <strong>Expected Date:</strong> {selectedPOForView.expected_date}<br/>
+              <strong>Order Date:</strong> {selectedPOForView.order_date ? new Date(selectedPOForView.order_date).toLocaleDateString() : '-'}<br/>
+              <strong>Expected Date:</strong> {selectedPOForView.expected_date ? new Date(selectedPOForView.expected_date).toLocaleDateString() : '-'}<br/>
               <strong>Currency:</strong> {selectedPOForView.currency}<br/>
-              <strong>Total Amount:</strong> {formatCurrency(selectedPOForView.total_amount)}
+              <strong>Total Amount:</strong> {formatCurrency(selectedPOForView.total_amount)}<br/>
+              <strong>Notes:</strong> {selectedPOForView.notes || 'N/A'}<br/>
+              <strong>Created By:</strong> {selectedPOForView.created_by_name || 'N/A'}
               {selectedPOForView.status === 'cancelled' && selectedPOForView.cancellation_reason && (
                 <div style={{ marginTop: 12, padding: 12, backgroundColor: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
                   <strong style={{ color: '#d4380d' }}>Cancellation Reason:</strong>

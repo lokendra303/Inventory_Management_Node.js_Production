@@ -93,14 +93,24 @@ export default function PaymentReceived() {
         width="min(480px, 96vw)" style={{ top: 16 }}>
         {selected && (
           <p style={{ marginBottom: 16 }}>
-            Balance Due: <strong>{currency} {formatAmount(selected.balance_amount)}</strong>
+            Balance Due: <strong style={{ color: '#ff4d4f', fontSize: 16 }}>{currency} {formatAmount(selected.balance_amount)}</strong>
           </p>
         )}
         <Form form={form} layout="vertical" onFinish={handlePayment}>
           <Form.Item name="paymentDate" label="Payment Date" rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="amount" label="Amount" rules={[{ required: true }]}>
+          <Form.Item name="amount" label="Amount" rules={[
+            { required: true, message: 'Amount is required' },
+            {
+              validator: (_, value) => {
+                if (!value || value <= 0) return Promise.reject('Amount must be greater than 0');
+                if (value > parseFloat(selected?.balance_amount || 0))
+                  return Promise.reject(`Amount cannot exceed balance due (${currency} ${formatAmount(selected?.balance_amount)})`);
+                return Promise.resolve();
+              }
+            }
+          ]}>
             <InputNumber min={0.01} step={0.01} max={selected?.balance_amount} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="paymentMethod" label="Payment Method" rules={[{ required: true }]}>
