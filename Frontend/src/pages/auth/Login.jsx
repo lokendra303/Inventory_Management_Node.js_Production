@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useNavigate } from 'react-router-dom';
+import { SettingOutlined } from '@ant-design/icons';
 
 const PARTICLES = Array.from({ length: 18 }, (_, i) => ({
   id: i,
@@ -387,6 +388,36 @@ const CSS = `
   }
   .ims-switch-link:hover { color: #764ba2; text-decoration: underline; }
 
+  .ims-admin-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid #f0f0f4;
+  }
+  .ims-admin-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+  }
+  .ims-admin-btn:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+    background: rgba(239,68,68,0.04);
+  }
+
   @media (max-width: 768px) {
     .ims-left { display: none; }
     .ims-right { padding: 36px 24px; }
@@ -545,6 +576,13 @@ export default function Login() {
                 <div className="ims-switch-text">
                   Don't have an account?{' '}
                   <button className="ims-switch-link" onClick={() => switchTab('register')}>Create one free</button>
+                </div>
+
+                <div className="ims-admin-link">
+                  <button className="ims-admin-btn" onClick={() => { window.location.href = '/platform/login'; }}>
+                    <SettingOutlined style={{ fontSize: 11 }} />
+                    Platform Admin
+                  </button>
                 </div>
               </div>
             )}
