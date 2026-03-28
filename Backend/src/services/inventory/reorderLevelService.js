@@ -94,6 +94,27 @@ class ReorderLevelService {
   }
 
   async getLowStockAlerts(institutionId, status = 'active') {
+    // If querying active alerts, derive them live from reorder_levels vs inventory_projections
+    // so the tab always shows current low stock even if checkLowStock hasn't fired yet
+    if (status === 'active') {
+      return await db.query(
+        `SELECT 
+           rl.id, rl.institution_id, rl.item_id, rl.warehouse_id,
+           COALESCE(ip.quantity_available, 0) as current_stock,
+           rl.reorder_level, rl.reorder_quantity,
+           i.sku, i.name as item_name, w.name as warehouse_name,
+           'active' as status, rl.updated_at as alert_date
+         FROM reorder_levels rl
+         JOIN items i ON rl.item_id = i.id
+         JOIN warehouses w ON rl.warehouse_id = w.id
+         LEFT JOIN inventory_projections ip ON rl.item_id = ip.item_id AND rl.warehouse_id = ip.warehouse_id
+         WHERE rl.institution_id = ? AND rl.is_active = TRUE
+           AND COALESCE(ip.quantity_available, 0) <= rl.reorder_level
+         ORDER BY COALESCE(ip.quantity_available, 0) ASC`,
+        [institutionId]
+      );
+    }
+    // For acknowledged/resolved, use the actual alerts table
     return await db.query(
       `SELECT lsa.*, i.sku, i.name as item_name, w.name as warehouse_name, rl.reorder_quantity
        FROM low_stock_alerts lsa
@@ -154,25 +175,25 @@ class ReorderLevelService {
   async generateReorderSuggestions(institutionId) {
     return await db.query(
       `SELECT rl.*, i.sku, i.name as item_name, w.name as warehouse_name,
-              ip.quantity_available as current_stock,
-              (rl.reorder_level - ip.quantity_available) as shortage,
+              COALESCE(ip.quantity_available, 0) as current_stock,
+              (rl.reorder_level - COALESCE(ip.quantity_available, 0)) as shortage,
               rl.reorder_quantity as suggested_quantity,
-              v.name as preferred_vendor, v.lead_time_days
+              v.display_name as preferred_vendor, v.lead_time_days
        FROM reorder_levels rl
        JOIN items i ON rl.item_id = i.id
        JOIN warehouses w ON rl.warehouse_id = w.id
-       JOIN inventory_projections ip ON rl.item_id = ip.item_id AND rl.warehouse_id = ip.warehouse_id
+       LEFT JOIN inventory_projections ip ON rl.item_id = ip.item_id AND rl.warehouse_id = ip.warehouse_id
        LEFT JOIN (
-         SELECT pol.item_id, po.vendor_id, v.name, v.lead_time_days,
-                ROW_NUMBER() OVER (PARTITION BY pol.item_id ORDER BY po.created_at DESC) as rn
+         SELECT pol.item_id, vn.display_name, vn.lead_time_days
          FROM purchase_order_lines pol
          JOIN purchase_orders po ON pol.po_id = po.id
-         JOIN vendors v ON po.vendor_id = v.id
+         JOIN vendors vn ON po.vendor_id = vn.id
          WHERE po.institution_id = ?
-       ) v ON rl.item_id = v.item_id AND v.rn = 1
+         GROUP BY pol.item_id, vn.id
+       ) v ON rl.item_id = v.item_id
        WHERE rl.institution_id = ? AND rl.is_active = TRUE 
-         AND ip.quantity_available <= rl.reorder_level
-       ORDER BY (rl.reorder_level - ip.quantity_available) DESC`,
+         AND COALESCE(ip.quantity_available, 0) <= rl.reorder_level
+       ORDER BY (rl.reorder_level - COALESCE(ip.quantity_available, 0)) DESC`,
       [institutionId, institutionId]
     );
   }

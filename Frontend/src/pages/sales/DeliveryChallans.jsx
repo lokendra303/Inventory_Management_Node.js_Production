@@ -52,7 +52,7 @@ export default function DeliveryChallans() {
     try {
       await apiService.post('/delivery-challans', {
         customerId: values.customerId,
-        customerName: customers.find(c => c.id === values.customerId)?.name,
+        customerName: customers.find(c => c.id === values.customerId)?.display_name,
         challanDate: values.challanDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
         deliveryAddress: values.deliveryAddress,
         notes: values.notes,
@@ -178,7 +178,7 @@ export default function DeliveryChallans() {
             <Col xs={24} sm={12}>
               <Form.Item name="customerId" label="Customer" rules={[{ required: true }]}>
                 <Select showSearch optionFilterProp="children" placeholder="Select customer">
-                  {customers.map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
+                  {customers.map(c => <Option key={c.id} value={c.id}>{c.display_name}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
