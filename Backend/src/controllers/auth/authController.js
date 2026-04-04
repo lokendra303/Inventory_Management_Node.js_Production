@@ -1,4 +1,5 @@
 const authService = require('../../services/auth/authService');
+const otpService = require('../../services/auth/otpService');
 const logger = require('../../utils/logger');
 
 class AuthController {
@@ -89,12 +90,15 @@ class AuthController {
   async login(req, res) {
     try {
       const { email, password, institutionId } = req.body;
-      const result = await authService.authenticateUser(email, password, institutionId);
-      
+      // Step 1: validate credentials only (no JWT yet)
+      const user = await authService.validateCredentials(email, password, institutionId);
+      // Step 2: send OTP to the user's email
+      await otpService.sendOtp(email, user.email);
       res.json({
         success: true,
-        message: 'Login successful',
-        data: result
+        otpRequired: true,
+        message: 'OTP sent to your registered email',
+        email: user.email
       });
     } catch (error) {
       logger.error('Login failed', { error: error.message, email: req.body.email });
@@ -102,6 +106,21 @@ class AuthController {
         success: false,
         error: error.message
       });
+    }
+  }
+
+  async verifyLoginOtp(req, res) {
+    try {
+      const { email, otp, institutionId } = req.body;
+      if (!email || !otp) return res.status(400).json({ success: false, error: 'Email and OTP are required' });
+      // Verify OTP
+      otpService.verifyOtp(email, otp);
+      // OTP valid — now issue JWT
+      const result = await authService.issueToken(email, institutionId);
+      res.json({ success: true, message: 'Login successful', data: result });
+    } catch (error) {
+      logger.error('OTP login verification failed', { error: error.message });
+      res.status(401).json({ success: false, error: error.message });
     }
   }
 
@@ -499,6 +518,30 @@ class AuthController {
         success: false,
         error: error.message
       });
+    }
+  }
+
+  async sendOtp(req, res) {
+    try {
+      const { mobile, email } = req.body;
+      if (!email) return res.status(400).json({ success: false, error: 'Email is required' });
+      await otpService.sendOtp(email, email);
+      res.json({ success: true, message: 'OTP sent to your email' });
+    } catch (error) {
+      logger.error('Send OTP failed', { error: error.message });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async verifyOtp(req, res) {
+    try {
+      const { mobile, otp, email } = req.body;
+      const identifier = email || mobile;
+      if (!identifier || !otp) return res.status(400).json({ success: false, error: 'Email and OTP are required' });
+      otpService.verifyOtp(identifier, otp);
+      res.json({ success: true, message: 'OTP verified successfully' });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
     }
   }
 

@@ -24,8 +24,8 @@ router.get('/low-stock-alerts',
   reorderLevelController.getLowStockAlerts
 );
 
-// PUT /api/reorder-levels/alerts/:id/acknowledge
-router.put('/alerts/:id/acknowledge',
+// PUT /api/reorder-levels/alerts/:alertId/acknowledge
+router.put('/alerts/:alertId/acknowledge',
   requirePermission('inventory_management'),
   auditLog('alert_acknowledged'),
   reorderLevelController.acknowledgeAlert

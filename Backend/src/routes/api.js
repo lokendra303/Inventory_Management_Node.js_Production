@@ -3,16 +3,10 @@ const { requireAuth, validateInstitutionConsistency } = require('../middleware/a
 
 const router = express.Router();
 
-// Health check
-router.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-// Public routes (no authentication required)
-router.use('/auth', require('./auth/auth'));
+// Public routes — no auth required
 router.use('/barcode', require('./barcode'));
 
-// Protected routes (authentication required)
+// Protected routes — auth required below this line
 router.use(requireAuth);
 router.use(validateInstitutionConsistency);
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Form, Input, Row, Col } from 'antd';
+import { Form, Input, Row, Col, message } from 'antd';
 import {
   MobileOutlined, LockOutlined, MailOutlined, ShopOutlined,
   ArrowRightOutlined, CheckCircleFilled, IdcardOutlined,
@@ -418,6 +418,36 @@ const CSS = `
     background: rgba(239,68,68,0.04);
   }
 
+  .ims-otp-inputs {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 20px 0;
+  }
+  .ims-otp-info {
+    text-align: center;
+    color: #6b7280;
+    font-size: 13px;
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+  .ims-otp-info strong { color: #374151; }
+  .ims-resend-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+    padding: 0; transition: color 0.2s;
+  }
+  .ims-resend-btn:not(:disabled) { color: #667eea; }
+  .ims-resend-btn:not(:disabled):hover { color: #764ba2; text-decoration: underline; }
+  .ims-resend-btn:disabled { color: #9ca3af; cursor: not-allowed; }
+  .ims-back-btn {
+    background: none; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 6px 14px; font-size: 13px; font-weight: 500;
+    color: #6b7280; cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .ims-back-btn:hover { border-color: #667eea; color: #667eea; }
+
   @media (max-width: 768px) {
     .ims-left { display: none; }
     .ims-right { padding: 36px 24px; }
@@ -430,32 +460,102 @@ export default function Login() {
   const [activeTab, setActiveTab] = useState('login');
   const [loginForm] = Form.useForm();
   const [regForm] = Form.useForm();
-  const { login, register } = useAuth();
+  const [otpForm] = Form.useForm();
+  const { login, register, sendOtp, verifyOtp, verifyLoginOtp } = useAuth();
   const navigate = useNavigate();
 
-  const onLogin = async (values) => {
+  // OTP step state
+  const [otpStep, setOtpStep] = useState(false);       // show OTP input
+  const [otpContext, setOtpContext] = useState(null);   // { type: 'login'|'register', mobile, email, formValues }
+  const [resendTimer, setResendTimer] = useState(0);
+  const timerRef = useRef(null);
+
+  const startResendTimer = () => {
+    setResendTimer(60);
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setResendTimer(t => { if (t <= 1) { clearInterval(timerRef.current); return 0; } return t - 1; });
+    }, 1000);
+  };
+
+  const triggerOtp = async (mobile, email, type, formValues) => {
     setLoading(true);
     try {
-      const result = await login(values);
-      if (result.success) navigate('/dashboard', { replace: true });
+      const res = await sendOtp(mobile, email);
+      if (res.success) {
+        setOtpContext({ type, mobile, email, formValues });
+        setOtpStep(true);
+        otpForm.resetFields();
+        startResendTimer();
+      } else {
+        message.error(res.error || 'Failed to send OTP');
+      }
     } finally { setLoading(false); }
   };
 
-  const onRegister = async (values) => {
+  // Step 1 for login: validate credentials → backend sends OTP if valid
+  const onLoginStep1 = async (values) => {
     setLoading(true);
     try {
-      const result = await register(values);
-      if (result.success) {
-        setActiveTab('login');
-        regForm.resetFields();
+      const res = await login(values);
+      if (res.success && res.otpRequired) {
+        setOtpContext({ type: 'login', mobile: res.email, email: res.email, formValues: values });
+        setOtpStep(true);
+        otpForm.resetFields();
+        startResendTimer();
       }
+    } finally { setLoading(false); }
+  };
+
+  const onRegisterStep1 = async (values) => {
+    await triggerOtp(values.adminMobile, values.adminEmail, 'register', values);
+  };
+
+  const onOtpSubmit = async ({ otp }) => {
+    setLoading(true);
+    try {
+      if (otpContext.type === 'login') {
+        // Login OTP — verify and get JWT in one call
+        const result = await verifyLoginOtp(otpContext.email, otp, otpContext.formValues.institutionId);
+        if (result.success) navigate('/dashboard', { replace: true });
+        else message.error(result.error || 'Invalid OTP');
+      } else {
+        // Registration OTP — verify then register
+        const verifyRes = await verifyOtp(otpContext.email, otp);
+        if (!verifyRes.success) { message.error(verifyRes.error || 'Invalid OTP'); return; }
+        const result = await register(otpContext.formValues);
+        if (result.success) {
+          setOtpStep(false);
+          setOtpContext(null);
+          setActiveTab('login');
+          regForm.resetFields();
+        }
+      }
+    } finally { setLoading(false); }
+  };
+
+  const onResendOtp = async () => {
+    if (resendTimer > 0) return;
+    setLoading(true);
+    try {
+      let res;
+      if (otpContext.type === 'login') {
+        res = await login(otpContext.formValues);
+      } else {
+        res = await sendOtp(otpContext.email, otpContext.email);
+      }
+      if (res.success) { message.success('OTP resent to ' + otpContext.email); startResendTimer(); }
+      else message.error(res.error || 'Failed to resend OTP');
     } finally { setLoading(false); }
   };
 
   const switchTab = (tab) => {
     setActiveTab(tab);
+    setOtpStep(false);
+    setOtpContext(null);
     loginForm.resetFields();
     regForm.resetFields();
+    otpForm.resetFields();
   };
 
   return (
@@ -520,22 +620,76 @@ export default function Login() {
             {/* Form Head */}
             <div className="ims-form-head">
               <div className="ims-form-icon-wrap">
-                {activeTab === 'login' ? <LockOutlined /> : <ShopOutlined />}
+                {otpStep ? <MobileOutlined /> : activeTab === 'login' ? <LockOutlined /> : <ShopOutlined />}
               </div>
               <div className="ims-form-title">
-                {activeTab === 'login' ? 'Sign in to your account' : 'Create your account'}
+                {otpStep
+                  ? 'Enter Verification Code'
+                  : activeTab === 'login' ? 'Sign in to your account' : 'Create your account'}
               </div>
               <div className="ims-form-sub">
-                {activeTab === 'login'
-                  ? 'Access your inventory dashboard securely'
-                  : 'Set up your company workspace in minutes'}
+                {otpStep
+                  ? <span>A 6-digit OTP was sent to <strong>{otpContext?.email}</strong></span>
+                  : activeTab === 'login'
+                    ? 'Access your inventory dashboard securely'
+                    : 'Set up your company workspace in minutes'}
               </div>
             </div>
 
+            {/* OTP STEP */}
+            {otpStep && (
+              <div className="ims-form-wrap" key="otp">
+                <div className="ims-otp-info">
+                  Check your email inbox for the 6-digit code.<br />
+                  It expires in <strong>5 minutes</strong>.
+                </div>
+                <Form form={otpForm} onFinish={onOtpSubmit} layout="vertical" size="large">
+                  <Form.Item
+                    label={<span className="ims-label">6-Digit OTP</span>}
+                    name="otp"
+                    rules={[
+                      { required: true, message: 'OTP is required' },
+                      { len: 6, message: 'OTP must be 6 digits' },
+                      { pattern: /^[0-9]{6}$/, message: 'OTP must be numeric' }
+                    ]}
+                  >
+                    <Input
+                      className="ims-input"
+                      prefix={<MobileOutlined style={{ fontSize: 15 }} />}
+                      placeholder="Enter 6-digit OTP"
+                      maxLength={6}
+                      style={{ letterSpacing: 6, fontSize: 20, textAlign: 'center' }}
+                    />
+                  </Form.Item>
+
+                  <Form.Item style={{ marginBottom: 0 }}>
+                    <button type="submit" className="ims-submit-btn" disabled={loading}>
+                      {loading
+                        ? <><div className="ims-spin" /> Verifying...</>
+                        : <>Verify OTP <ArrowRightOutlined /></>}
+                    </button>
+                  </Form.Item>
+                </Form>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                  <button className="ims-back-btn" onClick={() => { setOtpStep(false); setOtpContext(null); }}>
+                    ← Back
+                  </button>
+                  <button
+                    className="ims-resend-btn"
+                    disabled={resendTimer > 0 || loading}
+                    onClick={onResendOtp}
+                  >
+                    {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend OTP'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* LOGIN FORM */}
-            {activeTab === 'login' && (
+            {!otpStep && activeTab === 'login' && (
               <div className="ims-form-wrap" key="login">
-                <Form form={loginForm} onFinish={onLogin} layout="vertical" size="large">
+                <Form form={loginForm} onFinish={onLoginStep1} layout="vertical" size="large">
                   <Form.Item
                     label={<span className="ims-label">Email Address</span>}
                     name="email"
@@ -562,8 +716,8 @@ export default function Login() {
                       disabled={loading}
                     >
                       {loading
-                        ? <><div className="ims-spin" /> Signing in...</>
-                        : <>Sign In <ArrowRightOutlined /></>}
+                        ? <><div className="ims-spin" /> Sending OTP...</>
+                        : <>Continue <ArrowRightOutlined /></>}
                     </button>
                   </Form.Item>
                 </Form>
@@ -588,9 +742,9 @@ export default function Login() {
             )}
 
             {/* REGISTER FORM */}
-            {activeTab === 'register' && (
+            {!otpStep && activeTab === 'register' && (
               <div className="ims-form-wrap" key="register">
-                <Form form={regForm} onFinish={onRegister} layout="vertical" size="large">
+                <Form form={regForm} onFinish={onRegisterStep1} layout="vertical" size="large">
                   <Form.Item
                     label={<span className="ims-label">Company Name</span>}
                     name="name"
@@ -660,8 +814,8 @@ export default function Login() {
                       disabled={loading}
                     >
                       {loading
-                        ? <><div className="ims-spin" /> Creating account...</>
-                        : <>Create Account <ArrowRightOutlined /></>}
+                        ? <><div className="ims-spin" /> Sending OTP...</>
+                        : <>Continue <ArrowRightOutlined /></>}
                     </button>
                   </Form.Item>
                 </Form>

@@ -74,18 +74,14 @@ class Server {
       next();
     });
 
-    // Institution context extraction (skip for public routes)
+    // Institution context extraction (skip for all /auth routes)
     this.app.use('/api', (req, res, next) => {
-      if (
-        req.path === '/auth/register-institution' ||
-        req.path === '/auth/login' ||
-        req.path === '/health' ||
-        req.path.startsWith('/barcode')
-      ) {
+      if (req.path.startsWith('/auth') || req.path === '/health' || req.path.startsWith('/barcode')) {
         return next();
       }
       return extractInstitutionContext(req, res, next);
     });
+    // v2.1 - OTP auth routes are public
 
     // Create logs directory if it doesn't exist
     const logsDir = path.join(__dirname, '..', 'logs');
@@ -98,7 +94,10 @@ class Server {
     // Barcode scan session routes (public — mobile scanner needs no auth)
     this.app.use('/api/barcode', require('./routes/barcode'));
 
-    // API routes
+    // Auth routes (public — no token required)
+    this.app.use('/api/auth', require('./routes/auth/auth'));
+
+    // API routes (protected)
     this.app.use('/api', require('./routes/api'));
 
     // Serve static files in production

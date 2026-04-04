@@ -94,6 +94,72 @@ class AuthService {
     return { institutionId, userId, needsAdditionalInfo: true };
   }
 
+  async validateCredentials(email, password, institutionId = null) {
+    let query = `SELECT u.*, i.status as institution_status, i.name as institution_name 
+                 FROM institution_users u 
+                 JOIN institutions i ON u.institution_id = i.id 
+                 WHERE u.email = ?`;
+    let params = [email];
+    if (institutionId) { query += ' AND u.institution_id = ?'; params.push(institutionId); }
+
+    const users = await db.query(query, params);
+    if (users.length === 0) throw new Error('Email or password is incorrect. Please check your credentials and try again.');
+
+    const user = users[0];
+    if (user.status !== 'active') throw new Error('User account is inactive');
+    if (user.institution_status !== 'active') throw new Error('Institution account is suspended');
+
+    const isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) throw new Error('Email or password is incorrect. Please check your credentials and try again.');
+
+    return { email: user.email, institutionId: user.institution_id };
+  }
+
+  async issueToken(email, institutionId = null) {
+    let query = `SELECT u.*, i.status as institution_status, i.name as institution_name 
+                 FROM institution_users u 
+                 JOIN institutions i ON u.institution_id = i.id 
+                 WHERE u.email = ?`;
+    let params = [email];
+    if (institutionId) { query += ' AND u.institution_id = ?'; params.push(institutionId); }
+
+    const users = await db.query(query, params);
+    if (users.length === 0) throw new Error('User not found');
+    const user = users[0];
+
+    await db.query('UPDATE institution_users SET last_login = NOW() WHERE id = ?', [user.id]);
+
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        institutionId: user.institution_id,
+        email: user.email,
+        role: user.role,
+        permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
+        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || [],
+        sessionTimestamp: Date.now()
+      },
+      config.jwt.secret,
+      { expiresIn: config.jwt.expiresIn }
+    );
+
+    logger.info('Token issued after OTP', { userId: user.id, email: user.email });
+    return {
+      token,
+      user: {
+        id: user.id,
+        institutionId: user.institution_id,
+        institutionName: user.institution_name,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+        permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
+        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || []
+      }
+    };
+  }
+
   async authenticateUser(email, password, institutionId = null) {
     let query = `SELECT u.*, i.status as institution_status, i.name as institution_name 
                  FROM institution_users u 

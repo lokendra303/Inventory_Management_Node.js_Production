@@ -19,6 +19,15 @@ router.post('/login',
   authController.login
 );
 
+// POST /api/auth/verify-login-otp
+router.post('/verify-login-otp', authController.verifyLoginOtp);
+
+// POST /api/auth/send-otp (PUBLIC - for registration)
+router.post('/send-otp', authController.sendOtp);
+
+// POST /api/auth/verify-otp (PUBLIC - for registration)
+router.post('/verify-otp', authController.verifyOtp);
+
 // POST /api/auth/temp-login
 router.post('/temp-login',
   auditLog('temp_access_login'),
