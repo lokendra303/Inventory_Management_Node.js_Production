@@ -1,5 +1,5 @@
 const db = require('../../database/connection');
-const AccountingService = require('../../services/accounting.service');
+const AccountingService = require('../../services/accounting/accountingService');
 const logger = require('../../utils/logger');
 
 class InvoiceService {
