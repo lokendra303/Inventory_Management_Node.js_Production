@@ -1,20 +1,15 @@
 const express = require('express');
-const { requireAuth, validateInstitutionConsistency } = require('../middleware/auth');
+const { requireAuth, validateInstitutionConsistency } = require('../modules/auth/auth.middleware');
 
 const router = express.Router();
 
-<<<<<<< Updated upstream
 // Public barcode route
-=======
-// Public routes — no auth required
->>>>>>> Stashed changes
 router.use('/barcode', require('./barcode'));
 
 // Protected routes — auth required below this line
 router.use(requireAuth);
 router.use(validateInstitutionConsistency);
 
-<<<<<<< Updated upstream
 // Auth sub-routes
 router.use('/users', require('../modules/auth/user.routes'));
 router.use('/roles', require('../modules/auth/role.routes'));
@@ -76,46 +71,6 @@ router.use('/notifications', require('../modules/notification/notification.route
 router.use('/audit', require('../modules/audit/audit.routes'));
 
 // Error handling
-=======
-// Resource routes
-router.use('/users', require('./auth/users'));
-router.use('/roles', require('./auth/roles'));
-router.use('/items', require('./entity/items'));
-router.use('/manufacturers', require('./entity/manufacturers'));
-router.use('/brands', require('./entity/brands'));
-router.use('/units', require('./master-data/units'));
-router.use('/dropdown-options', require('./master-data/dropdown-options'));
-router.use('/categories', require('./entity/categories'));
-router.use('/warehouses', require('./warehouse/warehouses'));
-router.use('/warehouse-types', require('./warehouse/warehouse-types'));
-router.use('/inventory', require('./inventory/inventory'));
-router.use('/purchase-orders', require('./order/purchase-orders'));
-router.use('/vendors', require('./entity/vendors'));
-router.use('/customers', require('./entity/customers'));
-router.use('/sales-orders', require('./order/sales-orders'));
-router.use('/invoices', require('./invoice/invoices'));
-router.use('/purchase-invoices', require('./invoice/purchase-invoices'));
-router.use('/sales-invoices', require('./invoice/sales-invoices'));
-router.use('/grn', require('./order/grn'));
-router.use('/reorder-levels', require('./inventory/reorder-levels'));
-router.use('/batch-serial', require('./inventory/batch-serial'));
-router.use('/inventory', require('./inventory/batch-serial'));
-router.use('/stock-counts', require('./inventory/stock-counts'));
-router.use('/purchase-returns', require('./order/purchase-returns'));
-router.use('/data', require('./master-data/all-data'));
-router.use('/reports', require('./reports/reports'));
-router.use('/profit-loss', require('./reports/profit-loss'));
-router.use('/settings', require('./settings/settings'));
-router.use('/company-settings', require('./settings/company-settings'));
-router.use('/documents', require('./documents/documents'));
-router.use('/delivery-challans', require('./order/delivery-challans'));
-router.use('/transfer-approvals', require('./inventory/transfer-approvals'));
-router.use('/analytics', require('./reports/analytics'));
-router.use('/notifications', require('./notification/notifications'));
-router.use('/audit', require('./audit/audit'));
-
-// Error handling middleware
->>>>>>> Stashed changes
 router.use((error, req, res, next) => {
   const logger = require('../utils/logger');
   logger.error('API Error', {
@@ -126,24 +81,14 @@ router.use((error, req, res, next) => {
     institutionId: req.institutionId,
     userId: req.user?.userId
   });
-
   res.status(error.status || 500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
   });
 });
 
-<<<<<<< Updated upstream
 router.use('*', (req, res) => {
   res.status(404).json({ success: false, error: 'Route not found' });
-=======
-// 404 handler
-router.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Route not found'
-  });
->>>>>>> Stashed changes
 });
 
 module.exports = router;
