@@ -89,15 +89,36 @@ class AuthController {
   async login(req, res) {
     try {
       const { email, password, institutionId } = req.body;
-      const result = await authService.authenticateUser(email, password, institutionId);
-      
+      const { institutionId: resolvedInstitutionId } = await authService.initiateLogin(email, password, institutionId);
+
+      res.json({
+        success: true,
+        message: 'OTP sent to your registered email address.',
+        data: { requiresOtp: true, email, institutionId: resolvedInstitutionId }
+      });
+    } catch (error) {
+      logger.error('Login failed', { error: error.message, email: req.body.email });
+      res.status(401).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async verifyOtp(req, res) {
+    try {
+      const { email, otp, institutionId } = req.body;
+      if (!email || !otp || !institutionId) {
+        return res.status(400).json({ success: false, error: 'email, otp, and institutionId are required.' });
+      }
+      const result = await authService.verifyOtp(email, otp, institutionId);
       res.json({
         success: true,
         message: 'Login successful',
         data: result
       });
     } catch (error) {
-      logger.error('Login failed', { error: error.message, email: req.body.email });
+      logger.error('OTP verification failed', { error: error.message, email: req.body.email });
       res.status(401).json({
         success: false,
         error: error.message

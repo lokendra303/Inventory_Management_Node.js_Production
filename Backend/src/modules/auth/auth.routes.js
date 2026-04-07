@@ -19,6 +19,12 @@ router.post('/login',
   authController.login
 );
 
+// POST /api/auth/verify-otp
+router.post('/verify-otp',
+  auditLog('otp_verified'),
+  authController.verifyOtp
+);
+
 // POST /api/auth/temp-login
 router.post('/temp-login',
   auditLog('temp_access_login'),

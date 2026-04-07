@@ -95,7 +95,7 @@ class Server {
     this.app.use('/api/barcode', require('./routes/barcode'));
 
     // Auth routes (public — no token required)
-    this.app.use('/api/auth', require('./routes/auth/auth'));
+    this.app.use('/api/auth', require('./modules/auth/auth.routes'));
 
     // API routes (protected)
     this.app.use('/api', require('./routes/api'));

@@ -499,12 +499,16 @@ export default function Login() {
     try {
       const res = await login(values);
       if (res.success && res.otpRequired) {
-        setOtpContext({ type: 'login', mobile: res.email, email: res.email, formValues: values });
+        setOtpContext({ type: 'login', email: res.email, institutionId: res.institutionId, formValues: values });
         setOtpStep(true);
         otpForm.resetFields();
         startResendTimer();
+      } else {
+        message.error(res.error || 'Login failed. Please check your credentials.');
       }
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onRegisterStep1 = async (values) => {
@@ -516,7 +520,7 @@ export default function Login() {
     try {
       if (otpContext.type === 'login') {
         // Login OTP — verify and get JWT in one call
-        const result = await verifyLoginOtp(otpContext.email, otp, otpContext.formValues.institutionId);
+        const result = await verifyLoginOtp(otpContext.email, otp, otpContext.institutionId);
         if (result.success) navigate('/dashboard', { replace: true });
         else message.error(result.error || 'Invalid OTP');
       } else {

@@ -5,6 +5,11 @@ const db = require('../../database/connection');
 const config = require('../../config');
 const logger = require('../../utils/logger');
 const { ROLE_PERMISSIONS } = require('../../constants/permissions');
+const emailService = require('../../services/emailService');
+
+// In-memory OTP store: key = `${email}:${institutionId}`, value = { otp, expiresAt, userId, institutionId }
+const otpStore = new Map();
+const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 class AuthService {
   // Helper function to convert undefined to null
@@ -158,6 +163,62 @@ class AuthService {
         warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || []
       }
     };
+  }
+
+  // Step 1: validate credentials, generate & email OTP
+  async initiateLogin(email, password, institutionId = null) {
+    let query = `SELECT u.*, i.status as institution_status, i.name as institution_name 
+                 FROM institution_users u 
+                 JOIN institutions i ON u.institution_id = i.id 
+                 WHERE u.email = ?`;
+    let params = [email];
+    if (institutionId) { query += ' AND u.institution_id = ?'; params.push(institutionId); }
+
+    const users = await db.query(query, params);
+    if (users.length === 0) throw new Error('Email or password is incorrect. Please check your credentials and try again.');
+
+    const user = users[0];
+    if (user.status !== 'active') throw new Error('User account is inactive');
+    if (user.institution_status !== 'active') throw new Error('Institution account is suspended');
+
+    const isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) throw new Error('Email or password is incorrect. Please check your credentials and try again.');
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const key = `${email}:${user.institution_id}`;
+    otpStore.set(key, { otp, expiresAt: Date.now() + OTP_TTL_MS, userId: user.id, institutionId: user.institution_id });
+
+    // Send OTP email (non-fatal — log warning if email fails)
+    try {
+      await emailService.sendEmail({
+        to: email,
+        subject: 'Your Login OTP',
+        text: `Your OTP is: ${otp}. It expires in 5 minutes.`,
+        html: `<p>Your login OTP is: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`
+      });
+    } catch (emailErr) {
+      logger.warn('OTP email failed, OTP still stored', { email, error: emailErr.message });
+    }
+
+    logger.info('OTP sent', { userId: user.id, email, otp });
+    return { email, institutionId: user.institution_id };
+  }
+
+  // Step 2: verify OTP and issue JWT
+  async verifyOtp(email, otp, institutionId) {
+    const key = `${email}:${institutionId}`;
+    const record = otpStore.get(key);
+
+    if (!record) throw new Error('OTP not found or already used. Please login again.');
+    if (Date.now() > record.expiresAt) {
+      otpStore.delete(key);
+      throw new Error('OTP has expired. Please login again.');
+    }
+    if (record.otp !== otp) throw new Error('Invalid OTP.');
+
+    otpStore.delete(key); // one-time use
+    return this.issueToken(email, institutionId);
   }
 
   async authenticateUser(email, password, institutionId = null) {
