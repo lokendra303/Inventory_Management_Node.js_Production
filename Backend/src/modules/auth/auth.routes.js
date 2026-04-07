@@ -1,7 +1,7 @@
 const express = require('express');
 const authController = require('./auth.controller');
 const { validate, schemas } = require('../../utils/validation');
-const { auditLog, requireAuth } = require('./auth.middleware');
+const { auditLog, requireAuth, extractInstitutionContext } = require('./auth.middleware');
 
 const router = express.Router();
 
@@ -38,7 +38,7 @@ router.post('/refresh', authController.refreshToken);
 router.post('/heartbeat', authController.heartbeat);
 
 // GET /api/auth/profile (PROTECTED)
-router.get('/profile', requireAuth, authController.getProfile);
+router.get('/profile', extractInstitutionContext, requireAuth, authController.getProfile);
 
 // POST /api/auth/extend-session - accepts near-expired tokens (no requireAuth)
 router.post('/extend-session', authController.extendSession);
