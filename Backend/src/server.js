@@ -8,7 +8,8 @@ const fs = require('fs');
 const config = require('./config');
 const db = require('./database/connection');
 const logger = require('./utils/logger');
-const { extractInstitutionContext } = require('./modules/auth/auth.middleware');
+const routes = require('./routes');
+const { extractInstitutionContext } = require('./middleware/auth');
 
 class Server {
   constructor() {
@@ -94,7 +95,7 @@ class Server {
     this.app.use('/api/barcode', require('./routes/barcode'));
 
     // Auth routes (public — no token required)
-    this.app.use('/api/auth', require('./modules/auth/auth.routes'));
+    this.app.use('/api/auth', require('./routes/auth/auth'));
 
     // API routes (protected)
     this.app.use('/api', require('./routes/api'));
