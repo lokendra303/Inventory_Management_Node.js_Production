@@ -181,23 +181,19 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       const response = await apiService.post('/auth/login', credentials);
-      if (response.success && response.otpRequired) {
-        // Credentials valid, OTP sent — return so frontend can show OTP step
-        return { success: true, otpRequired: true, email: response.email };
-      } else {
-        Modal.error({ title: 'Login Failed', content: response.error || 'Login failed', centered: true, okText: 'Try Again' });
-        return { success: false, error: response.error };
+      if (response.success && response.data?.requiresOtp) {
+        return { success: true, otpRequired: true, email: response.data.email, institutionId: response.data.institutionId };
       }
+      return { success: false, error: response.error || response.message || 'Login failed' };
     } catch (error) {
-      const errorMessage = error.response?.data?.error || 'Login failed. Please try again.';
-      Modal.error({ title: 'Login Failed', content: errorMessage, centered: true, okText: 'Try Again' });
-      return { success: false, error: errorMessage };
+      const errMsg = error.response?.data?.error || error.message || 'Login failed. Please try again.';
+      return { success: false, error: errMsg };
     }
   };
 
   const verifyLoginOtp = async (email, otp, institutionId) => {
     try {
-      const response = await apiService.post('/auth/verify-login-otp', { email, otp, institutionId });
+      const response = await apiService.post('/auth/verify-otp', { email, otp, institutionId });
       if (response.success) {
         const { token, user: userData } = response.data;
         sessionStorage.setItem('token', token);

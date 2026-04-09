@@ -338,19 +338,19 @@ class ApiService {
   }
 
   // Batch & Serial Tracking
-  async getBatches(params = {}) { return this.get('/inventory/batches', { params }); }
-  async createBatch(data) { return this.post('/inventory/batches', data); }
-  async consumeBatch(batchId, quantity) { return this.post(`/inventory/batches/${batchId}/consume`, { quantity }); }
-  async updateBatchStatus(batchId, status) { return this.put(`/inventory/batches/${batchId}/status`, { status }); }
+  async getBatches(params = {}) { return this.get('/batch-serial/batches', { params }); }
+  async createBatch(data) { return this.post('/batch-serial/batches', data); }
+  async consumeBatch(batchId, quantity) { return this.post(`/batch-serial/batches/${batchId}/consume`, { quantity }); }
+  async updateBatchStatus(batchId, status) { return this.put(`/batch-serial/batches/${batchId}/status`, { status }); }
 
-  async getSerials(params = {}) { return this.get('/inventory/serials', { params }); }
-  async createSerials(data) { return this.post('/inventory/serials', data); }
-  async updateSerialStatus(serialId, status, soId) { return this.put(`/inventory/serials/${serialId}/status`, { status, soId }); }
+  async getSerials(params = {}) { return this.get('/batch-serial/serials', { params }); }
+  async createSerials(data) { return this.post('/batch-serial/serials', data); }
+  async updateSerialStatus(serialId, status, soId) { return this.put(`/batch-serial/serials/${serialId}/status`, { status, soId }); }
 
   // Expiry Alerts
-  async getExpiryAlerts(params = {}) { return this.get('/inventory/expiry-alerts', { params }); }
-  async acknowledgeExpiryAlert(alertId) { return this.put(`/inventory/expiry-alerts/${alertId}/acknowledge`); }
-  async refreshExpiryAlerts() { return this.post('/inventory/expiry-alerts/refresh'); }
+  async getExpiryAlerts(params = {}) { return this.get('/batch-serial/expiry-alerts', { params }); }
+  async acknowledgeExpiryAlert(alertId) { return this.put(`/batch-serial/expiry-alerts/${alertId}/acknowledge`); }
+  async refreshExpiryAlerts() { return this.post('/batch-serial/expiry-alerts/refresh'); }
 
   // Stock Count
   async getStockCounts(params = {}) { return this.get('/stock-counts', { params }); }

@@ -27,9 +27,9 @@ export default function BatchTracking() {
     setLoading(true);
     try {
       const [bRes, sRes, eRes, iRes, wRes] = await Promise.all([
-        apiService.get('/inventory/batches'),
-        apiService.get('/inventory/serials'),
-        apiService.get('/inventory/expiry-alerts'),
+        apiService.get('/batch-serial/batches'),
+        apiService.get('/batch-serial/serials'),
+        apiService.get('/batch-serial/expiry-alerts'),
         apiService.get('/items', { params: { status: 'active' } }),
         apiService.get('/warehouses', { params: { status: 'active' } })
       ]);
@@ -46,7 +46,7 @@ export default function BatchTracking() {
 
   const handleCreateBatch = async (values) => {
     try {
-      await apiService.post('/inventory/batches', {
+      await apiService.post('/batch-serial/batches', {
         ...values,
         manufactureDate: values.manufactureDate?.format('YYYY-MM-DD'),
         expiryDate: values.expiryDate?.format('YYYY-MM-DD')
@@ -63,7 +63,7 @@ export default function BatchTracking() {
   const handleCreateSerials = async (values) => {
     const serialNumbers = values.serialNumbers.split('\n').map(s => s.trim()).filter(Boolean);
     try {
-      await apiService.post('/inventory/serials', { ...values, serialNumbers });
+      await apiService.post('/batch-serial/serials', { ...values, serialNumbers });
       message.success(`${serialNumbers.length} serial(s) created`);
       setSerialModal(false);
       serialForm.resetFields();
@@ -75,7 +75,7 @@ export default function BatchTracking() {
 
   const acknowledgeAlert = async (alertId) => {
     try {
-      await apiService.put(`/inventory/expiry-alerts/${alertId}/acknowledge`);
+      await apiService.put(`/batch-serial/expiry-alerts/${alertId}/acknowledge`);
       message.success('Alert acknowledged');
       load();
     } catch { message.error('Failed to acknowledge'); }
