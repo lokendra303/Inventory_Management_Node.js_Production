@@ -501,6 +501,9 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         { key: '/invoices/payments',    label: 'Payments' },
       ],
     },
+    hasAnyPermission('invoice_view','invoice_management') && {
+      key: '/accounting', icon: <AccountBookOutlined />, label: 'Accounting',
+    },
     hasPermission('user_management') && { key: '/users', icon: <TeamOutlined />, label: 'User Management' },
     hasAnyPermission('inventory_view','sales_view','sales_management','purchase_view','purchase_management','invoice_view','invoice_management') && {
       key: 'reports', icon: <PieChartOutlined />, label: 'Reports',
