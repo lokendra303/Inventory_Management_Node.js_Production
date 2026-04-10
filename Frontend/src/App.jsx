@@ -57,6 +57,7 @@ import PurchaseReturns from './pages/purchases/PurchaseReturns.jsx';
 import ExchangeRateSettings from './pages/settings/ExchangeRateSettings.jsx';
 import MobileScanner from './pages/scanner/MobileScanner.jsx';
 import Accounting from './pages/accounting/Accounting.jsx';
+import AuditDashboard from './pages/audit/AuditDashboard.jsx';
 
 const { Content } = Layout;
 
@@ -88,6 +89,7 @@ const ProtectedStockCount = withPermission('inventory_adjust')(StockCount);
 const ProtectedBatchTracking = withPermission('inventory_view')(BatchTracking);
 const ProtectedPurchaseReturns = withPermission('purchase_view')(PurchaseReturns);
 const ProtectedAccounting = withPermission('invoice_view')(Accounting);
+const ProtectedAuditDashboard = withPermission('audit_view')(AuditDashboard);
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -187,6 +189,7 @@ function AppContent() {
             <Route path="/invoices/sales" element={<ProtectedSalesInvoices />} />
             <Route path="/invoices/outstanding" element={<ProtectedOutstandingInvoices />} />
             <Route path="/accounting" element={<ProtectedAccounting />} />
+            <Route path="/audit" element={<ProtectedAuditDashboard />} />
             <Route path="/purchase-invoices" element={<ProtectedPurchaseInvoices />} />
             <Route path="/sales-invoices" element={<ProtectedSalesInvoices />} />
             <Route path="/scan" element={<MobileScanner />} />

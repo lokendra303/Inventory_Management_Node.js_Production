@@ -7,7 +7,7 @@ import {
   FundProjectionScreenOutlined, DatabaseOutlined, TagsOutlined, BankOutlined,
   ContainerOutlined, FileDoneOutlined, AccountBookOutlined,
   ControlOutlined, TeamOutlined, FolderOpenOutlined, TransactionOutlined,
-  DownOutlined, PieChartOutlined,
+  DownOutlined, PieChartOutlined, AuditOutlined,
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -33,6 +33,7 @@ const ICON_COLORS = {
   '/users'       : '#a78bfa',
   reports        : '#38ef7d',
   '/documents'   : '#ffd200',
+  '/audit'       : '#ff6b6b',
   'settings-menu': '#a0a0b0',
 };
 
@@ -504,6 +505,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
     hasAnyPermission('invoice_view','invoice_management') && {
       key: '/accounting', icon: <AccountBookOutlined />, label: 'Accounting',
     },
+    hasPermission('audit_view') && { key: '/audit', icon: <AuditOutlined />, label: 'Audit Trail' },
     hasPermission('user_management') && { key: '/users', icon: <TeamOutlined />, label: 'User Management' },
     hasAnyPermission('inventory_view','sales_view','sales_management','purchase_view','purchase_management','invoice_view','invoice_management') && {
       key: 'reports', icon: <PieChartOutlined />, label: 'Reports',

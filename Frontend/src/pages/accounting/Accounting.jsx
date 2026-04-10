@@ -23,6 +23,7 @@ const Accounting = () => {
   const [journalEntries, setJournalEntries] = useState([]);
   const [payables, setPayables] = useState({ bills: [], vendors: [], summary: {} });
   const [receivables, setReceivables] = useState({ invoices: [], summary: {} });
+  const [payments, setPayments] = useState({ payments: [], summary: {} });
   const [chartOfAccounts, setChartOfAccounts] = useState([]);
   const [dateRange, setDateRange] = useState(null);
   const [viewingEntry, setViewingEntry] = useState(null);
@@ -108,6 +109,29 @@ const Accounting = () => {
     }
   };
 
+  const fetchPayments = async () => {
+    try {
+      setLoading(true);
+      const params = { limit: 50 };
+      if (dateRange) {
+        params.dateFrom = dateRange[0].format('YYYY-MM-DD');
+        params.dateTo = dateRange[1].format('YYYY-MM-DD');
+      }
+      const response = await apiService.get('/accounting/payments', { params });
+      if (response.success) {
+        setPayments(response.data);
+      } else {
+        console.error('Payments error:', response.error);
+        message.error('Failed to fetch payments');
+      }
+    } catch (error) {
+      console.error('Payments fetch error:', error);
+      message.error('Failed to fetch payments');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchReceivables = async () => {
     try {
       setLoading(true);
@@ -142,6 +166,7 @@ const Accounting = () => {
     fetchJournalEntries();
     fetchPayables();
     fetchReceivables();
+    fetchPayments();
     fetchChartOfAccounts();
   }, []);
 
@@ -243,6 +268,7 @@ const Accounting = () => {
     if (dateRange) {
       fetchTrialBalance();
       fetchJournalEntries();
+      fetchPayments();
     }
   }, [dateRange]);
 
@@ -423,6 +449,66 @@ const Accounting = () => {
     },
   ];
 
+  const paymentsColumns = [
+    { 
+      title: 'Payment Date', 
+      dataIndex: 'payment_date', 
+      key: 'payment_date', 
+      width: 120, 
+      render: d => d ? new Date(d).toLocaleDateString() : '-'
+    },
+    { 
+      title: 'Type', 
+      dataIndex: 'invoice_type', 
+      key: 'invoice_type', 
+      width: 100,
+      render: type => (
+        <Tag color={type === 'purchase' ? 'red' : 'green'}>
+          {type === 'purchase' ? 'BILL' : 'INVOICE'}
+        </Tag>
+      )
+    },
+    { title: 'Bill/Invoice #', dataIndex: 'invoice_number', key: 'invoice_number', width: 140 },
+    { title: 'Vendor/Customer', dataIndex: 'party_name', key: 'party_name' },
+    { 
+      title: 'Amount', 
+      dataIndex: 'amount', 
+      key: 'amount',
+      width: 120,
+      align: 'right',
+      render: v => (
+        <span style={{ fontWeight: 'bold', color: '#52c41a' }}>
+          {currency} {formatAmount(v)}
+        </span>
+      )
+    },
+    { title: 'Method', dataIndex: 'payment_method', key: 'payment_method', width: 100 },
+    { 
+      title: 'Made By', 
+      key: 'made_by', 
+      width: 150,
+      render: (_, record) => {
+        if (record.first_name || record.last_name) {
+          return (
+            <div>
+              <div style={{ fontWeight: 500 }}>
+                {record.first_name} {record.last_name}
+              </div>
+              {record.user_email && (
+                <div style={{ fontSize: 11, color: '#666' }}>
+                  {record.user_email}
+                </div>
+              )}
+            </div>
+          );
+        }
+        return <span style={{ color: '#999' }}>Unknown User</span>;
+      }
+    },
+    { title: 'Reference', dataIndex: 'reference', key: 'reference', width: 120 },
+    { title: 'Notes', dataIndex: 'notes', key: 'notes', ellipsis: true },
+  ];
+
   const chartColumns = [
     { title: 'Code', dataIndex: 'code', key: 'code', width: 120 },
     { title: 'Account Name', dataIndex: 'name', key: 'name' },
@@ -537,6 +623,9 @@ const Accounting = () => {
             </Col>
             <Col span={6}>
               <Statistic title="Receivable Invoices" value={receivables.invoices?.length || 0} />
+            </Col>
+            <Col span={6}>
+              <Statistic title="Total Payments" value={payments.payments?.length || 0} />
             </Col>
           </Row>
         </Card>
@@ -692,6 +781,57 @@ const Accounting = () => {
               columns={chartColumns}
               dataSource={chartOfAccounts}
               rowKey="code"
+              loading={loading}
+              size="small"
+              scroll={{ x: 'max-content' }}
+            />
+          </Card>
+        </TabPane>
+
+        <TabPane tab="All Payments" key="payments">
+          <Card>
+            <div style={{ marginBottom: 16, padding: '12px', backgroundColor: '#f6ffed', borderRadius: '6px', border: '1px solid #b7eb8f' }}>
+              <span style={{ color: '#52c41a', fontWeight: 500 }}>📋 All Payment Types</span>
+              <span style={{ color: '#666', marginLeft: 8 }}>This shows both payments made to vendors (bills) and payments received from customers (invoices).</span>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={6}>
+                  <Statistic 
+                    title="Purchase Payments" 
+                    value={payments.summary?.totalPurchasePayments || 0}
+                    formatter={value => `${currency} ${formatAmount(value)}`}
+                    valueStyle={{ color: '#ff4d4f' }}
+                  />
+                  <div style={{ fontSize: 11, color: '#999' }}>Money paid to vendors</div>
+                </Col>
+                <Col span={6}>
+                  <Statistic 
+                    title="Sales Receipts" 
+                    value={payments.summary?.totalSalesPayments || 0}
+                    formatter={value => `${currency} ${formatAmount(value)}`}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                  <div style={{ fontSize: 11, color: '#999' }}>Money received from customers</div>
+                </Col>
+                <Col span={6}>
+                  <Statistic 
+                    title="Purchase Transactions" 
+                    value={payments.summary?.purchasePaymentCount || 0}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic 
+                    title="Sales Transactions" 
+                    value={payments.summary?.salesPaymentCount || 0}
+                  />
+                </Col>
+              </Row>
+            </div>
+            <Table
+              columns={paymentsColumns}
+              dataSource={payments.payments || []}
+              rowKey="id"
               loading={loading}
               size="small"
               scroll={{ x: 'max-content' }}

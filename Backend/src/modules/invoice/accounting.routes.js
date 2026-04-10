@@ -40,6 +40,12 @@ router.get('/receivables',
   accountingController.getCustomerReceivables
 );
 
+// GET /api/accounting/payments
+router.get('/payments',
+  requirePermission('invoice_view'),
+  accountingController.getPayments
+);
+
 // GET /api/accounting/ledger/:accountCode
 router.get('/ledger/:accountCode',
   requirePermission('invoice_view'),

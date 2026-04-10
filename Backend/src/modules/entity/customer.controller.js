@@ -1,5 +1,6 @@
 const customerService = require('./customer.service');
 const logger = require('../../utils/logger');
+const AuditUtils = require('../../utils/auditUtils');
 
 class CustomerController {
   async createCustomer(req, res) {
@@ -8,6 +9,16 @@ class CustomerController {
         req.institutionId,
         req.body,
         req.user.userId
+      );
+      
+      // Log customer creation audit
+      await AuditUtils.logBusinessOperation(
+        req,
+        'customer',
+        customerId,
+        'create',
+        { customerData: req.body },
+        `Created new customer: ${req.body.name || req.body.company_name}`
       );
       
       res.status(201).json({
@@ -83,7 +94,24 @@ class CustomerController {
   async updateCustomer(req, res) {
     try {
       const { id: customerId } = req.params;
+      
+      // Get current customer data for audit comparison
+      const currentCustomer = await customerService.getCustomer(req.institutionId, customerId);
+      
       await customerService.updateCustomer(req.institutionId, customerId, req.body, req.user.userId);
+      
+      // Log customer update audit
+      await AuditUtils.logBusinessOperation(
+        req,
+        'customer',
+        customerId,
+        'update',
+        { 
+          previousData: currentCustomer,
+          updatedData: req.body 
+        },
+        `Updated customer: ${currentCustomer?.name || currentCustomer?.company_name || customerId}`
+      );
       
       res.json({
         success: true,

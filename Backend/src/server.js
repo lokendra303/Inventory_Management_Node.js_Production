@@ -10,6 +10,7 @@ const db = require('./database/connection');
 const logger = require('./utils/logger');
 const routes = require('./routes');
 const { extractInstitutionContext } = require('./middleware/auth');
+const auditMiddleware = require('./middleware/auditMiddleware');
 
 class Server {
   constructor() {
@@ -81,6 +82,12 @@ class Server {
       }
       return extractInstitutionContext(req, res, next);
     });
+    
+    // Comprehensive audit logging middleware (after authentication)
+    this.app.use('/api', auditMiddleware({
+      skipRoutes: ['/health', '/auth/verify', '/auth/refresh']
+    }));
+    
     // v2.1 - OTP auth routes are public
 
     // Create logs directory if it doesn't exist

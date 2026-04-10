@@ -21,12 +21,13 @@ class AuditController {
 
       let query = `
         SELECT al.*, 
-               CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) as user_name,
-               u.email as user_email
+               CONCAT(COALESCE(iu.first_name,''), ' ', COALESCE(iu.last_name,'')) as user_name,
+               iu.email as user_email,
+               iu.role as user_role
         FROM audit_logs al
-        LEFT JOIN institution_users u ON al.user_id = u.id
+        LEFT JOIN institution_users iu ON al.user_id = iu.id AND iu.institution_id = ?
         WHERE al.institution_id = ?`;
-      const params = [req.institutionId];
+      const params = [req.institutionId, req.institutionId];
 
       if (entityType) { query += ' AND al.entity_type = ?'; params.push(entityType); }
       if (action)     { query += ' AND al.action = ?';      params.push(action); }
@@ -39,7 +40,8 @@ class AuditController {
       const logs = await db.query(query, params);
       const data = logs.map(l => ({
         ...l,
-        changes: l.changes ? (typeof l.changes === 'object' ? l.changes : JSON.parse(l.changes)) : null
+        changes: l.changes ? (typeof l.changes === 'object' ? l.changes : JSON.parse(l.changes)) : null,
+        request_body: l.request_body ? (typeof l.request_body === 'object' ? l.request_body : JSON.parse(l.request_body)) : null
       }));
 
       res.json({ success: true, data });
@@ -59,6 +61,67 @@ class AuditController {
       );
       res.json({ success: true, data: summary });
     } catch (e) {
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  // Get user activity summary
+  async getUserActivity(req, res) {
+    try {
+      const { userId } = req.params;
+      const days = parseInt(req.query.days) || 30;
+      
+      const [summary, recentActions] = await Promise.all([
+        auditLogService.getUserActivitySummary(req.institutionId, userId, days),
+        auditLogService.getRecentUserActions(req.institutionId, userId, 20)
+      ]);
+      
+      res.json({ 
+        success: true, 
+        data: {
+          summary,
+          recentActions
+        }
+      });
+    } catch (e) {
+      logger.error('getUserActivity failed', { error: e.message });
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  // Get activity dashboard
+  async getActivityDashboard(req, res) {
+    try {
+      const hours = parseInt(req.query.hours) || 24;
+      const dashboard = await auditLogService.getActivityDashboard(req.institutionId, hours);
+      
+      res.json({ success: true, data: dashboard });
+    } catch (e) {
+      logger.error('getActivityDashboard failed', { error: e.message });
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  // Get current user's activity
+  async getMyActivity(req, res) {
+    try {
+      const days = parseInt(req.query.days) || 7;
+      const limit = parseInt(req.query.limit) || 50;
+      
+      const [summary, recentActions] = await Promise.all([
+        auditLogService.getUserActivitySummary(req.institutionId, req.user.userId, days),
+        auditLogService.getRecentUserActions(req.institutionId, req.user.userId, limit)
+      ]);
+      
+      res.json({ 
+        success: true, 
+        data: {
+          summary,
+          recentActions
+        }
+      });
+    } catch (e) {
+      logger.error('getMyActivity failed', { error: e.message });
       res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }

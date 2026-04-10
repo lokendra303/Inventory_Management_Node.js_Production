@@ -342,6 +342,86 @@ class AccountingController {
     }
   }
 
+  // GET /api/accounting/payments
+  async getPayments(req, res) {
+    try {
+      const { institutionId } = req;
+      const { dateFrom, dateTo, paymentType, page = 1, limit = 50 } = req.query;
+
+      let where = 'WHERE ip.institution_id = ?';
+      const params = [institutionId];
+
+      if (dateFrom) { where += ' AND ip.payment_date >= ?'; params.push(dateFrom); }
+      if (dateTo)   { where += ' AND ip.payment_date <= ?'; params.push(dateTo); }
+      if (paymentType) { where += ' AND ip.invoice_type = ?'; params.push(paymentType); }
+
+      const pageInt = Math.max(parseInt(page, 10) || 1, 1);
+      const limitInt = Math.min(parseInt(limit, 10) || 50, 500);
+      const offset = (pageInt - 1) * limitInt;
+
+      // Get payments with invoice details and user information
+      const payments = await db.query(`
+        SELECT 
+          ip.*,
+          CASE 
+            WHEN ip.invoice_type = 'purchase' THEN pi.invoice_number
+            WHEN ip.invoice_type = 'sales' THEN si.invoice_number
+            ELSE NULL
+          END as invoice_number,
+          CASE 
+            WHEN ip.invoice_type = 'purchase' THEN pi.vendor_name
+            WHEN ip.invoice_type = 'sales' THEN si.customer_name
+            ELSE NULL
+          END as party_name,
+          iu.first_name,
+          iu.last_name,
+          iu.email as user_email
+        FROM invoice_payments ip
+        LEFT JOIN purchase_invoices pi ON ip.invoice_type = 'purchase' AND ip.invoice_id = pi.id
+        LEFT JOIN sales_invoices si ON ip.invoice_type = 'sales' AND ip.invoice_id = si.id
+        LEFT JOIN institution_users iu ON ip.created_by = iu.id AND ip.institution_id = iu.institution_id
+        ${where}
+        ORDER BY ip.payment_date DESC, ip.created_at DESC
+        LIMIT ${limitInt} OFFSET ${offset}
+      `, params);
+
+      const [countRow] = await db.query(`
+        SELECT COUNT(*) as total FROM invoice_payments ip ${where}
+      `, params);
+
+      // Calculate summary
+      const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      const purchasePayments = payments.filter(p => p.invoice_type === 'purchase');
+      const salesPayments = payments.filter(p => p.invoice_type === 'sales');
+      const totalPurchasePayments = purchasePayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      const totalSalesPayments = salesPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+
+      res.json({
+        success: true,
+        data: {
+          payments,
+          summary: {
+            totalPaid: Math.round(totalPaid * 100) / 100,
+            totalPurchasePayments: Math.round(totalPurchasePayments * 100) / 100,
+            totalSalesPayments: Math.round(totalSalesPayments * 100) / 100,
+            totalPayments: payments.length,
+            purchasePaymentCount: purchasePayments.length,
+            salesPaymentCount: salesPayments.length,
+          },
+          pagination: {
+            page: pageInt,
+            limit: limitInt,
+            total: countRow?.total || 0,
+            pages: Math.ceil((countRow?.total || 0) / limitInt),
+          },
+        },
+      });
+    } catch (error) {
+      logger.error('Error fetching payments:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch payments' });
+    }
+  }
+
   // GET /api/accounting/summary
   async getAccountingSummary(req, res) {
     try {
