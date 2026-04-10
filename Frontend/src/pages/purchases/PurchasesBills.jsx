@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, Table, Button, Space, Tag, message, Modal, Form,
   Input, InputNumber, Select, DatePicker, Typography, Alert, Tooltip, Popconfirm
@@ -25,7 +25,9 @@ const PurchasesBills = () => {
   const { currency } = useCurrency();
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState(null);
   const [fromDate, setFromDate] = useState(null);
@@ -49,7 +51,7 @@ const PurchasesBills = () => {
   const fetchBills = useCallback(async () => {
     try {
       setLoading(true);
-      const params = { page: pagination.current, limit: pagination.pageSize };
+      const params = { page, limit: pageSize };
       if (statusFilter) params.status = statusFilter;
       if (fromDate) params.dateFrom = fromDate.format('YYYY-MM-DD');
       if (toDate) params.dateTo = toDate.format('YYYY-MM-DD');
@@ -57,7 +59,7 @@ const PurchasesBills = () => {
       const response = await apiService.get('/purchase-invoices', { params });
       if (response.success) {
         setBills(response.data?.invoices || []);
-        setPagination(prev => ({ ...prev, total: response.data?.pagination?.total || 0 }));
+        setTotal(response.data?.pagination?.total || 0);
       } else {
         message.error(response.error || 'Failed to fetch bills');
       }
@@ -66,7 +68,7 @@ const PurchasesBills = () => {
     } finally {
       setLoading(false);
     }
-  }, [pagination.current, pagination.pageSize, statusFilter, fromDate, toDate]);
+  }, [page, pageSize, statusFilter, fromDate, toDate]);
 
   useEffect(() => { fetchBills(); }, [fetchBills]);
 
@@ -136,6 +138,7 @@ const PurchasesBills = () => {
     paymentForm.setFieldsValue({
       paymentDate: new Date().toISOString().split('T')[0],
       paymentMethod: 'bank_transfer',
+      amount: bill.balance_amount, // Auto-populate with due balance
     });
     setPaymentModalVisible(true);
   };
@@ -143,12 +146,13 @@ const PurchasesBills = () => {
   const handleAddPayment = async (values) => {
     try {
       setPaymentLoading(true);
+      console.log('Payment values:', values); // Debug log
       const response = await apiService.post(`/purchase-invoices/${payingBill.id}/payments`, {
         paymentDate: values.paymentDate,
         amount: values.amount,
         paymentMethod: values.paymentMethod,
-        reference: values.reference,
-        notes: values.notes,
+        reference: values.reference || null,
+        notes: values.notes || null,
       });
       if (response.success) {
         message.success('Payment recorded successfully');
@@ -274,14 +278,15 @@ const PurchasesBills = () => {
     return costDiff || nameDiff;
   });
 
-  const allLinesMatched = billLines.length > 0 && Object.keys(masterItems).length > 0 &&
-    billLines.filter(l => l.item_id && masterItems[l.item_id]).length > 0 && !hasMismatches;
+  const allLinesMatched = billLines.length > 0 && !hasMismatches &&
+    billLines.every(l => !l.item_id || masterItems[l.item_id]);
 
-  const filteredBills = bills.filter(bill =>
-    !searchText ||
-    bill.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) ||
-    bill.vendor_name?.toLowerCase().includes(searchText.toLowerCase())
-  );
+  const filteredBills = useMemo(() =>
+    bills.filter(bill =>
+      !searchText ||
+      bill.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) ||
+      bill.vendor_name?.toLowerCase().includes(searchText.toLowerCase())
+    ), [bills, searchText]);
 
   const columns = [
     { title: 'Bill #', dataIndex: 'invoice_number', key: 'invoice_number' },
@@ -316,7 +321,7 @@ const PurchasesBills = () => {
       key: 'status',
       render: status => (
         <Tag color={STATUS_COLORS[status] || 'default'}>
-          {status?.replace('_', ' ').toUpperCase() || 'UNKNOWN'}
+          {status?.replace(/_/g, ' ').toUpperCase() || 'UNKNOWN'}
         </Tag>
       ),
     },
@@ -371,8 +376,8 @@ const PurchasesBills = () => {
           </Select>
         </Space>
         <Table columns={columns} dataSource={filteredBills} loading={loading} rowKey="id"
-          pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: pagination.total, showSizeChanger: true, size: 'small' }}
-          onChange={p => setPagination(prev => ({ ...prev, current: p.current, pageSize: p.pageSize }))}
+          pagination={{ current: page, pageSize: pageSize, total: total, showSizeChanger: true, size: 'small' }}
+          onChange={p => { setPage(p.current); setPageSize(p.pageSize); }}
           scroll={{ x: 'max-content' }} size="small"
         />
       </Card>
@@ -403,7 +408,7 @@ const PurchasesBills = () => {
               <div>
                 <strong>Status:</strong>{' '}
                 <Tag color={STATUS_COLORS[viewingBill.status]}>
-                  {viewingBill.status?.replace('_', ' ').toUpperCase()}
+                  {viewingBill.status?.replace(/_/g, ' ').toUpperCase()}
                 </Tag>
               </div>
               {viewingBill.reference && <div><strong>Reference:</strong> {viewingBill.reference}</div>}
@@ -481,13 +486,21 @@ const PurchasesBills = () => {
           </Form.Item>
           <Form.Item
             name="amount"
-            label="Amount"
+            label="Payment Amount"
+            help={`Full payment: ${currency} ${formatAmount(payingBill?.balance_amount || 0)} | Enter partial amount if needed`}
             rules={[
               { required: true, message: 'Amount is required' },
               { type: 'number', min: 0.01, message: 'Amount must be greater than 0' },
+              { type: 'number', max: payingBill?.balance_amount, message: 'Amount cannot exceed balance due' },
             ]}
           >
-            <InputNumber min={0.01} step={0.01} max={payingBill?.balance_amount} style={{ width: '100%' }} />
+            <InputNumber 
+              min={0.01} 
+              step={0.01} 
+              max={payingBill?.balance_amount} 
+              style={{ width: '100%' }}
+              placeholder={`Max: ${currency} ${formatAmount(payingBill?.balance_amount || 0)}`}
+            />
           </Form.Item>
           <Form.Item name="paymentMethod" label="Payment Method" rules={[{ required: true }]}>
             <Select>

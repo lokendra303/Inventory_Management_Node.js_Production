@@ -265,7 +265,7 @@ class PurchaseInvoiceController {
           i.sku,
           i.unit
         FROM purchase_invoice_lines pil
-        LEFT JOIN items i ON CAST(pil.item_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(i.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        LEFT JOIN items i ON pil.item_id = i.id
         WHERE pil.invoice_id = ?
         ORDER BY pil.created_at
       `, [id]);
@@ -400,7 +400,7 @@ class PurchaseInvoiceController {
           i.unit,
           i.hsn_code
         FROM purchase_invoice_lines pil
-        LEFT JOIN items i ON CAST(pil.item_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(i.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        LEFT JOIN items i ON pil.item_id = i.id
         WHERE pil.invoice_id = ?
         ORDER BY pil.created_at
       `, [id]);
@@ -586,11 +586,11 @@ class PurchaseInvoiceController {
 
       const result = await db.transaction(async (connection) => {
         // Get invoice details
-        const [invoice] = await connection.execute(`
+        const [invoiceRows] = await connection.execute(`
           SELECT * FROM purchase_invoices 
           WHERE id = ? AND institution_id = ? AND status = 'draft'
         `, [id, institutionId]);
-
+        const invoice = invoiceRows[0];
         if (!invoice) {
           throw new Error('Invoice not found or already posted');
         }
@@ -600,7 +600,7 @@ class PurchaseInvoiceController {
           UPDATE purchase_invoices 
           SET status = 'posted', updated_by = ?, updated_at = NOW()
           WHERE id = ?
-        `, [user.userId, id]);
+        `, [user?.userId || null, id]);
 
         // Create accounting entries
         const entries = [
@@ -638,7 +638,7 @@ class PurchaseInvoiceController {
             institutionId, 'purchase_invoice', id, invoice.invoice_number,
             invoice.invoice_date, entry.account_code, entry.account_name,
             entry.debit_amount, entry.credit_amount,
-            `Purchase Invoice: ${invoice.invoice_number}`, user.userId
+            `Purchase Invoice: ${invoice.invoice_number}`, user?.userId || null
           ]);
         }
 
@@ -671,7 +671,7 @@ class PurchaseInvoiceController {
         UPDATE purchase_invoices 
         SET status = ?, updated_by = ?, updated_at = NOW()
         WHERE id = ? AND institution_id = ?
-      `, [status, user.userId, id, institutionId]);
+      `, [status, user?.userId || null, id, institutionId]);
 
       res.json({
         success: true,
@@ -696,11 +696,11 @@ class PurchaseInvoiceController {
 
       const result = await db.transaction(async (connection) => {
         // Get current invoice
-        const [invoice] = await connection.execute(`
+        const [invoiceRows] = await connection.execute(`
           SELECT * FROM purchase_invoices 
           WHERE id = ? AND institution_id = ? AND status IN ('posted', 'partially_paid')
         `, [id, institutionId]);
-
+        const invoice = invoiceRows[0];
         if (!invoice) {
           throw new Error('Invoice not found or cannot accept payments');
         }
@@ -717,7 +717,7 @@ class PurchaseInvoiceController {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           institutionId, 'purchase', id, paymentData.paymentDate, paymentData.amount,
-          paymentData.paymentMethod, paymentData.reference, paymentData.notes, user.userId
+          paymentData.paymentMethod, paymentData.reference || null, paymentData.notes || null, user?.userId || null
         ]);
 
         // Update invoice amounts with precision handling
@@ -729,7 +729,7 @@ class PurchaseInvoiceController {
           UPDATE purchase_invoices 
           SET paid_amount = ?, balance_amount = ?, status = ?, updated_by = ?, updated_at = NOW()
           WHERE id = ?
-        `, [newPaidAmount, newBalanceAmount, newStatus, user.userId, id]);
+        `, [newPaidAmount, newBalanceAmount, newStatus, user?.userId || null, id]);
 
         return { newStatus, newBalanceAmount };
       });
@@ -778,7 +778,7 @@ class PurchaseInvoiceController {
           i.unit,
           i.hsn_code
         FROM purchase_invoice_lines pil
-        LEFT JOIN items i ON CAST(pil.item_id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(i.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        LEFT JOIN items i ON pil.item_id = i.id
         WHERE pil.invoice_id = ?
         ORDER BY pil.created_at
       `, [id]);

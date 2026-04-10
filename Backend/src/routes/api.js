@@ -28,6 +28,7 @@ router.use('/customers', require('../modules/entity/customer.routes'));
 router.use('/sales-orders', require('../modules/order/salesOrder.routes'));
 router.use('/invoices', require('../modules/invoice/invoice.routes'));
 router.use('/purchase-invoices', require('../modules/invoice/purchaseInvoice.routes'));
+router.use('/accounting', require('../modules/invoice/accounting.routes'));
 router.use('/sales-invoices', require('../modules/invoice/salesInvoice.routes'));
 router.use('/grn', require('../modules/order/grn.routes'));
 router.use('/reorder-levels', require('../modules/inventory/reorderLevel.routes'));

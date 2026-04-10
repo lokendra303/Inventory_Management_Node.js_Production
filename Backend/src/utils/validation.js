@@ -338,10 +338,13 @@ const updateInvoiceStatusSchema = Joi.object({
 // Invoice payment schemas
 const createInvoicePaymentSchema = Joi.object({
   amount: Joi.number().positive().required(),
-  paymentDate: Joi.date().required(),
-  paymentMethod: Joi.string().max(50).optional(),
-  reference: Joi.string().max(255).optional(),
-  notes: Joi.string().optional()
+  paymentDate: Joi.alternatives().try(
+    Joi.date(),
+    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+  ).required(),
+  paymentMethod: Joi.string().max(50).required(),
+  reference: Joi.string().max(255).optional().allow('', null),
+  notes: Joi.string().optional().allow('', null)
 });
 
 // Validation middleware
