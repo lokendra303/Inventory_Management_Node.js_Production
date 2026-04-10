@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm } from 'antd';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
 import apiService from '../../services/apiService';
@@ -37,6 +37,12 @@ const Items = () => {
   const [searchText, setSearchText] = useState('');
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
+  const [warehouseForm] = Form.useForm();
+  const [warehouseTypes, setWarehouseTypes] = useState([]);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [editingTypeId, setEditingTypeId] = useState(null);
+  const [editingTypeName, setEditingTypeName] = useState('');
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -163,6 +169,15 @@ const Items = () => {
       }
     } catch (error) {
       console.error('Dropdown fetch error:', error);
+    }
+  };
+
+  const fetchWarehouseTypes = async () => {
+    try {
+      const res = await apiService.get('/warehouse-types');
+      if (res.success) setWarehouseTypes(res.data);
+    } catch (e) {
+      console.error('Failed to fetch warehouse types', e);
     }
   };
 
@@ -1280,7 +1295,38 @@ const viewItem = async (item) => {
                 label="Warehouse"
                 rules={[{ required: true, message: 'Please select a warehouse!' }]}
               >
-                <Select placeholder="Select warehouse" allowClear>
+                <Select
+                  placeholder="Select warehouse"
+                  allowClear
+                  notFoundContent={
+                    <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                      <div style={{ color: '#8c8c8c', marginBottom: 8 }}>No warehouses found</div>
+                      <Button
+                        type="primary"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onClick={() => setWarehouseModalVisible(true)}
+                      >
+                        Add Warehouse
+                      </Button>
+                    </div>
+                  }
+                  dropdownRender={(menu) => (
+                    <div>
+                      {menu}
+                      <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<PlusOutlined />}
+                          onClick={() => setWarehouseModalVisible(true)}
+                        >
+                          + Add New Warehouse
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                >
                   {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
                     <Select.Option key={warehouse.id} value={warehouse.id}>
                       {warehouse.name}
@@ -1540,6 +1586,170 @@ const viewItem = async (item) => {
           </div>
         )}
       </Modal>
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: 16 }}>
+              <PlusOutlined />
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 17 }}>Add New Warehouse</span>
+          </div>
+        }
+        open={warehouseModalVisible}
+        onCancel={() => { setWarehouseModalVisible(false); warehouseForm.resetFields(); }}
+        footer={null}
+        width="min(480px, 96vw)"
+        style={{ top: 40 }}
+        styles={{ body: { background: '#fafbff' } }}
+      >
+        <Form
+          form={warehouseForm}
+          layout="vertical"
+          onFinish={async (values) => {
+            try {
+              const response = await apiService.post('/warehouses', {
+                code: values.code,
+                name: values.name,
+                type: values.type || null,
+                address: values.address || null,
+                contactPerson: values.contactPerson || null,
+                phone: values.phone || null,
+                email: values.email || null
+              });
+              if (response.success) {
+                message.success('Warehouse created successfully');
+                const newWarehouseId = response.data?.warehouseId;
+                const warehousesResponse = await apiService.get('/warehouses', { params: { status: 'all' } });
+                if (warehousesResponse.success) {
+                  setWarehouses(warehousesResponse.data);
+                  if (newWarehouseId) {
+                    form.setFieldsValue({ warehouseId: newWarehouseId });
+                  }
+                }
+                setWarehouseModalVisible(false);
+                warehouseForm.resetFields();
+              }
+            } catch (error) {
+              const errMsg = error?.response?.data?.error || error?.message || 'Failed to create warehouse';
+              message.error(errMsg);
+            }
+          }}
+        >
+          <Form.Item name="code" label="Code" rules={[{ required: true, message: 'Please input code!' }]}>
+            <Input placeholder="e.g. WH-001" />
+          </Form.Item>
+          <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Please input name!' }]}>
+            <Input placeholder="Enter warehouse name" />
+          </Form.Item>
+          <Form.Item name="type" label="Type">
+            <Select
+              placeholder="Select warehouse type"
+              allowClear
+              onDropdownVisibleChange={(open) => { if (open) fetchWarehouseTypes(); }}
+              dropdownRender={(menu) => (
+                <>
+                  <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                    {warehouseTypes.map(type => (
+                      <div key={type.id} style={{ padding: '5px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {editingTypeId === type.id ? (
+                          <>
+                            <Input
+                              size="small"
+                              value={editingTypeName}
+                              onChange={(e) => setEditingTypeName(e.target.value)}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              style={{ flex: 1, marginRight: 8 }}
+                            />
+                            <Space size="small">
+                              <Button size="small" type="primary"
+                                onClick={async () => {
+                                  if (!editingTypeName.trim()) { message.warning('Type name cannot be empty'); return; }
+                                  try {
+                                    const res = await apiService.put(`/warehouse-types/${type.id}`, { name: editingTypeName });
+                                    if (res.success) { message.success('Type updated'); setEditingTypeId(null); setEditingTypeName(''); fetchWarehouseTypes(); }
+                                  } catch { message.error('Failed to update type'); }
+                                }}
+                              >Save</Button>
+                              <Button size="small" icon={<CloseOutlined />} onClick={() => { setEditingTypeId(null); setEditingTypeName(''); }} />
+                            </Space>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ flex: 1, cursor: 'pointer' }} onClick={() => warehouseForm.setFieldsValue({ type: type.id })}>{type.name}</span>
+                            <Space size="small">
+                              <Button size="small" type="text" icon={<EditOutlined />}
+                                onClick={(e) => { e.stopPropagation(); setEditingTypeId(type.id); setEditingTypeName(type.name); }}
+                              />
+                              <Popconfirm title="Delete this type?" onConfirm={async (e) => {
+                                e?.stopPropagation();
+                                try {
+                                  const res = await apiService.delete(`/warehouse-types/${type.id}`);
+                                  if (res.success) { message.success('Type deleted'); fetchWarehouseTypes(); }
+                                } catch { message.error('Failed to delete type'); }
+                              }} onCancel={(e) => e?.stopPropagation()}>
+                                <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
+                              </Popconfirm>
+                            </Space>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <Divider style={{ margin: '8px 0' }} />
+                  <Space style={{ padding: '0 8px 4px' }}>
+                    <Input
+                      placeholder="New type name"
+                      value={newTypeName}
+                      onChange={(e) => setNewTypeName(e.target.value)}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                    <Button type="text" icon={<PlusOutlined />}
+                      onClick={async () => {
+                        if (!newTypeName.trim()) { message.warning('Please enter a type name'); return; }
+                        try {
+                          const res = await apiService.post('/warehouse-types', { name: newTypeName });
+                          if (res.success) { message.success('Type created'); setNewTypeName(''); fetchWarehouseTypes(); }
+                        } catch { message.error('Failed to create type'); }
+                      }}
+                    >Add</Button>
+                  </Space>
+                </>
+              )}
+            >
+              {warehouseTypes.map(type => (
+                <Select.Option key={type.id} value={type.id}>{type.name}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="address" label="Address">
+            <Input.TextArea placeholder="Enter address" rows={2} />
+          </Form.Item>
+          <Form.Item name="contactPerson" label="Contact Person">
+            <Input placeholder="Enter contact person" />
+          </Form.Item>
+          <Form.Item name="phone" label="Phone">
+            <Input placeholder="Enter phone number" />
+          </Form.Item>
+          <Form.Item name="email" label="Email">
+            <Input placeholder="Enter email" />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Space>
+              <Button
+                type="primary"
+                htmlType="submit"
+                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', border: 'none', borderRadius: 8, fontWeight: 600 }}
+              >
+                Create Warehouse
+              </Button>
+              <Button style={{ borderRadius: 8 }} onClick={() => { setWarehouseModalVisible(false); warehouseForm.resetFields(); }}>
+                Cancel
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
       <BarcodeScannerModal
         open={scannerOpen}
         onClose={() => setScannerOpen(false)}
