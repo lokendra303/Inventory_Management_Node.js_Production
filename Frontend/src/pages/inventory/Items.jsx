@@ -507,18 +507,34 @@ const viewItem = async (item) => {
 
   const sectionStyle = {
     background: '#fff',
-    border: '1px solid #e8e8ff',
-    borderRadius: 12,
+    border: '1px solid #ebebf5',
+    borderRadius: 14,
     padding: '20px 20px 8px',
-    marginBottom: 16,
+    marginBottom: 18,
+    boxShadow: '0 2px 10px rgba(102,126,234,0.06)',
   };
   const sectionHeader = {
     fontWeight: 700,
-    fontSize: 14,
+    fontSize: 13,
     color: '#667eea',
-    marginBottom: 16,
+    marginBottom: 18,
     display: 'flex',
     alignItems: 'center',
+    gap: 8,
+    paddingBottom: 12,
+    borderBottom: '2px solid #f0f0ff',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  };
+  const sectionIconStyle = {
+    background: 'linear-gradient(135deg, #667eea, #764ba2)',
+    borderRadius: 8,
+    padding: '5px 7px',
+    color: '#fff',
+    fontSize: 13,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   };
 
   const filteredItems = items.filter(item =>
@@ -718,7 +734,9 @@ const viewItem = async (item) => {
         style={{ top: 16 }}
         styles={{ body: { background: '#fafbff', borderRadius: '0 0 12px 12px', maxHeight: '80vh', overflowY: 'auto' } }}
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit}
+          style={{ '--ant-input-border-radius': '8px' }}
+        >
 
           {/* Draft restored banner */}
           {draftBanner && (
@@ -730,25 +748,28 @@ const viewItem = async (item) => {
 
           {/* ── Section: Basic Info ── */}
           <div style={sectionStyle}>
-            <div style={sectionHeader}><AppstoreOutlined style={{ marginRight: 8 }} />Basic Information</div>
+            <div style={sectionHeader}>
+              <span style={sectionIconStyle}><AppstoreOutlined /></span>
+              Basic Information
+            </div>
             <Row gutter={16}>
               <Col xs={24} md={16}>
                 <Row gutter={16}>
                   <Col xs={24} sm={12}>
                     <Form.Item name="sku" label="SKU" rules={[{ required: true, message: 'Please input SKU!' }]}>
-                      <Input placeholder="Enter SKU" size="middle" />
+                      <Input placeholder="e.g. ITEM-001" style={{ borderRadius: 8 }} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} sm={12}>
                     <Form.Item name="name" label="Item Name" rules={[{ required: true, message: 'Please input name!' }]}>
-                      <Input placeholder="Enter item name" size="middle" />
+                      <Input placeholder="Enter item name" style={{ borderRadius: 8 }} />
                     </Form.Item>
                   </Col>
                 </Row>
                 <Row gutter={16}>
                   <Col xs={24} sm={8}>
                     <Form.Item name="type" label="Type" initialValue="simple">
-                      <Select>
+                      <Select allowClear>
                         <Select.Option value="simple">Simple</Select.Option>
                         <Select.Option value="variant">Variant</Select.Option>
                         <Select.Option value="composite">Composite</Select.Option>
@@ -831,6 +852,7 @@ const viewItem = async (item) => {
                     <Form.Item name="unit" label="Unit" initialValue="pcs">
                     <Select 
                       placeholder="Select unit"
+                      allowClear
                       dropdownRender={(menu) => (
                         <div>
                           {menu}
@@ -909,34 +931,61 @@ const viewItem = async (item) => {
                 </Row>
                 <Row gutter={16}>
                   <Col span={24}>
-                    <Form.Item name="returnableItem" label="" valuePropName="checked" style={{ marginBottom: 0 }}>
-                      <input type="checkbox" style={{ marginRight: 6 }} /> Returnable Item
+                    <Form.Item name="returnableItem" valuePropName="checked" style={{ marginBottom: 8 }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff', fontSize: 13, color: '#595959', userSelect: 'none' }}>
+                        <input type="checkbox" style={{ accentColor: '#667eea', width: 15, height: 15 }} />
+                        <span>Returnable Item</span>
+                      </label>
                     </Form.Item>
                   </Col>
                 </Row>
               </Col>
               <Col xs={24} md={8}>
                 <Form.Item name="image" label="Item Image">
-                  <Upload name="image" listType="picture-card" showUploadList={false}
-                    beforeUpload={(file) => {
-                      if (!['image/jpeg','image/png'].includes(file.type)) { message.error('JPG/PNG only!'); return false; }
-                      if (file.size / 1024 / 1024 > 2) { message.error('Max 2MB!'); return false; }
-                      const reader = new FileReader();
-                      reader.onload = e => setImageUrl(e.target.result);
-                      reader.readAsDataURL(file);
-                      setImageFile(file);
-                      return false;
-                    }}
-                  >
-                    {imageUrl ? (
-                      <img src={imageUrl} alt="item" style={{ width: '100%', height: 150, objectFit: 'cover', borderRadius: 8 }} />
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 150, color: '#aaa' }}>
-                        <UploadOutlined style={{ fontSize: 28, marginBottom: 8 }} />
-                        <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>Click or drag to upload<br /><small>JPG/PNG, max 2MB</small></div>
-                      </div>
+                  <div style={{ position: 'relative' }}>
+                    <Upload name="image" listType="picture-card" showUploadList={false}
+                      style={{ width: '100%' }}
+                      beforeUpload={(file) => {
+                        if (!['image/jpeg','image/png'].includes(file.type)) { message.error('JPG/PNG only!'); return false; }
+                        if (file.size / 1024 / 1024 > 2) { message.error('Max 2MB!'); return false; }
+                        const reader = new FileReader();
+                        reader.onload = e => setImageUrl(e.target.result);
+                        reader.readAsDataURL(file);
+                        setImageFile(file);
+                        return false;
+                      }}
+                    >
+                      {imageUrl ? (
+                        <div style={{ position: 'relative', width: '100%', height: 260 }}>
+                          <img src={imageUrl} alt="item" style={{ width: '100%', height: 260, objectFit: 'cover', borderRadius: 10 }} />
+                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s', color: '#fff', fontSize: 13, fontWeight: 600, gap: 6 }}
+                            onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                            onMouseLeave={e => e.currentTarget.style.opacity = 0}
+                          >
+                            <UploadOutlined style={{ fontSize: 24 }} />
+                            Change Image
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: 260, background: 'linear-gradient(135deg, #f5f5ff 0%, #faf0ff 100%)', border: '2px dashed #c5b8f5', borderRadius: 10, color: '#9b8fd4', cursor: 'pointer', transition: 'all 0.2s', gap: 8 }}>
+                          <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', borderRadius: '50%', width: 52, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <UploadOutlined style={{ fontSize: 24, color: '#fff' }} />
+                          </div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: '#667eea' }}>Click or drag to upload</div>
+                          <div style={{ fontSize: 11, color: '#aaa', background: '#fff', borderRadius: 20, padding: '2px 10px', border: '1px solid #e8e8ff' }}>JPG / PNG · max 2MB</div>
+                        </div>
+                      )}
+                    </Upload>
+                    {imageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => { setImageUrl(''); setImageFile(null); }}
+                        style={{ position: 'absolute', top: 8, right: 8, background: '#ff4d4f', border: 'none', borderRadius: '50%', width: 26, height: 26, color: '#fff', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.25)', zIndex: 2 }}
+                      >
+                        ×
+                      </button>
                     )}
-                  </Upload>
+                  </div>
                 </Form.Item>
               </Col>
             </Row>
@@ -1203,7 +1252,10 @@ const viewItem = async (item) => {
 
           {/* ── Section: Sales ── */}
           <div style={sectionStyle}>
-            <div style={sectionHeader}><DollarOutlined style={{ marginRight: 8 }} />Sales Information</div>
+            <div style={sectionHeader}>
+              <span style={sectionIconStyle}><DollarOutlined /></span>
+              Sales Information
+            </div>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="sellingPrice" label="Selling Price" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
@@ -1231,7 +1283,7 @@ const viewItem = async (item) => {
             </Col>
             <Col xs={24} sm={8}>
               <Form.Item name="account" label="Account">
-                <Select placeholder="Select account">
+                <Select placeholder="Select account" allowClear>
                   <Select.Option value="sales">Sales</Select.Option>
                   <Select.Option value="income">Income</Select.Option>
                 </Select>
@@ -1263,7 +1315,10 @@ const viewItem = async (item) => {
 
           {/* ── Section: Purchase ── */}
           <div style={sectionStyle}>
-            <div style={sectionHeader}><ShopOutlined style={{ marginRight: 8 }} />Purchase Information</div>
+            <div style={sectionHeader}>
+              <span style={sectionIconStyle}><ShopOutlined /></span>
+              Purchase Information
+            </div>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="costPrice" label="Cost Price (can be set later via Purchase Order)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
@@ -1288,7 +1343,7 @@ const viewItem = async (item) => {
             </Col>
             <Col xs={24} sm={8}>
               <Form.Item name="purchaseAccount" label="Account">
-                <Select placeholder="Select account">
+                <Select placeholder="Select account" allowClear>
                   <Select.Option value="cogs">Cost of Goods Sold</Select.Option>
                   <Select.Option value="expense">Expense</Select.Option>
                 </Select>
@@ -1338,16 +1393,22 @@ const viewItem = async (item) => {
 
           {/* ── Section: Inventory ── */}
           <div style={sectionStyle}>
-            <div style={sectionHeader}><InboxOutlined style={{ marginRight: 8 }} />Inventory Tracking</div>
+            <div style={sectionHeader}>
+              <span style={sectionIconStyle}><InboxOutlined /></span>
+              Inventory Tracking
+            </div>
             <div style={{ marginBottom: 16 }}>
-              <Form.Item name="trackInventory" label="" valuePropName="checked" style={{ marginBottom: 0 }}>
-                <input type="checkbox" style={{ marginRight: 6 }} /> Track Inventory for this Item
+              <Form.Item name="trackInventory" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff', fontSize: 13, color: '#595959', userSelect: 'none' }}>
+                  <input type="checkbox" style={{ accentColor: '#667eea', width: 15, height: 15 }} />
+                  <span>Track Inventory for this Item</span>
+                </label>
               </Form.Item>
             </div>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="inventoryAccount" label="Inventory Account">
-                <Select placeholder="Select an account">
+                <Select placeholder="Select an account" allowClear>
                   <Select.Option value="inventory">Inventory Asset</Select.Option>
                   <Select.Option value="stock">Stock</Select.Option>
                 </Select>
@@ -1440,7 +1501,7 @@ const viewItem = async (item) => {
                           icon={<PlusOutlined />}
                           onClick={() => setWarehouseModalVisible(true)}
                         >
-                          + Add New Warehouse
+                          Add New Warehouse
                         </Button>
                       </div>
                     </div>
@@ -1458,7 +1519,7 @@ const viewItem = async (item) => {
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="valuationMethod" label="Inventory Valuation Method">
-                <Select placeholder="Select valuation method">
+                <Select placeholder="Select valuation method" allowClear>
                   <Select.Option value="fifo">FIFO</Select.Option>
                   <Select.Option value="lifo">LIFO</Select.Option>
                   <Select.Option value="weighted_average">Weighted Average</Select.Option>
@@ -1476,26 +1537,27 @@ const viewItem = async (item) => {
             </Row>
           </div>{/* end Inventory section */}
 
-          <Form.Item style={{ marginTop: 8, paddingTop: 16, borderTop: '1px solid #f0f0f0', position: 'sticky', bottom: 0, background: '#fafbff', zIndex: 10, marginLeft: -24, marginRight: -24, paddingLeft: 24, paddingRight: 24 }}>
+          <div style={{ position: 'sticky', bottom: 0, background: 'linear-gradient(to top, #fafbff 80%, transparent)', zIndex: 10, marginLeft: -24, marginRight: -24, padding: '16px 24px 8px', borderTop: '1px solid #ebebf5' }}>
             <Space>
               <Button
                 type="primary"
                 htmlType="submit"
                 size="large"
-                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', border: 'none', borderRadius: 10, fontWeight: 600, paddingInline: 32 }}
+                icon={editingItem ? <EditOutlined /> : <PlusOutlined />}
+                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', border: 'none', borderRadius: 10, fontWeight: 700, paddingInline: 28, boxShadow: '0 4px 14px rgba(102,126,234,0.45)' }}
               >
                 {editingItem ? 'Update Item' : 'Create Item'}
               </Button>
               {!editingItem && (
-                <Button size="large" style={{ borderRadius: 10, borderColor: '#faad14', color: '#faad14' }} onClick={handleSaveDraft}>
+                <Button size="large" style={{ borderRadius: 10, borderColor: '#faad14', color: '#faad14', fontWeight: 600 }} onClick={handleSaveDraft}>
                   Save as Draft
                 </Button>
               )}
-              <Button size="large" style={{ borderRadius: 10 }} onClick={() => { setModalVisible(false); setEditingItem(null); form.resetFields(); }}>
+              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); form.resetFields(); }}>
                 Cancel
               </Button>
             </Space>
-          </Form.Item>
+          </div>
         </Form>
       </Modal>
 
