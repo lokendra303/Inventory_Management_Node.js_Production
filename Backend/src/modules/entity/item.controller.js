@@ -228,6 +228,35 @@ class ItemController {
       });
     }
   }
+  async saveDraft(req, res) {
+    try {
+      const draftId = await itemService.saveDraft(req.institutionId, req.user.userId, req.body);
+      res.json({ success: true, data: { draftId } });
+    } catch (error) {
+      logger.error('Draft save failed', { error: error.message, userId: req.user.userId });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async getDraft(req, res) {
+    try {
+      const draft = await itemService.getDraft(req.institutionId, req.user.userId);
+      res.json({ success: true, data: draft });
+    } catch (error) {
+      logger.error('Draft fetch failed', { error: error.message, userId: req.user.userId });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async deleteDraft(req, res) {
+    try {
+      await itemService.deleteDraft(req.institutionId, req.user.userId);
+      res.json({ success: true, message: 'Draft deleted' });
+    } catch (error) {
+      logger.error('Draft delete failed', { error: error.message, userId: req.user.userId });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
 }
 
 module.exports = new ItemController();

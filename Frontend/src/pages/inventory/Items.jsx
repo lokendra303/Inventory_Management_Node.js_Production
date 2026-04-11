@@ -43,6 +43,9 @@ const Items = () => {
   const [newTypeName, setNewTypeName] = useState('');
   const [editingTypeId, setEditingTypeId] = useState(null);
   const [editingTypeName, setEditingTypeName] = useState('');
+  const [draftBanner, setDraftBanner] = useState(null); // { savedAt }
+  const [drafts, setDrafts] = useState([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -277,6 +280,9 @@ const Items = () => {
           message.success('Item created successfully');
         }
       }
+      // Clear draft on successful save
+      try { await apiService.delete('/items/draft'); } catch {}
+      setDraftBanner(null);
       setModalVisible(false);
       setEditingItem(null);
       form.resetFields();
@@ -433,18 +439,55 @@ const viewItem = async (item) => {
     setImageUrl('');
     setImageFile(null);
     form.resetFields();
+    setDraftBanner(null);
 
     await fetchDropdownOptions();
-
     setModalVisible(true);
+  };
+
+  const fetchDrafts = async () => {
+    try {
+      setDraftsLoading(true);
+      const res = await apiService.get('/items/draft');
+      setDrafts(res?.data ? [res.data] : []);
+    } catch {
+      setDrafts([]);
+    } finally {
+      setDraftsLoading(false);
+    }
+  };
+
+  const openDraft = async (draft) => {
+    setEditingItem(null);
+    setPriceCurrency(currency);
+    setImageUrl(draft.data?.image || '');
+    setImageFile(null);
+    form.resetFields();
+    await fetchDropdownOptions();
+    form.setFieldsValue(draft.data);
+    setDraftBanner({ savedAt: draft.savedAt });
+    setModalVisible(true);
+  };
+
+  const handleSaveDraft = async () => {
+    try {
+      const values = form.getFieldsValue();
+      await apiService.post('/items/draft', { ...values, image: imageUrl });
+      message.success('Draft saved! You can continue later.');
+      setModalVisible(false);
+      setEditingItem(null);
+      fetchDrafts();
+    } catch {
+      message.error('Failed to save draft');
+    }
   };
 
   useEffect(() => {
     const initializeData = async () => {
       await fetchItems();
-      // Add delay before fetching dropdown options
       await new Promise(resolve => setTimeout(resolve, 200));
       await fetchDropdownOptions();
+      await fetchDrafts();
     };
     
     initializeData();
@@ -545,9 +588,7 @@ const viewItem = async (item) => {
         bodyStyle={{ padding: 0 }}
       >
         <div style={{ padding: '18px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ fontWeight: 600, fontSize: 16, color: '#1a1a2e' }}>
-            All Items <Tag color="purple" style={{ marginLeft: 8, borderRadius: 20 }}>{filteredItems.length}</Tag>
-          </div>
+          <div style={{ fontWeight: 600, fontSize: 16, color: '#1a1a2e' }}>Items</div>
           <Space wrap>
             <Input
               placeholder="Search by name, SKU or category..."
@@ -579,14 +620,84 @@ const viewItem = async (item) => {
           </Space>
         </div>
         <div style={{ padding: '16px 24px 24px' }}>
-        <Table
-          columns={columns}
-          dataSource={filteredItems}
-          loading={loading}
-          rowKey="id"
-          scroll={{ x: 'max-content' }}
-          rowClassName={(_, i) => i % 2 === 0 ? 'table-row-light' : 'table-row-dark'}
-          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `Total ${t} items`, style: { marginTop: 16 } }}
+        <Tabs
+          defaultActiveKey="items"
+          items={[
+            {
+              key: 'items',
+              label: <span>All Items <Tag color="purple" style={{ borderRadius: 20, marginLeft: 4 }}>{filteredItems.length}</Tag></span>,
+              children: (
+                <Table
+                  columns={columns}
+                  dataSource={filteredItems}
+                  loading={loading}
+                  rowKey="id"
+                  scroll={{ x: 'max-content' }}
+                  rowClassName={(_, i) => i % 2 === 0 ? 'table-row-light' : 'table-row-dark'}
+                  pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `Total ${t} items`, style: { marginTop: 16 } }}
+                />
+              )
+            },
+            {
+              key: 'drafts',
+              label: <span>Drafts {drafts.length > 0 && <Tag color="orange" style={{ borderRadius: 20, marginLeft: 4 }}>{drafts.length}</Tag>}</span>,
+              children: (
+                <Table
+                  loading={draftsLoading}
+                  rowKey="id"
+                  dataSource={drafts}
+                  pagination={false}
+                  locale={{ emptyText: 'No drafts saved' }}
+                  columns={[
+                    {
+                      title: 'Item Name',
+                      render: (_, r) => r.data?.name || <span style={{ color: '#bbb' }}>Untitled</span>
+                    },
+                    {
+                      title: 'SKU',
+                      render: (_, r) => r.data?.sku || '-'
+                    },
+                    {
+                      title: 'Type',
+                      render: (_, r) => r.data?.type ? <Tag color="blue" style={{ borderRadius: 20, textTransform: 'capitalize' }}>{r.data.type}</Tag> : '-'
+                    },
+                    {
+                      title: 'Last Saved',
+                      render: (_, r) => <span style={{ color: '#8c8c8c', fontSize: 13 }}>{new Date(r.savedAt).toLocaleString()}</span>
+                    },
+                    {
+                      title: 'Actions',
+                      render: (_, r) => (
+                        <Space>
+                          <Button
+                            size="small"
+                            style={{ borderRadius: 6, background: '#667eea', border: 'none', color: '#fff', fontWeight: 600 }}
+                            onClick={() => openDraft(r)}
+                          >
+                            Continue
+                          </Button>
+                          <Button
+                            size="small"
+                            danger
+                            style={{ borderRadius: 6 }}
+                            onClick={async () => {
+                              try {
+                                await apiService.delete('/items/draft');
+                                message.success('Draft deleted');
+                                fetchDrafts();
+                              } catch { message.error('Failed to delete draft'); }
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </Space>
+                      )
+                    }
+                  ]}
+                />
+              )
+            }
+          ]}
         />
         </div>
       </Card>
@@ -605,9 +716,17 @@ const viewItem = async (item) => {
         footer={null}
         width="min(900px, 96vw)"
         style={{ top: 16 }}
-        styles={{ body: { background: '#fafbff', borderRadius: '0 0 12px 12px' } }}
+        styles={{ body: { background: '#fafbff', borderRadius: '0 0 12px 12px', maxHeight: '80vh', overflowY: 'auto' } }}
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
+
+          {/* Draft restored banner */}
+          {draftBanner && (
+            <div style={{ background: '#e6f4ff', border: '1px solid #91caff', borderRadius: 8, padding: '8px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, color: '#1677ff' }}>📝 Draft restored from {new Date(draftBanner.savedAt).toLocaleString()}</span>
+              <Button size="small" danger onClick={async () => { try { await apiService.delete('/items/draft'); } catch {} setDraftBanner(null); form.resetFields(); setImageUrl(''); }}>Discard</Button>
+            </div>
+          )}
 
           {/* ── Section: Basic Info ── */}
           <div style={sectionStyle}>
@@ -1357,7 +1476,7 @@ const viewItem = async (item) => {
             </Row>
           </div>{/* end Inventory section */}
 
-          <Form.Item style={{ marginTop: 8, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
+          <Form.Item style={{ marginTop: 8, paddingTop: 16, borderTop: '1px solid #f0f0f0', position: 'sticky', bottom: 0, background: '#fafbff', zIndex: 10, marginLeft: -24, marginRight: -24, paddingLeft: 24, paddingRight: 24 }}>
             <Space>
               <Button
                 type="primary"
@@ -1367,6 +1486,11 @@ const viewItem = async (item) => {
               >
                 {editingItem ? 'Update Item' : 'Create Item'}
               </Button>
+              {!editingItem && (
+                <Button size="large" style={{ borderRadius: 10, borderColor: '#faad14', color: '#faad14' }} onClick={handleSaveDraft}>
+                  Save as Draft
+                </Button>
+              )}
               <Button size="large" style={{ borderRadius: 10 }} onClick={() => { setModalVisible(false); setEditingItem(null); form.resetFields(); }}>
                 Cancel
               </Button>

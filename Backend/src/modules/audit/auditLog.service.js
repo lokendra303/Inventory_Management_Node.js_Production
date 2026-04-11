@@ -3,13 +3,20 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('../../utils/logger');
 
 class AuditLogService {
+  constructor() {
+    this._schemaEnsured = false;
+  }
+
   // Enhanced audit logging for comprehensive user action tracking
   async logUserAction(auditData) {
     try {
       const auditId = uuidv4();
       
-      // Ensure audit_logs table has all required columns
-      await this.ensureAuditTableSchema();
+      // Ensure audit_logs table has all required columns (only once)
+      if (!this._schemaEnsured) {
+        await this.ensureAuditTableSchema();
+        this._schemaEnsured = true;
+      }
       
       await db.query(
         `INSERT INTO audit_logs 
@@ -91,24 +98,28 @@ class AuditLogService {
       `);
 
       // Create indexes for better performance
-      const indexQueries = [
-        'CREATE INDEX IF NOT EXISTS idx_audit_logs_institution_id ON audit_logs(institution_id)',
-        'CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id)',
-        'CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id)',
-        'CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)',
-        'CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_audit_logs_institution_created ON audit_logs(institution_id, created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created ON audit_logs(user_id, created_at)'
+      const indexes = [
+        { name: 'idx_audit_logs_institution_id', sql: 'CREATE INDEX idx_audit_logs_institution_id ON audit_logs(institution_id)' },
+        { name: 'idx_audit_logs_user_id', sql: 'CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id)' },
+        { name: 'idx_audit_logs_entity', sql: 'CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id)' },
+        { name: 'idx_audit_logs_action', sql: 'CREATE INDEX idx_audit_logs_action ON audit_logs(action)' },
+        { name: 'idx_audit_logs_created_at', sql: 'CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at)' },
+        { name: 'idx_audit_logs_institution_created', sql: 'CREATE INDEX idx_audit_logs_institution_created ON audit_logs(institution_id, created_at)' },
+        { name: 'idx_audit_logs_user_created', sql: 'CREATE INDEX idx_audit_logs_user_created ON audit_logs(user_id, created_at)' }
       ];
 
-      for (const query of indexQueries) {
+      for (const index of indexes) {
         try {
-          await db.query(query);
-        } catch (error) {
-          // Ignore errors for existing indexes
-          if (!error.message.includes('Duplicate key name')) {
-            logger.debug('Audit index creation', { query, error: error.message });
+          const existing = await db.query(
+            `SELECT COUNT(*) as cnt FROM information_schema.statistics 
+             WHERE table_schema = DATABASE() AND table_name = 'audit_logs' AND index_name = ?`,
+            [index.name]
+          );
+          if (existing[0].cnt === 0) {
+            await db.query(index.sql);
           }
+        } catch (error) {
+          logger.debug('Audit index creation skipped', { index: index.name, error: error.message });
         }
       }
       

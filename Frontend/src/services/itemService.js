@@ -39,6 +39,18 @@ class ItemService {
     return await apiService.get(`/items/${itemId}`);
   }
 
+  async saveDraft(draftData) {
+    return await apiService.post('/items/draft', draftData);
+  }
+
+  async getDraft() {
+    return await apiService.get('/items/draft');
+  }
+
+  async deleteDraft() {
+    return await apiService.delete('/items/draft');
+  }
+
   // Update field options
   async updateFieldOptions(itemType, fieldName, options) {
     return await apiService.put(`/items/field-config/${itemType}/${fieldName}/options`, { options });

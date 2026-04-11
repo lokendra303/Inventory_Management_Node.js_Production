@@ -56,14 +56,14 @@ class ItemService {
 
     await db.query(
       `INSERT INTO items 
-       (id, institution_id, sku, name, description, image, type, category, unit, barcode, hsn_code, 
+       (id, institution_id, created_by, sku, name, description, image, type, category, unit, barcode, hsn_code, 
         custom_fields, valuation_method, allow_negative_stock, cost_price, selling_price, mrp, 
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [itemId, institutionId, sku, name, description || null, image || null, type, category || null, unit, barcode || null, hsnCode || null,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+      [itemId, institutionId, userId, sku, name, description || null, image || null, type, category || null, unit, barcode || null, hsnCode || null,
        JSON.stringify(customFields), valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
@@ -426,7 +426,7 @@ class ItemService {
     const params = [institutionId];
 
     if (filters.status === 'all') {
-      // no status filter — return everything
+      query += " AND i.status != 'draft'";
     } else {
       query += ' AND i.status = ?';
       params.push(filters.status || 'active');
@@ -576,6 +576,60 @@ class ItemService {
 
     logger.info('Item deleted', { itemId, institutionId, userId });
     return true;
+  }
+
+  async saveDraft(institutionId, userId, draftData) {
+    const serialized = typeof draftData === 'string' ? draftData : JSON.stringify(draftData);
+    const existing = await db.query(
+      'SELECT id FROM items WHERE institution_id = ? AND created_by = ? AND status = \'draft\' LIMIT 1',
+      [institutionId, userId]
+    );
+
+    if (existing.length > 0) {
+      await db.query(
+        'UPDATE items SET draft_data = ?, updated_at = NOW() WHERE id = ?',
+        [serialized, existing[0].id]
+      );
+      return existing[0].id;
+    }
+
+    const draftId = uuidv4();
+    await db.query(
+      `INSERT INTO items (id, institution_id, created_by, draft_data, status, name, sku, type, unit, custom_fields)
+       VALUES (?, ?, ?, ?, 'draft', '', '', 'simple', 'pcs', '{}')`,
+      [draftId, institutionId, userId, serialized]
+    );
+    return draftId;
+  }
+
+  async getDraft(institutionId, userId) {
+    const rows = await db.query(
+      'SELECT id, draft_data, updated_at FROM items WHERE institution_id = ? AND created_by = ? AND status = \'draft\' LIMIT 1',
+      [institutionId, userId]
+    );
+    if (rows.length === 0) return null;
+
+    let parsed = rows[0].draft_data;
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
+    }
+    // handle double-serialized case
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
+    }
+
+    return {
+      id: rows[0].id,
+      data: parsed,
+      savedAt: rows[0].updated_at
+    };
+  }
+
+  async deleteDraft(institutionId, userId) {
+    await db.query(
+      'DELETE FROM items WHERE institution_id = ? AND created_by = ? AND status = \'draft\'',
+      [institutionId, userId]
+    );
   }
 
   async getItemCategories(institutionId) {
