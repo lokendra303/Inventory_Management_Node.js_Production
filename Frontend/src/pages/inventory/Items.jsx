@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown } from 'antd';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
 import apiService from '../../services/apiService';
@@ -43,7 +43,8 @@ const Items = () => {
   const [newTypeName, setNewTypeName] = useState('');
   const [editingTypeId, setEditingTypeId] = useState(null);
   const [editingTypeName, setEditingTypeName] = useState('');
-  const [draftBanner, setDraftBanner] = useState(null); // { savedAt }
+  const [draftBanner, setDraftBanner] = useState(null);
+  const [duplicateBanner, setDuplicateBanner] = useState(null); // { sourceName }
   const [drafts, setDrafts] = useState([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
 
@@ -99,40 +100,57 @@ const Items = () => {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
-      width: 200,
+      width: canManageItems ? 110 : 60,
       render: (_, record) => (
-        <Space size={6}>
-          <Button
-            icon={<EyeOutlined />}
-            size="small"
-            onClick={() => viewItem(record)}
-            style={{ borderRadius: 6, background: '#f0f0ff', borderColor: '#667eea', color: '#667eea', fontWeight: 600 }}
-          >
-            View
-          </Button>
-          {canManageItems && (
+        <Space size={4}>
+          <Tooltip title="View">
             <Button
-              icon={<EditOutlined />}
+              icon={<EyeOutlined />}
               size="small"
-              onClick={() => editItem(record)}
-              style={{ borderRadius: 6, background: '#667eea', border: 'none', color: '#fff', fontWeight: 600 }}
-            >
-              Edit
-            </Button>
+              onClick={() => viewItem(record)}
+              style={{ borderRadius: 6, background: '#f0f0ff', borderColor: '#667eea', color: '#667eea' }}
+            />
+          </Tooltip>
+          {canManageItems && (
+            <Tooltip title="Edit">
+              <Button
+                icon={<EditOutlined />}
+                size="small"
+                onClick={() => editItem(record)}
+                style={{ borderRadius: 6, background: '#667eea', border: 'none', color: '#fff' }}
+              />
+            </Tooltip>
           )}
           {canManageItems && (
-            <Button
-              size="small"
-              onClick={() => toggleItemStatus(record)}
-              style={{
-                borderRadius: 6, fontWeight: 600,
-                ...(record.status === 'active'
-                  ? { background: '#fff1f0', borderColor: '#ff4d4f', color: '#ff4d4f' }
-                  : { background: '#52c41a', border: 'none', color: '#fff' })
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'duplicate',
+                    icon: <CopyOutlined style={{ color: '#fa8c16' }} />,
+                    label: 'Duplicate',
+                    onClick: () => duplicateItem(record),
+                  },
+                  {
+                    key: 'toggle',
+                    icon: record.status === 'active'
+                      ? <StopOutlined style={{ color: '#ff4d4f' }} />
+                      : <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+                    label: record.status === 'active' ? 'Deactivate' : 'Activate',
+                    onClick: () => toggleItemStatus(record),
+                  },
+                ],
               }}
             >
-              {record.status === 'active' ? 'Deactivate' : 'Activate'}
-            </Button>
+              <Tooltip title="More actions">
+                <Button
+                  icon={<MoreOutlined />}
+                  size="small"
+                  style={{ borderRadius: 6, border: '1px solid #d9d9d9', color: '#595959' }}
+                />
+              </Tooltip>
+            </Dropdown>
           )}
         </Space>
       )
@@ -433,6 +451,56 @@ const viewItem = async (item) => {
     }
   };
 
+  const duplicateItem = async (item) => {
+    setEditingItem(null);
+    setPriceCurrency(currency);
+    setImageUrl(item.image || '');
+    setImageFile(null);
+    setDraftBanner(null);
+    setDuplicateBanner({ sourceName: item.name });
+    form.resetFields();
+    await fetchDropdownOptions();
+
+    let fullItem = item;
+    try {
+      const res = await apiService.get(`/items/${item.id}`);
+      if (res.success) fullItem = res.data;
+    } catch {}
+
+    form.setFieldsValue({
+      // SKU and name intentionally left blank — user must fill these
+      sku: '',
+      name: '',
+      description: fullItem.description,
+      type: fullItem.type,
+      category: fullItem.category,
+      unit: fullItem.unit,
+      costPrice: convertPrice(fullItem.cost_price, 'USD', currency),
+      sellingPrice: convertPrice(fullItem.selling_price, 'USD', currency),
+      mrp: convertPrice(fullItem.mrp, 'USD', currency),
+      taxRate: fullItem.tax_rate,
+      brand: fullItem.brand,
+      manufacturer: fullItem.manufacturer,
+      minStockLevel: fullItem.min_stock_level,
+      maxStockLevel: fullItem.max_stock_level,
+      barcode: '',
+      hsnCode: fullItem.hsn_code,
+      openingStock: null,
+      openingValue: null,
+      valuationMethod: fullItem.valuation_method,
+      weight: fullItem.weight,
+      length: fullItem.dimensions?.length,
+      width: fullItem.dimensions?.width,
+      height: fullItem.dimensions?.height,
+      upc: '',
+      ean: '',
+      isbn: '',
+      mpn: fullItem.mpn,
+    });
+    setModalVisible(true);
+    setTimeout(() => message.info('Duplicated from "' + item.name + '" — update SKU, Name & Opening Stock'), 300);
+  };
+
   const openCreateModal = async () => {
     setEditingItem(null);
     setPriceCurrency(currency);
@@ -440,6 +508,7 @@ const viewItem = async (item) => {
     setImageFile(null);
     form.resetFields();
     setDraftBanner(null);
+    setDuplicateBanner(null);
 
     await fetchDropdownOptions();
     setModalVisible(true);
@@ -728,7 +797,7 @@ const viewItem = async (item) => {
           </div>
         }
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); form.resetFields(); }}
+        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); form.resetFields(); }}
         footer={null}
         width="min(900px, 96vw)"
         style={{ top: 16 }}
@@ -737,6 +806,18 @@ const viewItem = async (item) => {
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           style={{ '--ant-input-border-radius': '8px' }}
         >
+
+          {/* Duplicate banner */}
+          {duplicateBanner && (
+            <div style={{ background: 'linear-gradient(135deg, #fff7e6, #fffbe6)', border: '1px solid #ffd591', borderRadius: 10, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <CopyOutlined style={{ color: '#fa8c16', fontSize: 18 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: '#d46b08', fontSize: 13 }}>Duplicated from "{duplicateBanner.sourceName}"</div>
+                <div style={{ fontSize: 12, color: '#ad6800', marginTop: 2 }}>All details copied — just update <strong>SKU</strong>, <strong>Item Name</strong> and <strong>Opening Stock</strong> before saving.</div>
+              </div>
+              <Button size="small" style={{ borderRadius: 6, borderColor: '#ffa940', color: '#fa8c16' }} onClick={() => setDuplicateBanner(null)}>Dismiss</Button>
+            </div>
+          )}
 
           {/* Draft restored banner */}
           {draftBanner && (
@@ -1553,7 +1634,7 @@ const viewItem = async (item) => {
                   Save as Draft
                 </Button>
               )}
-              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); form.resetFields(); }}>
+              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); setDuplicateBanner(null); form.resetFields(); }}>
                 Cancel
               </Button>
             </Space>
