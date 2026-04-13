@@ -47,6 +47,8 @@ const Items = () => {
   const [duplicateBanner, setDuplicateBanner] = useState(null); // { sourceName }
   const [drafts, setDrafts] = useState([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  const [editingWarehouseId, setEditingWarehouseId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -363,40 +365,44 @@ const viewItem = async (item) => {
       console.error('Failed to fetch full item details:', error);
     }
 
-    // Pick warehouse with highest stock; fall back to first warehouse_id from item
-    let warehouseId = null;
-    try {
-      const invResponse = await apiService.get('/inventory');
-      if (invResponse.success && invResponse.data.length > 0) {
-        const itemStocks = invResponse.data.filter(inv => inv.item_id === item.id);
-        if (itemStocks.length > 0) {
-          const best = itemStocks.reduce((a, b) =>
-            (Number(b.quantity_available) || 0) > (Number(a.quantity_available) || 0) ? b : a
-          );
-          warehouseId = best.warehouse_id;
+    // Get warehouse from item's warehouse_ids (returned by getItem via GROUP_CONCAT)
+    // Fall back to fetching all inventory and filtering by item
+    let finalWarehouseId = null;
+    if (fullItem.warehouse_ids?.length > 0) {
+      finalWarehouseId = fullItem.warehouse_ids[0] || null;
+    } else {
+      try {
+        const invResponse = await apiService.get('/inventory');
+        if (invResponse.success && invResponse.data?.length > 0) {
+          const itemStocks = invResponse.data.filter(inv => inv.item_id === fullItem.id);
+          if (itemStocks.length > 0) {
+            const best = itemStocks.reduce((a, b) =>
+              (Number(b.quantity_available) || 0) > (Number(a.quantity_available) || 0) ? b : a
+            );
+            finalWarehouseId = best.warehouse_id || null;
+          }
         }
-      }
-    } catch (error) {
-      console.error('Failed to fetch inventory for warehouse prefill:', error);
-    }
-    // Fall back to first warehouse_id stored on item if no inventory found
-    if (!warehouseId && fullItem.warehouse_ids && fullItem.warehouse_ids.length > 0) {
-      warehouseId = fullItem.warehouse_ids[0];
+      } catch { /* no warehouse found */ }
     }
     
+    // brand/manufacturer/unit come back as names from the API JOIN — map back to IDs for the selects
+    const brandId = brandOptions.find(b => b.name === fullItem.brand)?.id ?? fullItem.brand;
+    const manufacturerId = manufacturerOptions.find(m => m.name === fullItem.manufacturer)?.id ?? fullItem.manufacturer;
+    const unitId = unitOptions.find(u => u.name === fullItem.unit)?.id ?? fullItem.unit;
+
     form.setFieldsValue({
       sku: fullItem.sku,
       name: fullItem.name,
       description: fullItem.description,
       type: fullItem.type,
       category: fullItem.category,
-      unit: fullItem.unit,
+      unit: unitId,
       costPrice: convertPrice(fullItem.cost_price, 'USD', currency),
       sellingPrice: convertPrice(fullItem.selling_price, 'USD', currency),
       mrp: convertPrice(fullItem.mrp, 'USD', currency),
       taxRate: fullItem.tax_rate,
-      brand: fullItem.brand,
-      manufacturer: fullItem.manufacturer,
+      brand: brandId,
+      manufacturer: manufacturerId,
       minStockLevel: fullItem.min_stock_level,
       maxStockLevel: fullItem.max_stock_level,
       barcode: fullItem.barcode,
@@ -404,7 +410,7 @@ const viewItem = async (item) => {
       openingStock: fullItem.opening_stock,
       openingValue: fullItem.opening_value,
       valuationMethod: fullItem.valuation_method,
-      warehouseId: warehouseId,
+      warehouseId: finalWarehouseId,
       weight: fullItem.weight,
       length: fullItem.dimensions?.length,
       width: fullItem.dimensions?.width,
@@ -606,12 +612,15 @@ const viewItem = async (item) => {
     justifyContent: 'center',
   };
 
-  const filteredItems = items.filter(item =>
-    !searchText ||
-    item.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.sku?.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.category?.toLowerCase().includes(searchText.toLowerCase())
-  );
+  const filteredItems = items.filter(item => {
+    if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+    if (!searchText) return true;
+    return (
+      item.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.sku?.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.category?.toLowerCase().includes(searchText.toLowerCase())
+    );
+  });
   const activeCount = items.filter(i => i.status === 'active').length;
   const lowStockCount = items.filter(i => (i.current_stock || 0) <= (i.min_stock_level || 0)).length;
 
@@ -673,7 +682,29 @@ const viewItem = async (item) => {
         bodyStyle={{ padding: 0 }}
       >
         <div style={{ padding: '18px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ fontWeight: 600, fontSize: 16, color: '#1a1a2e' }}>Items</div>
+          <Space size={6}>
+            {[
+              { key: 'all', label: 'All', count: items.length, color: '#667eea', bg: '#f0f0ff', border: '#667eea' },
+              { key: 'active', label: 'Active', count: items.filter(i => i.status === 'active').length, color: '#52c41a', bg: '#f6ffed', border: '#52c41a' },
+              { key: 'inactive', label: 'Inactive', count: items.filter(i => i.status === 'inactive').length, color: '#ff4d4f', bg: '#fff1f0', border: '#ff4d4f' },
+            ].map(f => (
+              <span
+                key={f.key}
+                onClick={() => setStatusFilter(f.key)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '4px 12px', borderRadius: 20, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                  border: `1.5px solid ${statusFilter === f.key ? f.border : '#e0e0e0'}`,
+                  background: statusFilter === f.key ? f.bg : '#fff',
+                  color: statusFilter === f.key ? f.color : '#8c8c8c',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {f.label}
+                <span style={{ background: statusFilter === f.key ? f.color : '#d9d9d9', color: '#fff', borderRadius: 10, padding: '0 6px', fontSize: 11 }}>{f.count}</span>
+              </span>
+            ))}
+          </Space>
           <Space wrap>
             <Input
               placeholder="Search by name, SKU or category..."
@@ -1588,9 +1619,9 @@ const viewItem = async (item) => {
                     </div>
                   )}
                 >
-                  {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
+                  {warehouses.filter(w => w.status === 'active' || (editingItem && w.id === form.getFieldValue('warehouseId'))).map(warehouse => (
                     <Select.Option key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
+                      {warehouse.name}{warehouse.status !== 'active' ? ' (inactive)' : ''}
                     </Select.Option>
                   ))}
                 </Select>
