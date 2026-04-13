@@ -52,7 +52,8 @@ export default function PaymentReceived() {
     }
   };
 
-  const STATUS_COLORS = { posted: 'blue', partially_paid: 'purple', paid: 'green' };
+  const STATUS_COLORS = { posted: 'blue', partially_paid: 'orange', paid: 'green' };
+  const STATUS_LABELS = { posted: 'UNPAID', partially_paid: 'PARTIAL', paid: 'RECEIVED' };
 
   const columns = [
     { title: 'Invoice #', dataIndex: 'invoice_number', key: 'invoice_number', width: 150 },
@@ -66,9 +67,9 @@ export default function PaymentReceived() {
     { title: 'Paid', dataIndex: 'paid_amount', key: 'paid_amount', width: 120,
       render: v => `${currency} ${formatAmount(v)}` },
     { title: 'Balance', dataIndex: 'balance_amount', key: 'balance_amount', width: 120,
-      render: v => <span style={{ color: parseFloat(v) > 0 ? '#ff4d4f' : '#52c41a' }}>{currency} {formatAmount(v)}</span> },
+      render: v => <span style={{ color: parseFloat(v || 0) > 0 ? '#ff4d4f' : '#52c41a' }}>{currency} {formatAmount(v || 0)}</span> },
     { title: 'Status', dataIndex: 'status', key: 'status', width: 120,
-      render: v => <Tag color={STATUS_COLORS[v] || 'default'}>{v?.replace('_', ' ').toUpperCase()}</Tag> },
+      render: v => <Tag color={STATUS_COLORS[v] || 'default'}>{STATUS_LABELS[v] || v?.replace('_', ' ').toUpperCase()}</Tag> },
     {
       title: 'Actions', key: 'actions', width: 100,
       render: (_, r) => (
@@ -81,12 +82,34 @@ export default function PaymentReceived() {
     }
   ];
 
+  const [searchText, setSearchText] = useState('');
+  const filtered = invoices.filter(i =>
+    !searchText ||
+    i.invoice_number?.toLowerCase().includes(searchText.toLowerCase()) ||
+    i.customer_name?.toLowerCase().includes(searchText.toLowerCase())
+  );
+
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 16, fontSize: '18px' }}>Payments Received</h2>
-      <Table columns={columns} dataSource={invoices} rowKey="id"
+    <div style={{ padding: 24, background: '#f0f2f5', minHeight: '100vh' }}>
+      <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 16, padding: '20px 28px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ color: '#fff' }}>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>Payments Received</div>
+          <div style={{ fontSize: 13, opacity: 0.75 }}>Track and record customer payments</div>
+        </div>
+        <Input
+          placeholder="Search invoice or customer..."
+          prefix={<span style={{ color: '#bbb' }}>🔍</span>}
+          value={searchText}
+          onChange={e => setSearchText(e.target.value)}
+          allowClear
+          style={{ width: 240, borderRadius: 8 }}
+        />
+      </div>
+      <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}>
+      <Table columns={columns} dataSource={filtered} rowKey="id"
         loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
         scroll={{ x: 'max-content' }} />
+      </div>
       <Modal title={`Record Payment — ${selected?.invoice_number}`} open={payModal}
         onCancel={() => { setPayModal(false); form.resetFields(); }}
         onOk={() => form.submit()} okText="Record Payment"
