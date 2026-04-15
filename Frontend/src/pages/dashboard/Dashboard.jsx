@@ -1,13 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Table, Alert, Spin, Tag, Progress } from 'antd';
+import { Card, Row, Col, Table, Alert, Spin, Tag, Progress, DatePicker, Button } from 'antd';
 import {
   TagsOutlined, DatabaseOutlined, AlertOutlined,
   FundProjectionScreenOutlined, RiseOutlined, FallOutlined, BankOutlined,
-  LineChartOutlined, ShoppingCartOutlined
+  LineChartOutlined, ShoppingCartOutlined, CalendarOutlined, ReloadOutlined,
+  TrophyOutlined, PieChartOutlined, BarChartOutlined
 } from '@ant-design/icons';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
+import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
+
+const { RangePicker } = DatePicker;
+
+const PRESETS = [
+  { label: '7D',  days: 6 },
+  { label: '30D', days: 29 },
+  { label: '90D', days: 89 },
+];
+
+const DONUT_COLORS = ['#667eea','#11998e','#f7971e','#f5576c','#764ba2','#38ef7d'];
+
+const EmptyChart = ({ height = 260 }) => (
+  <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 13 }}>
+    No data available
+  </div>
+);
+
+const cardStyle = { borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' };
+const cardBody = { padding: '12px 16px 16px' };
 
 const STAT_CARDS = [
   {
@@ -56,6 +77,7 @@ const STAT_CARDS = [
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
+  const [trendLoading, setTrendLoading] = useState(false);
   const { currency, formatCurrency } = useCurrency();
   const [dashboardData, setDashboardData] = useState({
     totalItems: 0, lowStockItems: [], lowStockCount: 0,
@@ -63,23 +85,44 @@ const Dashboard = () => {
     activeItems: 0, inactiveItems: 0, totalQuantity: 0,
     totalAvailable: 0, totalReserved: 0, stockTrend: []
   });
+  const [topItems, setTopItems] = useState([]);
+  const [categoryStock, setCategoryStock] = useState([]);
+  const [monthlyData, setMonthlyData] = useState([]);
+
+  // Date range state — default last 7 days
+  const [activePreset, setActivePreset] = useState('7D');
+  const [dateRange, setDateRange] = useState([
+    dayjs().subtract(6, 'day'),
+    dayjs()
+  ]);
 
   useEffect(() => { fetchDashboardData(); }, [currency]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [inventoryRes, warehousesRes, lowStockRes, itemsRes] = await Promise.all([
+      const start = dateRange[0].format('YYYY-MM-DD');
+      const end = dateRange[1].format('YYYY-MM-DD');
+      const [inventoryRes, warehousesRes, lowStockRes, itemsRes, trendRes, topItemsRes, categoryRes, monthlyRes] = await Promise.all([
         apiService.get('/inventory').catch(() => ({ success: false, data: [] })),
         apiService.get('/warehouses').catch(() => ({ success: false, data: [] })),
         apiService.get('/inventory/low-stock').catch(() => ({ success: false, data: [] })),
-        apiService.get('/items').catch(() => ({ success: false, data: [] }))
+        apiService.get('/items').catch(() => ({ success: false, data: [] })),
+        apiService.get(`/reports/dashboard-trend?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] })),
+        apiService.get(`/reports/dashboard-top-items?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] })),
+        apiService.get('/reports/dashboard-category-stock').catch(() => ({ success: false, data: [] })),
+        apiService.get(`/reports/dashboard-monthly?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] }))
       ]);
 
       const inventory = inventoryRes.success ? inventoryRes.data : [];
       const warehouses = warehousesRes.success ? warehousesRes.data : [];
       const lowStockItems = lowStockRes.success ? lowStockRes.data : [];
       const items = itemsRes.success ? itemsRes.data : [];
+      const stockTrend = trendRes.success ? trendRes.data : [];
+
+      if (topItemsRes.success) setTopItems(topItemsRes.data);
+      if (categoryRes.success) setCategoryStock(categoryRes.data);
+      if (monthlyRes.success) setMonthlyData(monthlyRes.data);
 
       setDashboardData({
         totalItems: inventory.length,
@@ -93,7 +136,7 @@ const Dashboard = () => {
         totalItemsCount: items.length,
         lowStockItems: lowStockItems.slice(0, 10),
         lowStockCount: lowStockItems.length,
-        stockTrend: generateTrendData()
+        stockTrend
       });
     } catch (e) {
       console.error('Dashboard error:', e);
@@ -102,17 +145,35 @@ const Dashboard = () => {
     }
   };
 
-  const generateTrendData = () => {
-    const today = new Date();
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(today);
-      d.setDate(d.getDate() - (6 - i));
-      return {
-        date: d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
-        value: Math.floor(Math.random() * 600000) + 400000,
-        orders: Math.floor(Math.random() * 20) + 5,
-      };
-    });
+  const fetchTrend = async (start, end) => {
+    setTrendLoading(true);
+    try {
+      const [trendRes, topItemsRes, monthlyRes] = await Promise.all([
+        apiService.get(`/reports/dashboard-trend?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] })),
+        apiService.get(`/reports/dashboard-top-items?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] })),
+        apiService.get(`/reports/dashboard-monthly?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] }))
+      ]);
+      if (trendRes.success) setDashboardData(prev => ({ ...prev, stockTrend: trendRes.data }));
+      if (topItemsRes.success) setTopItems(topItemsRes.data);
+      if (monthlyRes.success) setMonthlyData(monthlyRes.data);
+    } finally {
+      setTrendLoading(false);
+    }
+  };
+
+  const onPresetClick = (preset) => {
+    const end = dayjs();
+    const start = dayjs().subtract(preset.days, 'day');
+    setActivePreset(preset.label);
+    setDateRange([start, end]);
+    fetchTrend(start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD'));
+  };
+
+  const onRangeChange = (dates) => {
+    if (!dates || !dates[0] || !dates[1]) return;
+    setActivePreset(null);
+    setDateRange(dates);
+    fetchTrend(dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD'));
   };
 
   const lowStockColumns = [
@@ -199,10 +260,42 @@ const Dashboard = () => {
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} lg={16}>
           <Card
-            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><LineChartOutlined style={{ color: '#667eea' }} />Inventory Value Trend (7 Days)</span>}
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><LineChartOutlined style={{ color: '#667eea' }} />Sales Revenue Trend</span>}
+            extra={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {PRESETS.map(p => (
+                  <button
+                    key={p.label}
+                    onClick={() => onPresetClick(p)}
+                    style={{
+                      padding: '3px 12px', borderRadius: 8, border: '1.5px solid',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                      borderColor: activePreset === p.label ? '#667eea' : '#e5e7eb',
+                      background: activePreset === p.label ? '#667eea' : 'white',
+                      color: activePreset === p.label ? 'white' : '#6b7280',
+                    }}
+                  >{p.label}</button>
+                ))}
+                <RangePicker
+                  size="small"
+                  value={dateRange}
+                  onChange={onRangeChange}
+                  disabledDate={d => d && d.isAfter(dayjs())}
+                  allowClear={false}
+                  style={{ borderRadius: 8 }}
+                  suffixIcon={<CalendarOutlined style={{ color: '#667eea' }} />}
+                />
+                {trendLoading && <ReloadOutlined spin style={{ color: '#667eea' }} />}
+              </div>
+            }
             style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
             bodyStyle={{ padding: '12px 16px 16px' }}
           >
+            {dashboardData.stockTrend.length === 0 ? (
+              <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 13 }}>
+                No sales data for the selected period
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={dashboardData.stockTrend}>
                 <defs>
@@ -212,13 +305,14 @@ const Dashboard = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v) => [formatCurrency(v, true), 'Value']} />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(v, true)} width={80} />
+                <Tooltip formatter={(v) => [formatCurrency(v, true), 'Revenue']} />
                 <Area type="monotone" dataKey="value" stroke="#667eea" strokeWidth={2.5}
-                  fill="url(#colorValue)" dot={{ fill: '#667eea', r: 4 }} />
+                  fill="url(#colorValue)" dot={dashboardData.stockTrend.length <= 31 ? { fill: '#667eea', r: 3 } : false} />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Col>
 
@@ -287,20 +381,176 @@ const Dashboard = () => {
 
         <Col xs={24} lg={10}>
           <Card
-            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><ShoppingCartOutlined style={{ color: '#11998e' }} />Daily Orders (7 Days)</span>}
+            title={
+              <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShoppingCartOutlined style={{ color: '#11998e' }} />
+                Daily Orders
+                <span style={{ fontSize: 11, fontWeight: 400, color: '#9ca3af' }}>
+                  {dateRange[0].format('DD MMM')} – {dateRange[1].format('DD MMM YYYY')}
+                </span>
+              </span>
+            }
             style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
             bodyStyle={{ padding: '12px 16px 16px' }}
           >
+            {dashboardData.stockTrend.length === 0 ? (
+              <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 13 }}>
+                No order data for the selected period
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={dashboardData.stockTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                 <Tooltip />
                 <Line type="monotone" dataKey="orders" stroke="#11998e" strokeWidth={2.5}
-                  dot={{ fill: '#11998e', r: 4 }} name="Orders" />
+                  dot={dashboardData.stockTrend.length <= 31 ? { fill: '#11998e', r: 3 } : false} name="Orders" />
               </LineChart>
             </ResponsiveContainer>
+            )}
+          </Card>
+        </Col>
+      </Row>
+      {/* ── NEW CHARTS ROW 1: Monthly Sales vs Purchases + Top Items ── */}
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} lg={14}>
+          <Card
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><BarChartOutlined style={{ color: '#667eea' }} />Monthly Sales vs Purchases <span style={{ fontSize: 11, fontWeight: 400, color: '#9ca3af' }}>({dateRange[0].format('DD MMM')} – {dateRange[1].format('DD MMM YYYY')})</span></span>}
+            style={cardStyle} bodyStyle={cardBody}
+          >
+            {monthlyData.length === 0 ? <EmptyChart /> : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={monthlyData} barCategoryGap="30%" barGap={4}>
+                  <defs>
+                    <linearGradient id="gradSales" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#667eea" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#764ba2" stopOpacity={0.8} />
+                    </linearGradient>
+                    <linearGradient id="gradPurchases" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#11998e" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#38ef7d" stopOpacity={0.8} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(v, true)} axisLine={false} tickLine={false} width={80} />
+                  <Tooltip
+                    formatter={(v, name) => [formatCurrency(v, true), name]}
+                    contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                  <Bar dataKey="sales" name="Sales" fill="url(#gradSales)" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="purchases" name="Purchases" fill="url(#gradPurchases)" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </Col>
+
+        <Col xs={24} lg={10}>
+          <Card
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><TrophyOutlined style={{ color: '#f7971e' }} />Top 5 Selling Items <span style={{ fontSize: 11, fontWeight: 400, color: '#9ca3af' }}>({dateRange[0].format('DD MMM')} – {dateRange[1].format('DD MMM YYYY')})</span></span>}
+            style={cardStyle} bodyStyle={cardBody}
+          >
+            {topItems.length === 0 ? <EmptyChart /> : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={topItems} layout="vertical" barCategoryGap="25%">
+                  <defs>
+                    <linearGradient id="gradTop" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#f7971e" />
+                      <stop offset="100%" stopColor="#ffd200" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
+                  <Tooltip
+                    formatter={(v) => [v + ' units', 'Qty Sold']}
+                    contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}
+                  />
+                  <Bar dataKey="qty" name="Qty Sold" fill="url(#gradTop)" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ── NEW CHARTS ROW 2: Stock by Category Donut ── */}
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} lg={10}>
+          <Card
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><PieChartOutlined style={{ color: '#764ba2' }} />Stock by Category</span>}
+            style={cardStyle} bodyStyle={cardBody}
+          >
+            {categoryStock.length === 0 ? <EmptyChart height={300} /> : (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <defs>
+                    {DONUT_COLORS.map((c, i) => (
+                      <linearGradient key={i} id={`pieGrad${i}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={c} stopOpacity={1} />
+                        <stop offset="100%" stopColor={c} stopOpacity={0.7} />
+                      </linearGradient>
+                    ))}
+                  </defs>
+                  <Pie
+                    data={categoryStock}
+                    cx="50%" cy="50%"
+                    innerRadius={70} outerRadius={110}
+                    paddingAngle={3}
+                    dataKey="qty"
+                    nameKey="name"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    labelLine={{ stroke: '#ccc', strokeWidth: 1 }}
+                  >
+                    {categoryStock.map((_, i) => (
+                      <Cell key={i} fill={`url(#pieGrad${i % DONUT_COLORS.length})`} stroke="none" />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(v, name) => [v.toLocaleString() + ' units', name]}
+                    contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </Col>
+
+        <Col xs={24} lg={14}>
+          <Card
+            title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><DatabaseOutlined style={{ color: '#11998e' }} />Category Stock Value</span>}
+            style={cardStyle} bodyStyle={cardBody}
+          >
+            {categoryStock.length === 0 ? <EmptyChart height={300} /> : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={categoryStock} barCategoryGap="35%">
+                  <defs>
+                    {DONUT_COLORS.map((c, i) => (
+                      <linearGradient key={i} id={`barCat${i}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={c} stopOpacity={1} />
+                        <stop offset="100%" stopColor={c} stopOpacity={0.6} />
+                      </linearGradient>
+                    ))}
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(v, true)} axisLine={false} tickLine={false} width={80} />
+                  <Tooltip
+                    formatter={(v) => [formatCurrency(v, true), 'Stock Value']}
+                    contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}
+                  />
+                  <Bar dataKey="value" name="Stock Value" radius={[8, 8, 0, 0]}>
+                    {categoryStock.map((_, i) => (
+                      <Cell key={i} fill={`url(#barCat${i % DONUT_COLORS.length})`} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </Card>
         </Col>
       </Row>

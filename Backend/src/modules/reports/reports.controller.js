@@ -281,14 +281,53 @@ class ReportsController {
   async getDashboardSummary(req, res) {
     try {
       const summary = await reportsService.getDashboardSummary(req.institutionId);
-      
-      res.json({
-        success: true,
-        data: summary
-      });
+      res.json({ success: true, data: summary });
     } catch (error) {
       logger.error('Failed to generate dashboard summary', { error: error.message, institutionId: req.institutionId });
       res.status(500).json({ success: false, error: 'Failed to generate summary' });
+    }
+  }
+
+  async getDashboardTrend(req, res) {
+    try {
+      const { startDate, endDate } = req.query;
+      const trend = await reportsService.getDashboardTrend(req.institutionId, startDate, endDate);
+      res.json({ success: true, data: trend });
+    } catch (error) {
+      logger.error('Failed to generate dashboard trend', { error: error.message, institutionId: req.institutionId });
+      res.status(500).json({ success: false, error: 'Failed to generate trend' });
+    }
+  }
+
+  async getDashboardTopItems(req, res) {
+    try {
+      const { startDate, endDate } = req.query;
+      const data = await reportsService.getDashboardTopItems(req.institutionId, startDate, endDate);
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Failed to get top items', { error: error.message });
+      res.status(500).json({ success: false, error: 'Failed to get top items' });
+    }
+  }
+
+  async getDashboardCategoryStock(req, res) {
+    try {
+      const data = await reportsService.getDashboardCategoryStock(req.institutionId);
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Failed to get category stock', { error: error.message });
+      res.status(500).json({ success: false, error: 'Failed to get category stock' });
+    }
+  }
+
+  async getDashboardMonthlyComparison(req, res) {
+    try {
+      const { startDate, endDate } = req.query;
+      const data = await reportsService.getDashboardMonthlyComparison(req.institutionId, startDate, endDate);
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Failed to get monthly comparison', { error: error.message });
+      res.status(500).json({ success: false, error: 'Failed to get monthly comparison' });
     }
   }
 }

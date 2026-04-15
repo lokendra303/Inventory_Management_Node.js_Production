@@ -426,6 +426,127 @@ class ReportsService {
       lowStockItems: lowStock[0]?.count || 0
     };
   }
+
+  // Top 5 selling items by quantity
+  async getDashboardTopItems(institutionId, startDate, endDate) {
+    const end = endDate || new Date().toISOString().split('T')[0];
+    const start = startDate || new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+    const rows = await db.query(
+      `SELECT i.name, SUM(sol.quantity_ordered) as qty, SUM(sol.line_total) as revenue
+       FROM sales_order_lines sol
+       JOIN sales_orders so ON sol.so_id = so.id
+       JOIN items i ON sol.item_id = i.id
+       WHERE so.institution_id = ? AND so.status IN ('shipped','delivered')
+         AND DATE(so.order_date) BETWEEN ? AND ?
+       GROUP BY i.id, i.name
+       ORDER BY qty DESC LIMIT 5`,
+      [institutionId, start, end]
+    );
+    return rows.map(r => ({ name: r.name.length > 18 ? r.name.slice(0, 16) + '…' : r.name, qty: parseInt(r.qty) || 0, revenue: parseFloat(r.revenue) || 0 }));
+  }
+
+  // Stock value by category (donut)
+  async getDashboardCategoryStock(institutionId) {
+    const rows = await db.query(
+      `SELECT COALESCE(i.category, 'Uncategorized') as category,
+              SUM(ip.quantity_on_hand) as qty,
+              SUM(ip.total_value) as value
+       FROM inventory_projections ip
+       JOIN items i ON ip.item_id = i.id
+       WHERE ip.institution_id = ? AND ip.quantity_on_hand > 0
+       GROUP BY i.category
+       ORDER BY value DESC LIMIT 6`,
+      [institutionId]
+    );
+    return rows.map(r => ({ name: r.category || 'Uncategorized', qty: parseInt(r.qty) || 0, value: parseFloat(r.value) || 0 }));
+  }
+
+  // Monthly sales vs purchases — dynamic date range
+  async getDashboardMonthlyComparison(institutionId, startDate, endDate) {
+    const end = endDate || new Date().toISOString().split('T')[0];
+    const start = startDate || new Date(Date.now() - 6 * 30 * 86400000).toISOString().split('T')[0];
+    const [salesRows, purchaseRows] = await Promise.all([
+      db.query(
+        `SELECT DATE_FORMAT(invoice_date, '%b %Y') as month,
+                DATE_FORMAT(invoice_date, '%Y-%m') as sort_key,
+                SUM(total_amount) as value
+         FROM sales_invoices
+         WHERE institution_id = ? AND status != 'cancelled'
+           AND DATE(invoice_date) BETWEEN ? AND ?
+         GROUP BY DATE_FORMAT(invoice_date, '%Y-%m'), DATE_FORMAT(invoice_date, '%b %Y')
+         ORDER BY sort_key ASC`,
+        [institutionId, start, end]
+      ),
+      db.query(
+        `SELECT DATE_FORMAT(invoice_date, '%b %Y') as month,
+                DATE_FORMAT(invoice_date, '%Y-%m') as sort_key,
+                SUM(total_amount) as value
+         FROM purchase_invoices
+         WHERE institution_id = ? AND status != 'cancelled'
+           AND DATE(invoice_date) BETWEEN ? AND ?
+         GROUP BY DATE_FORMAT(invoice_date, '%Y-%m'), DATE_FORMAT(invoice_date, '%b %Y')
+         ORDER BY sort_key ASC`,
+        [institutionId, start, end]
+      )
+    ]);
+
+    const monthMap = {};
+    salesRows.forEach(r => { monthMap[r.sort_key] = { month: r.month, sales: parseFloat(r.value) || 0, purchases: 0 }; });
+    purchaseRows.forEach(r => {
+      if (monthMap[r.sort_key]) monthMap[r.sort_key].purchases = parseFloat(r.value) || 0;
+      else monthMap[r.sort_key] = { month: r.month, sales: 0, purchases: parseFloat(r.value) || 0 };
+    });
+    return Object.keys(monthMap).sort().map(k => monthMap[k]);
+  }
+
+  // 7-day trend: daily sales revenue + daily order count
+  async getDashboardTrend(institutionId, startDate, endDate) {
+    // Default: last 7 days
+    const end = endDate || new Date().toISOString().split('T')[0];
+    const start = startDate || new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+
+    const rows = await db.query(
+      `SELECT
+         dates.d as date,
+         COALESCE(inv.value, 0) as value,
+         COALESCE(ord.orders, 0) as orders
+       FROM (
+         SELECT DATE_ADD(?, INTERVAL seq DAY) as d
+         FROM (
+           SELECT t4.i*16 + t3.i*8 + t2.i*4 + t1.i*2 + t0.i seq
+           FROM
+             (SELECT 0 i UNION SELECT 1) t0,
+             (SELECT 0 i UNION SELECT 1) t1,
+             (SELECT 0 i UNION SELECT 1) t2,
+             (SELECT 0 i UNION SELECT 1) t3,
+             (SELECT 0 i UNION SELECT 1) t4
+         ) nums
+         WHERE DATE_ADD(?, INTERVAL seq DAY) <= ?
+       ) dates
+       LEFT JOIN (
+         SELECT DATE(invoice_date) as d, SUM(total_amount) as value
+         FROM sales_invoices
+         WHERE institution_id = ? AND status != 'cancelled'
+           AND DATE(invoice_date) BETWEEN ? AND ?
+         GROUP BY DATE(invoice_date)
+       ) inv ON inv.d = dates.d
+       LEFT JOIN (
+         SELECT DATE(order_date) as d, COUNT(*) as orders
+         FROM sales_orders
+         WHERE institution_id = ? AND status NOT IN ('cancelled','draft')
+           AND DATE(order_date) BETWEEN ? AND ?
+         GROUP BY DATE(order_date)
+       ) ord ON ord.d = dates.d
+       ORDER BY dates.d ASC`,
+      [start, start, end, institutionId, start, end, institutionId, start, end]
+    );
+
+    return rows.map(r => ({
+      date: new Date(r.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+      value: parseFloat(r.value) || 0,
+      orders: parseInt(r.orders) || 0
+    }));
+  }
 }
 
 module.exports = new ReportsService();

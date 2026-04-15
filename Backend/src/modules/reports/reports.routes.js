@@ -28,5 +28,9 @@ router.get('/payments-received', requirePermission('sales_view'), reportsControl
 
 // Dashboard
 router.get('/dashboard', reportsController.getDashboardSummary);
+router.get('/dashboard-trend', reportsController.getDashboardTrend);
+router.get('/dashboard-top-items', reportsController.getDashboardTopItems);
+router.get('/dashboard-category-stock', reportsController.getDashboardCategoryStock);
+router.get('/dashboard-monthly', reportsController.getDashboardMonthlyComparison);
 
 module.exports = router;
