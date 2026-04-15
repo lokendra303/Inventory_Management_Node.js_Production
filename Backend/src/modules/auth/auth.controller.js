@@ -299,10 +299,15 @@ class AuthController {
 
   async getProfile(req, res) {
     try {
-      // Get full user details from database
-      const users = await authService.getInstitutionUsers(req.institutionId);
-      const userProfile = users.find(u => u.id === req.user.userId);
-      
+      const db = require('../../database/connection');
+      const rows = await db.query(
+        `SELECT u.*, i.name as institution_name FROM institution_users u
+         JOIN institutions i ON u.institution_id = i.id
+         WHERE u.id = ? AND u.institution_id = ? LIMIT 1`,
+        [req.user.userId, req.institutionId]
+      );
+      const userProfile = rows[0];
+
       if (!userProfile) {
         return res.status(404).json({
           success: false,
@@ -316,6 +321,7 @@ class AuthController {
           id: userProfile.id,
           userId: req.user.userId,
           institutionId: req.user.institutionId,
+          institutionName: userProfile.institution_name,
           email: userProfile.email,
           firstName: userProfile.first_name,
           lastName: userProfile.last_name,
