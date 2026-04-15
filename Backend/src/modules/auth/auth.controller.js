@@ -656,6 +656,62 @@ class AuthController {
       });
     }
   }
+
+  async forgotPassword(req, res) {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ success: false, error: 'Email is required.' });
+      await authService.forgotPassword(email);
+      res.json({ success: true, message: 'If this email is registered, an OTP has been sent.' });
+    } catch (error) {
+      logger.error('Forgot password failed', { error: error.message });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async verifyResetOtp(req, res) {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) return res.status(400).json({ success: false, error: 'Email and OTP are required.' });
+      const result = await authService.verifyResetOtp(email, otp);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      logger.error('Reset OTP verification failed', { error: error.message });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async resetPassword(req, res) {
+    try {
+      const { resetToken, newPassword } = req.body;
+      if (!resetToken || !newPassword) return res.status(400).json({ success: false, error: 'Reset token and new password are required.' });
+      if (newPassword.length < 8) return res.status(400).json({ success: false, error: 'Password must be at least 8 characters.' });
+      await authService.resetPassword(resetToken, newPassword);
+      res.json({ success: true, message: 'Password reset successfully. Please login.' });
+    } catch (error) {
+      logger.error('Password reset failed', { error: error.message });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async getEmailHint(req, res) {
+    try {
+      const { mobile } = req.body;
+      if (!mobile) return res.status(400).json({ success: false, error: 'Mobile number is required.' });
+      const result = await authService.getEmailHintByMobile(mobile);
+      if (!result.found) {
+        return res.json({
+          success: true,
+          found: false,
+          message: 'No account found with this mobile number. Please contact us for further assistance.'
+        });
+      }
+      res.json({ success: true, found: true, hints: result.hints });
+    } catch (error) {
+      logger.error('Get email hint failed', { error: error.message });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
 }
 
 module.exports = new AuthController();

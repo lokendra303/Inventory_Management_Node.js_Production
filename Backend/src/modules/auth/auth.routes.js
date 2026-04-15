@@ -55,4 +55,16 @@ router.get('/profile', extractInstitutionContext, requireAuth, authController.ge
 // POST /api/auth/extend-session - accepts near-expired tokens (no requireAuth)
 router.post('/extend-session', authController.extendSession);
 
+// POST /api/auth/forgot-password (PUBLIC)
+router.post('/forgot-password', authController.forgotPassword);
+
+// POST /api/auth/verify-reset-otp (PUBLIC)
+router.post('/verify-reset-otp', authController.verifyResetOtp);
+
+// POST /api/auth/reset-password (PUBLIC)
+router.post('/reset-password', authController.resetPassword);
+
+// POST /api/auth/get-email-hint (PUBLIC - retrieve masked email by mobile)
+router.post('/get-email-hint', authController.getEmailHint);
+
 module.exports = router;

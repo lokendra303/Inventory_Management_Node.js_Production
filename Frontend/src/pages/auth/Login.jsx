@@ -418,6 +418,46 @@ const CSS = `
     background: rgba(239,68,68,0.04);
   }
 
+  .ims-forgot-link {
+    background: none; border: none; padding: 0;
+    font-size: 13px; font-weight: 600; color: #667eea;
+    cursor: pointer; transition: color 0.2s;
+  }
+  .ims-forgot-link:hover { color: #764ba2; text-decoration: underline; }
+
+  .ims-info-box {
+    background: #f0f4ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 13px;
+    color: #4338ca;
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+  .ims-hint-box {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 14px;
+    color: #166534;
+    margin-bottom: 16px;
+    text-align: center;
+    font-weight: 600;
+  }
+  .ims-contact-box {
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 13px;
+    color: #9a3412;
+    margin-bottom: 16px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
   .ims-otp-inputs {
     display: flex;
     gap: 10px;
@@ -461,8 +501,98 @@ export default function Login() {
   const [loginForm] = Form.useForm();
   const [regForm] = Form.useForm();
   const [otpForm] = Form.useForm();
-  const { login, register, sendOtp, verifyOtp, verifyLoginOtp } = useAuth();
+  const [fpForm] = Form.useForm();
+  const { login, register, sendOtp, verifyOtp, verifyLoginOtp, forgotPassword, verifyResetOtp, resetPassword, getEmailHint } = useAuth();
   const navigate = useNavigate();
+
+  // forgot-password view: null | 'fp_email' | 'fp_otp' | 'fp_newpass' | 'fp_mobile'
+  const [fpView, setFpView] = useState(null);
+  const [fpEmail, setFpEmail] = useState('');
+  const [fpResetToken, setFpResetToken] = useState('');
+  const [emailHint, setEmailHint] = useState(null);
+  const [fpResendTimer, setFpResendTimer] = useState(0);
+  const fpTimerRef = useRef(null);
+
+  const startFpResendTimer = () => {
+    setFpResendTimer(60);
+    clearInterval(fpTimerRef.current);
+    fpTimerRef.current = setInterval(() => {
+      setFpResendTimer(t => { if (t <= 1) { clearInterval(fpTimerRef.current); return 0; } return t - 1; });
+    }, 1000);
+  };
+
+  const openForgotPassword = () => {
+    setFpView('fp_email');
+    setFpEmail('');
+    setFpResetToken('');
+    setEmailHint(null);
+    fpForm.resetFields();
+  };
+
+  const closeForgotPassword = () => {
+    setFpView(null);
+    clearInterval(fpTimerRef.current);
+    fpForm.resetFields();
+  };
+
+  const onFpEmailSubmit = async ({ email }) => {
+    setLoading(true);
+    try {
+      await forgotPassword(email);
+      setFpEmail(email);
+      setFpView('fp_otp');
+      fpForm.resetFields();
+      startFpResendTimer();
+      message.success('OTP sent to your email.');
+    } finally { setLoading(false); }
+  };
+
+  const onFpOtpSubmit = async ({ otp }) => {
+    setLoading(true);
+    try {
+      const res = await verifyResetOtp(fpEmail, otp);
+      if (res.success) {
+        setFpResetToken(res.data.resetToken);
+        setFpView('fp_newpass');
+        fpForm.resetFields();
+      } else {
+        message.error(res.error || 'Invalid OTP');
+      }
+    } finally { setLoading(false); }
+  };
+
+  const onFpNewPassSubmit = async ({ newPassword, confirmPassword }) => {
+    if (newPassword !== confirmPassword) { message.error('Passwords do not match.'); return; }
+    setLoading(true);
+    try {
+      const res = await resetPassword(fpResetToken, newPassword);
+      if (res.success) {
+        message.success('Password reset successfully! Please login.');
+        closeForgotPassword();
+        loginForm.resetFields();
+      } else {
+        message.error(res.error || 'Reset failed.');
+      }
+    } finally { setLoading(false); }
+  };
+
+  const onFpResendOtp = async () => {
+    if (fpResendTimer > 0) return;
+    setLoading(true);
+    try {
+      await forgotPassword(fpEmail);
+      message.success('OTP resent.');
+      startFpResendTimer();
+    } finally { setLoading(false); }
+  };
+
+  const onMobileHintSubmit = async ({ mobile }) => {
+    setLoading(true);
+    try {
+      const res = await getEmailHint(mobile);
+      setEmailHint(res);
+    } finally { setLoading(false); }
+  };
 
   // OTP step state
   const [otpStep, setOtpStep] = useState(false);       // show OTP input
@@ -613,6 +743,7 @@ export default function Login() {
           {/* ── RIGHT ── */}
           <div className="ims-right">
             {/* Tab Switcher */}
+            {!fpView && (
             <div className="ims-tab-switcher">
               <button className={`ims-tab-btn${activeTab === 'login' ? ' active' : ''}`} onClick={() => switchTab('login')}>
                 Sign In
@@ -621,28 +752,34 @@ export default function Login() {
                 Create Account
               </button>
             </div>
+            )}
 
             {/* Form Head */}
             <div className="ims-form-head">
               <div className="ims-form-icon-wrap">
-                {otpStep ? <MobileOutlined /> : activeTab === 'login' ? <LockOutlined /> : <ShopOutlined />}
+                {fpView ? <LockOutlined /> : otpStep ? <MobileOutlined /> : activeTab === 'login' ? <LockOutlined /> : <ShopOutlined />}
               </div>
               <div className="ims-form-title">
-                {otpStep
-                  ? 'Enter Verification Code'
+                {fpView === 'fp_email' ? 'Reset Your Password'
+                  : fpView === 'fp_otp' ? 'Enter Verification Code'
+                  : fpView === 'fp_newpass' ? 'Set New Password'
+                  : fpView === 'fp_mobile' ? 'Retrieve Your Email'
+                  : otpStep ? 'Enter Verification Code'
                   : activeTab === 'login' ? 'Sign in to your account' : 'Create your account'}
               </div>
               <div className="ims-form-sub">
-                {otpStep
-                  ? <span>A 6-digit OTP was sent to <strong>{otpContext?.email}</strong></span>
-                  : activeTab === 'login'
-                    ? 'Access your inventory dashboard securely'
-                    : 'Set up your company workspace in minutes'}
+                {fpView === 'fp_email' ? 'Enter your email to receive a reset OTP'
+                  : fpView === 'fp_otp' ? <span>OTP sent to <strong>{fpEmail}</strong></span>
+                  : fpView === 'fp_newpass' ? 'Choose a strong new password'
+                  : fpView === 'fp_mobile' ? 'We\'ll show a hint of your registered email'
+                  : otpStep ? <span>A 6-digit OTP was sent to <strong>{otpContext?.email}</strong></span>
+                  : activeTab === 'login' ? 'Access your inventory dashboard securely'
+                  : 'Set up your company workspace in minutes'}
               </div>
             </div>
 
             {/* OTP STEP */}
-            {otpStep && (
+            {otpStep && !fpView && (
               <div className="ims-form-wrap" key="otp">
                 <div className="ims-otp-info">
                   Check your email inbox for the 6-digit code.<br />
@@ -692,7 +829,7 @@ export default function Login() {
             )}
 
             {/* LOGIN FORM */}
-            {!otpStep && activeTab === 'login' && (
+            {!otpStep && !fpView && activeTab === 'login' && (
               <div className="ims-form-wrap" key="login">
                 <Form form={loginForm} onFinish={onLoginStep1} layout="vertical" size="large">
                   <Form.Item
@@ -732,9 +869,12 @@ export default function Login() {
                   <span>Your data is encrypted & secure</span>
                 </div>
 
-                <div className="ims-switch-text">
-                  Don't have an account?{' '}
-                  <button className="ims-switch-link" onClick={() => switchTab('register')}>Create one free</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+                  <span style={{ fontSize: 13, color: '#6b7280' }}>
+                    Don't have an account?{' '}
+                    <button className="ims-switch-link" onClick={() => switchTab('register')}>Create one free</button>
+                  </span>
+                  <button className="ims-forgot-link" onClick={openForgotPassword}>Forgot password?</button>
                 </div>
 
                 <div className="ims-admin-link">
@@ -746,8 +886,178 @@ export default function Login() {
               </div>
             )}
 
+            {/* FORGOT PASSWORD FLOW */}
+            {fpView && !otpStep && (
+              <div className="ims-form-wrap" key={fpView}>
+
+                {fpView === 'fp_email' && (
+                  <>
+                    <div className="ims-info-box">
+                      Enter your registered email and we'll send a 6-digit OTP to reset your password.
+                    </div>
+                    <Form form={fpForm} onFinish={onFpEmailSubmit} layout="vertical" size="large">
+                      <Form.Item
+                        label={<span className="ims-label">Registered Email</span>}
+                        name="email"
+                        rules={[
+                          { required: true, message: 'Email is required' },
+                          { type: 'email', message: 'Enter a valid email' }
+                        ]}
+                      >
+                        <Input className="ims-input" prefix={<MailOutlined style={{ fontSize: 15 }} />} placeholder="you@company.com" />
+                      </Form.Item>
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <button type="submit" className="ims-submit-btn" disabled={loading}>
+                          {loading ? <><div className="ims-spin" /> Sending...</> : <>Send OTP <ArrowRightOutlined /></>}
+                        </button>
+                      </Form.Item>
+                    </Form>
+                    <div style={{ marginTop: 14, textAlign: 'center', fontSize: 13, color: '#6b7280' }}>
+                      Forgot your email too?{' '}
+                      <button className="ims-switch-link" style={{ fontSize: 13 }} onClick={() => { setFpView('fp_mobile'); fpForm.resetFields(); setEmailHint(null); }}>Retrieve via mobile</button>
+                    </div>
+                    <div style={{ marginTop: 10, textAlign: 'center' }}>
+                      <button className="ims-back-btn" style={{ margin: '0 auto' }} onClick={closeForgotPassword}>← Back to Login</button>
+                    </div>
+                  </>
+                )}
+
+                {fpView === 'fp_otp' && (
+                  <>
+                    <div className="ims-otp-info">
+                      A 6-digit OTP was sent to <strong>{fpEmail}</strong>.<br />
+                      It expires in <strong>5 minutes</strong>.
+                    </div>
+                    <Form form={fpForm} onFinish={onFpOtpSubmit} layout="vertical" size="large">
+                      <Form.Item
+                        label={<span className="ims-label">6-Digit OTP</span>}
+                        name="otp"
+                        rules={[
+                          { required: true, message: 'OTP is required' },
+                          { len: 6, message: 'OTP must be 6 digits' },
+                          { pattern: /^[0-9]{6}$/, message: 'OTP must be numeric' }
+                        ]}
+                      >
+                        <Input
+                          className="ims-input"
+                          prefix={<MobileOutlined style={{ fontSize: 15 }} />}
+                          placeholder="Enter 6-digit OTP"
+                          maxLength={6}
+                          style={{ letterSpacing: 6, fontSize: 20, textAlign: 'center' }}
+                        />
+                      </Form.Item>
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <button type="submit" className="ims-submit-btn" disabled={loading}>
+                          {loading ? <><div className="ims-spin" /> Verifying...</> : <>Verify OTP <ArrowRightOutlined /></>}
+                        </button>
+                      </Form.Item>
+                    </Form>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                      <button className="ims-back-btn" onClick={() => { setFpView('fp_email'); fpForm.resetFields(); }}>← Back</button>
+                      <button className="ims-resend-btn" disabled={fpResendTimer > 0 || loading} onClick={onFpResendOtp}>
+                        {fpResendTimer > 0 ? `Resend in ${fpResendTimer}s` : 'Resend OTP'}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {fpView === 'fp_newpass' && (
+                  <>
+                    <div className="ims-info-box">OTP verified! Set your new password below.</div>
+                    <Form form={fpForm} onFinish={onFpNewPassSubmit} layout="vertical" size="large">
+                      <Form.Item
+                        label={<span className="ims-label">New Password</span>}
+                        name="newPassword"
+                        rules={[
+                          { required: true, message: 'Password is required' },
+                          { min: 8, message: 'Minimum 8 characters' }
+                        ]}
+                      >
+                        <Input.Password className="ims-input" prefix={<LockOutlined style={{ fontSize: 15 }} />} placeholder="Min. 8 characters" autoComplete="new-password" />
+                      </Form.Item>
+                      <Form.Item
+                        label={<span className="ims-label">Confirm Password</span>}
+                        name="confirmPassword"
+                        rules={[{ required: true, message: 'Please confirm your password' }]}
+                      >
+                        <Input.Password className="ims-input" prefix={<LockOutlined style={{ fontSize: 15 }} />} placeholder="Re-enter password" autoComplete="new-password" />
+                      </Form.Item>
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <button type="submit" className="ims-submit-btn" disabled={loading}>
+                          {loading ? <><div className="ims-spin" /> Resetting...</> : <>Reset Password <ArrowRightOutlined /></>}
+                        </button>
+                      </Form.Item>
+                    </Form>
+                  </>
+                )}
+
+                {fpView === 'fp_mobile' && (
+                  <>
+                    <div className="ims-info-box">
+                      Enter your registered mobile number and we'll show a hint of your email address.
+                    </div>
+                    <Form form={fpForm} onFinish={onMobileHintSubmit} layout="vertical" size="large">
+                      <Form.Item
+                        label={<span className="ims-label">Mobile Number</span>}
+                        name="mobile"
+                        rules={[
+                          { required: true, message: 'Mobile number is required' },
+                          { pattern: /^[0-9+\-\s()]{10,20}$/, message: 'Enter a valid mobile number' }
+                        ]}
+                      >
+                        <Input className="ims-input" prefix={<PhoneOutlined style={{ fontSize: 15 }} />} placeholder="+92 300 1234567" />
+                      </Form.Item>
+                      {!emailHint && (
+                        <Form.Item style={{ marginBottom: 0 }}>
+                          <button type="submit" className="ims-submit-btn" disabled={loading}>
+                            {loading ? <><div className="ims-spin" /> Searching...</> : <>Find Email <ArrowRightOutlined /></>}
+                          </button>
+                        </Form.Item>
+                      )}
+                    </Form>
+
+                    {emailHint && emailHint.found && (
+                      <>
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>
+                            {emailHint.hints.length === 1
+                              ? '1 account found with this mobile:'
+                              : `${emailHint.hints.length} accounts found with this mobile:`}
+                          </div>
+                          {emailHint.hints.map((item, idx) => (
+                            <div key={idx} className="ims-hint-box" style={{ marginBottom: 8 }}>
+                              <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 400, marginBottom: 2 }}>{item.institutionName}</div>
+                              <strong>{item.hint}</strong>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          className="ims-submit-btn"
+                          onClick={() => { setFpView('fp_email'); fpForm.resetFields(); setEmailHint(null); }}
+                        >
+                          Continue to Reset Password <ArrowRightOutlined />
+                        </button>
+                      </>
+                    )}
+
+                    {emailHint && !emailHint.found && (
+                      <div className="ims-contact-box">
+                        No account found with this mobile number.<br />
+                        <strong>Please contact us for further assistance.</strong>
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 14, textAlign: 'center' }}>
+                      <button className="ims-back-btn" style={{ margin: '0 auto' }} onClick={() => { setFpView('fp_email'); fpForm.resetFields(); setEmailHint(null); }}>← Back</button>
+                    </div>
+                  </>
+                )}
+
+              </div>
+            )}
+
             {/* REGISTER FORM */}
-            {!otpStep && activeTab === 'register' && (
+            {!otpStep && !fpView && activeTab === 'register' && (
               <div className="ims-form-wrap" key="register">
                 <Form form={regForm} onFinish={onRegisterStep1} layout="vertical" size="large">
                   <Form.Item

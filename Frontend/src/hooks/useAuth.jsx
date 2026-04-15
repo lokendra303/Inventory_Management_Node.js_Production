@@ -250,8 +250,44 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const forgotPassword = async (email) => {
+    try {
+      const response = await apiService.post('/auth/forgot-password', { email });
+      return response;
+    } catch (error) {
+      return { success: false, error: error.response?.data?.error || 'Failed to send OTP' };
+    }
+  };
+
+  const verifyResetOtp = async (email, otp) => {
+    try {
+      const response = await apiService.post('/auth/verify-reset-otp', { email, otp });
+      return response;
+    } catch (error) {
+      return { success: false, error: error.response?.data?.error || 'OTP verification failed' };
+    }
+  };
+
+  const resetPassword = async (resetToken, newPassword) => {
+    try {
+      const response = await apiService.post('/auth/reset-password', { resetToken, newPassword });
+      return response;
+    } catch (error) {
+      return { success: false, error: error.response?.data?.error || 'Password reset failed' };
+    }
+  };
+
+  const getEmailHint = async (mobile) => {
+    try {
+      const response = await apiService.post('/auth/get-email-hint', { mobile });
+      return response;
+    } catch (error) {
+      return { success: false, error: error.response?.data?.error || 'Failed to retrieve email hint' };
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, fetchProfile, sessionSecondsLeft, sendOtp, verifyOtp, verifyLoginOtp }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, register, fetchProfile, sessionSecondsLeft, sendOtp, verifyOtp, verifyLoginOtp, forgotPassword, verifyResetOtp, resetPassword, getEmailHint }}>
       {children}
     </AuthContext.Provider>
   );

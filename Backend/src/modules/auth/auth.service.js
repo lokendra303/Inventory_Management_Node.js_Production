@@ -798,6 +798,100 @@ class AuthService {
     // For now, just authenticate normally
     return this.authenticateUser(email, tempPassword, institutionId);
   }
+
+  // Forgot password: send reset OTP to email
+  async forgotPassword(email) {
+    const users = await db.query(
+      `SELECT u.id, u.email FROM institution_users u WHERE u.email = ? AND u.status = 'active' LIMIT 1`,
+      [email]
+    );
+    // Always respond success to prevent email enumeration
+    if (users.length === 0) return { success: true };
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const key = `reset:${email}`;
+    otpStore.set(key, { otp, expiresAt: Date.now() + OTP_TTL_MS });
+
+    try {
+      await emailService.sendEmail({
+        to: email,
+        subject: 'Password Reset OTP',
+        text: `Your password reset OTP is: ${otp}. It expires in 5 minutes. Do not share it.`,
+        html: `<p>Your password reset OTP is: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`
+      });
+    } catch (emailErr) {
+      logger.warn('Reset OTP email failed', { email, error: emailErr.message });
+    }
+
+    logger.info('Password reset OTP sent', { email });
+    return { success: true };
+  }
+
+  // Verify reset OTP and return a short-lived reset token
+  async verifyResetOtp(email, otp) {
+    const key = `reset:${email}`;
+    const record = otpStore.get(key);
+
+    if (!record) throw new Error('OTP not found or already used. Please request a new OTP.');
+    if (Date.now() > record.expiresAt) {
+      otpStore.delete(key);
+      throw new Error('OTP has expired. Please request a new OTP.');
+    }
+    if (record.otp !== otp) throw new Error('Invalid OTP.');
+
+    otpStore.delete(key);
+
+    // Issue a short-lived reset token (10 min)
+    const resetToken = require('jsonwebtoken').sign(
+      { email, purpose: 'password_reset' },
+      config.jwt.secret,
+      { expiresIn: '10m' }
+    );
+    return { resetToken };
+  }
+
+  // Reset password using the reset token
+  async resetPassword(resetToken, newPassword) {
+    let decoded;
+    try {
+      decoded = require('jsonwebtoken').verify(resetToken, config.jwt.secret);
+    } catch {
+      throw new Error('Reset link has expired or is invalid. Please start over.');
+    }
+    if (decoded.purpose !== 'password_reset') throw new Error('Invalid reset token.');
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const result = await db.query(
+      `UPDATE institution_users SET password_hash = ?, updated_at = NOW() WHERE email = ? AND status = 'active'`,
+      [passwordHash, decoded.email]
+    );
+    if (result.affectedRows === 0) throw new Error('User not found.');
+
+    logger.info('Password reset successful', { email: decoded.email });
+    return { success: true };
+  }
+
+  // Retrieve masked email hints by mobile number (multiple accounts supported)
+  async getEmailHintByMobile(mobile) {
+    const users = await db.query(
+      `SELECT u.email, i.name as institution_name
+       FROM institution_users u
+       JOIN institutions i ON u.institution_id = i.id
+       WHERE u.mobile = ? AND u.status = 'active'`,
+      [mobile]
+    );
+    if (users.length === 0) return { found: false };
+
+    const hints = users.map(u => {
+      const [local, domain] = u.email.split('@');
+      const masked = local.length <= 3
+        ? local[0] + '***'
+        : local.slice(0, 2) + '***' + local.slice(-1);
+      return { hint: `${masked}@${domain}`, institutionName: u.institution_name };
+    });
+
+    return { found: true, hints };
+  }
 }
 
 module.exports = new AuthService();
