@@ -5,6 +5,18 @@ const { auditLog, requireAuth, extractInstitutionContext } = require('./auth.mid
 
 const router = express.Router();
 
+// POST /api/auth/send-otp (PUBLIC - Send OTP for registration email verification)
+router.post('/send-otp',
+  auditLog('registration_otp_sent'),
+  authController.sendOtp
+);
+
+// POST /api/auth/verify-registration-otp (PUBLIC - Verify registration OTP before registering)
+router.post('/verify-registration-otp',
+  auditLog('registration_otp_verified'),
+  authController.verifyRegistrationOtp
+);
+
 // POST /api/auth/register-institution (PUBLIC - Creates company + admin user)
 router.post('/register-institution', 
   validate(schemas.registerInstitutionSchema),

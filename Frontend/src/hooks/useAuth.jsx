@@ -217,16 +217,16 @@ export const AuthProvider = ({ children }) => {
 
   const sendOtp = async (mobile, email) => {
     try {
-      const response = await apiService.post('/auth/send-otp', { mobile, email });
+      const response = await apiService.post('/auth/send-otp', { email });
       return response;
     } catch (error) {
       return { success: false, error: error.response?.data?.error || 'Failed to send OTP' };
     }
   };
 
-  const verifyOtp = async (mobile, otp) => {
+  const verifyOtp = async (email, otp) => {
     try {
-      const response = await apiService.post('/auth/verify-otp', { mobile, otp });
+      const response = await apiService.post('/auth/verify-registration-otp', { email, otp });
       return response;
     } catch (error) {
       return { success: false, error: error.response?.data?.error || 'OTP verification failed' };

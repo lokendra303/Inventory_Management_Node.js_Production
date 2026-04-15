@@ -2,6 +2,30 @@ const authService = require('./auth.service');
 const logger = require('../../utils/logger');
 
 class AuthController {
+  async sendOtp(req, res) {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ success: false, error: 'email is required.' });
+      await authService.sendRegistrationOtp(email);
+      res.json({ success: true, message: 'OTP sent to your email address.' });
+    } catch (error) {
+      logger.error('Send registration OTP failed', { error: error.message, email: req.body.email });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async verifyRegistrationOtp(req, res) {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) return res.status(400).json({ success: false, error: 'email and otp are required.' });
+      await authService.verifyRegistrationOtp(email, otp);
+      res.json({ success: true, message: 'OTP verified successfully.' });
+    } catch (error) {
+      logger.error('Registration OTP verification failed', { error: error.message, email: req.body.email });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
   // Register new institution (replaces registerUser/registerinstitution)
   async registerInstitution(req, res) {
     try {

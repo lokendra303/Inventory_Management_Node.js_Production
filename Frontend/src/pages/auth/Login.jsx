@@ -482,13 +482,14 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await sendOtp(mobile, email);
-      if (res.success) {
+      if (res && res.success) {
         setOtpContext({ type, mobile, email, formValues });
         setOtpStep(true);
         otpForm.resetFields();
         startResendTimer();
+        message.success('OTP sent to ' + email);
       } else {
-        message.error(res.error || 'Failed to send OTP');
+        message.error((res && res.error) || 'Failed to send OTP');
       }
     } finally { setLoading(false); }
   };
@@ -524,7 +525,7 @@ export default function Login() {
         if (result.success) navigate('/dashboard', { replace: true });
         else message.error(result.error || 'Invalid OTP');
       } else {
-        // Registration OTP — verify then register
+        // Registration OTP — verify email OTP then register
         const verifyRes = await verifyOtp(otpContext.email, otp);
         if (!verifyRes.success) { message.error(verifyRes.error || 'Invalid OTP'); return; }
         const result = await register(otpContext.formValues);

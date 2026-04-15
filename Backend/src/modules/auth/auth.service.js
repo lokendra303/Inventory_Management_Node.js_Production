@@ -7,7 +7,9 @@ const logger = require('../../utils/logger');
 const { ROLE_PERMISSIONS } = require('../../constants/permissions');
 const emailService = require('../../services/emailService');
 
-// In-memory OTP store: key = `${email}:${institutionId}`, value = { otp, expiresAt, userId, institutionId }
+// In-memory OTP store
+// Login OTPs: key = `${email}:${institutionId}`, value = { otp, expiresAt, userId, institutionId }
+// Registration OTPs: key = `reg:${email}`, value = { otp, expiresAt }
 const otpStore = new Map();
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -205,7 +207,44 @@ class AuthService {
     return { email, institutionId: user.institution_id };
   }
 
-  // Step 2: verify OTP and issue JWT
+  // Send OTP for pre-registration email verification
+  async sendRegistrationOtp(email) {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const key = `reg:${email}`;
+    otpStore.set(key, { otp, expiresAt: Date.now() + OTP_TTL_MS });
+
+    try {
+      await emailService.sendEmail({
+        to: email,
+        subject: 'Your Registration OTP',
+        text: `Your registration OTP is: ${otp}. It expires in 5 minutes.`,
+        html: `<p>Your registration OTP is: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`
+      });
+    } catch (emailErr) {
+      logger.warn('Registration OTP email failed, OTP still stored', { email, error: emailErr.message });
+    }
+
+    logger.info('Registration OTP sent', { email, otp });
+    return { success: true };
+  }
+
+  // Verify pre-registration OTP (does NOT issue JWT)
+  async verifyRegistrationOtp(email, otp) {
+    const key = `reg:${email}`;
+    const record = otpStore.get(key);
+
+    if (!record) throw new Error('OTP not found or already used. Please request a new OTP.');
+    if (Date.now() > record.expiresAt) {
+      otpStore.delete(key);
+      throw new Error('OTP has expired. Please request a new OTP.');
+    }
+    if (record.otp !== otp) throw new Error('Invalid OTP.');
+
+    otpStore.delete(key); // one-time use
+    return { success: true };
+  }
+
+  // Step 2: verify login OTP and issue JWT
   async verifyOtp(email, otp, institutionId) {
     const key = `${email}:${institutionId}`;
     const record = otpStore.get(key);
