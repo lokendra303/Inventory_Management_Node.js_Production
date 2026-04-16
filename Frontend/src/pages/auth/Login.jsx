@@ -418,12 +418,42 @@ const CSS = `
     background: rgba(239,68,68,0.04);
   }
 
+  .ims-alert-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+    border: 1.5px solid #fecdd3;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    animation: ims-alert-in 0.3s cubic-bezier(0.22,1,0.36,1) both;
+  }
+  .ims-alert-error-icon {
+    width: 28px; height: 28px; flex-shrink: 0;
+    background: linear-gradient(135deg, #f43f5e, #e11d48);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: white; font-weight: 700;
+  }
+  .ims-alert-error-text {
+    font-size: 13px; color: #9f1239; font-weight: 500; line-height: 1.5;
+  }
+  .ims-alert-error-title {
+    font-size: 13px; font-weight: 700; color: #be123c; margin-bottom: 2px;
+  }
+  @keyframes ims-alert-in {
+    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
   .ims-forgot-link {
     background: none; border: none; padding: 0;
-    font-size: 13px; font-weight: 600; color: #667eea;
+    font-size: 13px; font-weight: 400; color: #ef4444;
     cursor: pointer; transition: color 0.2s;
+    text-decoration: none;
   }
-  .ims-forgot-link:hover { color: #764ba2; text-decoration: underline; }
+  .ims-forgot-link:hover { color: #dc2626; text-decoration: underline; text-underline-offset: 3px; }
 
   .ims-info-box {
     background: #f0f4ff;
@@ -511,6 +541,7 @@ export default function Login() {
   const [fpResetToken, setFpResetToken] = useState('');
   const [emailHint, setEmailHint] = useState(null);
   const [fpResendTimer, setFpResendTimer] = useState(0);
+  const [fpError, setFpError] = useState('');
   const fpTimerRef = useRef(null);
 
   const startFpResendTimer = () => {
@@ -526,24 +557,31 @@ export default function Login() {
     setFpEmail('');
     setFpResetToken('');
     setEmailHint(null);
+    setFpError('');
     fpForm.resetFields();
   };
 
   const closeForgotPassword = () => {
     setFpView(null);
+    setFpError('');
     clearInterval(fpTimerRef.current);
     fpForm.resetFields();
   };
 
   const onFpEmailSubmit = async ({ email }) => {
+    setFpError('');
     setLoading(true);
     try {
-      await forgotPassword(email);
-      setFpEmail(email);
-      setFpView('fp_otp');
-      fpForm.resetFields();
-      startFpResendTimer();
-      message.success('OTP sent to your email.');
+      const res = await forgotPassword(email);
+      if (res && res.success) {
+        setFpEmail(email);
+        setFpView('fp_otp');
+        fpForm.resetFields();
+        startFpResendTimer();
+        message.success('OTP sent to your email.');
+      } else {
+        setFpError(res?.error || 'Failed to send OTP');
+      }
     } finally { setLoading(false); }
   };
 
@@ -895,6 +933,17 @@ export default function Login() {
                     <div className="ims-info-box">
                       Enter your registered email and we'll send a 6-digit OTP to reset your password.
                     </div>
+
+                    {fpError && (
+                      <div className="ims-alert-error">
+                        <div className="ims-alert-error-icon">✕</div>
+                        <div>
+                          <div className="ims-alert-error-title">Email Not Found</div>
+                          <div className="ims-alert-error-text">{fpError}</div>
+                        </div>
+                      </div>
+                    )}
+
                     <Form form={fpForm} onFinish={onFpEmailSubmit} layout="vertical" size="large">
                       <Form.Item
                         label={<span className="ims-label">Registered Email</span>}

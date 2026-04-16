@@ -805,8 +805,7 @@ class AuthService {
       `SELECT u.id, u.email FROM institution_users u WHERE u.email = ? AND u.status = 'active' LIMIT 1`,
       [email]
     );
-    // Always respond success to prevent email enumeration
-    if (users.length === 0) return { success: true };
+    if (users.length === 0) throw new Error('This email is not registered. Please check and try again.');
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const key = `reset:${email}`;
