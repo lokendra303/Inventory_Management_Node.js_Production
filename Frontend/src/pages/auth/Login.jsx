@@ -426,7 +426,8 @@ const CSS = `
     border: 1.5px solid #fecdd3;
     border-radius: 12px;
     padding: 12px 14px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
+    margin-top: 2px;
     animation: ims-alert-in 0.3s cubic-bezier(0.22,1,0.36,1) both;
   }
   .ims-alert-error-icon {
@@ -528,6 +529,7 @@ const CSS = `
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
+  const [loginError, setLoginError] = useState('');
   const [loginForm] = Form.useForm();
   const [regForm] = Form.useForm();
   const [otpForm] = Form.useForm();
@@ -664,6 +666,7 @@ export default function Login() {
 
   // Step 1 for login: validate credentials → backend sends OTP if valid
   const onLoginStep1 = async (values) => {
+    setLoginError('');
     setLoading(true);
     try {
       const res = await login(values);
@@ -673,7 +676,7 @@ export default function Login() {
         otpForm.resetFields();
         startResendTimer();
       } else {
-        message.error(res.error || 'Login failed. Please check your credentials.');
+        setLoginError(res.error || 'Login failed. Please check your credentials.');
       }
     } finally {
       setLoading(false);
@@ -724,6 +727,7 @@ export default function Login() {
 
   const switchTab = (tab) => {
     setActiveTab(tab);
+    setLoginError('');
     setOtpStep(false);
     setOtpContext(null);
     loginForm.resetFields();
@@ -869,7 +873,9 @@ export default function Login() {
             {/* LOGIN FORM */}
             {!otpStep && !fpView && activeTab === 'login' && (
               <div className="ims-form-wrap" key="login">
-                <Form form={loginForm} onFinish={onLoginStep1} layout="vertical" size="large">
+                <Form form={loginForm} onFinish={onLoginStep1} layout="vertical" size="large"
+                  onValuesChange={() => setLoginError('')}
+                >
                   <Form.Item
                     label={<span className="ims-label">Email Address</span>}
                     name="email"
@@ -888,6 +894,16 @@ export default function Login() {
                   >
                     <Input.Password className="ims-input" prefix={<LockOutlined style={{fontSize:15}} />} placeholder="Enter your password" autoComplete="current-password" />
                   </Form.Item>
+
+                  {loginError && (
+                    <div className="ims-alert-error">
+                      <div className="ims-alert-error-icon">✕</div>
+                      <div>
+                        <div className="ims-alert-error-title">Login Failed</div>
+                        <div className="ims-alert-error-text">{loginError}</div>
+                      </div>
+                    </div>
+                  )}
 
                   <Form.Item style={{ marginBottom: 0 }}>
                     <button
@@ -944,7 +960,9 @@ export default function Login() {
                       </div>
                     )}
 
-                    <Form form={fpForm} onFinish={onFpEmailSubmit} layout="vertical" size="large">
+                    <Form form={fpForm} onFinish={onFpEmailSubmit} layout="vertical" size="large"
+                      onValuesChange={() => setFpError('')}
+                    >
                       <Form.Item
                         label={<span className="ims-label">Registered Email</span>}
                         name="email"
