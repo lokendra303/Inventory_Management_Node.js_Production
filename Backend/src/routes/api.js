@@ -46,6 +46,11 @@ router.use('/transfer-approvals', require('../modules/inventory/transferApproval
 router.use('/analytics', require('../modules/reports/analytics.routes'));
 router.use('/notifications', require('../modules/notification/notification.routes'));
 router.use('/audit', require('../modules/audit/audit.routes'));
+router.use('/onboarding', require('../modules/onboarding/onboarding.routes'));
+router.use('/tax', require('../modules/tax/tax.routes'));
+router.use('/price-lists', require('../modules/price-lists/priceList.routes'));
+router.use('/subscription', require('../modules/subscription/subscription.routes'));
+router.use('/workflows', require('../modules/workflows/workflow.routes'));
 
 // Error handling middleware
 router.use((error, req, res, next) => {
