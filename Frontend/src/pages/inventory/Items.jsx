@@ -31,6 +31,7 @@ const Items = () => {
   const [manufacturerOptions, setManufacturerOptions] = useState([]);
   const [brandOptions, setBrandOptions] = useState([]);
   const [vendorOptions, setVendorOptions] = useState([]);
+  const [taxRateOptions, setTaxRateOptions] = useState([]);
   const [itemHistory, setItemHistory] = useState([]);
   const [priceHistory, setPriceHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -190,6 +191,12 @@ const Items = () => {
         const vendors = Array.isArray(vendorsRes.value) ? vendorsRes.value : (vendorsRes.value?.data || []);
         setVendorOptions(vendors);
       }
+
+      // Load tax rates from new tax module
+      try {
+        const taxRes = await apiService.get('/tax/rates');
+        if (taxRes.success) setTaxRateOptions(taxRes.data || []);
+      } catch { /* silent — tax module optional */ }
     } catch (error) {
       console.error('Dropdown fetch error:', error);
     }
@@ -1405,15 +1412,22 @@ const viewItem = async (item) => {
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="taxRate" label="Tax Rate (%)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
-                <InputNumber 
-                  min={0} 
-                  max={100} 
-                  step={0.01} 
-                  precision={2}
-                  style={{ width: '100%' }} 
-                  placeholder="Enter tax rate"
-                  parser={value => value.replace(/[^0-9.]/g, '')}
-                />
+                {taxRateOptions.length > 0 ? (
+                  <Select allowClear placeholder="Select tax rate" showSearch optionFilterProp="children">
+                    {taxRateOptions.map(t => (
+                      <Select.Option key={t.id} value={parseFloat(t.rate)}>
+                        {t.name} ({parseFloat(t.rate).toFixed(2)}%) — {t.tax_type?.toUpperCase()}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                ) : (
+                  <InputNumber
+                    min={0} max={100} step={0.01} precision={2}
+                    style={{ width: '100%' }}
+                    placeholder="Enter tax rate"
+                    parser={value => value.replace(/[^0-9.]/g, '')}
+                  />
+                )}
               </Form.Item>
             </Col>
             <Col xs={24} sm={16}>
