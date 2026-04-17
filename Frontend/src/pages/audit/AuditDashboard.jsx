@@ -17,8 +17,16 @@ const AuditDashboard = () => {
   const [filters, setFilters] = useState({ entityType: '', action: '', userId: '', startDate: '', endDate: '', limit: 100, offset: 0 });
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [users, setUsers] = useState([]);
 
-  useEffect(() => { loadAuditData(); }, []);
+  useEffect(() => { loadAuditData(); loadUsers(); }, []);
+
+  const loadUsers = async () => {
+    try {
+      const res = await apiService.get('/users');
+      if (res.success) setUsers(res.data || []);
+    } catch { /* silent */ }
+  };
 
   const loadAuditData = async () => {
     try {
@@ -35,7 +43,15 @@ const AuditDashboard = () => {
     }
   };
 
-  const handleFilterChange = (key, value) => setFilters(prev => ({ ...prev, [key]: value, offset: 0 }));
+  const handleFilterChange = (key, value) => {
+    setFilters(prev => ({ ...prev, [key]: value ?? '', offset: 0 }));
+  };
+
+  const applyFilters = () => loadAuditData();
+
+  const clearFilters = () => {
+    setFilters({ entityType: '', action: '', userId: '', startDate: '', endDate: '', limit: 100, offset: 0 });
+  };
 
   const exportAuditLog = async () => {
     try {
@@ -100,11 +116,17 @@ const AuditDashboard = () => {
     {
       title: 'Entity',
       key: 'entity',
-      width: 130,
+      width: 150,
       render: (_, record) => (
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1a2e', textTransform: 'capitalize' }}>{record.entity_type}</div>
-          <div style={{ fontSize: 11, color: '#8c8c8c' }}>{record.entity_id}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1a2e', textTransform: 'capitalize' }}>
+            {record.entity_type?.replace(/_/g, ' ') || '—'}
+          </div>
+          {record.entity_id && (
+            <div style={{ fontSize: 11, color: '#8c8c8c' }}>
+              #{record.entity_id.substring(0, 8)}...
+            </div>
+          )}
         </div>
       ),
     },
@@ -228,53 +250,166 @@ const AuditDashboard = () => {
             Filters
           </div>
           <Space>
+            <Button onClick={clearFilters} style={{ borderRadius: 8 }}>Clear All</Button>
             <Button icon={<DownloadOutlined />} onClick={exportAuditLog} style={{ borderRadius: 8, borderColor: '#667eea', color: '#667eea' }}>
               Export
             </Button>
-            <Button type="primary" icon={<SearchOutlined />} onClick={loadAuditData}
+            <Button type="primary" icon={<SearchOutlined />} onClick={applyFilters}
               style={{ borderRadius: 8, background: 'linear-gradient(135deg, #667eea, #764ba2)', border: 'none', fontWeight: 600 }}>
               Apply
             </Button>
           </Space>
         </div>
         <Row gutter={[12, 12]}>
-          <Col xs={24} sm={12} md={4}>
-            <Select placeholder="Entity Type" value={filters.entityType || undefined} onChange={v => handleFilterChange('entityType', v)} allowClear style={{ width: '100%' }}>
-              <Option value="item">Items</Option>
-              <Option value="customer">Customers</Option>
-              <Option value="vendor">Vendors</Option>
-              <Option value="invoice">Invoices</Option>
-              <Option value="inventory">Inventory</Option>
-              <Option value="user">Users</Option>
+
+          {/* Entity Type — all 35 types */}
+          <Col xs={24} sm={12} md={5}>
+            <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4, fontWeight: 600 }}>ENTITY TYPE</div>
+            <Select
+              placeholder="All entities"
+              value={filters.entityType || undefined}
+              onChange={v => handleFilterChange('entityType', v)}
+              allowClear
+              showSearch
+              optionFilterProp="children"
+              style={{ width: '100%' }}
+            >
+              {[
+                { value: 'item',              label: 'Item' },
+                { value: 'item_draft',        label: 'Item Draft' },
+                { value: 'customer',          label: 'Customer' },
+                { value: 'vendor',            label: 'Vendor' },
+                { value: 'sales_invoice',     label: 'Sales Invoice' },
+                { value: 'purchase_invoice',  label: 'Purchase Invoice' },
+                { value: 'sales_order',       label: 'Sales Order' },
+                { value: 'purchase_order',    label: 'Purchase Order' },
+                { value: 'inventory',         label: 'Inventory' },
+                { value: 'warehouse',         label: 'Warehouse' },
+                { value: 'user',              label: 'User' },
+                { value: 'exchange_rate',     label: 'Exchange Rate' },
+                { value: 'company_settings',  label: 'Company Settings' },
+                { value: 'settings',          label: 'Settings' },
+                { value: 'tax_rate',          label: 'Tax Rate' },
+                { value: 'tax_group',         label: 'Tax Group' },
+                { value: 'tax_type',          label: 'Tax Type' },
+                { value: 'price_list',        label: 'Price List' },
+                { value: 'price_list_item',   label: 'Price List Item' },
+                { value: 'workflow',          label: 'Workflow Rule' },
+                { value: 'subscription',      label: 'Subscription' },
+                { value: 'onboarding',        label: 'Onboarding' },
+                { value: 'report',            label: 'Report' },
+                { value: 'accounting',        label: 'Accounting' },
+                { value: 'document',          label: 'Document' },
+                { value: 'delivery_challan',  label: 'Delivery Challan' },
+                { value: 'purchase_return',   label: 'Purchase Return' },
+                { value: 'stock_count',       label: 'Stock Count' },
+                { value: 'reorder_level',     label: 'Reorder Level' },
+                { value: 'batch_serial',      label: 'Batch / Serial' },
+                { value: 'transfer_approval', label: 'Transfer Approval' },
+                { value: 'role',              label: 'Role' },
+                { value: 'category',          label: 'Category' },
+                { value: 'brand',             label: 'Brand' },
+                { value: 'manufacturer',      label: 'Manufacturer' },
+                { value: 'unit',              label: 'Unit' },
+              ].map(o => <Option key={o.value} value={o.value}>{o.label}</Option>)}
             </Select>
           </Col>
+
+          {/* Action — all action types */}
           <Col xs={24} sm={12} md={4}>
-            <Select placeholder="Action" value={filters.action || undefined} onChange={v => handleFilterChange('action', v)} allowClear style={{ width: '100%' }}>
-              <Option value="create">Create</Option>
-              <Option value="update">Update</Option>
-              <Option value="delete">Delete</Option>
-              <Option value="view">View</Option>
-              <Option value="approve">Approve</Option>
-              <Option value="payment">Payment</Option>
+            <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4, fontWeight: 600 }}>ACTION</div>
+            <Select
+              placeholder="All actions"
+              value={filters.action || undefined}
+              onChange={v => handleFilterChange('action', v)}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              {[
+                { value: 'create',     label: 'Create',     color: 'green' },
+                { value: 'update',     label: 'Update',     color: 'blue' },
+                { value: 'delete',     label: 'Delete',     color: 'red' },
+                { value: 'view',       label: 'View',       color: 'default' },
+                { value: 'login',      label: 'Login',      color: 'purple' },
+                { value: 'logout',     label: 'Logout',     color: 'purple' },
+                { value: 'approve',    label: 'Approve',    color: 'success' },
+                { value: 'reject',     label: 'Reject',     color: 'warning' },
+                { value: 'cancel',     label: 'Cancel',     color: 'orange' },
+                { value: 'confirm',    label: 'Confirm',    color: 'cyan' },
+                { value: 'payment',    label: 'Payment',    color: 'gold' },
+                { value: 'transfer',   label: 'Transfer',   color: 'cyan' },
+                { value: 'adjustment', label: 'Adjustment', color: 'blue' },
+              ].map(o => (
+                <Option key={o.value} value={o.value}>
+                  <Tag color={o.color} style={{ borderRadius: 20, fontSize: 11, margin: 0 }}>{o.label}</Tag>
+                </Option>
+              ))}
             </Select>
           </Col>
+
+          {/* User — dropdown from real users */}
+          <Col xs={24} sm={12} md={5}>
+            <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4, fontWeight: 600 }}>USER</div>
+            <Select
+              placeholder="All users"
+              value={filters.userId || undefined}
+              onChange={v => handleFilterChange('userId', v)}
+              allowClear
+              showSearch
+              optionFilterProp="children"
+              style={{ width: '100%' }}
+            >
+              {users.map(u => (
+                <Option key={u.id} value={u.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: '50%',
+                      background: 'linear-gradient(135deg,#667eea,#764ba2)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontSize: 10, fontWeight: 700, flexShrink: 0
+                    }}>
+                      {(u.first_name || u.email || 'U')[0].toUpperCase()}
+                    </div>
+                    <span>{u.first_name} {u.last_name} <span style={{ color: '#8c8c8c', fontSize: 11 }}>({u.email})</span></span>
+                  </div>
+                </Option>
+              ))}
+            </Select>
+          </Col>
+
+          {/* Date Range */}
           <Col xs={24} sm={12} md={6}>
-            <RangePicker style={{ width: '100%' }} onChange={(dates) => {
-              handleFilterChange('startDate', dates ? dates[0].format('YYYY-MM-DD') : '');
-              handleFilterChange('endDate', dates ? dates[1].format('YYYY-MM-DD') : '');
-            }} />
+            <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4, fontWeight: 600 }}>DATE RANGE</div>
+            <RangePicker
+              style={{ width: '100%' }}
+              value={[
+                filters.startDate ? moment(filters.startDate) : null,
+                filters.endDate   ? moment(filters.endDate)   : null,
+              ]}
+              onChange={(dates) => {
+                handleFilterChange('startDate', dates ? dates[0].format('YYYY-MM-DD') : '');
+                handleFilterChange('endDate',   dates ? dates[1].format('YYYY-MM-DD') : '');
+              }}
+              allowClear
+              format="DD MMM YYYY"
+            />
           </Col>
+
+          {/* Rows per page */}
           <Col xs={24} sm={12} md={4}>
-            <Input placeholder="User ID" value={filters.userId} onChange={e => handleFilterChange('userId', e.target.value)} style={{ borderRadius: 8 }} />
-          </Col>
-          <Col xs={24} sm={12} md={3}>
-            <Select value={filters.limit} onChange={v => handleFilterChange('limit', v)} style={{ width: '100%' }}>
+            <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4, fontWeight: 600 }}>ROWS</div>
+            <Select
+              value={filters.limit}
+              onChange={v => handleFilterChange('limit', v)}
+              style={{ width: '100%' }}
+            >
               <Option value={50}>50 rows</Option>
               <Option value={100}>100 rows</Option>
               <Option value={500}>500 rows</Option>
               <Option value={1000}>1000 rows</Option>
             </Select>
           </Col>
+
         </Row>
       </div>
 
@@ -353,12 +488,25 @@ const AuditDashboard = () => {
                 {moment(selectedEntry.created_at).format('MMM DD YYYY, HH:mm:ss')}
               </Descriptions.Item>
               <Descriptions.Item label="Entity">
-                <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>{selectedEntry.entity_type}</span>
-                <span style={{ color: '#8c8c8c', marginLeft: 6 }}>#{selectedEntry.entity_id}</span>
+                <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>
+                  {selectedEntry.entity_type?.replace(/_/g, ' ')}
+                </span>
+                {selectedEntry.entity_id && (
+                  <span style={{ color: '#8c8c8c', marginLeft: 6, fontSize: 11 }}>
+                    #{selectedEntry.entity_id.substring(0, 8)}...
+                  </span>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="Method & Path" span={2}>
-                <Tag color={{ GET: 'blue', POST: 'green', PUT: 'orange', DELETE: 'red', PATCH: 'cyan' }[selectedEntry.method] || 'default'} style={{ borderRadius: 20, fontWeight: 700 }}>{selectedEntry.method}</Tag>
-                <code style={{ marginLeft: 8, fontSize: 12, color: '#595959' }}>{selectedEntry.path}</code>
+                <Tag
+                  color={{ GET: 'blue', POST: 'green', PUT: 'orange', DELETE: 'red', PATCH: 'cyan' }[selectedEntry.method] || 'default'}
+                  style={{ borderRadius: 20, fontWeight: 700 }}
+                >
+                  {selectedEntry.method}
+                </Tag>
+                <code style={{ marginLeft: 8, fontSize: 12, color: '#595959', wordBreak: 'break-all' }}>
+                  {selectedEntry.path}
+                </code>
               </Descriptions.Item>
               <Descriptions.Item label="IP Address">{selectedEntry.ip_address || 'N/A'}</Descriptions.Item>
               <Descriptions.Item label="Duration" span={1}>{formatDuration(selectedEntry.duration)}</Descriptions.Item>

@@ -74,14 +74,20 @@ class PriceListService {
     if (isDefault) {
       await db.query('UPDATE price_lists SET is_default=0 WHERE institution_id=? AND pricelist_type=?', [institutionId, pricelistType || 'sales']);
     }
+    // If no currency passed, use institution's active currency
+    let finalCurrency = currency;
+    if (!finalCurrency) {
+      const inst = await db.query('SELECT currency FROM institutions WHERE id=?', [institutionId]);
+      finalCurrency = inst[0]?.currency || 'USD';
+    }
     const id = uuidv4();
     await db.query(
       `INSERT INTO price_lists (id, institution_id, name, description, currency, pricelist_type, discount_type, discount_value, is_default)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, institutionId, name, description || null, currency || 'USD',
+      [id, institutionId, name, description || null, finalCurrency,
        pricelistType || 'sales', discountType || 'percentage', discountValue || 0, isDefault ? 1 : 0]
     );
-    logger.info('Price list created', { id, institutionId, name });
+    logger.info('Price list created', { id, institutionId, name, currency: finalCurrency });
     return id;
   }
 

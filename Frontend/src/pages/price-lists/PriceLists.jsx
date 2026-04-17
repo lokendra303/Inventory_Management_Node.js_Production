@@ -8,8 +8,12 @@ import {
   TagsOutlined, StarFilled, StarOutlined
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
+import { useCurrency } from '../../contexts/CurrencyContext';
+import { getCurrencies } from '../../utils/currency';
 
 export default function PriceLists() {
+  const { currency: activeCurrency } = useCurrency(); // institution's active currency
+  const allCurrencies = getCurrencies();
   const [lists, setLists] = useState([]);
   const [selected, setSelected] = useState(null);
   const [items, setItems] = useState([]);
@@ -55,7 +59,8 @@ export default function PriceLists() {
       ? { name: record.name, description: record.description, currency: record.currency,
           pricelistType: record.pricelist_type, discountType: record.discount_type,
           discountValue: record.discount_value, isDefault: record.is_default }
-      : { currency: 'USD', pricelistType: 'sales', discountType: 'percentage', discountValue: 0 }
+      : { currency: activeCurrency || 'USD', pricelistType: 'sales',
+          discountType: 'percentage', discountValue: 0 }
     );
     setListModal(true);
   };
@@ -128,7 +133,11 @@ export default function PriceLists() {
     { title: 'Type', dataIndex: 'pricelist_type', key: 'pricelist_type',
       render: v => <Tag color={v === 'sales' ? 'blue' : 'green'}>{v?.toUpperCase()}</Tag> },
     { title: 'Currency', dataIndex: 'currency', key: 'currency',
-      render: v => <Tag>{v}</Tag> },
+      render: v => {
+        const info = allCurrencies.find(c => c.code === v);
+        return <Tag>{info ? `${info.symbol} ${v}` : v}</Tag>;
+      }
+    },
     { title: 'Discount', key: 'discount',
       render: (_, r) => r.discount_value > 0
         ? <Tag color="orange">{r.discount_value}{r.discount_type === 'percentage' ? '%' : ' fixed'} off</Tag>
@@ -250,6 +259,22 @@ export default function PriceLists() {
           <Form.Item name="description" label="Description">
             <Input placeholder="Optional description" />
           </Form.Item>
+
+          {/* Currency — defaults to institution active currency */}
+          <Form.Item
+            name="currency"
+            label="Currency"
+            extra={<span style={{ fontSize: 11, color: '#8c8c8c' }}>Defaults to your active currency ({activeCurrency})</span>}
+          >
+            <Select showSearch optionFilterProp="children" style={{ width: '100%' }}>
+              {allCurrencies.map(c => (
+                <Select.Option key={c.code} value={c.code}>
+                  {c.symbol} {c.code} — {c.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
           <Row gutter={14}>
             <Col span={8}>
               <Form.Item name="pricelistType" label="Type">

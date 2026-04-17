@@ -18,13 +18,24 @@ async function ensureTables() {
     )
   `);
   await db.query(`
+    CREATE TABLE IF NOT EXISTS tax_types (
+      id VARCHAR(36) PRIMARY KEY,
+      institution_id VARCHAR(36) NOT NULL,
+      name VARCHAR(50) NOT NULL,
+      description VARCHAR(255),
+      status ENUM('active','inactive') DEFAULT 'active',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_inst_type (institution_id, name)
+    )
+  `);
+  await db.query(`
     CREATE TABLE IF NOT EXISTS tax_rates (
       id VARCHAR(36) PRIMARY KEY,
       institution_id VARCHAR(36) NOT NULL,
       tax_group_id VARCHAR(36),
       name VARCHAR(100) NOT NULL,
       rate DECIMAL(10,4) NOT NULL,
-      tax_type ENUM('GST','VAT','TDS','TCS','IGST','CGST','SGST','custom') DEFAULT 'custom',
+      tax_type VARCHAR(50) DEFAULT 'custom',
       is_compound TINYINT(1) DEFAULT 0,
       is_inclusive TINYINT(1) DEFAULT 0,
       status ENUM('active','inactive') DEFAULT 'active',
@@ -33,10 +44,60 @@ async function ensureTables() {
       FOREIGN KEY (tax_group_id) REFERENCES tax_groups(id) ON DELETE SET NULL
     )
   `);
+  // Migrate tax_type column from ENUM to VARCHAR if needed
+  try {
+    await db.query(`ALTER TABLE tax_rates MODIFY COLUMN tax_type VARCHAR(50) DEFAULT 'custom'`);
+  } catch (e) { /* already VARCHAR, ignore */ }
+  // Seed default tax types for institution if none exist
   tablesReady = true;
 }
 
+const DEFAULT_TAX_TYPES = ['GST','VAT','TDS','TCS','IGST','CGST','SGST','custom'];
+
+async function seedTaxTypes(institutionId) {
+  const existing = await db.query(
+    'SELECT COUNT(*) as c FROM tax_types WHERE institution_id=?', [institutionId]
+  );
+  if (existing[0].c > 0) return;
+  for (const name of DEFAULT_TAX_TYPES) {
+    await db.query(
+      'INSERT IGNORE INTO tax_types (id, institution_id, name) VALUES (UUID(), ?, ?)',
+      [institutionId, name]
+    );
+  }
+}
+
 class TaxService {
+  // ── Tax Types ────────────────────────────────────────────────
+  async getTaxTypes(institutionId) {
+    await ensureTables();
+    await seedTaxTypes(institutionId);
+    return db.query(
+      `SELECT * FROM tax_types WHERE institution_id=? AND status='active' ORDER BY name`,
+      [institutionId]
+    );
+  }
+
+  async createTaxType(institutionId, name) {
+    await ensureTables();
+    const trimmed = name?.trim();
+    if (!trimmed) throw new Error('Tax type name is required');
+    await db.query(
+      'INSERT IGNORE INTO tax_types (id, institution_id, name) VALUES (UUID(), ?, ?)',
+      [institutionId, trimmed]
+    );
+    return this.getTaxTypes(institutionId);
+  }
+
+  async deleteTaxType(institutionId, typeId) {
+    await ensureTables();
+    await db.query(
+      `UPDATE tax_types SET status='inactive' WHERE institution_id=? AND id=?`,
+      [institutionId, typeId]
+    );
+    return true;
+  }
+
   // ── Tax Groups ──────────────────────────────────────────────
   async getTaxGroups(institutionId) {
     await ensureTables();
@@ -44,7 +105,7 @@ class TaxService {
       `SELECT tg.*, COUNT(tr.id) as rate_count
        FROM tax_groups tg
        LEFT JOIN tax_rates tr ON tr.tax_group_id = tg.id AND tr.status = 'active'
-       WHERE tg.institution_id = ?
+       WHERE tg.institution_id = ? AND tg.status = 'active'
        GROUP BY tg.id ORDER BY tg.name`,
       [institutionId]
     );

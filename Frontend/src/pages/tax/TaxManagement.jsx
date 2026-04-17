@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, InputNumber,
-  Select, Switch, Tag, Space, Tabs, Popconfirm, message, Row, Col
+  Select, Switch, Tag, Space, Tabs, Popconfirm, message,
+  Row, Col, Divider
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
@@ -9,17 +10,22 @@ import {
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 
-const TAX_TYPES = ['GST', 'VAT', 'TDS', 'TCS', 'IGST', 'CGST', 'SGST', 'custom'];
-
 export default function TaxManagement() {
-  const [groups, setGroups] = useState([]);
-  const [rates, setRates] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [groups, setGroups]       = useState([]);
+  const [rates, setRates]         = useState([]);
+  const [taxTypes, setTaxTypes]   = useState([]);
+  const [loading, setLoading]     = useState(false);
   const [groupModal, setGroupModal] = useState(false);
-  const [rateModal, setRateModal] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [rateModal, setRateModal]   = useState(false);
+  const [editing, setEditing]       = useState(null);
   const [groupForm] = Form.useForm();
-  const [rateForm] = Form.useForm();
+  const [rateForm]  = Form.useForm();
+
+  // Inline add state for type and group dropdowns
+  const [newTypeName,  setNewTypeName]  = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+  const newTypeInputRef  = useRef(null);
+  const newGroupInputRef = useRef(null);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -37,9 +43,66 @@ export default function TaxManagement() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { loadGroups(); loadRates(); }, [loadGroups, loadRates]);
+  const loadTaxTypes = useCallback(async () => {
+    try {
+      const res = await apiService.get('/tax/types');
+      if (res.success) setTaxTypes(res.data);
+    } catch { message.error('Failed to load tax types'); }
+  }, []);
 
-  // ── Tax Groups ──────────────────────────────────────────────
+  useEffect(() => {
+    loadGroups();
+    loadRates();
+    loadTaxTypes();
+  }, [loadGroups, loadRates, loadTaxTypes]);
+
+  // ── Inline: Add Tax Type ─────────────────────────────────────
+  const handleAddType = async (e) => {
+    e.preventDefault();
+    if (!newTypeName.trim()) return;
+    try {
+      const res = await apiService.post('/tax/types', { name: newTypeName.trim() });
+      if (res.success) {
+        setTaxTypes(res.data);
+        setNewTypeName('');
+        message.success(`Tax type "${newTypeName.trim()}" added`);
+        setTimeout(() => newTypeInputRef.current?.focus(), 0);
+      }
+    } catch { message.error('Failed to add tax type'); }
+  };
+
+  const handleDeleteType = async (e, id, name) => {
+    e.stopPropagation();
+    try {
+      await apiService.delete(`/tax/types/${id}`);
+      setTaxTypes(prev => prev.filter(t => t.id !== id));
+      message.success(`Tax type "${name}" deleted`);
+    } catch { message.error('Failed to delete tax type'); }
+  };
+
+  // ── Inline: Add Tax Group ────────────────────────────────────
+  const handleAddGroup = async (e) => {
+    e.preventDefault();
+    if (!newGroupName.trim()) return;
+    try {
+      await apiService.post('/tax/groups', { name: newGroupName.trim() });
+      setNewGroupName('');
+      message.success(`Tax group "${newGroupName.trim()}" added`);
+      await loadGroups();
+      setTimeout(() => newGroupInputRef.current?.focus(), 0);
+    } catch { message.error('Failed to add tax group'); }
+  };
+
+  const handleDeleteGroupInline = async (e, id, name) => {
+    e.stopPropagation();
+    try {
+      await apiService.delete(`/tax/groups/${id}`);
+      setGroups(prev => prev.filter(g => g.id !== id));
+      message.success(`Tax group "${name}" deleted`);
+    } catch { message.error('Failed to delete tax group'); }
+  };
+
+  // ── Tax Groups CRUD ──────────────────────────────────────────
   const openGroupModal = (record = null) => {
     setEditing(record);
     groupForm.setFieldsValue(record || { name: '', description: '' });
@@ -70,19 +133,28 @@ export default function TaxManagement() {
     } catch { message.error('Failed to delete tax group'); }
   };
 
-  // ── Tax Rates ────────────────────────────────────────────────
+  // ── Tax Rates CRUD ───────────────────────────────────────────
   const openRateModal = (record = null) => {
     setEditing(record);
     rateForm.setFieldsValue(record
-      ? { ...record, isCompound: !!record.is_compound, isInclusive: !!record.is_inclusive }
-      : { name: '', rate: 0, taxType: 'custom', isCompound: false, isInclusive: false }
+      ? { ...record,
+          taxType: record.tax_type,
+          taxGroupId: record.tax_group_id,
+          isCompound: !!record.is_compound,
+          isInclusive: !!record.is_inclusive }
+      : { name: '', rate: 0, taxType: taxTypes[0]?.name || 'custom',
+          isCompound: false, isInclusive: false }
     );
     setRateModal(true);
   };
 
   const saveRate = async (values) => {
     try {
-      const payload = { ...values, isCompound: values.isCompound ? 1 : 0, isInclusive: values.isInclusive ? 1 : 0 };
+      const payload = {
+        ...values,
+        isCompound:  values.isCompound  ? 1 : 0,
+        isInclusive: values.isInclusive ? 1 : 0,
+      };
       if (editing) {
         await apiService.put(`/tax/rates/${editing.id}`, payload);
         message.success('Tax rate updated');
@@ -105,13 +177,14 @@ export default function TaxManagement() {
     } catch { message.error('Failed to delete tax rate'); }
   };
 
+  // ── Columns ──────────────────────────────────────────────────
   const groupColumns = [
-    { title: 'Group Name', dataIndex: 'name', key: 'name', render: v => <strong>{v}</strong> },
-    { title: 'Description', dataIndex: 'description', key: 'description', render: v => v || '—' },
+    { title: 'Group Name', dataIndex: 'name', key: 'name',
+      render: v => <strong>{v}</strong> },
+    { title: 'Description', dataIndex: 'description', key: 'description',
+      render: v => v || '—' },
     { title: 'Rates', dataIndex: 'rate_count', key: 'rate_count',
       render: v => <Tag color="blue">{v || 0} rates</Tag> },
-    { title: 'Status', dataIndex: 'status', key: 'status',
-      render: v => <Tag color={v === 'active' ? 'green' : 'default'}>{v}</Tag> },
     {
       title: 'Actions', key: 'actions', width: 100,
       render: (_, r) => (
@@ -126,12 +199,14 @@ export default function TaxManagement() {
   ];
 
   const rateColumns = [
-    { title: 'Tax Name', dataIndex: 'name', key: 'name', render: v => <strong>{v}</strong> },
+    { title: 'Tax Name', dataIndex: 'name', key: 'name',
+      render: v => <strong>{v}</strong> },
     { title: 'Rate', dataIndex: 'rate', key: 'rate',
       render: v => <Tag color="purple">{parseFloat(v).toFixed(2)}%</Tag> },
     { title: 'Type', dataIndex: 'tax_type', key: 'tax_type',
       render: v => <Tag color="blue">{v?.toUpperCase()}</Tag> },
-    { title: 'Group', dataIndex: 'group_name', key: 'group_name', render: v => v || '—' },
+    { title: 'Group', dataIndex: 'group_name', key: 'group_name',
+      render: v => v || '—' },
     { title: 'Compound', dataIndex: 'is_compound', key: 'is_compound',
       render: v => v ? <Tag color="orange">Yes</Tag> : '—' },
     { title: 'Inclusive', dataIndex: 'is_inclusive', key: 'is_inclusive',
@@ -149,23 +224,27 @@ export default function TaxManagement() {
     }
   ];
 
+  const btnStyle = {
+    background: 'linear-gradient(135deg,#667eea,#764ba2)',
+    border: 'none', borderRadius: 8
+  };
+
   return (
     <div style={{ padding: 24, background: '#f5f6fa', minHeight: '100vh' }}>
+
       {/* Header */}
       <div style={{
         background: 'linear-gradient(135deg,#667eea,#764ba2)',
         borderRadius: 16, padding: '24px 28px', marginBottom: 24,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        display: 'flex', alignItems: 'center', gap: 14
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '10px 14px' }}>
-            <PercentageOutlined style={{ fontSize: 28, color: '#fff' }} />
-          </div>
-          <div>
-            <div style={{ color: '#fff', fontSize: 22, fontWeight: 700 }}>Tax Management</div>
-            <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
-              Configure GST, VAT, TDS and custom tax rates
-            </div>
+        <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '10px 14px' }}>
+          <PercentageOutlined style={{ fontSize: 28, color: '#fff' }} />
+        </div>
+        <div>
+          <div style={{ color: '#fff', fontSize: 22, fontWeight: 700 }}>Tax Management</div>
+          <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
+            Configure tax types, groups and rates
           </div>
         </div>
       </div>
@@ -173,16 +252,18 @@ export default function TaxManagement() {
       {/* Summary cards */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
         {[
-          { label: 'Tax Groups', value: groups.length, color: '#667eea', bg: '#f0f0ff' },
-          { label: 'Tax Rates', value: rates.length, color: '#52c41a', bg: '#f6ffed' },
-          { label: 'GST Rates', value: rates.filter(r => r.tax_type === 'GST').length, color: '#fa8c16', bg: '#fff7e6' },
-          { label: 'Custom Rates', value: rates.filter(r => r.tax_type === 'custom').length, color: '#722ed1', bg: '#f9f0ff' },
+          { label: 'Tax Types',   value: taxTypes.length,                                    color: '#1677ff', bg: '#e6f4ff' },
+          { label: 'Tax Groups',  value: groups.length,                                      color: '#667eea', bg: '#f0f0ff' },
+          { label: 'Tax Rates',   value: rates.length,                                       color: '#52c41a', bg: '#f6ffed' },
+          { label: 'Custom Rates',value: rates.filter(r => r.tax_type === 'custom').length,  color: '#722ed1', bg: '#f9f0ff' },
         ].map(s => (
           <Col xs={12} sm={6} key={s.label}>
-            <Card bordered={false} style={{ borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
+            <Card bordered={false}
+              style={{ borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
               bodyStyle={{ padding: '18px 20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ background: s.bg, borderRadius: 10, padding: 10, fontSize: 22, color: s.color }}>
+                <div style={{ background: s.bg, borderRadius: 10, padding: 10,
+                  fontSize: 22, color: s.color }}>
                   <PercentageOutlined />
                 </div>
                 <div>
@@ -195,52 +276,103 @@ export default function TaxManagement() {
         ))}
       </Row>
 
-      <Tabs
-        defaultActiveKey="rates"
-        items={[
-          {
-            key: 'rates',
-            label: <span><PercentageOutlined /> Tax Rates</span>,
-            children: (
-              <Card bordered={false} style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
-                extra={
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => openRateModal()}
-                    style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', border: 'none', borderRadius: 8 }}>
-                    Add Tax Rate
+      <Tabs defaultActiveKey="rates" items={[
+        {
+          key: 'rates',
+          label: <span><PercentageOutlined /> Tax Rates</span>,
+          children: (
+            <Card bordered={false}
+              style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
+              title={<strong>All Tax Rates</strong>}
+              extra={
+                <Button type="primary" icon={<PlusOutlined />}
+                  onClick={() => openRateModal()} style={btnStyle}>
+                  Add Tax Rate
+                </Button>
+              }
+            >
+              <Table dataSource={rates} columns={rateColumns} rowKey="id"
+                loading={loading} pagination={{ pageSize: 15 }} size="small"
+                locale={{ emptyText: 'No tax rates yet. Click "Add Tax Rate" to create one.' }}
+              />
+            </Card>
+          )
+        },
+        {
+          key: 'groups',
+          label: <span><AppstoreOutlined /> Tax Groups</span>,
+          children: (
+            <Card bordered={false}
+              style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
+              title={<strong>Tax Groups</strong>}
+              extra={
+                <Button type="primary" icon={<PlusOutlined />}
+                  onClick={() => openGroupModal()} style={btnStyle}>
+                  Add Tax Group
+                </Button>
+              }
+            >
+              <Table dataSource={groups} columns={groupColumns} rowKey="id"
+                pagination={{ pageSize: 15 }} size="small"
+                locale={{ emptyText: 'No tax groups yet. Click "Add Tax Group" to create one.' }}
+              />
+            </Card>
+          )
+        },
+        {
+          key: 'types',
+          label: <span><AppstoreOutlined /> Tax Types</span>,
+          children: (
+            <Card bordered={false}
+              style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
+              title={<strong>Tax Types</strong>}
+              extra={
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Input
+                    ref={newTypeInputRef}
+                    placeholder="New type name e.g. CESS"
+                    value={newTypeName}
+                    onChange={e => setNewTypeName(e.target.value)}
+                    onPressEnter={handleAddType}
+                    style={{ width: 200, borderRadius: 8 }}
+                  />
+                  <Button type="primary" icon={<PlusOutlined />}
+                    onClick={handleAddType} style={btnStyle}>
+                    Add
                   </Button>
-                }
-                title={<strong>All Tax Rates</strong>}
-              >
-                <Table dataSource={rates} columns={rateColumns} rowKey="id"
-                  loading={loading} pagination={{ pageSize: 15 }} size="small" />
-              </Card>
-            )
-          },
-          {
-            key: 'groups',
-            label: <span><AppstoreOutlined /> Tax Groups</span>,
-            children: (
-              <Card bordered={false} style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
-                extra={
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => openGroupModal()}
-                    style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', border: 'none', borderRadius: 8 }}>
-                    Add Tax Group
-                  </Button>
-                }
-                title={<strong>Tax Groups</strong>}
-              >
-                <Table dataSource={groups} columns={groupColumns} rowKey="id"
-                  pagination={{ pageSize: 15 }} size="small" />
-              </Card>
-            )
-          }
-        ]}
-      />
+                </div>
+              }
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '8px 0' }}>
+                {taxTypes.map(t => (
+                  <Tag
+                    key={t.id}
+                    color="blue"
+                    closable
+                    onClose={e => handleDeleteType(e, t.id, t.name)}
+                    style={{ fontSize: 13, padding: '4px 10px', borderRadius: 20 }}
+                  >
+                    {t.name.toUpperCase()}
+                  </Tag>
+                ))}
+                {taxTypes.length === 0 && (
+                  <span style={{ color: '#8c8c8c', fontSize: 13 }}>
+                    No tax types yet. Add one above.
+                  </span>
+                )}
+              </div>
+            </Card>
+          )
+        }
+      ]} />
 
       {/* Tax Group Modal */}
-      <Modal title={editing ? 'Edit Tax Group' : 'Add Tax Group'}
-        open={groupModal} onCancel={() => { setGroupModal(false); setEditing(null); groupForm.resetFields(); }}
-        footer={null} width={480}>
+      <Modal
+        title={editing ? 'Edit Tax Group' : 'Add Tax Group'}
+        open={groupModal}
+        onCancel={() => { setGroupModal(false); setEditing(null); groupForm.resetFields(); }}
+        footer={null} width={480}
+      >
         <Form form={groupForm} layout="vertical" onFinish={saveGroup} style={{ marginTop: 16 }}>
           <Form.Item name="name" label="Group Name" rules={[{ required: true }]}>
             <Input placeholder="e.g. GST Group, VAT Group" />
@@ -250,20 +382,24 @@ export default function TaxManagement() {
           </Form.Item>
           <Form.Item>
             <Space>
-              <Button type="primary" htmlType="submit"
-                style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', border: 'none' }}>
+              <Button type="primary" htmlType="submit" style={btnStyle}>
                 {editing ? 'Update' : 'Create'}
               </Button>
-              <Button onClick={() => { setGroupModal(false); setEditing(null); groupForm.resetFields(); }}>Cancel</Button>
+              <Button onClick={() => { setGroupModal(false); setEditing(null); groupForm.resetFields(); }}>
+                Cancel
+              </Button>
             </Space>
           </Form.Item>
         </Form>
       </Modal>
 
       {/* Tax Rate Modal */}
-      <Modal title={editing ? 'Edit Tax Rate' : 'Add Tax Rate'}
-        open={rateModal} onCancel={() => { setRateModal(false); setEditing(null); rateForm.resetFields(); }}
-        footer={null} width={520}>
+      <Modal
+        title={editing ? 'Edit Tax Rate' : 'Add Tax Rate'}
+        open={rateModal}
+        onCancel={() => { setRateModal(false); setEditing(null); rateForm.resetFields(); }}
+        footer={null} width={540}
+      >
         <Form form={rateForm} layout="vertical" onFinish={saveRate} style={{ marginTop: 16 }}>
           <Row gutter={14}>
             <Col span={14}>
@@ -273,27 +409,111 @@ export default function TaxManagement() {
             </Col>
             <Col span={10}>
               <Form.Item name="rate" label="Rate (%)" rules={[{ required: true }]}>
-                <InputNumber min={0} max={100} step={0.01} precision={2} style={{ width: '100%' }}
-                  addonAfter="%" />
+                <InputNumber min={0} max={100} step={0.01} precision={2}
+                  style={{ width: '100%' }} addonAfter="%" />
               </Form.Item>
             </Col>
           </Row>
+
           <Row gutter={14}>
+            {/* Tax Type — dynamic from API with inline add */}
             <Col span={12}>
               <Form.Item name="taxType" label="Tax Type" rules={[{ required: true }]}>
-                <Select>
-                  {TAX_TYPES.map(t => <Select.Option key={t} value={t}>{t.toUpperCase()}</Select.Option>)}
+                <Select
+                  placeholder="Select or add type"
+                  dropdownRender={menu => (
+                    <>
+                      {menu}
+                      <Divider style={{ margin: '6px 0' }} />
+                      <div style={{ display: 'flex', gap: 6, padding: '4px 8px' }}>
+                        <Input
+                          ref={newTypeInputRef}
+                          size="small"
+                          placeholder="New type name"
+                          value={newTypeName}
+                          onChange={e => setNewTypeName(e.target.value)}
+                          onKeyDown={e => e.stopPropagation()}
+                          style={{ flex: 1 }}
+                        />
+                        <Button size="small" type="text" icon={<PlusOutlined />}
+                          onClick={handleAddType}>
+                          Add
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                >
+                  {taxTypes.map(t => (
+                    <Select.Option key={t.id} value={t.name}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{t.name.toUpperCase()}</span>
+                        <span
+                          onClick={e => handleDeleteType(e, t.id, t.name)}
+                          style={{
+                            marginLeft: 8, width: 18, height: 18, borderRadius: '50%',
+                            background: '#ff4d4f', color: '#fff', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                            flexShrink: 0
+                          }}
+                        >×</span>
+                      </div>
+                    </Select.Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
+
+            {/* Tax Group — dynamic from API with inline add */}
             <Col span={12}>
               <Form.Item name="taxGroupId" label="Tax Group">
-                <Select allowClear placeholder="Select group">
-                  {groups.map(g => <Select.Option key={g.id} value={g.id}>{g.name}</Select.Option>)}
+                <Select
+                  allowClear
+                  placeholder="Select or add group"
+                  dropdownRender={menu => (
+                    <>
+                      {menu}
+                      <Divider style={{ margin: '6px 0' }} />
+                      <div style={{ display: 'flex', gap: 6, padding: '4px 8px' }}>
+                        <Input
+                          ref={newGroupInputRef}
+                          size="small"
+                          placeholder="New group name"
+                          value={newGroupName}
+                          onChange={e => setNewGroupName(e.target.value)}
+                          onKeyDown={e => e.stopPropagation()}
+                          style={{ flex: 1 }}
+                        />
+                        <Button size="small" type="text" icon={<PlusOutlined />}
+                          onClick={handleAddGroup}>
+                          Add
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                >
+                  {groups.map(g => (
+                    <Select.Option key={g.id} value={g.id}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{g.name}</span>
+                        <span
+                          onClick={e => handleDeleteGroupInline(e, g.id, g.name)}
+                          style={{
+                            marginLeft: 8, width: 18, height: 18, borderRadius: '50%',
+                            background: '#ff4d4f', color: '#fff', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                            flexShrink: 0
+                          }}
+                        >×</span>
+                      </div>
+                    </Select.Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
           </Row>
+
           <Row gutter={14}>
             <Col span={12}>
               <Form.Item name="isCompound" label="Compound Tax" valuePropName="checked">
@@ -306,13 +526,15 @@ export default function TaxManagement() {
               </Form.Item>
             </Col>
           </Row>
+
           <Form.Item>
             <Space>
-              <Button type="primary" htmlType="submit"
-                style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', border: 'none' }}>
+              <Button type="primary" htmlType="submit" style={btnStyle}>
                 {editing ? 'Update' : 'Create'}
               </Button>
-              <Button onClick={() => { setRateModal(false); setEditing(null); rateForm.resetFields(); }}>Cancel</Button>
+              <Button onClick={() => { setRateModal(false); setEditing(null); rateForm.resetFields(); }}>
+                Cancel
+              </Button>
             </Space>
           </Form.Item>
         </Form>

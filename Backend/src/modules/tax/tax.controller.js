@@ -6,11 +6,18 @@ const wrap = fn => async (req, res) => {
 };
 
 module.exports = {
+  // Tax Types
+  getTaxTypes:   wrap(req => svc.getTaxTypes(req.institutionId)),
+  createTaxType: wrap(req => svc.createTaxType(req.institutionId, req.body.name)),
+  deleteTaxType: wrap(req => svc.deleteTaxType(req.institutionId, req.params.id)),
+
+  // Tax Groups
   getTaxGroups:   wrap(req => svc.getTaxGroups(req.institutionId)),
   createTaxGroup: wrap(req => svc.createTaxGroup(req.institutionId, req.body)),
   updateTaxGroup: wrap(req => svc.updateTaxGroup(req.institutionId, req.params.id, req.body)),
   deleteTaxGroup: wrap(req => svc.deleteTaxGroup(req.institutionId, req.params.id)),
 
+  // Tax Rates
   getTaxRates:   wrap(req => svc.getTaxRates(req.institutionId, req.query.groupId)),
   getTaxRate:    wrap(req => svc.getTaxRateById(req.institutionId, req.params.id)),
   createTaxRate: wrap(req => svc.createTaxRate(req.institutionId, req.body)),

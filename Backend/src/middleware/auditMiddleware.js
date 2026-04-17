@@ -10,24 +10,21 @@ const auditMiddleware = (options = {}) => {
       return next();
     }
 
-    // Store original response methods
-    const originalSend = res.send;
-    const originalJson = res.json;
-
-    // Capture request start time
     const startTime = Date.now();
+    let auditCaptured = false; // guard — ensure only ONE audit log per request
 
-    // Override response methods to capture audit data
-    res.send = function(data) {
-      res.send = originalSend;
-      captureAuditLog(req, res, data, startTime);
-      return originalSend.call(this, data);
-    };
+    const originalJson = res.json.bind(res);
 
+    // Only override res.json — this is the single entry point for all JSON responses
+    // Do NOT override res.send because res.json() calls res.send() internally,
+    // which would cause captureAuditLog to fire twice per request.
     res.json = function(data) {
-      res.json = originalJson;
-      captureAuditLog(req, res, data, startTime);
-      return originalJson.call(this, data);
+      res.json = originalJson; // restore immediately before calling
+      if (!auditCaptured) {
+        auditCaptured = true;
+        captureAuditLog(req, res, data, startTime);
+      }
+      return originalJson(data);
     };
 
     next();
@@ -62,14 +59,14 @@ const captureAuditLog = async (req, res, responseData, startTime) => {
       entityId: entityInfo.id,
       action: action,
       method: req.method,
-      path: req.path,
+      path: req.originalUrl.split('?')[0], // store full path, not router-relative
       changes: changes,
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.get('User-Agent'),
       statusCode: res.statusCode,
       duration: duration,
       requestBody: sanitizeRequestBody(req.body),
-      description: generateDescription(action, entityInfo, req.user)
+      description: generateDescription(action, entityInfo, req.user, req, responseData)
     });
 
   } catch (error) {
@@ -305,8 +302,48 @@ const sanitizeResponseData = (data) => {
   return sanitized;
 };
 
+// Extract a human-readable name from request body or response data
+const extractEntityName = (req, responseData, entityType) => {
+  // 1. Try request body first — most reliable for create/update
+  const body = req.body;
+  if (body) {
+    // Direct name fields
+    if (body.name)          return body.name;
+    if (body.companyName)   return body.companyName;
+    if (body.title)         return body.title;
+    if (body.invoiceNumber) return body.invoiceNumber;
+    if (body.soNumber)      return body.soNumber;
+    if (body.poNumber)      return body.poNumber;
+    if (body.itemName)      return body.itemName;
+    if (body.customerName)  return body.customerName;
+    if (body.vendorName)    return body.vendorName;
+    if (body.displayName)   return body.displayName;
+    if (body.firstName && body.lastName) return `${body.firstName} ${body.lastName}`;
+    if (body.firstName)     return body.firstName;
+    if (body.email)         return body.email;
+  }
+
+  // 2. Try response data — for cases where name comes back in response
+  try {
+    const parsed = typeof responseData === 'string' ? JSON.parse(responseData) : responseData;
+    const d = parsed?.data;
+    if (d) {
+      if (d.name)          return d.name;
+      if (d.companyName)   return d.companyName;
+      if (d.invoiceNumber) return d.invoiceNumber;
+      if (d.soNumber)      return d.soNumber;
+      if (d.poNumber)      return d.poNumber;
+      if (d.displayName)   return d.displayName;
+      if (d.firstName && d.lastName) return `${d.firstName} ${d.lastName}`;
+      if (d.email)         return d.email;
+    }
+  } catch { /* ignore */ }
+
+  return null;
+};
+
 // Generate human-readable description
-const generateDescription = (action, entityInfo, user) => {
+const generateDescription = (action, entityInfo, user, req, responseData) => {
   const entityLabels = {
     item:              'Item',
     item_draft:        'Item Draft',
@@ -324,6 +361,7 @@ const generateDescription = (action, entityInfo, user) => {
     settings:          'Settings',
     tax_rate:          'Tax Rate',
     tax_group:         'Tax Group',
+    tax_type:          'Tax Type',
     price_list:        'Price List',
     price_list_item:   'Price List Item',
     workflow:          'Workflow Rule',
@@ -351,7 +389,14 @@ const generateDescription = (action, entityInfo, user) => {
   };
 
   const label = entityLabels[entityInfo.type] || entityInfo.type;
-  const entityName = entityInfo.id ? `${label} (${entityInfo.id.substring(0, 8)}...)` : label;
+
+  // Try to get actual name — prefer name over UUID
+  const actualName = extractEntityName(req, responseData, entityInfo.type);
+  const entityName = actualName
+    ? `${label} "${actualName}"`
+    : entityInfo.id
+      ? `${label} (${entityInfo.id.substring(0, 8)}...)`
+      : label;
 
   const actionDescriptions = {
     create:     `Created ${entityName}`,
