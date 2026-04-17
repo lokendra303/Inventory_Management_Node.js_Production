@@ -8,6 +8,7 @@ import {
   ContainerOutlined, FileDoneOutlined, AccountBookOutlined,
   ControlOutlined, TeamOutlined, FolderOpenOutlined, TransactionOutlined,
   DownOutlined, PieChartOutlined, AuditOutlined,
+  PercentageOutlined, ThunderboltOutlined, CrownOutlined, TagsFilled,
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -33,8 +34,12 @@ const ICON_COLORS = {
   '/users'       : '#a78bfa',
   reports        : '#38ef7d',
   '/documents'   : '#ffd200',
-  '/audit'       : '#ff6b6b',
-  'settings-menu': '#a0a0b0',
+  '/audit'        : '#ff6b6b',
+  '/tax'           : '#fa8c16',
+  '/price-lists'   : '#11998e',
+  '/subscription'  : '#f7971e',
+  '/workflows'     : '#f5576c',
+  'settings-menu'  : '#a0a0b0',
 };
 
 /* ── Flyout popup (collapsed submenu) ───────────────── */
@@ -506,6 +511,10 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       key: '/accounting', icon: <AccountBookOutlined />, label: 'Accounting',
     },
     hasPermission('audit_view') && { key: '/audit', icon: <AuditOutlined />, label: 'Audit Trail' },
+    hasRole(['admin','super_admin']) && { key: '/tax',          icon: <PercentageOutlined />, label: 'Tax Management' },
+    hasRole(['admin','super_admin']) && { key: '/price-lists',  icon: <TagsFilled />,         label: 'Price Lists' },
+    hasRole(['admin','super_admin']) && { key: '/workflows',    icon: <ThunderboltOutlined />,label: 'Workflows' },
+    hasRole(['admin','super_admin']) && { key: '/subscription', icon: <CrownOutlined />,      label: 'Subscription' },
     hasPermission('user_management') && { key: '/users', icon: <TeamOutlined />, label: 'User Management' },
     hasAnyPermission('inventory_view','sales_view','sales_management','purchase_view','purchase_management','invoice_view','invoice_management') && {
       key: 'reports', icon: <PieChartOutlined />, label: 'Reports',
@@ -520,6 +529,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       children: [
         hasRole(['admin','super_admin']) && { key: '/company-settings',       label: 'Company Settings' },
         hasRole(['admin','super_admin']) && { key: '/settings/exchange-rate', label: 'Exchange Rate' },
+        hasRole(['admin','super_admin']) && { key: '/settings',               label: 'All Settings' },
       ].filter(Boolean),
     },
   ].filter(Boolean);

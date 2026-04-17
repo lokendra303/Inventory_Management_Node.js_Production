@@ -58,6 +58,11 @@ import ExchangeRateSettings from './pages/settings/ExchangeRateSettings.jsx';
 import MobileScanner from './pages/scanner/MobileScanner.jsx';
 import Accounting from './pages/accounting/Accounting.jsx';
 import AuditDashboard from './pages/audit/AuditDashboard.jsx';
+import OnboardingWizard from './pages/onboarding/OnboardingWizard.jsx';
+import TaxManagement from './pages/tax/TaxManagement.jsx';
+import PriceLists from './pages/price-lists/PriceLists.jsx';
+import SubscriptionManagement from './pages/subscription/SubscriptionManagement.jsx';
+import WorkflowAutomation from './pages/workflows/WorkflowAutomation.jsx';
 
 const { Content } = Layout;
 
@@ -138,6 +143,7 @@ function AppContent() {
           isMobile={isMobile}
         />
         <Content className="ant-layout-content">
+          <OnboardingWizard />
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -190,6 +196,10 @@ function AppContent() {
             <Route path="/invoices/outstanding" element={<ProtectedOutstandingInvoices />} />
             <Route path="/accounting" element={<ProtectedAccounting />} />
             <Route path="/audit" element={<ProtectedAuditDashboard />} />
+            <Route path="/tax" element={<TaxManagement />} />
+            <Route path="/price-lists" element={<PriceLists />} />
+            <Route path="/subscription" element={<SubscriptionManagement />} />
+            <Route path="/workflows" element={<WorkflowAutomation />} />
             <Route path="/purchase-invoices" element={<ProtectedPurchaseInvoices />} />
             <Route path="/sales-invoices" element={<ProtectedSalesInvoices />} />
             <Route path="/scan" element={<MobileScanner />} />
