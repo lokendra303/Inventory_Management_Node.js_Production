@@ -4,8 +4,18 @@ const logger = require('../../utils/logger');
 const inventoryService = require('../inventory/inventory.service');
 const warehouseOptimizationService = require('../warehouse/warehouseOptimization.service');
 
+// Ensure tax columns exist on sales_order_lines
+let solTaxColumnsReady = false;
+async function ensureSOLTaxColumns() {
+  if (solTaxColumnsReady) return;
+  try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN tax_rate DECIMAL(10,4) DEFAULT 0`); } catch (e) {}
+  try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN tax_amount DECIMAL(15,4) DEFAULT 0`); } catch (e) {}
+  solTaxColumnsReady = true;
+}
+
 class SalesOrderService {
   async createSalesOrder(institutionId, soData, userId) {
+    await ensureSOLTaxColumns();
     const {
       soNumber,
       customerId,
@@ -34,7 +44,7 @@ class SalesOrderService {
            (id, institution_id, so_number, customer_id, customer_name, channel, currency, 
             order_date, expected_ship_date, notes, created_by, status, is_preorder, shipping_method) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
-          [soId, institutionId, soNumber, customerId || null, customerName, channel, currency, 
+          [soId, institutionId, soNumber || `SO-${Date.now()}`, customerId || null, customerName, channel, currency, 
            orderDate || null, expectedShipDate || null, notes || null, userId, isPreorder, shippingMethod]
         );
 
@@ -43,7 +53,9 @@ class SalesOrderService {
           const line = lines[i];
           const lineId = uuidv4();
           const lineTotal = line.quantity * line.unitPrice;
-          subtotal += lineTotal;
+          const taxRate   = line.taxRate || 0;
+          const taxAmount = Math.round(lineTotal * taxRate / 100 * 100) / 100;
+          subtotal += lineTotal + taxAmount;
           
           if (isPreorder) {
             totalCommittedDemand += line.quantity;
@@ -51,9 +63,9 @@ class SalesOrderService {
 
           await connection.execute(
             `INSERT INTO sales_order_lines 
-             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineTotal]
+             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total, tax_rate, tax_amount) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineTotal + taxAmount, taxRate, taxAmount]
           );
 
           createdLines.push({

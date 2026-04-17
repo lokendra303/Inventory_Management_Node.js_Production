@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker } from 'antd';
+import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker, Tag } from 'antd';
 import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from '@ant-design/icons';
 import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
 import TransactionHistory from '../../components/inventory/TransactionHistory';
+import { useTaxRates } from '../../hooks/useTaxRates';
 
 const PurchaseOrders = () => {
   const { currency, formatCurrency } = useCurrency();
+  const { taxRates, getRateById } = useTaxRates();
   const [pos, setPOs] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -115,7 +117,10 @@ const PurchaseOrders = () => {
         vendorName: selectedVendor?.display_name || selectedVendor?.company_name || 'Unknown Vendor',
         orderDate: orderDate,
         expectedDate: expectedDate,
-        lines: values.lines || []
+        lines: (values.lines || []).map(line => {
+          const taxRate = line.taxRateId ? parseFloat(getRateById(line.taxRateId)?.rate || 0) : 0;
+          return { ...line, taxRate, taxRateId: line.taxRateId || null };
+        })
       };
 
       if (editingPO) {
@@ -640,7 +645,24 @@ const PurchaseOrders = () => {
                             rules={[{ required: true, message: 'Enter cost' }]}
                             style={{ marginBottom: 0, width: 120 }}
                           >
-                            <InputNumber placeholder="Cost" min={0} step={0.01} style={{ width: '100%' }} />
+                            <InputNumber placeholder="Cost" min={0} step={0.01} style={{ width: '100%' }}
+                              onChange={() => form.setFieldsValue({})} />
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'taxRateId']}
+                            label="Tax"
+                            style={{ marginBottom: 0, width: 150 }}
+                          >
+                            <Select placeholder="Select tax" allowClear
+                              onChange={() => form.setFieldsValue({})}>
+                              {taxRates.map(t => (
+                                <Select.Option key={t.id} value={t.id}>
+                                  {t.name} ({parseFloat(t.rate).toFixed(2)}%)
+                                </Select.Option>
+                              ))}
+                            </Select>
                           </Form.Item>
 
                           <Form.Item label=" " style={{ marginBottom: 0 }}>
@@ -648,19 +670,29 @@ const PurchaseOrders = () => {
                           </Form.Item>
                         </Space>
 
-                        {selectedItemId && selectedWarehouseId && (
-                          <div style={{ padding: '8px 12px', backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 4 }}>
-                            <span style={{ fontSize: '13px', color: '#0050b3' }}>
-                              ℹ️ <strong>{items.find(i => i.id === selectedItemId)?.name}</strong> at <strong>{warehouses.find(w => w.id === selectedWarehouseId)?.name}</strong>:
-                              <strong style={{ color: '#1890ff', marginLeft: 4 }}>Current: {formatQuantity(currentStock)} units</strong>
-                              {form.getFieldValue(['lines', name, 'quantity']) && (
-                                <span style={{ color: '#52c41a', marginLeft: 4 }}>
-                                  → After receiving: {formatQuantity(parseFloat(currentStock) + parseFloat(form.getFieldValue(['lines', name, 'quantity']) || 0))} units
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
+                        {selectedItemId && selectedWarehouseId && (() => {
+                          const qty    = parseFloat(form.getFieldValue(['lines', name, 'quantity'])  || 0);
+                          const cost   = parseFloat(form.getFieldValue(['lines', name, 'unitCost']) || 0);
+                          const taxId  = form.getFieldValue(['lines', name, 'taxRateId']);
+                          const taxPct = taxId ? parseFloat(getRateById(taxId)?.rate || 0) : 0;
+                          const lineTotal   = qty * cost;
+                          const taxAmount   = lineTotal * taxPct / 100;
+                          const grandTotal  = lineTotal + taxAmount;
+                          return (
+                            <div style={{ padding: '8px 12px', backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 4 }}>
+                              <span style={{ fontSize: '13px', color: '#0050b3' }}>
+                                ℹ️ <strong>{items.find(i => i.id === selectedItemId)?.name}</strong> at <strong>{warehouses.find(w => w.id === selectedWarehouseId)?.name}</strong>:
+                                <strong style={{ color: '#1890ff', marginLeft: 4 }}>Stock: {formatQuantity(currentStock)} units</strong>
+                                {qty > 0 && (
+                                  <span style={{ marginLeft: 8 }}>
+                                    Subtotal: <strong>{formatCurrency(lineTotal)}</strong>
+                                    {taxPct > 0 && <> + Tax ({taxPct}%): <strong>{formatCurrency(taxAmount)}</strong> = <Tag color="green">{formatCurrency(grandTotal)}</Tag></>}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </Space>
                     </div>
                   );
@@ -844,6 +876,8 @@ const PurchaseOrders = () => {
                 { title: 'HSN', dataIndex: 'hsn_code', key: 'hsn_code', width: 80, render: v => v || '-' },
                 { title: 'Qty', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 70, render: v => formatQuantity(v) },
                 { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', width: 100, render: v => formatCurrency(v) },
+                { title: 'Tax', dataIndex: 'tax_rate', key: 'tax_rate', width: 70, render: v => v > 0 ? <Tag color="blue">{v}%</Tag> : '-' },
+                { title: 'Tax Amt', dataIndex: 'tax_amount', key: 'tax_amount', width: 90, render: v => v > 0 ? formatCurrency(v) : '-' },
                 { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100, render: v => formatCurrency(v) },
                 { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: v => v?.toUpperCase() }
               ]}

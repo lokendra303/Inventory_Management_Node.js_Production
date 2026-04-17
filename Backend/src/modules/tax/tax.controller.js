@@ -1,4 +1,5 @@
 const svc = require('./tax.service');
+const liveSvc = require('./liveTax.service');
 
 const wrap = fn => async (req, res) => {
   try { res.json({ success: true, data: await fn(req) }); }
@@ -23,4 +24,8 @@ module.exports = {
   createTaxRate: wrap(req => svc.createTaxRate(req.institutionId, req.body)),
   updateTaxRate: wrap(req => svc.updateTaxRate(req.institutionId, req.params.id, req.body)),
   deleteTaxRate: wrap(req => svc.deleteTaxRate(req.institutionId, req.params.id)),
+
+  // Live Gov. Rates
+  getLiveRates:  wrap(() => liveSvc.fetchLiveRates()),
+  syncLiveRates: wrap(req => liveSvc.syncLiveRates(req.institutionId)),
 };

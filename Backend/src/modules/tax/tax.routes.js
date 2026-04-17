@@ -20,4 +20,8 @@ router.put('/rates/:id',       c.updateTaxRate);
 router.delete('/rates/:id',    c.deleteTaxRate);
 router.get('/rates/:id',       c.getTaxRate);
 
+// Live Gov. Rates
+router.get('/live-rates',      c.getLiveRates);
+router.post('/sync-live-rates',c.syncLiveRates);
+
 module.exports = router;

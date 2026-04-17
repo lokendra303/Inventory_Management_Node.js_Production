@@ -41,13 +41,16 @@ class SOConfirmationService {
         }
 
         // Check stock availability per line's warehouse
+        // Stock was already reserved at SO creation — check quantity_reserved not quantity_available
         for (const line of lines) {
           const stock = await inventoryService.getCurrentStock(institutionId, line.item_id, line.warehouse_id);
-          const availableQty = stock ? Number(stock.quantity_available) : 0;
-          const requiredQty = Number(line.quantity_ordered);
-          
-          if (availableQty < requiredQty) {
-            throw new Error(`Insufficient stock for ${line.item_name}. Available: ${availableQty}, Required: ${requiredQty}`);
+          const reservedQty  = stock ? Number(stock.quantity_reserved)  : 0;
+          const onHandQty    = stock ? Number(stock.quantity_on_hand)    : 0;
+          const requiredQty  = Number(line.quantity_ordered);
+
+          // Reserved covers it (normal path) OR on_hand covers it (fallback for SOs created before reservation)
+          if (reservedQty < requiredQty && onHandQty < requiredQty) {
+            throw new Error(`Insufficient stock for ${line.item_name}. Available: ${onHandQty}, Required: ${requiredQty}`);
           }
         }
 
@@ -100,8 +103,14 @@ class SOConfirmationService {
         let totalDiscount = 0;
         
         for (const line of lines) {
-          const lineTotal = line.quantity_ordered * line.unit_price;
-          subtotal += lineTotal;
+          const lineBase     = parseFloat(line.quantity_ordered) * parseFloat(line.unit_price);
+          const taxRate      = parseFloat(line.tax_rate   || 0);
+          const discountRate = parseFloat(line.discount_rate || 0);
+          const discAmt      = lineBase * discountRate / 100;
+          const taxAmt       = (lineBase - discAmt) * taxRate / 100;
+          subtotal      += lineBase;
+          totalTax      += taxAmt;
+          totalDiscount += discAmt;
         }
         
         const grandTotal = subtotal + totalTax - totalDiscount;
@@ -114,12 +123,19 @@ class SOConfirmationService {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?)
         `, [
           invoiceId, institutionId, invoiceNumber, so.customer_id, so.customer_name, soId,
-          new Date().toISOString().split('T')[0], null, so.currency || 'USD', 1,
+          new Date().toISOString().split('T')[0], null, so.currency || 'INR', 1,
           subtotal, totalTax, totalDiscount, grandTotal, 0, grandTotal, userId
         ]);
         
-        // Add invoice lines
+        // Add invoice lines with correct tax & discount
         for (const line of lines) {
+          const lineBase     = parseFloat(line.quantity_ordered) * parseFloat(line.unit_price);
+          const taxRate      = parseFloat(line.tax_rate   || 0);
+          const discountRate = parseFloat(line.discount_rate || 0);
+          const discAmt      = Math.round(lineBase * discountRate / 100 * 100) / 100;
+          const taxAmt       = Math.round((lineBase - discAmt) * taxRate / 100 * 100) / 100;
+          const lineTotal    = Math.round((lineBase - discAmt + taxAmt) * 100) / 100;
+
           await connection.execute(`
             INSERT INTO sales_invoice_lines (
               invoice_id, so_line_id, item_id, item_name, quantity, unit_price, line_total,
@@ -127,7 +143,7 @@ class SOConfirmationService {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `, [
             invoiceId, line.id, line.item_id, line.item_name, line.quantity_ordered,
-            line.unit_price, line.quantity_ordered * line.unit_price, 0, 0, 0, 0
+            line.unit_price, lineTotal, taxRate, taxAmt, discountRate, discAmt
           ]);
         }
 
@@ -166,7 +182,7 @@ class SOConfirmationService {
   async getConfirmationSummary(institutionId, soId) {
     try {
       const [soResult] = await db.query(
-        `SELECT so.*, w.name as warehouse_name, c.name as customer_name
+        `SELECT so.*, w.name as warehouse_name, c.display_name as customer_name
          FROM sales_orders so 
          LEFT JOIN warehouses w ON so.warehouse_id = w.id 
          LEFT JOIN customers c ON so.customer_id = c.id

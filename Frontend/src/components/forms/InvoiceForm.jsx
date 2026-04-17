@@ -41,6 +41,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   const [invoiceLines, setInvoiceLines] = useState([{ key: 1 }]);
   const [invoiceCurrency, setInvoiceCurrency] = useState(currency || 'USD');
   const [exchangeRate, setExchangeRate] = useState(1);
+  const [taxRates, setTaxRates] = useState([]); // loaded from /tax/rates
   const [totals, setTotals] = useState({
     subtotal: 0,
     totalDiscount: 0,
@@ -117,30 +118,37 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     }
   };
 
+  const loadTaxRates = async () => {
+    try {
+      const res = await apiService.get('/tax/rates');
+      if (res.success) setTaxRates(res.data || []);
+    } catch { /* silent — tax rates are optional */ }
+  };
+
   const handleItemSelect = (key, itemId) => {
     const item = items.find(i => i.id === itemId);
-    console.log('Selected item:', item);
     if (item) {
-      const priceField = type === 'purchase' ? 'cost_price' : 'selling_price';
-      const unitPriceKey = type === 'purchase' ? 'unitCost' : 'unitPrice';
-      setInvoiceLines(invoiceLines.map(line => 
+      const priceField    = type === 'purchase' ? 'cost_price'   : 'selling_price';
+      const unitPriceKey  = type === 'purchase' ? 'unitCost'     : 'unitPrice';
+      setInvoiceLines(invoiceLines.map(line =>
         line.key === key ? {
           ...line,
-          itemId: item.id,
-          itemName: item.name,
-          [unitPriceKey]: item[priceField] || 0,
-          hsn_code: item.hsn_code,
-          unit: item.unit,
-          stockQuantity: item.stock_quantity || 0,
-          reservedQuantity: item.reserved_quantity || 0,
-          availableQuantity: item.available_quantity || 0
+          itemId:            item.id,
+          itemName:          item.name,
+          [unitPriceKey]:    item[priceField] || 0,
+          hsn_code:          item.hsn_code    || '',
+          unit:              item.unit        || '',
+          taxRate:           parseFloat(item.tax_rate) || 0,  // ← auto-fill from item
+          discountRate:      line.discountRate || 0,
+          stockQuantity:     item.stock_quantity    || 0,
+          reservedQuantity:  item.reserved_quantity || 0,
+          availableQuantity: item.available_quantity|| 0,
         } : line
       ));
-      console.log('Updated line with item:', { key, itemId: item.id, itemName: item.name });
     }
   };
 
-  const loadPartyDetails = async (partyId) => {
+  const loadPartyDetails = async (partyId, skipCurrencyOverride = false) => {
     try {
       const endpoint = type === 'purchase'
         ? `/purchase-invoices/vendors/${partyId}/details`
@@ -149,15 +157,17 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       if (response.success) {
         setSelectedParty(response.data);
         const nameField = type === 'purchase' ? 'vendorName' : 'customerName';
-        form.setFieldsValue({
-          [nameField]: response.data.name,
-          currency: response.data.businessInfo?.currency || 'USD'
-        });
-        setInvoiceCurrency(response.data.businessInfo?.currency || 'USD');
+        const updates = { [nameField]: response.data.name };
+        // Only set currency from party if not editing an existing invoice
+        if (!skipCurrencyOverride) {
+          const partyCurrency = response.data.businessInfo?.currency || 'INR';
+          updates.currency = partyCurrency;
+          setInvoiceCurrency(partyCurrency);
+        }
+        form.setFieldsValue(updates);
       }
     } catch (error) {
       console.error(`Error loading ${type === 'purchase' ? 'vendor' : 'customer'} details:`, error);
-      message.error(`Failed to load ${type === 'purchase' ? 'vendor' : 'customer'} details`);
     }
   };
 
@@ -229,9 +239,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       const validLines = invoiceLines.filter(line => {
         const hasItem = !!(line.itemName && line.itemName.trim());
         const hasQuantity = !!(line.quantity && line.quantity > 0);
-        const unitPriceKey = type === 'purchase' ? 'unitCost' : 'unitPrice';
-        const hasPrice = !!(line[unitPriceKey] && line[unitPriceKey] > 0);
-        return hasItem && hasQuantity && hasPrice;
+        return hasItem && hasQuantity;
       });
       
       console.log('Valid lines:', validLines);
@@ -251,20 +259,22 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         dueDate: values.dueDate.format('YYYY-MM-DD'),
         lines: validLines.map(line => {
           const lineData = {
-            itemName: line.itemName,
-            quantity: Number(line.quantity)
+            itemName:     line.itemName,
+            quantity:     Number(line.quantity),
+            taxRate:      Number(line.taxRate     || 0),
+            discountRate: Number(line.discountRate || 0),
           };
-          
+
           if (type === 'purchase') {
             lineData.unitCost = Number(line.unitCost || 0);
           } else {
             lineData.unitPrice = Number(line.unitPrice || 0);
           }
-          
+
           if (line.itemId && !line.itemId.includes('manual_')) {
             lineData.itemId = line.itemId;
           }
-          
+
           return lineData;
         }),
         totals
@@ -315,10 +325,9 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   };
 
   useEffect(() => {
-    console.log('=== INITIAL LOAD useEffect ===');
-    console.log('Type:', type);
     loadParties();
     loadItems();
+    loadTaxRates();
     if (type === 'sales') {
       loadWarehouses();
       fetchAllStocks();
@@ -340,19 +349,20 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         const formPartyIdField = type === 'purchase' ? 'vendorId' : 'customerId';
         const formPartyNameField = type === 'purchase' ? 'vendorName' : 'customerName';
         
+        const invoiceCurr = invoice.currency || 'INR';
+        setInvoiceCurrency(invoiceCurr);
         form.setFieldsValue({
           invoiceNumber: invoice.invoice_number,
-          invoiceDate: invoice.invoice_date ? dayjs(invoice.invoice_date) : null,
-          dueDate: invoice.due_date ? dayjs(invoice.due_date) : null,
-          [formPartyIdField]: invoice[partyIdField],
+          invoiceDate:   invoice.invoice_date ? dayjs(invoice.invoice_date) : null,
+          dueDate:       invoice.due_date     ? dayjs(invoice.due_date)     : null,
+          [formPartyIdField]:   invoice[partyIdField],
           [formPartyNameField]: invoice[partyNameField],
-          currency: invoice.currency || 'USD',
-          reference: invoice.reference,
-          notes: invoice.notes
+          currency:  invoiceCurr,
+          reference: invoice.reference || '',
+          notes:     invoice.notes     || ''
         });
-        setInvoiceCurrency(invoice.currency || 'USD');
         if (invoice[partyIdField]) {
-          loadPartyDetails(invoice[partyIdField]);
+          loadPartyDetails(invoice[partyIdField], true); // true = skip currency override
         }
         if (lines && lines.length > 0) {
           setInvoiceLines(lines.map((line, index) => {
@@ -387,11 +397,6 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     calculateTotals();
   }, [calculateTotals]);
 
-  useEffect(() => {
-    console.log('=== ITEMS STATE CHANGED ===');
-    console.log('Items count:', items.length);
-  }, [items]);
-
   const lineColumns = [
     {
       title: 'S.No',
@@ -405,11 +410,6 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       render: (value, record) => {
         if (type === 'sales') {
           const selectedWarehouseId = record.warehouseId;
-          console.log('=== RENDERING ITEMS DROPDOWN ===');
-          console.log('Items state:', items);
-          console.log('Items count:', items.length);
-          console.log('Selected warehouse:', selectedWarehouseId);
-
           return (
             <div>
               <Select
@@ -425,7 +425,6 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 notFoundContent="No items found"
               >
                 {items.map(item => {
-                  console.log('Rendering item option:', item.id, item.name);
                   let available = 0;
                   if (selectedWarehouseId) {
                     available = allItemStocks[item.id]?.[selectedWarehouseId] || 0;
@@ -568,14 +567,61 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       )
     },
     {
+      title: 'Discount %',
+      dataIndex: 'discountRate',
+      width: 100,
+      render: (value, record) => (
+        <InputNumber
+          value={value || 0}
+          min={0}
+          max={100}
+          precision={2}
+          addonAfter="%"
+          style={{ width: '100%' }}
+          onChange={(val) => updateInvoiceLine(record.key, 'discountRate', val || 0)}
+        />
+      )
+    },
+    {
+      title: 'Tax Rate',
+      dataIndex: 'taxRate',
+      width: 170,
+      render: (value, record) => (
+        <Select
+          value={value ?? 0}
+          style={{ width: '100%', border: (value > 0) ? undefined : '1px solid #faad14', borderRadius: 6 }}
+          onChange={(val) => updateInvoiceLine(record.key, 'taxRate', val)}
+          showSearch
+          optionFilterProp="children"
+          placeholder="Select tax"
+        >
+          <Option value={0}><span style={{ color: '#faad14' }}>⚠ No Tax (0%)</span></Option>
+          {taxRates.map(t => (
+            <Option key={t.id} value={parseFloat(t.rate)}>
+              {t.name} ({parseFloat(t.rate).toFixed(2)}%)
+            </Option>
+          ))}
+        </Select>
+      )
+    },
+    {
       title: 'Line Total',
-      width: 120,
+      width: 130,
       render: (_, record) => {
-        const quantity = record.quantity || 0;
+        const qty       = record.quantity || 0;
         const unitPrice = type === 'purchase' ? (record.unitCost || 0) : (record.unitPrice || 0);
-        const lineTotal = quantity * unitPrice;
-        const symbol = getCurrencySymbol(invoiceCurrency);
-        return `${symbol}${lineTotal.toFixed(2)}`;
+        const discount  = record.discountRate || 0;
+        const tax       = record.taxRate || 0;
+        const base      = qty * unitPrice;
+        const afterDisc = base - (base * discount / 100);
+        const total     = afterDisc + (afterDisc * tax / 100);
+        const symbol    = getCurrencySymbol(invoiceCurrency);
+        return (
+          <span style={{ fontWeight: 600, color: '#1a1a2e' }}>
+            {symbol}{total.toFixed(2)}
+            {tax > 0 && <div style={{ fontSize: 11, color: '#52c41a' }}>incl. {symbol}{(afterDisc * tax / 100).toFixed(2)} tax</div>}
+          </span>
+        );
       }
     },
     {
@@ -603,7 +649,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         <Form form={form} layout="vertical">
           <Row gutter={[16, 0]}>
             <Col xs={24} sm={8}>
-              <Form.Item name="invoiceNumber" label="Invoice Number" rules={[{ required: true, message: 'Please enter invoice number' }]}>
+              <Form.Item name="invoiceNumber" label="Invoice Number" rules={[{ required: !invoiceId, message: 'Please enter invoice number' }]}>
                 <Input placeholder="Auto-generated if empty" />
               </Form.Item>
             </Col>
@@ -613,7 +659,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
-              <Form.Item name="dueDate" label="Due Date" rules={[{ required: true, message: 'Please select due date' }]}>
+              <Form.Item name="dueDate" label="Due Date" rules={[{ required: !invoiceId, message: 'Please select due date' }]}>
                 <DatePicker style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -639,16 +685,26 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 <Input />
               </Form.Item>
               <Form.Item name="currency" label="Currency">
-                <Select value={invoiceCurrency} onChange={(value) => {
-                  setInvoiceCurrency(value);
-                  // Reset exchange rate to 1 when currency matches system currency
-                  if (value === currency) {
-                    setExchangeRate(1);
-                    form.setFieldsValue({ exchangeRate: 1 });
+                <Select
+                  showSearch
+                  placeholder="Search currency..."
+                  optionFilterProp="children"
+                  filterOption={(input, option) =>
+                    option.children?.toString().toLowerCase().includes(input.toLowerCase())
                   }
-                }}>
+                  value={invoiceCurrency}
+                  onChange={(value) => {
+                    setInvoiceCurrency(value);
+                    if (value === currency) {
+                      setExchangeRate(1);
+                      form.setFieldsValue({ exchangeRate: 1 });
+                    }
+                  }}
+                >
                   {getCurrencies().map(curr => (
-                    <Option key={curr.code} value={curr.code}>{curr.symbol} {curr.code} - {curr.name}</Option>
+                    <Option key={curr.code} value={curr.code}>
+                      {curr.code} — {curr.symbol} {curr.name}
+                    </Option>
                   ))}
                 </Select>
               </Form.Item>

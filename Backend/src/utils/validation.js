@@ -172,7 +172,7 @@ const createPurchaseOrderSchema = Joi.object({
 
 // Sales Order schemas
 const createSalesOrderSchema = Joi.object({
-  soNumber: Joi.string().max(100).required(),
+  soNumber: Joi.string().max(100).optional().allow('', null),
   customerId: Joi.string().uuid().optional(),
   customerName: Joi.string().max(255).required(),
   warehouseId: Joi.string().uuid().optional(),
@@ -201,9 +201,11 @@ const createSalesOrderSchema = Joi.object({
     itemId,
     warehouseId,
     quantity: quantity,
-    unitPrice: unitPrice,
+    unitPrice: Joi.number().min(0).required(),
+    taxRate: Joi.number().min(0).max(100).default(0),
+    taxRateId: Joi.string().uuid().optional().allow(null),
     weight: Joi.number().positive().optional()
-  })).min(1).required()
+  }).unknown(true)).min(1).required()
 }).unknown(true);
 
 // User management schemas
@@ -321,10 +323,10 @@ const createSalesInvoiceSchema = Joi.object({
   lines: Joi.array().items(Joi.object({
     soLineId: Joi.string().uuid().optional(),
     deliveryLineId: Joi.string().uuid().optional(),
-    itemId: Joi.string().uuid().required(),
+    itemId: Joi.string().uuid().optional().allow(null),
     itemName: Joi.string().max(255).required(),
     quantity: Joi.number().positive().required(),
-    unitPrice: Joi.number().positive().required(),
+    unitPrice: Joi.number().min(0).required(),
     taxRate: Joi.number().min(0).max(100).default(0),
     discountRate: Joi.number().min(0).max(100).default(0)
   })).min(1).required()

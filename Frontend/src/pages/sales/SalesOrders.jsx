@@ -1,23 +1,17 @@
 import React, { useState, useEffect } from "react";
 import {
-  Card,
-  Table,
-  Button,
-  Space,
-  Modal,
-  Form,
-  Input,
-  Select,
-  InputNumber,
-  message,
-  DatePicker,
+  Card, Table, Button, Space, Modal, Form, Input, Select,
+  InputNumber, message, DatePicker, Tag,
 } from "antd";
 import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from "@ant-design/icons";
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
+import { useTaxRates } from '../../hooks/useTaxRates';
+import { getCurrencies } from '../../utils/currency';
 
 const SalesOrders = () => {
   const { formatCurrency } = useCurrency();
+  const { taxRates, getRateById } = useTaxRates();
   const [sos, setSOs] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -112,24 +106,27 @@ const SalesOrders = () => {
 
   const handleCreateSO = async (values) => {
     try {
-      // Get selected customer details
-      const selectedCustomer = customers.find(
-        (c) => c.id === values.customerId,
-      );
+      const selectedCustomer = customers.find(c => c.id === values.customerId);
 
       const soData = {
         ...values,
+        soNumber: values.soNumber?.trim() || `SO-${Date.now()}`,
         customerName:
           selectedCustomer?.display_name ||
           selectedCustomer?.company_name ||
-          "Unknown Customer",
+          'Unknown Customer',
         orderDate: values.orderDate ? values.orderDate.format("YYYY-MM-DD") : new Date().toISOString().split('T')[0],
         expectedShipDate: values.expectedShipDate?.format("YYYY-MM-DD") || null,
-        lines: (values.lines || []).map(line => ({
-          ...line,
-          quantity: Number(line.quantity),
-          unitPrice: Number(line.unitPrice)
-        })),
+        lines: (values.lines || []).map(line => {
+          const taxRate = line.taxRateId ? parseFloat(getRateById(line.taxRateId)?.rate || 0) : 0;
+          return {
+            ...line,
+            quantity: Number(line.quantity),
+            unitPrice: Number(line.unitPrice),
+            taxRate,
+            taxRateId: line.taxRateId || null,
+          };
+        }),
       };
 
       const response = await apiService.post("/sales-orders", soData);
@@ -151,19 +148,16 @@ const SalesOrders = () => {
 
   const confirmSO = async (so) => {
     try {
-      const response = await apiService.put(`/sales-orders/${so.id}/status`, {
-        status: "confirmed",
-      });
-      
-      if (response.success && response.data?.invoiceNumber) {
-        message.success(`Sales order confirmed and invoice ${response.data.invoiceNumber} generated`);
-      } else {
-        message.success("Sales order confirmed");
+      const response = await apiService.post(`/sales-orders/${so.id}/confirm`);
+      if (response.success) {
+        const invoiceNumber = response.data?.invoiceNumber;
+        message.success(invoiceNumber
+          ? `SO confirmed — Invoice ${invoiceNumber} generated with tax`
+          : 'Sales order confirmed successfully');
+        fetchData();
       }
-      
-      fetchData();
     } catch (error) {
-      message.error(error.response?.data?.error || "Failed to confirm sales order");
+      message.error(error.response?.data?.error || 'Failed to confirm sales order');
     }
   };
 
@@ -374,23 +368,20 @@ const SalesOrders = () => {
 
       <Modal title="Create Sales Order" open={modalVisible} onCancel={() => setModalVisible(false)} footer={null} width="min(800px, 96vw)" style={{ top: 16 }}>
         <Form form={form} layout="vertical" onFinish={handleCreateSO}>
-          <Form.Item
-            name="soNumber"
-            label="SO Number"
-            rules={[{ required: true }]}
-          >
-            <Input placeholder="Enter SO number" />
+          <Form.Item name="soNumber" label="SO Number">
+            <Input placeholder="Auto-generated if empty" />
           </Form.Item>
 
           <Form.Item
             name="customerId"
             label="Customer"
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: 'Please select a customer' }]}
           >
             <Select
               placeholder="Select customer"
               showSearch
               optionFilterProp="children"
+              allowClear
             >
               {customers
                 .filter((customer) => customer.status === "active")
@@ -403,12 +394,20 @@ const SalesOrders = () => {
             </Select>
           </Form.Item>
 
-          <Form.Item name="currency" label="Currency" initialValue="USD">
-            <Select placeholder="Select currency">
-              <Select.Option value="USD">USD</Select.Option>
-              <Select.Option value="EUR">EUR</Select.Option>
-              <Select.Option value="GBP">GBP</Select.Option>
-              <Select.Option value="INR">INR</Select.Option>
+          <Form.Item name="currency" label="Currency" initialValue="INR">
+            <Select
+              showSearch
+              placeholder="Search currency..."
+              optionFilterProp="children"
+              filterOption={(input, option) =>
+                option.children.toLowerCase().includes(input.toLowerCase())
+              }
+            >
+              {getCurrencies().map(c => (
+                <Select.Option key={c.code} value={c.code}>
+                  {c.code} — {c.symbol} {c.name}
+                </Select.Option>
+              ))}
             </Select>
           </Form.Item>
 
@@ -464,30 +463,11 @@ const SalesOrders = () => {
                     }
                   });
 
-                  // Filter warehouses that have the selected item in stock (after allocation)
-                  const availableWarehouses = selectedItemId
-                    ? warehouses.filter((wh) => {
-                        const totalStock =
-                          allItemStocks[selectedItemId]?.[wh.id] || 0;
-                        const allocated =
-                          allocatedStock[`${selectedItemId}_${wh.id}`] || 0;
-                        const available = totalStock - allocated;
-                        return wh.status === "active" && available > 0;
-                      })
-                    : warehouses.filter((wh) => wh.status === "active");
+                  // Show all active warehouses; if item selected, sort by available stock
+                  const availableWarehouses = warehouses.filter(wh => wh.status === 'active');
 
-                  // Filter items that are available in the selected warehouse (after allocation)
-                  const availableItems = selectedWarehouseId
-                    ? items.filter((item) => {
-                        const totalStock =
-                          allItemStocks[item.id]?.[selectedWarehouseId] || 0;
-                        const allocated =
-                          allocatedStock[`${item.id}_${selectedWarehouseId}`] ||
-                          0;
-                        const available = totalStock - allocated;
-                        return item.status === "active" && available > 0;
-                      })
-                    : items.filter((item) => item.status === "active");
+                  // Show all active items regardless of stock
+                  const availableItems = items.filter(item => item.status === 'active');
 
                   // Calculate available stock for current selection
                   const currentTotalStock =
@@ -555,34 +535,9 @@ const SalesOrders = () => {
                               }}
                             >
                               {availableItems.map((item) => {
-                                let available = 0;
-
-                                if (selectedWarehouseId) {
-                                  const totalStock =
-                                    allItemStocks[item.id]?.[
-                                      selectedWarehouseId
-                                    ] || 0;
-                                  const allocated =
-                                    allocatedStock[
-                                      `${item.id}_${selectedWarehouseId}`
-                                    ] || 0;
-                                  available = totalStock - allocated;
-                                } else {
-                                  // Show total across all warehouses
-                                  const totalStock = Object.values(
-                                    allItemStocks[item.id] || {},
-                                  ).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
-                                  const allocated = Object.keys(
-                                    allItemStocks[item.id] || {},
-                                  ).reduce((sum, whId) => {
-                                    return (
-                                      sum +
-                                      (allocatedStock[`${item.id}_${whId}`] ||
-                                        0)
-                                    );
-                                  }, 0);
-                                  available = totalStock - allocated;
-                                }
+                                const totalStock = Object.values(allItemStocks[item.id] || {}).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                                const allocated  = Object.keys(allItemStocks[item.id] || {}).reduce((sum, whId) => sum + (allocatedStock[`${item.id}_${whId}`] || 0), 0);
+                                const available  = totalStock - allocated;
 
                                 return (
                                   <Select.Option
@@ -593,15 +548,8 @@ const SalesOrders = () => {
                                     <div>
                                       <strong>{item.name}</strong> ({item.sku})
                                       <br />
-                                      <span
-                                        style={{
-                                          fontSize: "12px",
-                                          color: available > 0 ? "#52c41a" : "#ff4d4f",
-                                        }}
-                                      >
-                                        Available: {available}{" "}
-                                        {!selectedWarehouseId &&
-                                          "(all warehouses)"}
+                                      <span style={{ fontSize: '12px', color: available > 0 ? '#52c41a' : '#ff4d4f' }}>
+                                        Available: {available} (all warehouses)
                                       </span>
                                     </div>
                                   </Select.Option>
@@ -672,33 +620,14 @@ const SalesOrders = () => {
                             label="Quantity"
                             rules={[
                               { required: true, message: "Enter qty" },
-                              {
-                                validator: (_, value) => {
-                                  if (
-                                    value &&
-                                    selectedItemId &&
-                                    selectedWarehouseId &&
-                                    value > currentAvailable
-                                  ) {
-                                    return Promise.reject(
-                                      `Only ${currentAvailable} available`,
-                                    );
-                                  }
-                                  return Promise.resolve();
-                                },
-                              },
                             ]}
                             style={{ marginBottom: 0, width: 100 }}
                           >
                             <InputNumber
                               placeholder="Qty"
                               min={1}
-                              max={currentAvailable || undefined}
                               style={{ width: "100%" }}
-                              onChange={() => {
-                                // Trigger re-render to update stock calculations
-                                form.setFieldsValue({});
-                              }}
+                              onChange={() => form.setFieldsValue({})}
                             />
                           </Form.Item>
 
@@ -709,12 +638,24 @@ const SalesOrders = () => {
                             rules={[{ required: true, message: "Enter price" }]}
                             style={{ marginBottom: 0, width: 120 }}
                           >
-                            <InputNumber
-                              placeholder="Price"
-                              min={0}
-                              step={0.01}
-                              style={{ width: "100%" }}
-                            />
+                            <InputNumber placeholder="Price" min={0} step={0.01} style={{ width: "100%" }}
+                              onChange={() => form.setFieldsValue({})} />
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
+                            name={[name, "taxRateId"]}
+                            label="Tax"
+                            style={{ marginBottom: 0, width: 150 }}
+                          >
+                            <Select placeholder="Select tax" allowClear
+                              onChange={() => form.setFieldsValue({})}>
+                              {taxRates.map(t => (
+                                <Select.Option key={t.id} value={t.id}>
+                                  {t.name} ({parseFloat(t.rate).toFixed(2)}%)
+                                </Select.Option>
+                              ))}
+                            </Select>
                           </Form.Item>
 
                           <Form.Item label=" " style={{ marginBottom: 0 }}>
@@ -724,64 +665,40 @@ const SalesOrders = () => {
                           </Form.Item>
                         </Space>
 
-                        {selectedItemId && selectedWarehouseId && (
-                          <div
-                            style={{
-                              padding: "8px 12px",
-                              backgroundColor: "#e6f7ff",
-                              border: "1px solid #91d5ff",
-                              borderRadius: 4,
-                            }}
-                          >
-                            <span
-                              style={{ fontSize: "13px", color: "#0050b3" }}
-                            >
-                              ℹ️{" "}
-                              <strong>
-                                {
-                                  items.find((i) => i.id === selectedItemId)
-                                    ?.name
-                                }
-                              </strong>{" "}
-                              at{" "}
-                              <strong>
-                                {
-                                  warehouses.find(
-                                    (w) => w.id === selectedWarehouseId,
-                                  )?.name
-                                }
-                              </strong>
-                              :
-                              {form.getFieldValue([
-                                "lines",
-                                name,
-                                "quantity",
-                              ]) && (
-                                <span
-                                  style={{ color: "#1890ff", marginLeft: 4 }}
-                                >
-                                  {form.getFieldValue([
-                                    "lines",
-                                    name,
-                                    "quantity",
-                                  ])}{" "}
-                                  selected,
-                                </span>
+                        {selectedItemId && selectedWarehouseId && (() => {
+                          const qty    = parseFloat(form.getFieldValue(['lines', name, 'quantity'])  || 0);
+                          const price  = parseFloat(form.getFieldValue(['lines', name, 'unitPrice']) || 0);
+                          const taxId  = form.getFieldValue(['lines', name, 'taxRateId']);
+                          const taxPct = taxId ? parseFloat(getRateById(taxId)?.rate || 0) : 0;
+                          const lineTotal  = qty * price;
+                          const taxAmount  = lineTotal * taxPct / 100;
+                          const grandTotal = lineTotal + taxAmount;
+                          const available  = (allItemStocks[selectedItemId]?.[selectedWarehouseId] || 0);
+                          const isInsufficient = qty > 0 && available < qty;
+                          return (
+                            <>
+                              {isInsufficient && (
+                                <div style={{ padding: '8px 12px', backgroundColor: '#fff2f0', border: '1px solid #ffccc7', borderRadius: 4, marginBottom: 6 }}>
+                                  <span style={{ fontSize: 13, color: '#cf1322', fontWeight: 600 }}>
+                                    ⚠️ Insufficient stock — only <strong>{available}</strong> unit{available !== 1 ? 's' : ''} available at this warehouse, but <strong>{qty}</strong> ordered.
+                                  </span>
+                                </div>
                               )}
-                              <strong
-                                style={{ color: "#52c41a", marginLeft: 4 }}
-                              >
-                                {currentAvailable -
-                                  (form.getFieldValue([
-                                    "lines",
-                                    name,
-                                    "quantity",
-                                  ]) || 0)}{" "}
-                                remaining
-                              </strong>
-                            </span>
-                          </div>
-                        )}
+                              <div style={{ padding: '8px 12px', backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 4 }}>
+                                <span style={{ fontSize: '13px', color: '#0050b3' }}>
+                                  ℹ️ <strong>{items.find(i => i.id === selectedItemId)?.name}</strong> at <strong>{warehouses.find(w => w.id === selectedWarehouseId)?.name}</strong>:
+                                  <strong style={{ color: available > 0 ? '#52c41a' : '#ff4d4f', marginLeft: 4 }}>{available} in stock</strong>
+                                  {qty > 0 && (
+                                    <span style={{ marginLeft: 8 }}>
+                                      Subtotal: <strong>{formatCurrency(lineTotal)}</strong>
+                                      {taxPct > 0 && <> + Tax ({taxPct}%): <strong>{formatCurrency(taxAmount)}</strong> = <Tag color="green">{formatCurrency(grandTotal)}</Tag></>}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </Space>
                     </div>
                   );
@@ -841,6 +758,8 @@ const SalesOrders = () => {
                 { title: 'Qty', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 70 },
                 { title: 'Shipped', dataIndex: 'quantity_shipped', key: 'quantity_shipped', width: 80, render: v => v || 0 },
                 { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', width: 100, render: v => formatCurrency(v) },
+                { title: 'Tax', dataIndex: 'tax_rate', key: 'tax_rate', width: 70, render: v => v > 0 ? <Tag color="blue">{v}%</Tag> : '-' },
+                { title: 'Tax Amt', dataIndex: 'tax_amount', key: 'tax_amount', width: 90, render: v => v > 0 ? formatCurrency(v) : '-' },
                 { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100, render: v => formatCurrency(v) },
                 { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: v => v?.toUpperCase() },
               ]}

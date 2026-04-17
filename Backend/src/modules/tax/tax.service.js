@@ -52,7 +52,7 @@ async function ensureTables() {
   tablesReady = true;
 }
 
-const DEFAULT_TAX_TYPES = ['GST','VAT','TDS','TCS','IGST','CGST','SGST','custom'];
+const DEFAULT_TAX_TYPES = ['GST','VAT','TDS','TCS','IGST','CGST','SGST'];
 
 async function seedTaxTypes(institutionId) {
   const existing = await db.query(

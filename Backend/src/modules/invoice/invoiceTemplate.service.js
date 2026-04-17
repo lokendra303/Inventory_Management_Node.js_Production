@@ -239,20 +239,20 @@ class InvoiceTemplateService {
    */
   formatLineItems(lines) {
     return lines.map((line, index) => {
-      const unitAmount = line.unitCost || line.unitPrice || 0;
-      const quantity = line.quantity || 0;
+      const taxRate = parseFloat(line.taxRate ?? line.tax_rate ?? 0);
+      const unitAmount = parseFloat(line.unitCost ?? line.unit_cost ?? line.unitPrice ?? line.unit_price ?? 0);
+      const quantity = parseFloat(line.quantity ?? 0);
+      const discountRate = parseFloat(line.discountRate ?? line.discount_rate ?? 0);
       const lineTotal = quantity * unitAmount;
-      const discountRate = line.discountRate || 0;
       const discountAmount = (lineTotal * discountRate) / 100;
       const taxableAmount = lineTotal - discountAmount;
-      const taxRate = line.taxRate || 0;
       const taxAmount = (taxableAmount * taxRate) / 100;
       const netAmount = taxableAmount + taxAmount;
 
       return {
         sno: index + 1,
         itemId: line.itemId,
-        itemName: line.itemName || line.description,
+        itemName: line.itemName ?? line.item_name ?? line.description,
         description: line.description,
         sku: line.sku,
         unit: line.unit || 'PCS',

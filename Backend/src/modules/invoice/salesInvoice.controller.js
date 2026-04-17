@@ -35,10 +35,10 @@ class SalesInvoiceController {
         let customerName = invoiceData.customerName;
         if (!customerName && invoiceData.customerId) {
           const [customer] = await connection.execute(
-            'SELECT name, company_name FROM customers WHERE id = ? AND institution_id = ?',
+            'SELECT display_name, company_name FROM customers WHERE id = ? AND institution_id = ?',
             [invoiceData.customerId, institutionId]
           );
-          customerName = customer ? (customer.name || customer.company_name) : 'Unknown Customer';
+          customerName = customer ? (customer.display_name || customer.company_name) : 'Unknown Customer';
         }
 
         const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
@@ -252,9 +252,9 @@ class SalesInvoiceController {
         SELECT 
           si.*,
           so.so_number,
-          c.name as customer_full_name,
+          c.display_name as customer_full_name,
           c.email as customer_email,
-          c.phone as customer_phone
+          COALESCE(c.work_phone, c.mobile_phone) as customer_phone
         FROM sales_invoices si
         LEFT JOIN sales_orders so ON CAST(si.so_id AS CHAR) = CAST(so.id AS CHAR)
         LEFT JOIN customers c ON si.customer_id = c.id
@@ -518,6 +518,15 @@ class SalesInvoiceController {
       }
 
       const result = await db.transaction(async (connection) => {
+        // Block editing non-draft invoices
+        const [existing] = await connection.execute(
+          'SELECT status, so_id FROM sales_invoices WHERE id = ? AND institution_id = ?',
+          [id, institutionId]
+        );
+        if (!existing) throw new Error('Invoice not found');
+        if (existing.status !== 'draft') throw new Error('Only draft invoices can be edited');
+        if (existing.so_id) throw new Error('System-generated invoices cannot be edited');
+
         const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
           ? invoiceData.invoiceDate 
           : new Date().toISOString().split('T')[0];

@@ -309,6 +309,16 @@ class PurchaseInvoiceController {
       }
 
       const result = await db.transaction(async (connection) => {
+        // Block editing non-draft or system-generated invoices
+        const [existingRows] = await connection.execute(
+          'SELECT status, po_id, grn_id FROM purchase_invoices WHERE id = ? AND institution_id = ?',
+          [id, institutionId]
+        );
+        const existing = existingRows[0];
+        if (!existing) throw new Error('Invoice not found');
+        if (existing.status !== 'draft') throw new Error('Only draft invoices can be edited');
+        if (existing.po_id || existing.grn_id) throw new Error('System-generated invoices cannot be edited');
+
         const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
           ? invoiceData.invoiceDate 
           : new Date().toISOString().split('T')[0];

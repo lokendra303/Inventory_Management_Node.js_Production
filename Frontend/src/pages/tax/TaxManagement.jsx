@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
-  PercentageOutlined, AppstoreOutlined
+  PercentageOutlined, AppstoreOutlined, SyncOutlined
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 
@@ -20,6 +20,8 @@ export default function TaxManagement() {
   const [editing, setEditing]       = useState(null);
   const [groupForm] = Form.useForm();
   const [rateForm]  = Form.useForm();
+
+  const [syncing, setSyncing] = useState(false);
 
   // Inline add state for type and group dropdowns
   const [newTypeName,  setNewTypeName]  = useState('');
@@ -102,6 +104,19 @@ export default function TaxManagement() {
     } catch { message.error('Failed to delete tax group'); }
   };
 
+  const syncLiveRates = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiService.post('/tax/sync-live-rates');
+      if (res.success) {
+        const { inserted, skipped, source } = res.data;
+        message.success(`Synced from ${source}: ${inserted} added, ${skipped} already existed`);
+        loadRates();
+      }
+    } catch { message.error('Failed to sync live rates'); }
+    finally { setSyncing(false); }
+  };
+
   // ── Tax Groups CRUD ──────────────────────────────────────────
   const openGroupModal = (record = null) => {
     setEditing(record);
@@ -142,7 +157,7 @@ export default function TaxManagement() {
           taxGroupId: record.tax_group_id,
           isCompound: !!record.is_compound,
           isInclusive: !!record.is_inclusive }
-      : { name: '', rate: 0, taxType: taxTypes[0]?.name || 'custom',
+      : { name: '', rate: 0, taxType: taxTypes[0]?.name || 'GST',
           isCompound: false, isInclusive: false }
     );
     setRateModal(true);
@@ -255,7 +270,7 @@ export default function TaxManagement() {
           { label: 'Tax Types',   value: taxTypes.length,                                    color: '#1677ff', bg: '#e6f4ff' },
           { label: 'Tax Groups',  value: groups.length,                                      color: '#667eea', bg: '#f0f0ff' },
           { label: 'Tax Rates',   value: rates.length,                                       color: '#52c41a', bg: '#f6ffed' },
-          { label: 'Custom Rates',value: rates.filter(r => r.tax_type === 'custom').length,  color: '#722ed1', bg: '#f9f0ff' },
+          { label: 'Gov. Rates',  value: rates.filter(r => r.tax_type !== 'custom').length,  color: '#722ed1', bg: '#f9f0ff' },
         ].map(s => (
           <Col xs={12} sm={6} key={s.label}>
             <Card bordered={false}
@@ -285,10 +300,17 @@ export default function TaxManagement() {
               style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
               title={<strong>All Tax Rates</strong>}
               extra={
-                <Button type="primary" icon={<PlusOutlined />}
-                  onClick={() => openRateModal()} style={btnStyle}>
-                  Add Tax Rate
-                </Button>
+                <Space>
+                  <Button icon={<SyncOutlined spin={syncing} />}
+                    onClick={syncLiveRates} loading={syncing}
+                    style={{ borderRadius: 8 }}>
+                    Sync Gov. Rates
+                  </Button>
+                  <Button type="primary" icon={<PlusOutlined />}
+                    onClick={() => openRateModal()} style={btnStyle}>
+                    Add Tax Rate
+                  </Button>
+                </Space>
               }
             >
               <Table dataSource={rates} columns={rateColumns} rowKey="id"
@@ -408,9 +430,10 @@ export default function TaxManagement() {
               </Form.Item>
             </Col>
             <Col span={10}>
-              <Form.Item name="rate" label="Rate (%)" rules={[{ required: true }]}>
+              <Form.Item name="rate" label="Rate (%) — Gov. Fixed" rules={[{ required: true }]}>
                 <InputNumber min={0} max={100} step={0.01} precision={2}
-                  style={{ width: '100%' }} addonAfter="%" />
+                  style={{ width: '100%' }} addonAfter="%"
+                  disabled={!!editing} />
               </Form.Item>
             </Col>
           </Row>

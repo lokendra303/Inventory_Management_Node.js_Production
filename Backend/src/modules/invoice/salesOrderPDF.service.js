@@ -232,20 +232,24 @@ class SalesOrderPDFService {
         doc.fontSize(11).font('Helvetica-Bold').text('Line Items:', 50, y);
         y += 20;
 
-        const col1 = 50;
-        const col2 = 200;
-        const col3 = 310;
-        const col4 = 400;
-        const col5 = 490;
+        const col1 = 50;   // Item
+        const col2 = 185;  // HSN
+        const col3 = 265;  // Qty
+        const col4 = 320;  // Unit Price
+        const col5 = 385;  // Tax %
+        const col6 = 440;  // Tax Amt
+        const col7 = 495;  // Line Total
 
         const drawTableHeader = (yPos) => {
-          doc.fontSize(9).font('Helvetica-Bold');
+          doc.fontSize(8).font('Helvetica-Bold');
           doc.rect(col1, yPos, 495, 20).fillAndStroke('#f0f0f0', '#000');
-          doc.fillColor('#000').text('Item', col1 + 5, yPos + 6);
-          doc.text('HSN Code', col2, yPos + 6);
-          doc.text('Qty Ordered', col3, yPos + 6);
-          doc.text('Unit Price', col4, yPos + 6);
-          doc.text('Line Total', col5, yPos + 6);
+          doc.fillColor('#000').text('Item',       col1 + 4, yPos + 6, { width: 130 });
+          doc.text('HSN',        col2 + 4, yPos + 6);
+          doc.text('Qty',        col3 + 4, yPos + 6);
+          doc.text('Unit Price', col4 + 4, yPos + 6);
+          doc.text('Tax %',      col5 + 4, yPos + 6);
+          doc.text('Tax Amt',    col6 + 4, yPos + 6);
+          doc.text('Total',      col7 + 4, yPos + 6);
           return yPos + 20;
         };
 
@@ -255,43 +259,62 @@ class SalesOrderPDFService {
         let pageNumber = 1;
         (soData.lines || []).forEach((line) => {
           if (y > 680) {
-            // Add page number to current page
             doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
-            
             doc.addPage();
             pageNumber++;
             y = 50;
-            
-            // Add SO number header on new page
             doc.fontSize(12).font('Helvetica-Bold').text(`SO: ${soData.so_number}`, 50, y);
             y += 25;
-            
             y = drawTableHeader(y);
             doc.font('Helvetica').fontSize(8);
           }
 
-          const rowY = y;
-          doc.rect(col1, rowY, 150, 18).stroke();
-          doc.rect(col2, rowY, 110, 18).stroke();
-          doc.rect(col3, rowY, 90, 18).stroke();
-          doc.rect(col4, rowY, 90, 18).stroke();
-          doc.rect(col5, rowY, 55, 18).stroke();
+          const taxRate   = parseFloat(line.tax_rate   || 0);
+          const unitPrice = parseFloat(line.unit_price || 0);
+          const qty       = parseFloat(line.quantity_ordered || 0);
+          const lineBase  = qty * unitPrice;
+          const taxAmt    = Math.round(lineBase * taxRate / 100 * 100) / 100;
+          const lineTotal = parseFloat(line.line_total || lineBase + taxAmt);
 
-          doc.text(line.item_name || '', col1 + 5, rowY + 5, { width: 140 });
-          doc.text(line.hsn_code || '-', col2 + 5, rowY + 5);
-          doc.text(String(line.quantity_ordered || '0'), col3 + 5, rowY + 5);
-          doc.text(parseFloat(line.unit_price || 0).toFixed(2), col4 + 5, rowY + 5);
-          doc.text(parseFloat(line.line_total || 0).toFixed(2), col5 + 5, rowY + 5);
+          const rowY = y;
+          doc.rect(col1, rowY, 135, 18).stroke();
+          doc.rect(col2, rowY, 80,  18).stroke();
+          doc.rect(col3, rowY, 55,  18).stroke();
+          doc.rect(col4, rowY, 65,  18).stroke();
+          doc.rect(col5, rowY, 55,  18).stroke();
+          doc.rect(col6, rowY, 55,  18).stroke();
+          doc.rect(col7, rowY, 50,  18).stroke();
+
+          doc.text(line.item_name || '',          col1 + 4, rowY + 5, { width: 128 });
+          doc.text(line.hsn_code  || '-',         col2 + 4, rowY + 5);
+          doc.text(String(qty),                   col3 + 4, rowY + 5);
+          doc.text(unitPrice.toFixed(2),          col4 + 4, rowY + 5);
+          doc.text(taxRate > 0 ? `${taxRate}%` : '-', col5 + 4, rowY + 5);
+          doc.text(taxRate > 0 ? taxAmt.toFixed(2) : '-', col6 + 4, rowY + 5);
+          doc.text(lineTotal.toFixed(2),          col7 + 4, rowY + 5);
           y += 18;
         });
 
         y += 20;
 
-        doc.fontSize(11).font('Helvetica-Bold').text('Total Amount:', 380, y);
-        doc.text(`${soData.currency || 'USD'} ${parseFloat(soData.total_amount || 0).toFixed(2)}`, 480, y);
-        
-        // Add page number to last page
-        doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
+        // Totals block
+        const totalLines = soData.lines || [];
+        const subtotal  = totalLines.reduce((s, l) => s + parseFloat(l.unit_price || 0) * parseFloat(l.quantity_ordered || 0), 0);
+        const totalTax  = totalLines.reduce((s, l) => {
+          const base = parseFloat(l.unit_price || 0) * parseFloat(l.quantity_ordered || 0);
+          return s + Math.round(base * parseFloat(l.tax_rate || 0) / 100 * 100) / 100;
+        }, 0);
+        const grandTotal = parseFloat(soData.total_amount || subtotal + totalTax);
+
+        const totX = 350;
+        doc.fontSize(9).font('Helvetica');
+        doc.text('Subtotal:',   totX, y);  doc.text(`${soData.currency || ''} ${subtotal.toFixed(2)}`,  480, y); y += 16;
+        if (totalTax > 0) {
+          doc.text('Tax:',      totX, y);  doc.text(`${soData.currency || ''} ${totalTax.toFixed(2)}`,   480, y); y += 16;
+        }
+        doc.moveTo(totX, y).lineTo(545, y).stroke(); y += 6;
+        doc.fontSize(11).font('Helvetica-Bold');
+        doc.text('Grand Total:', totX, y); doc.text(`${soData.currency || ''} ${grandTotal.toFixed(2)}`, 480, y);
 
         doc.end();
       } catch (error) {
