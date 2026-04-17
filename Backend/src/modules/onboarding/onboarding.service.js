@@ -89,9 +89,17 @@ class OnboardingService {
       db.query('SELECT COUNT(*) as c FROM vendors WHERE institution_id=?', [institutionId]),
       db.query('SELECT COUNT(*) as c FROM institution_users WHERE institution_id=? AND role!="super_admin"', [institutionId]),
       db.query('SELECT COUNT(*) as c FROM sales_invoices WHERE institution_id=?', [institutionId]).catch(() => [{ c: 0 }]),
-      db.query('SELECT id FROM institutions WHERE id=? AND name IS NOT NULL AND name != ""', [institutionId]).catch(() => []),
+      // company_profile: check if company_settings has at least 3 core fields filled
+      db.query(
+        `SELECT COUNT(*) as c FROM company_settings
+         WHERE institution_id=?
+           AND company_name IS NOT NULL AND company_name != ""
+           AND address IS NOT NULL AND address != ""
+           AND phone IS NOT NULL AND phone != ""`,
+        [institutionId]
+      ).catch(() => [{ c: 0 }]),
     ]);
-    const [wh, it, cu, ve, us, inv, co] = checks.map(r => r.status === 'fulfilled' ? (r.value[0]?.c ?? r.value?.length ?? 0) : 0);
+    const [wh, it, cu, ve, us, inv, co] = checks.map(r => r.status === 'fulfilled' ? (r.value[0]?.c || 0) : 0);
     const map = {
       add_warehouse:  wh,
       add_item:       it,

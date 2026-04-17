@@ -60,7 +60,14 @@ const CompanySettings = () => {
       const values = await form.validateFields();
       setLoading(true);
       const response = await apiService.put('/company-settings', values);
-      if (response.success) { message.success('Settings saved successfully'); loadSettings(); }
+      if (response.success) {
+        message.success('Settings saved successfully');
+        loadSettings();
+        // Mark onboarding step complete if all 3 required fields are filled
+        if (values.companyName && values.address && values.phone) {
+          apiService.post('/onboarding/complete', { stepId: 'company_profile' }).catch(() => {});
+        }
+      }
     } catch {
       message.error('Failed to save settings');
     } finally { setLoading(false); }
@@ -171,23 +178,25 @@ const CompanySettings = () => {
           <Row gutter={20}>
             <Col xs={24} sm={12}>
               <Form.Item name="companyName" label={<>{labelIcon(<ShopOutlined />, '#1677ff')}Company Name</>}
-                rules={[{ required: true, message: 'Please enter company name' }]}>
+                rules={[{ required: true, message: 'Company name is required' }]}>
                 <Input placeholder="Enter company name" size="large" style={{ borderRadius: 8 }} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item name="email" label={<>{labelIcon(<MailOutlined />, '#722ed1')}Email</>}
-                rules={[{ type: 'email', message: 'Please enter valid email' }]}>
+                rules={[{ required: true, message: 'Email is required' }, { type: 'email', message: 'Please enter valid email' }]}>
                 <Input placeholder="info@company.com" size="large" style={{ borderRadius: 8 }} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="phone" label={<>{labelIcon(<PhoneOutlined />, '#13c2c2')}Phone</>}>
+              <Form.Item name="phone" label={<>{labelIcon(<PhoneOutlined />, '#13c2c2')}Phone</>}
+                rules={[{ required: true, message: 'Phone number is required' }]}>
                 <Input placeholder="+1-000-000-0000" size="large" style={{ borderRadius: 8 }} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="address" label={<>{labelIcon(<EnvironmentOutlined />, '#fa8c16')}Address</>}>
+              <Form.Item name="address" label={<>{labelIcon(<EnvironmentOutlined />, '#fa8c16')}Address</>}
+                rules={[{ required: true, message: 'Address is required' }]}>
                 <Input placeholder="Company Address, City, State" size="large" style={{ borderRadius: 8 }} />
               </Form.Item>
             </Col>
