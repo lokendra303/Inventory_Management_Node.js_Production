@@ -61,6 +61,12 @@ class InventoryService {
         unitCost
       });
 
+      // Fire workflow trigger for stock_received event (non-fatal)
+      try {
+        const workflowSvc = require('../workflows/workflow.service');
+        await workflowSvc.trigger(institutionId, 'stock_received', { itemId, warehouseId, quantity, unitCost });
+      } catch (wfErr) { logger.warn('Workflow trigger failed (stock_received)', { error: wfErr.message }); }
+
       return eventId;
     } catch (error) {
       logger.error('Failed to receive stock', { institutionId, itemId, warehouseId, error: error.message });
@@ -241,6 +247,18 @@ class InventoryService {
         );
 
         logger.info('Stock adjusted', { institutionId, itemId, warehouseId, adjustmentType, absQty, userId });
+
+        // Fire workflow trigger for stock_adjusted event (non-fatal)
+        try {
+          const workflowSvc = require('../workflows/workflow.service');
+          const proj = await db.query(
+            'SELECT quantity_available, quantity_on_hand FROM inventory_projections WHERE institution_id=? AND item_id=? AND warehouse_id=?',
+            [institutionId, itemId, warehouseId]
+          );
+          const qty = proj[0]?.quantity_available || 0;
+          await workflowSvc.trigger(institutionId, 'stock_adjusted', { itemId, warehouseId, quantity: qty, adjustmentType });
+        } catch (wfErr) { logger.warn('Workflow trigger failed (stock_adjusted)', { error: wfErr.message }); }
+
         return 'success';
       });
     } catch (error) {
