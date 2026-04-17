@@ -236,7 +236,7 @@ const Reports = () => {
     },
     { title: 'Qty', dataIndex: 'quantity_change', key: 'quantity_change', width: 70, render: (val) => formatNumber(Math.abs(val)) },
     { title: 'Reason', dataIndex: 'reason', key: 'reason', width: 130, ellipsis: true },
-    { title: 'By', key: 'adjusted_by', width: 100, render: (_, record) => `${record.first_name || ''} ${record.last_name || ''}`.trim() || 'System' }
+    { title: 'By', key: 'adjusted_by', width: 120, render: (_, record) => record.adjusted_by_name?.trim() || 'System' }
   ];
 
   const transferColumns = [
@@ -461,39 +461,79 @@ const Reports = () => {
         style={{ top: 16 }}
       >
         {viewModal.data && (
+          <>
           <Descriptions column={1} bordered size="small">
             {viewModal.type === 'inventory' && (<>
               <Descriptions.Item label="Item Name">{viewModal.data.item_name}</Descriptions.Item>
               <Descriptions.Item label="SKU">{viewModal.data.sku}</Descriptions.Item>
               <Descriptions.Item label="Warehouse">{viewModal.data.warehouse_name}</Descriptions.Item>
-              <Descriptions.Item label="Quantity On Hand">{viewModal.data.quantity_on_hand}</Descriptions.Item>
-              <Descriptions.Item label="Quantity Available">{viewModal.data.quantity_available}</Descriptions.Item>
-              <Descriptions.Item label="Quantity Reserved">{viewModal.data.quantity_reserved}</Descriptions.Item>
+              <Descriptions.Item label="On Hand">{viewModal.data.quantity_on_hand}</Descriptions.Item>
+              <Descriptions.Item label="Available">{viewModal.data.quantity_available}</Descriptions.Item>
+              <Descriptions.Item label="Reserved">{viewModal.data.quantity_reserved}</Descriptions.Item>
+              <Descriptions.Item label="Avg Cost">{formatCurrency(viewModal.data.average_cost || 0)}</Descriptions.Item>
               <Descriptions.Item label="Total Value">{formatCurrency(viewModal.data.total_value || 0)}</Descriptions.Item>
-              <Descriptions.Item label="Unit Cost">{formatCurrency(viewModal.data.unit_cost || 0)}</Descriptions.Item>
-              <Descriptions.Item label="Last Updated">{viewModal.data.updated_at}</Descriptions.Item>
             </>)}
             {viewModal.type === 'purchase' && (<>
               <Descriptions.Item label="PO Number">{viewModal.data.po_number}</Descriptions.Item>
               <Descriptions.Item label="Vendor">{viewModal.data.vendor_name}</Descriptions.Item>
-              <Descriptions.Item label="Status">{viewModal.data.status}</Descriptions.Item>
-              <Descriptions.Item label="Order Date">{viewModal.data.order_date}</Descriptions.Item>
-              <Descriptions.Item label="Expected Date">{viewModal.data.expected_date}</Descriptions.Item>
+              <Descriptions.Item label="Status"><Tag color={{ draft:'default',sent:'blue',confirmed:'cyan',partially_received:'orange',received:'green',cancelled:'red' }[viewModal.data.status]}>{viewModal.data.status?.toUpperCase()}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Order Date">{viewModal.data.order_date ? new Date(viewModal.data.order_date).toLocaleDateString() : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Expected Date">{viewModal.data.expected_date ? new Date(viewModal.data.expected_date).toLocaleDateString() : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Currency">{viewModal.data.currency}</Descriptions.Item>
               <Descriptions.Item label="Total Amount">{formatCurrency(viewModal.data.total_amount || 0)}</Descriptions.Item>
-              <Descriptions.Item label="Notes">{viewModal.data.notes || 'N/A'}</Descriptions.Item>
-              <Descriptions.Item label="Created By">{viewModal.data.created_by}</Descriptions.Item>
+              <Descriptions.Item label="Lines">{viewModal.data.line_count || 0}</Descriptions.Item>
+              <Descriptions.Item label="Qty Ordered">{viewModal.data.total_quantity || 0}</Descriptions.Item>
+              <Descriptions.Item label="Qty Received">{viewModal.data.total_received || 0}</Descriptions.Item>
+              <Descriptions.Item label="Notes">{viewModal.data.notes || '—'}</Descriptions.Item>
             </>)}
             {viewModal.type === 'sales' && (<>
               <Descriptions.Item label="SO Number">{viewModal.data.so_number}</Descriptions.Item>
               <Descriptions.Item label="Customer">{viewModal.data.customer_name}</Descriptions.Item>
-              <Descriptions.Item label="Status">{viewModal.data.status}</Descriptions.Item>
-              <Descriptions.Item label="Order Date">{viewModal.data.order_date}</Descriptions.Item>
-              <Descriptions.Item label="Ship Date">{viewModal.data.ship_date}</Descriptions.Item>
+              <Descriptions.Item label="Status"><Tag color={{ draft:'default',confirmed:'blue',shipped:'cyan',delivered:'green',cancelled:'red' }[viewModal.data.status]}>{viewModal.data.status?.toUpperCase()}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Order Date">{viewModal.data.order_date ? new Date(viewModal.data.order_date).toLocaleDateString() : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Expected Ship">{viewModal.data.expected_ship_date ? new Date(viewModal.data.expected_ship_date).toLocaleDateString() : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Currency">{viewModal.data.currency}</Descriptions.Item>
               <Descriptions.Item label="Total Amount">{formatCurrency(viewModal.data.total_amount || 0)}</Descriptions.Item>
-              <Descriptions.Item label="Payment Status">{viewModal.data.payment_status || 'N/A'}</Descriptions.Item>
-              <Descriptions.Item label="Created By">{viewModal.data.created_by}</Descriptions.Item>
+              <Descriptions.Item label="Lines">{viewModal.data.line_count || 0}</Descriptions.Item>
+              <Descriptions.Item label="Qty Ordered">{viewModal.data.total_quantity || 0}</Descriptions.Item>
+              <Descriptions.Item label="Qty Shipped">{viewModal.data.total_shipped || 0}</Descriptions.Item>
+              <Descriptions.Item label="Channel">{viewModal.data.channel || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Notes">{viewModal.data.notes || '—'}</Descriptions.Item>
             </>)}
           </Descriptions>
+
+          {/* Audit Trail */}
+          <div style={{ marginTop: 20, padding: '14px 16px', background: '#f9f9ff', borderRadius: 10, border: '1px solid #e8e8ff' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#667eea', marginBottom: 10 }}>🕵️ Audit Trail</div>
+            <Descriptions column={1} size="small">
+              {viewModal.type !== 'inventory' && (
+                <Descriptions.Item label="Created By">
+                  <span style={{ fontWeight: 600 }}>
+                    {(viewModal.data.created_by_name?.trim() || viewModal.data.adjusted_by_name?.trim()) || 'System'}
+                  </span>
+                  {(viewModal.data.created_by_email || viewModal.data.adjusted_by_email) && (
+                    <span style={{ color: '#8c8c8c', marginLeft: 8, fontSize: 12 }}>
+                      ({viewModal.data.created_by_email || viewModal.data.adjusted_by_email})
+                    </span>
+                  )}
+                </Descriptions.Item>
+              )}
+              <Descriptions.Item label="Created At">
+                {viewModal.data.created_at ? new Date(viewModal.data.created_at).toLocaleString() : '—'}
+              </Descriptions.Item>
+              {viewModal.data.updated_at && viewModal.data.updated_at !== viewModal.data.created_at && (
+                <Descriptions.Item label="Last Updated">
+                  {new Date(viewModal.data.updated_at).toLocaleString()}
+                </Descriptions.Item>
+              )}
+              {viewModal.data.cancellation_reason && (
+                <Descriptions.Item label="Cancellation Reason">
+                  <span style={{ color: '#ff4d4f' }}>{viewModal.data.cancellation_reason}</span>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+          </div>
+          </>
         )}
       </Modal>
     </div>

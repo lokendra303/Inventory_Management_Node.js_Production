@@ -166,8 +166,11 @@ const createPurchaseOrderSchema = Joi.object({
     warehouseId,
     quantity: quantity,
     unitCost: Joi.number().min(0).required(),
+    taxRate: Joi.number().min(0).max(100).default(0),
+    taxRateId: Joi.string().uuid().optional().allow(null),
+    discountRate: Joi.number().min(0).max(100).default(0),
     expectedDate: Joi.date().optional()
-  })).min(1).required()
+  }).unknown(true)).min(1).required()
 }).unknown(true);
 
 // Sales Order schemas

@@ -74,13 +74,13 @@ class AutoInvoiceService {
         });
         const grandTotal = subtotal - totalDiscount + totalTax;
 
-        // Create invoice linked to GRN
+        // Create invoice linked to GRN — status 'posted' so it cannot be edited
         await connection.execute(`
           INSERT INTO purchase_invoices (
             id, institution_id, invoice_number, vendor_id, vendor_name, po_id, grn_id,
             invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
-            discount_amount, total_amount, balance_amount, reference, notes, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            discount_amount, total_amount, balance_amount, reference, notes, created_by, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted')
         `, [
           invoiceId, institutionId, invoiceNumber,
           grn.vendor_id || null, grn.vendor_name || 'Unknown Vendor',
@@ -190,13 +190,13 @@ class AutoInvoiceService {
 
         const grandTotal = subtotal - totalDiscount + totalTax;
 
-        // Create invoice
+        // Create invoice — status 'posted' so it cannot be edited
         await connection.execute(`
           INSERT INTO purchase_invoices (
             id, institution_id, invoice_number, vendor_id, vendor_name, po_id,
             invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
-            discount_amount, total_amount, balance_amount, reference, notes, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            discount_amount, total_amount, balance_amount, reference, notes, created_by, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted')
         `, [
           invoiceId, institutionId, invoiceNumber, po.vendor_id || null, po.vendor_name || 'Unknown Vendor', poId,
           new Date().toISOString().split('T')[0],

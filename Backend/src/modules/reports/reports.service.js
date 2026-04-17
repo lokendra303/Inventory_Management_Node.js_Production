@@ -65,10 +65,13 @@ class ReportsService {
   async getInventoryAdjustmentReport(institutionId, filters = {}) {
     let query = `
       SELECT ia.created_at, ia.adjustment_type, ia.quantity_change, ia.reason, ia.loss_type, ia.reference_number,
-             i.sku, i.name as item_name, w.name as warehouse_name
+             i.sku, i.name as item_name, w.name as warehouse_name,
+             CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) as adjusted_by_name,
+             u.email as adjusted_by_email
       FROM inventory_adjustments ia
       JOIN items i ON ia.item_id COLLATE utf8mb4_unicode_ci = i.id COLLATE utf8mb4_unicode_ci
       JOIN warehouses w ON ia.warehouse_id COLLATE utf8mb4_unicode_ci = w.id COLLATE utf8mb4_unicode_ci
+      LEFT JOIN institution_users u ON ia.adjusted_by = u.id
       WHERE ia.institution_id = ?
     `;
     const params = [institutionId];
@@ -136,10 +139,13 @@ class ReportsService {
       SELECT po.*, COALESCE(v.display_name, po.vendor_name) as vendor_name,
              COUNT(pol.id) as line_count,
              SUM(pol.quantity_ordered) as total_quantity,
-             SUM(pol.quantity_received) as total_received
+             SUM(pol.quantity_received) as total_received,
+             MAX(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) as created_by_name,
+             MAX(u.email) as created_by_email
       FROM purchase_orders po
       LEFT JOIN vendors v ON po.vendor_id = v.id
       LEFT JOIN purchase_order_lines pol ON po.id = pol.po_id
+      LEFT JOIN institution_users u ON po.created_by = u.id
       WHERE po.institution_id = ?
     `;
     const params = [institutionId];
@@ -207,11 +213,14 @@ class ReportsService {
       SELECT so.*, COALESCE(c.display_name, so.customer_name) as customer_name, w.name as warehouse_name,
              COUNT(sol.id) as line_count,
              SUM(sol.quantity_ordered) as total_quantity,
-             SUM(sol.quantity_shipped) as total_shipped
+             SUM(sol.quantity_shipped) as total_shipped,
+             MAX(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) as created_by_name,
+             MAX(u.email) as created_by_email
       FROM sales_orders so
       LEFT JOIN customers c ON so.customer_id = c.id
       LEFT JOIN warehouses w ON so.warehouse_id = w.id
       LEFT JOIN sales_order_lines sol ON so.id = sol.so_id
+      LEFT JOIN institution_users u ON so.created_by = u.id
       WHERE so.institution_id = ?
     `;
     const params = [institutionId];
