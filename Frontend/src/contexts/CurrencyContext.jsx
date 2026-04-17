@@ -25,10 +25,34 @@ export const CurrencyProvider = ({ children }) => {
     try {
       const response = await apiService.get('/settings');
       if (response?.success && response?.data) {
-        setCurrency(response.data.currency || 'USD');
-        setCurrencySymbol(response.data.currencySymbol || '$');
-        setExchangeRate(parseFloat(response.data.exchangeRate) || 1);
+        const activeCurrency = response.data.currency || 'USD';
+        const activeSymbol   = response.data.currencySymbol || '$';
+        setCurrency(activeCurrency);
+        setCurrencySymbol(activeSymbol);
         setBaseCurrency(response.data.baseCurrency || 'USD');
+
+        // If active currency is USD (base), rate is always 1
+        if (activeCurrency === 'USD' || activeCurrency === (response.data.baseCurrency || 'USD')) {
+          setExchangeRate(1);
+          return;
+        }
+
+        // Read the actual live rate from exchange_rates table (USD → activeCurrency)
+        try {
+          const ratesRes = await apiService.get('/settings/exchange-rates');
+          if (ratesRes?.success && ratesRes?.data?.length > 0) {
+            const pair = ratesRes.data.find(
+              r => r.from_currency === 'USD' && r.to_currency === activeCurrency
+            );
+            if (pair) {
+              setExchangeRate(parseFloat(pair.rate) || 1);
+              return;
+            }
+          }
+        } catch { /* fall through to institutions rate */ }
+
+        // Fallback: use the rate stored in institutions table
+        setExchangeRate(parseFloat(response.data.exchangeRate) || 1);
       }
     } catch (error) {
       console.error('Failed to fetch currency:', error);
@@ -42,13 +66,25 @@ export const CurrencyProvider = ({ children }) => {
   const updateCurrency = async (newCurrency, newExchangeRate) => {
     try {
       setLoading(true);
-      const rate = newExchangeRate ?? exchangeRate;
-      const response = await apiService.put('/settings', { currency: newCurrency, exchangeRate: rate });
-      if (response?.success) {
-        await fetchCurrency();
-        return true;
+      // Step 1: update the active currency on the institution
+      const response = await apiService.put('/settings', {
+        currency: newCurrency,
+        exchangeRate: newExchangeRate ?? 1
+      });
+      if (!response?.success) return false;
+
+      // Step 2: if a rate was provided, also upsert it into exchange_rates table
+      if (newExchangeRate && newExchangeRate !== 1 && newCurrency !== 'USD') {
+        await apiService.put('/settings/exchange-rates', {
+          fromCurrency: 'USD',
+          toCurrency: newCurrency,
+          rate: newExchangeRate,
+          note: 'Set active via currency selector'
+        }).catch(() => {}); // non-fatal
       }
-      return false;
+
+      await fetchCurrency();
+      return true;
     } catch (error) {
       console.error('Failed to update currency:', error);
       return false;

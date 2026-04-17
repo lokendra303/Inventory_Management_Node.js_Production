@@ -96,13 +96,31 @@ class SettingsController {
       );
       if (institution.length === 0) return res.status(404).json({ error: 'Institution not found' });
 
+      const activeCurrency   = institution[0].currency || 'USD';
+      const baseCurrency     = institution[0].base_currency || 'USD';
+      let   liveRate         = 1;
+
+      // Read rate from exchange_rates table (source of truth)
+      if (activeCurrency !== baseCurrency) {
+        const rateRows = await db.query(
+          'SELECT rate FROM exchange_rates WHERE institution_id=? AND from_currency=? AND to_currency=? LIMIT 1',
+          [institutionId, baseCurrency, activeCurrency]
+        );
+        if (rateRows.length > 0) {
+          liveRate = parseFloat(rateRows[0].rate) || 1;
+        } else {
+          // Fallback to institutions column if no live rate saved yet
+          liveRate = parseFloat(institution[0].exchange_rate) || 1;
+        }
+      }
+
       res.json({
         success: true,
         data: {
-          currency: institution[0].currency || 'USD',
-          currencySymbol: institution[0].currency_symbol || '$',
-          exchangeRate: parseFloat(institution[0].exchange_rate) || 1,
-          baseCurrency: institution[0].base_currency || 'USD',
+          currency:           activeCurrency,
+          currencySymbol:     institution[0].currency_symbol || '$',
+          exchangeRate:       liveRate,
+          baseCurrency:       baseCurrency,
           availableCurrencies: CurrencyService.getCurrencies()
         }
       });
@@ -271,6 +289,116 @@ class SettingsController {
   // Backward compatibility
   async getinstitutionSettings(req, res) { return this.getInstitutionSettings(req, res); }
   async updateinstitutionSettings(req, res) { return this.updateInstitutionSettings(req, res); }
+
+  // GET /settings/exchange-rates/live?base=USD&to=INR
+  // Fetches a single live rate from exchangerate-api.com (free, no key needed)
+  async getLiveRate(req, res) {
+    try {
+      const { base = 'USD', to } = req.query;
+      if (!to) return res.status(400).json({ success: false, error: '"to" currency is required' });
+      if (base === to) return res.json({ success: true, data: { base, to, rate: 1, source: 'same_currency' } });
+
+      const axios = require('axios');
+      // Free open endpoint — no API key required
+      const url = `https://open.er-api.com/v6/latest/${base.toUpperCase()}`;
+      const response = await axios.get(url, { timeout: 8000 });
+
+      if (response.data?.result !== 'success') {
+        return res.status(502).json({ success: false, error: 'Live rate provider returned an error' });
+      }
+
+      const rates = response.data.rates;
+      const toUpper = to.toUpperCase();
+      if (!rates[toUpper]) {
+        return res.status(404).json({ success: false, error: `Currency ${toUpper} not found in live rates` });
+      }
+
+      const rate = parseFloat(rates[toUpper].toFixed(6));
+      const inverseRate = parseFloat((1 / rate).toFixed(6));
+      const lastUpdated = response.data.time_last_update_utc;
+
+      logger.info('Live rate fetched', { base, to: toUpper, rate });
+      res.json({
+        success: true,
+        data: { base: base.toUpperCase(), to: toUpper, rate, inverseRate, lastUpdated, source: 'open.er-api.com' }
+      });
+    } catch (error) {
+      logger.error('getLiveRate error', { error: error.message });
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        return res.status(504).json({ success: false, error: 'Live rate request timed out. Check your internet connection.' });
+      }
+      res.status(502).json({ success: false, error: 'Failed to fetch live rate. Try again.' });
+    }
+  }
+
+  // POST /settings/exchange-rates/live-sync
+  // Fetches ALL rates for a base currency and saves them to DB in one shot
+  async syncAllLiveRates(req, res) {
+    try {
+      await ensureTables();
+      const institutionId = req.institutionId || req.user?.institutionId;
+      const userId = req.user?.userId;
+      const { base = 'USD' } = req.body;
+
+      const axios = require('axios');
+      const url = `https://open.er-api.com/v6/latest/${base.toUpperCase()}`;
+      const response = await axios.get(url, { timeout: 10000 });
+
+      if (response.data?.result !== 'success') {
+        return res.status(502).json({ success: false, error: 'Live rate provider returned an error' });
+      }
+
+      const rates = response.data.rates;
+      const lastUpdated = response.data.time_last_update_utc;
+      const baseUpper = base.toUpperCase();
+      let savedCount = 0;
+
+      // Save every pair: base → X and X → base
+      for (const [toCurrency, rate] of Object.entries(rates)) {
+        if (toCurrency === baseUpper) continue;
+        const r = parseFloat(rate.toFixed(6));
+        const inv = parseFloat((1 / r).toFixed(6));
+        const note = `Live sync from open.er-api.com — ${lastUpdated}`;
+
+        // Upsert base → to
+        await db.query(
+          `INSERT INTO exchange_rates (institution_id, from_currency, to_currency, rate)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE rate = VALUES(rate), updated_at = NOW()`,
+          [institutionId, baseUpper, toCurrency, r]
+        );
+        // Upsert to → base
+        await db.query(
+          `INSERT INTO exchange_rates (institution_id, from_currency, to_currency, rate)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE rate = VALUES(rate), updated_at = NOW()`,
+          [institutionId, toCurrency, baseUpper, inv]
+        );
+        // History entry
+        await db.query(
+          `INSERT INTO currency_rate_history (institution_id, from_currency, to_currency, rate, inverse_rate, changed_by, note)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [institutionId, baseUpper, toCurrency, r, inv, userId || null, note]
+        );
+        savedCount++;
+      }
+
+      await seedCurrencies(institutionId);
+      logger.info('Live rates synced', { institutionId, base: baseUpper, savedCount, lastUpdated });
+
+      res.json({
+        success: true,
+        message: `Synced ${savedCount} live rates for ${baseUpper}`,
+        data: { base: baseUpper, savedCount, lastUpdated, source: 'open.er-api.com' }
+      });
+    } catch (error) {
+      logger.error('syncAllLiveRates error', { error: error.message });
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        return res.status(504).json({ success: false, error: 'Live rate sync timed out. Check your internet connection.' });
+      }
+      res.status(502).json({ success: false, error: 'Failed to sync live rates. Try again.' });
+    }
+  }
 }
 
 module.exports = new SettingsController();
