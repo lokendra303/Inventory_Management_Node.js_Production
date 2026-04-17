@@ -57,6 +57,7 @@ tmp/
 *.db
 *.sqlite
 *.sqlite3
+*.sql
 
 # Database migrations (one-time scripts, run locally only)
 Backend/src/database/migrations/
