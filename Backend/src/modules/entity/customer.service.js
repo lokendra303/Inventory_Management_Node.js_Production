@@ -3,7 +3,12 @@ const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 
 class CustomerService {
+  async ensureColumns() {
+    try { await db.query('ALTER TABLE customers ADD COLUMN price_list_id VARCHAR(36) DEFAULT NULL'); } catch (e) {}
+  }
+
   async createCustomer(institutionId, customerData, userId) {
+    await this.ensureColumns();
     return await db.transaction(async (connection) => {
       const customerId = uuidv4();
       const finalCustomerCode = customerData.customerCode || `CUS-${Date.now()}`;
@@ -13,14 +18,14 @@ class CustomerService {
         `INSERT INTO customers 
          (id, institution_id, customer_code, display_name, company_name, salutation, first_name, 
           last_name, email, work_phone, mobile_phone, pan, gstin, msme_registered, currency, 
-          payment_terms, tds, website_url, department, designation, remarks, credit_limit, status) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+          payment_terms, tds, website_url, department, designation, remarks, credit_limit, price_list_id, status) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
         [customerId, institutionId, finalCustomerCode, customerData.displayName, customerData.companyName, 
          customerData.salutation, customerData.firstName, customerData.lastName, customerData.email, 
          customerData.workPhone, customerData.mobilePhone, customerData.pan, customerData.gstin, 
          customerData.msmeRegistered ? 1 : 0, customerData.currency, customerData.paymentTerms, 
          customerData.tds, customerData.websiteUrl, customerData.department, customerData.designation, 
-         customerData.remarks, customerData.creditLimit || 0]
+         customerData.remarks, customerData.creditLimit || 0, customerData.priceListId || null]
       );
 
       // Create addresses
@@ -68,7 +73,7 @@ class CustomerService {
         'displayName', 'companyName', 'salutation', 'firstName', 'lastName', 'email',
         'workPhone', 'mobilePhone', 'pan', 'gstin', 'msmeRegistered', 'currency',
         'paymentTerms', 'tds', 'websiteUrl', 'department', 'designation', 'remarks', 
-        'status', 'creditLimit'
+        'status', 'creditLimit', 'priceListId'
       ];
 
       const fieldMapping = {
@@ -81,7 +86,8 @@ class CustomerService {
         'msmeRegistered': 'msme_registered',
         'paymentTerms': 'payment_terms',
         'websiteUrl': 'website_url',
-        'creditLimit': 'credit_limit'
+        'creditLimit': 'credit_limit',
+        'priceListId': 'price_list_id'
       };
 
       for (const field of coreFields) {

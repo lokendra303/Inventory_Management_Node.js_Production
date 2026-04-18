@@ -32,6 +32,12 @@ router.put('/:id',
   customerController.updateCustomer
 );
 
+// GET /api/customers/:id/price-list
+router.get('/:id/price-list',
+  requirePermission('customer_view'),
+  customerController.getCustomerPriceList
+);
+
 // GET /api/customers/:id/performance
 router.get('/:id/performance',
   requirePermission('customer_view'),

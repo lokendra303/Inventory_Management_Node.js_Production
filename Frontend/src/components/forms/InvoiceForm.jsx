@@ -41,7 +41,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   const [invoiceLines, setInvoiceLines] = useState([{ key: 1 }]);
   const [invoiceCurrency, setInvoiceCurrency] = useState(currency || 'USD');
   const [exchangeRate, setExchangeRate] = useState(1);
-  const [taxRates, setTaxRates] = useState([]); // loaded from /tax/rates
+  const [taxRates, setTaxRates] = useState([]);
+  const [priceListItemMap, setPriceListItemMap] = useState({}); // loaded from /tax/rates
   const [totals, setTotals] = useState({
     subtotal: 0,
     totalDiscount: 0,
@@ -130,15 +131,17 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     if (item) {
       const priceField    = type === 'purchase' ? 'cost_price'   : 'selling_price';
       const unitPriceKey  = type === 'purchase' ? 'unitCost'     : 'unitPrice';
+      const basePrice     = item[priceField] || 0;
+      const priceListPrice = type === 'sales' && priceListItemMap[itemId] != null ? priceListItemMap[itemId] : null;
       setInvoiceLines(invoiceLines.map(line =>
         line.key === key ? {
           ...line,
           itemId:            item.id,
           itemName:          item.name,
-          [unitPriceKey]:    item[priceField] || 0,
+          [unitPriceKey]:    priceListPrice != null ? priceListPrice : basePrice,
           hsn_code:          item.hsn_code    || '',
           unit:              item.unit        || '',
-          taxRate:           parseFloat(item.tax_rate) || 0,  // ← auto-fill from item
+          taxRate:           parseFloat(item.tax_rate) || 0,
           discountRate:      line.discountRate || 0,
           stockQuantity:     item.stock_quantity    || 0,
           reservedQuantity:  item.reserved_quantity || 0,
@@ -175,6 +178,37 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     const party = parties.find(p => p.id === partyId);
     if (party) {
       loadPartyDetails(partyId);
+      // Auto-load customer's price list for sales invoices
+      if (type === 'sales') {
+        apiService.get(`/customers/${partyId}/price-list`).then(res => {
+          if (res.success && res.data) {
+            const pl = res.data;
+            const listDiscountType  = pl.discount_type  || 'percentage';
+            const listDiscountValue = parseFloat(pl.discount_value) || 0;
+            const map = {};
+            (pl.items || []).forEach(pli => {
+              const base = parseFloat(pli.base_price) || 0;
+              let price;
+              if (pli.custom_price != null && parseFloat(pli.custom_price) > 0) {
+                price = parseFloat(pli.custom_price);
+              } else {
+                const itemDv = parseFloat(pli.discount_value) || 0;
+                if (itemDv > 0) {
+                  price = pli.discount_type === 'percentage' ? base * (1 - itemDv / 100) : base - itemDv;
+                } else if (listDiscountValue > 0) {
+                  price = listDiscountType === 'percentage' ? base * (1 - listDiscountValue / 100) : base - listDiscountValue;
+                } else {
+                  price = base;
+                }
+              }
+              map[pli.item_id] = Math.max(0, price);
+            });
+            setPriceListItemMap(map);
+          } else {
+            setPriceListItemMap({});
+          }
+        }).catch(() => setPriceListItemMap({}));
+      }
     }
   };
 

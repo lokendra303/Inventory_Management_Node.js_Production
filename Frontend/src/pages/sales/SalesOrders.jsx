@@ -32,6 +32,63 @@ const SalesOrders = () => {
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate] = useState(null);
   const [statusFilter, setStatusFilter] = useState(null);
+  const [priceLists, setPriceLists] = useState([]);
+  const [selectedPriceListId, setSelectedPriceListId] = useState(null);
+  const [priceListItemMap, setPriceListItemMap] = useState({});
+
+  const fetchPriceLists = async () => {
+    try {
+      const res = await apiService.get('/price-lists');
+      if (res.success) setPriceLists(res.data.filter(pl => pl.pricelist_type === 'sales' || pl.pricelist_type == null));
+    } catch { /* optional */ }
+  };
+
+  const handlePriceListChange = async (priceListId) => {
+    setSelectedPriceListId(priceListId);
+    if (!priceListId) { setPriceListItemMap({}); return; }
+    try {
+      const res = await apiService.get(`/price-lists/${priceListId}`);
+      if (res.success) {
+        const pl = res.data;
+        const listDiscountType  = pl.discount_type  || 'percentage';
+        const listDiscountValue = parseFloat(pl.discount_value) || 0;
+        // map: itemId -> { unitPrice, discountRate }
+        const map = {};
+        (pl.items || []).forEach(pli => {
+          const base = parseFloat(pli.base_price) || 0;
+          if (pli.custom_price != null && parseFloat(pli.custom_price) > 0) {
+            // explicit custom price — set as unit price, no discount
+            map[pli.item_id] = { unitPrice: parseFloat(pli.custom_price), discountRate: 0 };
+          } else {
+            const itemDv = parseFloat(pli.discount_value) || 0;
+            if (itemDv > 0) {
+              // item-level discount — keep base price, show discount %
+              const discountRate = pli.discount_type === 'percentage'
+                ? itemDv
+                : (base > 0 ? (itemDv / base) * 100 : 0);
+              map[pli.item_id] = { unitPrice: base, discountRate: Math.round(discountRate * 100) / 100 };
+            } else if (listDiscountValue > 0) {
+              // list-level discount — keep base price, show discount %
+              const discountRate = listDiscountType === 'percentage'
+                ? listDiscountValue
+                : (base > 0 ? (listDiscountValue / base) * 100 : 0);
+              map[pli.item_id] = { unitPrice: base, discountRate: Math.round(discountRate * 100) / 100 };
+            } else {
+              map[pli.item_id] = { unitPrice: base, discountRate: 0 };
+            }
+          }
+        });
+        setPriceListItemMap(map);
+        // Re-apply prices and discounts to existing lines
+        const lines = form.getFieldValue('lines') || [];
+        const updated = lines.map(line => {
+          if (!line.itemId || !map[line.itemId]) return line;
+          return { ...line, unitPrice: map[line.itemId].unitPrice, discountRate: map[line.itemId].discountRate };
+        });
+        form.setFieldsValue({ lines: updated });
+      }
+    } catch { message.warning('Failed to load price list prices'); }
+  };
 
   const fetchAllStocks = async () => {
     try {
@@ -111,6 +168,7 @@ const SalesOrders = () => {
       const soData = {
         ...values,
         soNumber: values.soNumber?.trim() || `SO-${Date.now()}`,
+        priceListId: values.priceListId || null,
         customerName:
           selectedCustomer?.display_name ||
           selectedCustomer?.company_name ||
@@ -123,6 +181,7 @@ const SalesOrders = () => {
             ...line,
             quantity: Number(line.quantity),
             unitPrice: Number(line.unitPrice),
+            discountRate: Number(line.discountRate || 0),
             taxRate,
             taxRateId: line.taxRateId || null,
           };
@@ -331,6 +390,7 @@ const SalesOrders = () => {
   useEffect(() => {
     fetchData();
     fetchAllStocks();
+    fetchPriceLists();
   }, []);
 
   return (
@@ -366,7 +426,7 @@ const SalesOrders = () => {
         />
       </Card>
 
-      <Modal title="Create Sales Order" open={modalVisible} onCancel={() => setModalVisible(false)} footer={null} width="min(800px, 96vw)" style={{ top: 16 }}>
+      <Modal title="Create Sales Order" open={modalVisible} onCancel={() => { setModalVisible(false); setSelectedPriceListId(null); setPriceListItemMap({}); }} footer={null} width="min(800px, 96vw)" style={{ top: 16 }}>
         <Form form={form} layout="vertical" onFinish={handleCreateSO}>
           <Form.Item name="soNumber" label="SO Number">
             <Input placeholder="Auto-generated if empty" />
@@ -382,6 +442,16 @@ const SalesOrders = () => {
               showSearch
               optionFilterProp="children"
               allowClear
+              onChange={async (customerId) => {
+                if (!customerId) { setSelectedPriceListId(null); setPriceListItemMap({}); form.setFieldsValue({ priceListId: null }); return; }
+                try {
+                  const res = await apiService.get(`/customers/${customerId}/price-list`);
+                  if (res.success && res.data) {
+                    form.setFieldsValue({ priceListId: res.data.id });
+                    await handlePriceListChange(res.data.id);
+                  }
+                } catch { /* no price list assigned */ }
+              }}
             >
               {customers
                 .filter((customer) => customer.status === "active")
@@ -393,6 +463,23 @@ const SalesOrders = () => {
                 ))}
             </Select>
           </Form.Item>
+
+          {priceLists.length > 0 && (
+            <Form.Item name="priceListId" label="Price List">
+              <Select
+                placeholder="Select price list (optional)"
+                allowClear
+                onChange={handlePriceListChange}
+              >
+                {priceLists.map(pl => (
+                  <Select.Option key={pl.id} value={pl.id}>
+                    {pl.name}{pl.is_default ? ' (Default)' : ''}
+                    {pl.discount_value > 0 && ` — ${pl.discount_value}${pl.discount_type === 'percentage' ? '%' : ' fixed'} off`}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          )}
 
           <Form.Item name="currency" label="Currency" initialValue="INR">
             <Select
@@ -520,15 +607,14 @@ const SalesOrders = () => {
                               }}
                               dropdownStyle={{ minWidth: 350 }}
                               onChange={(itemId) => {
-                                const selectedItem = items.find(
-                                  (i) => i.id === itemId,
-                                );
+                                const selectedItem = items.find((i) => i.id === itemId);
                                 if (selectedItem) {
-                                  const lines =
-                                    form.getFieldValue("lines") || [];
+                                  const lines = form.getFieldValue("lines") || [];
+                                  const plEntry = priceListItemMap[itemId];
                                   lines[name] = {
                                     ...lines[name],
-                                    unitPrice: selectedItem.selling_price || 0,
+                                    unitPrice:    plEntry != null ? plEntry.unitPrice    : (selectedItem.selling_price || 0),
+                                    discountRate: plEntry != null ? plEntry.discountRate : 0,
                                   };
                                   form.setFieldsValue({ lines });
                                 }
@@ -644,6 +730,16 @@ const SalesOrders = () => {
 
                           <Form.Item
                             {...restField}
+                            name={[name, "discountRate"]}
+                            label="Discount %"
+                            style={{ marginBottom: 0, width: 100 }}
+                          >
+                            <InputNumber placeholder="0" min={0} max={100} step={0.01} style={{ width: "100%" }}
+                              onChange={() => form.setFieldsValue({})} />
+                          </Form.Item>
+
+                          <Form.Item
+                            {...restField}
                             name={[name, "taxRateId"]}
                             label="Tax"
                             style={{ marginBottom: 0, width: 150 }}
@@ -666,14 +762,17 @@ const SalesOrders = () => {
                         </Space>
 
                         {selectedItemId && selectedWarehouseId && (() => {
-                          const qty    = parseFloat(form.getFieldValue(['lines', name, 'quantity'])  || 0);
-                          const price  = parseFloat(form.getFieldValue(['lines', name, 'unitPrice']) || 0);
-                          const taxId  = form.getFieldValue(['lines', name, 'taxRateId']);
-                          const taxPct = taxId ? parseFloat(getRateById(taxId)?.rate || 0) : 0;
-                          const lineTotal  = qty * price;
-                          const taxAmount  = lineTotal * taxPct / 100;
-                          const grandTotal = lineTotal + taxAmount;
-                          const available  = (allItemStocks[selectedItemId]?.[selectedWarehouseId] || 0);
+                          const qty         = parseFloat(form.getFieldValue(['lines', name, 'quantity'])     || 0);
+                          const price       = parseFloat(form.getFieldValue(['lines', name, 'unitPrice'])    || 0);
+                          const discountPct = parseFloat(form.getFieldValue(['lines', name, 'discountRate']) || 0);
+                          const taxId       = form.getFieldValue(['lines', name, 'taxRateId']);
+                          const taxPct      = taxId ? parseFloat(getRateById(taxId)?.rate || 0) : 0;
+                          const lineTotal     = qty * price;
+                          const discountAmt   = lineTotal * discountPct / 100;
+                          const afterDiscount = lineTotal - discountAmt;
+                          const taxAmount     = afterDiscount * taxPct / 100;
+                          const grandTotal    = afterDiscount + taxAmount;
+                          const available     = (allItemStocks[selectedItemId]?.[selectedWarehouseId] || 0);
                           const isInsufficient = qty > 0 && available < qty;
                           return (
                             <>
@@ -691,7 +790,9 @@ const SalesOrders = () => {
                                   {qty > 0 && (
                                     <span style={{ marginLeft: 8 }}>
                                       Subtotal: <strong>{formatCurrency(lineTotal)}</strong>
-                                      {taxPct > 0 && <> + Tax ({taxPct}%): <strong>{formatCurrency(taxAmount)}</strong> = <Tag color="green">{formatCurrency(grandTotal)}</Tag></>}
+                                      {discountPct > 0 && <> − Discount ({discountPct}%): <strong style={{ color: '#ff4d4f' }}>−{formatCurrency(discountAmt)}</strong></>}
+                                      {taxPct > 0 && <> + Tax ({taxPct}%): <strong>{formatCurrency(taxAmount)}</strong></>}
+                                      {' = '}<Tag color="green">{formatCurrency(grandTotal)}</Tag>
                                     </span>
                                   )}
                                 </span>
@@ -758,6 +859,7 @@ const SalesOrders = () => {
                 { title: 'Qty', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 70 },
                 { title: 'Shipped', dataIndex: 'quantity_shipped', key: 'quantity_shipped', width: 80, render: v => v || 0 },
                 { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', width: 100, render: v => formatCurrency(v) },
+                { title: 'Discount', dataIndex: 'discount_rate', key: 'discount_rate', width: 80, render: v => v > 0 ? <Tag color="orange">{v}%</Tag> : '-' },
                 { title: 'Tax', dataIndex: 'tax_rate', key: 'tax_rate', width: 70, render: v => v > 0 ? <Tag color="blue">{v}%</Tag> : '-' },
                 { title: 'Tax Amt', dataIndex: 'tax_amount', key: 'tax_amount', width: 90, render: v => v > 0 ? formatCurrency(v) : '-' },
                 { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100, render: v => formatCurrency(v) },

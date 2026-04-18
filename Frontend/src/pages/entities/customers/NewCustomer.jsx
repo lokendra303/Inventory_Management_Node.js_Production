@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Form,
   Input,
@@ -24,7 +24,14 @@ const NewCustomer = () => {
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('otherDetails');
   const [loading, setLoading] = useState(false);
+  const [priceLists, setPriceLists] = useState([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    apiService.get('/price-lists').then(res => {
+      if (res.success) setPriceLists((res.data || []).filter(pl => pl.pricelist_type === 'sales' || !pl.pricelist_type));
+    }).catch(() => {});
+  }, []);
 
   const handleSave = async () => {
     try {
@@ -65,6 +72,7 @@ const NewCustomer = () => {
         shippingPinCode: values.shippingPinCode || '',
         remarks: values.remarks || '',
         creditLimit: values.creditLimit || 0,
+        priceListId: values.priceListId || null,
         bankName: values.bankName || '',
         accountHolderName: values.accountHolderName || '',
         accountNumber: values.accountNumber || '',
@@ -332,6 +340,21 @@ const NewCustomer = () => {
                         <Select placeholder="Select a Tax" options={taxOptions} />
                       </Form.Item>
                     </Col>
+                    {priceLists.length > 0 && (
+                      <Col xs={24} md={12}>
+                        <Form.Item label="Price List" name="priceListId"
+                          tooltip="Prices from this list will auto-apply when creating SO or Invoice for this customer">
+                          <Select placeholder="Select price list (optional)" allowClear>
+                            {priceLists.map(pl => (
+                              <Select.Option key={pl.id} value={pl.id}>
+                                {pl.name}{pl.is_default ? ' (Default)' : ''}
+                                {pl.discount_value > 0 && ` — ${pl.discount_value}${pl.discount_type === 'percentage' ? '%' : ' fixed'} off`}
+                              </Select.Option>
+                            ))}
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                    )}
                   </Row>
 
                   <Divider style={{ margin: '24px 0' }} />

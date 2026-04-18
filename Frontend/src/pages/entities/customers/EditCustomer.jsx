@@ -26,11 +26,15 @@ const EditCustomer = () => {
   const [activeTab, setActiveTab] = useState('otherDetails');
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
+  const [priceLists, setPriceLists] = useState([]);
   const navigate = useNavigate();
   const { id } = useParams();
 
   useEffect(() => {
     fetchCustomer();
+    apiService.get('/price-lists').then(res => {
+      if (res.success) setPriceLists((res.data || []).filter(pl => pl.pricelist_type === 'sales' || !pl.pricelist_type));
+    }).catch(() => {});
   }, [id]);
 
   const fetchCustomer = async () => {
@@ -74,6 +78,7 @@ const EditCustomer = () => {
           shippingPinCode: customer.shipping_pin_code,
           remarks: customer.remarks,
           creditLimit: customer.credit_limit,
+          priceListId: customer.price_list_id || null,
           bankName: customer.bank_name,
           accountHolderName: customer.account_holder_name,
           accountNumber: customer.account_number,
@@ -135,7 +140,7 @@ const EditCustomer = () => {
         shippingPinCode: values.shippingPinCode || '',
         remarks: values.remarks || '',
         creditLimit: values.creditLimit || 0,
-        bankName: values.bankName || '',
+        priceListId: values.priceListId || null,
         accountHolderName: values.accountHolderName || '',
         accountNumber: values.accountNumber || '',
         ifscCode: values.ifscCode || '',
@@ -401,6 +406,21 @@ const EditCustomer = () => {
                         <Select placeholder="Select a Tax" options={taxOptions} />
                       </Form.Item>
                     </Col>
+                    {priceLists.length > 0 && (
+                      <Col xs={24} md={12}>
+                        <Form.Item label="Price List" name="priceListId"
+                          tooltip="Prices from this list will auto-apply when creating SO or Invoice for this customer">
+                          <Select placeholder="Select price list (optional)" allowClear>
+                            {priceLists.map(pl => (
+                              <Select.Option key={pl.id} value={pl.id}>
+                                {pl.name}{pl.is_default ? ' (Default)' : ''}
+                                {pl.discount_value > 0 && ` — ${pl.discount_value}${pl.discount_type === 'percentage' ? '%' : ' fixed'} off`}
+                              </Select.Option>
+                            ))}
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                    )}
                   </Row>
 
                   <Row gutter={[16, 16]}>

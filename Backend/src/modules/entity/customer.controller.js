@@ -130,6 +130,19 @@ class CustomerController {
     }
   }
 
+  async getCustomerPriceList(req, res) {
+    try {
+      const { id: customerId } = req.params;
+      const customer = await customerService.getCustomer(req.institutionId, customerId);
+      if (!customer?.price_list_id) return res.json({ success: true, data: null });
+      const priceListService = require('../price-lists/priceList.service');
+      const priceList = await priceListService.getOne(req.institutionId, customer.price_list_id);
+      res.json({ success: true, data: priceList });
+    } catch (error) {
+      res.json({ success: true, data: null });
+    }
+  }
+
   async getCustomerPerformance(req, res) {
     try {
       const { id: customerId } = req.params;

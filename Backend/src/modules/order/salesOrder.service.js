@@ -10,6 +10,8 @@ async function ensureSOLTaxColumns() {
   if (solTaxColumnsReady) return;
   try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN tax_rate DECIMAL(10,4) DEFAULT 0`); } catch (e) {}
   try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN tax_amount DECIMAL(15,4) DEFAULT 0`); } catch (e) {}
+  try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN discount_rate DECIMAL(10,4) DEFAULT 0`); } catch (e) {}
+  try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN discount_amount DECIMAL(15,4) DEFAULT 0`); } catch (e) {}
   solTaxColumnsReady = true;
 }
 
@@ -52,10 +54,14 @@ class SalesOrderService {
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           const lineId = uuidv4();
-          const lineTotal = line.quantity * line.unitPrice;
-          const taxRate   = line.taxRate || 0;
-          const taxAmount = Math.round(lineTotal * taxRate / 100 * 100) / 100;
-          subtotal += lineTotal + taxAmount;
+          const lineTotal     = line.quantity * line.unitPrice;
+          const discountRate  = line.discountRate || 0;
+          const discountAmt   = Math.round(lineTotal * discountRate / 100 * 100) / 100;
+          const afterDiscount = lineTotal - discountAmt;
+          const taxRate       = line.taxRate || 0;
+          const taxAmount     = Math.round(afterDiscount * taxRate / 100 * 100) / 100;
+          const lineFinal     = afterDiscount + taxAmount;
+          subtotal += lineFinal;
           
           if (isPreorder) {
             totalCommittedDemand += line.quantity;
@@ -63,9 +69,9 @@ class SalesOrderService {
 
           await connection.execute(
             `INSERT INTO sales_order_lines 
-             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total, tax_rate, tax_amount) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineTotal + taxAmount, taxRate, taxAmount]
+             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total, tax_rate, tax_amount, discount_rate, discount_amount) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineFinal, taxRate, taxAmount, discountRate, discountAmt]
           );
 
           createdLines.push({
