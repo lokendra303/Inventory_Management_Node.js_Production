@@ -2,6 +2,7 @@ const express = require('express');
 const itemController = require('./item.controller');
 const itemPriceHistoryController = require('./itemPriceHistory.controller');
 const { requirePermission, auditLog } = require('../auth/auth.middleware');
+const { checkLimit } = require('../../middleware/subscriptionGate');
 
 const router = express.Router();
 
@@ -32,6 +33,7 @@ router.delete('/draft', requirePermission('item_management'), itemController.del
 // POST /api/items
 router.post('/',
   requirePermission('item_management'),
+  checkLimit('items'),
   auditLog('item_created'),
   itemController.createItem
 );
@@ -58,6 +60,7 @@ router.get('/:id',
 // PUT /api/items/:id
 router.put('/:id',
   requirePermission('item_management'),
+  checkLimit('items'),
   auditLog('item_updated'),
   itemController.updateItem
 );

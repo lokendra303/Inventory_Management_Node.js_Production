@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, Select,
-  Switch, Tag, Space, Tabs, Popconfirm, message, Row, Col, Badge
+  Switch, Tag, Space, Tabs, Popconfirm, message, Row, Col, Badge, Alert
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
@@ -191,6 +191,16 @@ export default function WorkflowAutomation() {
           New Rule
         </Button>
       </div>
+
+      {/* Under Development Alert */}
+      <Alert
+        message="Feature Under Development"
+        description="Workflow Automation is currently under development. Rules and triggers may not function as expected. Full automation features will be available soon."
+        type="warning"
+        showIcon
+        banner
+        style={{ marginBottom: 24 }}
+      />
 
       {/* Stats */}
       <Row gutter={16} style={{ marginBottom: 24 }}>

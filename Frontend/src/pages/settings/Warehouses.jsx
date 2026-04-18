@@ -4,6 +4,7 @@ import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, CloseOutlined,
 import apiService from '../../services/apiService';
 import { usePermissions } from '../../components/common/PermissionWrapper';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
+import UpgradePlanModal from '../../components/common/UpgradePlanModal';
 
 const Warehouses = () => {
   const { hasPermission } = usePermissions();
@@ -21,6 +22,7 @@ const Warehouses = () => {
   const [editingWarehouse, setEditingWarehouse] = useState(null);
   const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
+  const [upgradeModal, setUpgradeModal] = useState({ open: false, limit: null, plan: null });
 
   const canManageWarehouses = hasPermission('warehouse_management');
   const canManageWarehouseTypes = hasPermission('warehouse_type_management');
@@ -96,7 +98,18 @@ const Warehouses = () => {
         fetchWarehouses();
       }
     } catch (error) {
-      message.error('Failed to update warehouse status');
+      if (error?.response?.data?.code === 'SUBSCRIPTION_LIMIT') {
+        const msg = error.response.data.error || '';
+        const limitMatch = msg.match(/limit \((\d+)\)/);
+        const planMatch  = msg.match(/your (.+?) plan/);
+        setUpgradeModal({
+          open: true,
+          limit: limitMatch ? limitMatch[1] : '1',
+          plan:  planMatch  ? planMatch[1]  : 'current',
+        });
+      } else {
+        message.error('Failed to update warehouse status');
+      }
     }
   };
 
@@ -169,8 +182,18 @@ const fetchWarehouses = async () => {
       form.resetFields();
       fetchWarehouses();
     } catch (error) {
-      console.error('Warehouse operation error:', error);
-      message.error(`Failed to ${editingWarehouse ? 'update' : 'create'} warehouse: ${error.response?.data?.error || error.message}`);
+      if (error?.response?.data?.code === 'SUBSCRIPTION_LIMIT') {
+        const msg = error.response.data.error || '';
+        const limitMatch = msg.match(/limit \((\d+)\)/);
+        const planMatch  = msg.match(/your (.+?) plan/);
+        setUpgradeModal({
+          open: true,
+          limit: limitMatch ? limitMatch[1] : '1',
+          plan:  planMatch  ? planMatch[1]  : 'current',
+        });
+      } else {
+        message.error(`Failed to ${editingWarehouse ? 'update' : 'create'} warehouse: ${error.response?.data?.error || error.message}`);
+      }
     }
   };
 
@@ -516,6 +539,15 @@ const fetchWarehouses = async () => {
           </div>
         )}
       </Modal>
+
+      {/* Upgrade Plan Modal */}
+      <UpgradePlanModal
+        open={upgradeModal.open}
+        onClose={() => setUpgradeModal({ open: false, limit: null, plan: null })}
+        resource="warehouses"
+        currentLimit={upgradeModal.limit}
+        currentPlan={upgradeModal.plan}
+      />
     </div>
   );
 };

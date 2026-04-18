@@ -2,6 +2,7 @@ const express = require('express');
 const authController = require('./auth.controller');
 const { requirePermission, auditLog } = require('./auth.middleware');
 const { validate, schemas } = require('../../utils/validation');
+const { checkLimit } = require('../../middleware/subscriptionGate');
 
 const router = express.Router();
 
@@ -11,17 +12,19 @@ router.get('/',
   authController.getUsers
 );
 
-// POST /api/users/create (PROTECTED - Create user within existing institution)
-router.post('/create', 
+// POST /api/users/create
+router.post('/create',
   requirePermission('user_management'),
+  checkLimit('users'),
   validate(schemas.createUserSchema),
   auditLog('user_creation'),
   authController.createUser
 );
 
-// POST /api/users (PROTECTED - Create user within existing institution)
-router.post('/', 
+// POST /api/users
+router.post('/',
   requirePermission('user_management'),
+  checkLimit('users'),
   validate(schemas.createUserSchema),
   auditLog('user_creation'),
   authController.createUser
@@ -60,6 +63,7 @@ router.put('/:userId/permissions',
 router.put('/:userId/status',
   validate(schemas.updateUserStatusSchema),
   requirePermission('user_management'),
+  checkLimit('users'),
   auditLog('user_status_update'),
   authController.updateUserStatus
 );

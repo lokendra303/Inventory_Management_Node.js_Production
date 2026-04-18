@@ -545,7 +545,16 @@ const Accounting = () => {
 
   return (
     <div style={{ padding: '16px' }}>
-      <Title level={4} style={{ marginBottom: 24 }}>Accounting Dashboard</Title>
+      <Title level={4} style={{ marginBottom: 16 }}>Accounting Dashboard</Title>
+
+      <Alert
+        message="Feature Under Development"
+        description="The Accounting module is currently under development. Data shown may be incomplete or inaccurate. Full accounting features will be available soon."
+        type="warning"
+        showIcon
+        banner
+        style={{ marginBottom: 24 }}
+      />
 
       {/* Summary Cards */}
       <Row gutter={16} style={{ marginBottom: 24 }}>

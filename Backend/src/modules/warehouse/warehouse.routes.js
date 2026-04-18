@@ -1,6 +1,7 @@
 const express = require('express');
 const warehouseController = require('./warehouse.controller');
 const { requirePermission, auditLog } = require('../auth/auth.middleware');
+const { checkLimit } = require('../../middleware/subscriptionGate');
 
 const router = express.Router();
 
@@ -13,6 +14,7 @@ router.get('/',
 // POST /api/warehouses
 router.post('/',
   requirePermission('warehouse_management'),
+  checkLimit('warehouses'),
   auditLog('warehouse_created'),
   warehouseController.createWarehouse
 );
@@ -26,6 +28,7 @@ router.get('/:warehouseId',
 // PUT /api/warehouses/:warehouseId
 router.put('/:warehouseId',
   requirePermission('warehouse_management'),
+  checkLimit('warehouses'),
   auditLog('warehouse_updated'),
   warehouseController.updateWarehouse
 );

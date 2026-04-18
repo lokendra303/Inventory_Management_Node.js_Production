@@ -12,7 +12,7 @@ import { useCurrency } from '../../contexts/CurrencyContext';
 import { getCurrencies } from '../../utils/currency';
 
 export default function PriceLists() {
-  const { currency: activeCurrency } = useCurrency(); // institution's active currency
+  const { currency: activeCurrency, currencySymbol } = useCurrency(); // institution's active currency
   const allCurrencies = getCurrencies();
   const [lists, setLists] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -31,7 +31,13 @@ export default function PriceLists() {
     try {
       const res = await apiService.get('/price-lists');
       if (res.success) setLists(res.data);
-    } catch { message.error('Failed to load price lists'); }
+    } catch (e) {
+      if (e?.isPermissionError || e?.response?.status === 403) {
+        message.warning(e?.message || 'Price Lists feature is not available on your current plan. Please upgrade.');
+      } else {
+        message.error('Failed to load price lists');
+      }
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -162,9 +168,9 @@ export default function PriceLists() {
     { title: 'Item', dataIndex: 'item_name', key: 'item_name', render: v => <strong>{v}</strong> },
     { title: 'SKU', dataIndex: 'sku', key: 'sku' },
     { title: 'Base Price', dataIndex: 'base_price', key: 'base_price',
-      render: v => v ? `$${parseFloat(v).toFixed(2)}` : '—' },
+      render: v => v ? `${currencySymbol}${parseFloat(v).toFixed(2)}` : '—' },
     { title: 'Custom Price', dataIndex: 'custom_price', key: 'custom_price',
-      render: v => v ? <Tag color="green">${parseFloat(v).toFixed(2)}</Tag> : '—' },
+      render: v => v ? <Tag color="green">{currencySymbol}{parseFloat(v).toFixed(2)}</Tag> : '—' },
     { title: 'Discount', key: 'discount',
       render: (_, r) => r.discount_value > 0
         ? <Tag color="orange">{r.discount_value}{r.discount_type === 'percentage' ? '%' : ' fixed'}</Tag>
@@ -328,7 +334,7 @@ export default function PriceLists() {
             <Col span={12}>
               <Form.Item name="customPrice" label="Custom Price (optional)">
                 <InputNumber min={0} step={0.01} precision={2} style={{ width: '100%' }}
-                  placeholder="Override base price" addonBefore="$" />
+                  placeholder="Override base price" addonBefore={currencySymbol} />
               </Form.Item>
             </Col>
             <Col span={12}>

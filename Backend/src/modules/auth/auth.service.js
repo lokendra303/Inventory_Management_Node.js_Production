@@ -98,6 +98,15 @@ class AuthService {
     });
 
     logger.info('Institution created with owner', { institutionId, adminEmail });
+
+    // Auto-create 14-day trial subscription on Starter plan
+    try {
+      const subscriptionService = require('../subscription/subscription.service');
+      await subscriptionService.createTrialSubscription(institutionId);
+    } catch (subErr) {
+      logger.warn('Failed to create trial subscription for new institution', { institutionId, error: subErr.message });
+    }
+
     return { institutionId, userId, needsAdditionalInfo: true };
   }
 
