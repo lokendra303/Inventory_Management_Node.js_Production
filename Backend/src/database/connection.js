@@ -12,7 +12,10 @@ class Database {
       this.pool = mysql.createPool({
         ...config.database,
         waitForConnections: true,
-        queueLimit: 0
+        connectionLimit: config.database.connectionLimit || 20,
+        queueLimit: 0,
+        charset: 'utf8mb4_unicode_ci',
+        timezone: '+00:00',
       });
       
       // Test connection
@@ -28,9 +31,8 @@ class Database {
   }
 
   async getConnection() {
-    const connection = await this.pool.getConnection();
-    await connection.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
-    return connection;
+    // charset is set at pool level — no need for SET NAMES on every connection
+    return this.pool.getConnection();
   }
 
   async query(sql, params = []) {
@@ -43,10 +45,7 @@ class Database {
         connection.release();
       }
     } catch (error) {
-      // Don't log ignorable DDL errors (e.g. duplicate column on ALTER TABLE)
-      if (error.errno !== 1060 && error.errno !== 1061) {
-        logger.error('Database query error:', { sql, params, error: error.message });
-      }
+      logger.error('Database query error:', { sql, params, error: error.message });
       throw error;
     }
   }

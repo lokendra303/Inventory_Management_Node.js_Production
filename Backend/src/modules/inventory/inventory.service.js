@@ -449,9 +449,6 @@ class InventoryService {
   }
 
   async getTransferHistory(institutionId, limit = 100, offset = 0) {
-    const limitInt = parseInt(limit) || 100;
-    const offsetInt = parseInt(offset) || 0;
-
     const rows = await db.query(
       `SELECT 
          es.id, es.event_data, es.created_at, es.created_by,
@@ -464,8 +461,8 @@ class InventoryService {
        JOIN warehouses tw ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.toWarehouseId')) = tw.id
        WHERE es.institution_id = ? AND es.event_type = 'TransferOut'
        ORDER BY es.created_at DESC
-       LIMIT ${limitInt} OFFSET ${offsetInt}`,
-      [institutionId]
+       LIMIT ? OFFSET ?`,
+      [institutionId, parseInt(limit) || 100, parseInt(offset) || 0]
     );
 
     return rows.map(r => {
@@ -685,7 +682,8 @@ class InventoryService {
     if (itemId) { query += ' AND ia.item_id = ?'; params.push(itemId); }
     if (warehouseId) { query += ' AND ia.warehouse_id = ?'; params.push(warehouseId); }
 
-    query += ` ORDER BY ia.created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+    query += ' ORDER BY ia.created_at DESC LIMIT ? OFFSET ?';
+    params.push(parseInt(limit) || 50, parseInt(offset) || 0);
     return db.query(query, params);
   }
 

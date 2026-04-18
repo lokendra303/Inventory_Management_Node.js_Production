@@ -4,20 +4,8 @@ const logger = require('../../utils/logger');
 const inventoryService = require('../inventory/inventory.service');
 const warehouseOptimizationService = require('../warehouse/warehouseOptimization.service');
 
-// Ensure tax columns exist on sales_order_lines
-let solTaxColumnsReady = false;
-async function ensureSOLTaxColumns() {
-  if (solTaxColumnsReady) return;
-  try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN tax_rate DECIMAL(10,4) DEFAULT 0`); } catch (e) {}
-  try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN tax_amount DECIMAL(15,4) DEFAULT 0`); } catch (e) {}
-  try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN discount_rate DECIMAL(10,4) DEFAULT 0`); } catch (e) {}
-  try { await db.query(`ALTER TABLE sales_order_lines ADD COLUMN discount_amount DECIMAL(15,4) DEFAULT 0`); } catch (e) {}
-  solTaxColumnsReady = true;
-}
-
 class SalesOrderService {
   async createSalesOrder(institutionId, soData, userId) {
-    await ensureSOLTaxColumns();
     const {
       soNumber,
       customerId,

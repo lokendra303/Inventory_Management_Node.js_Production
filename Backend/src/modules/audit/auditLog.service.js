@@ -139,8 +139,8 @@ class AuditLogService {
          FROM audit_logs al
          LEFT JOIN institution_users iu ON al.user_id = iu.id AND iu.institution_id = ?
          WHERE al.institution_id = ? AND al.entity_type = ? AND al.entity_id = ?
-         ORDER BY al.created_at DESC LIMIT ${parseInt(limit)}`,
-        [institutionId, institutionId, entityType, entityId]
+         ORDER BY al.created_at DESC LIMIT ?`,
+        [institutionId, institutionId, entityType, entityId, parseInt(limit) || 50]
       );
 
       return logs.map(log => {
@@ -176,10 +176,10 @@ class AuditLogService {
            MAX(created_at) as last_action
          FROM audit_logs 
          WHERE institution_id = ? AND user_id = ? 
-           AND created_at >= DATE_SUB(NOW(), INTERVAL ${parseInt(days)} DAY)
+           AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
          GROUP BY action, entity_type
          ORDER BY count DESC, last_action DESC`,
-        [institutionId, userId]
+        [institutionId, userId, parseInt(days) || 30]
       );
       
       return summary;
@@ -198,8 +198,8 @@ class AuditLogService {
          FROM audit_logs al
          LEFT JOIN institution_users iu ON al.user_id = iu.id AND iu.institution_id = ?
          WHERE al.institution_id = ? AND al.user_id = ?
-         ORDER BY al.created_at DESC LIMIT ${parseInt(limit)}`,
-        [institutionId, institutionId, userId]
+         ORDER BY al.created_at DESC LIMIT ?`,
+        [institutionId, institutionId, userId, parseInt(limit) || 20]
       );
 
       return actions.map(action => {
@@ -227,15 +227,13 @@ class AuditLogService {
   // Get system-wide activity dashboard
   async getActivityDashboard(institutionId, hours = 24) {
     try {
+      const safeHours = parseInt(hours) || 24;
       const [totalActions, userActions, entityActions, recentActions] = await Promise.all([
-        // Total actions in time period
         db.query(
           `SELECT COUNT(*) as total FROM audit_logs 
-           WHERE institution_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ${parseInt(hours)} HOUR)`,
-          [institutionId]
+           WHERE institution_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)`,
+          [institutionId, safeHours]
         ),
-        
-        // Actions by user
         db.query(
           `SELECT 
              al.user_id,
@@ -243,23 +241,19 @@ class AuditLogService {
              COUNT(*) as action_count
            FROM audit_logs al
            LEFT JOIN institution_users iu ON al.user_id = iu.id AND iu.institution_id = ?
-           WHERE al.institution_id = ? AND al.created_at >= DATE_SUB(NOW(), INTERVAL ${parseInt(hours)} HOUR)
+           WHERE al.institution_id = ? AND al.created_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
            GROUP BY al.user_id, user_name
            ORDER BY action_count DESC LIMIT 10`,
-          [institutionId, institutionId]
+          [institutionId, institutionId, safeHours]
         ),
-        
-        // Actions by entity type
         db.query(
           `SELECT entity_type, action, COUNT(*) as count
            FROM audit_logs 
-           WHERE institution_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ${parseInt(hours)} HOUR)
+           WHERE institution_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
            GROUP BY entity_type, action
            ORDER BY count DESC LIMIT 15`,
-          [institutionId]
+          [institutionId, safeHours]
         ),
-        
-        // Recent critical actions
         db.query(
           `SELECT al.*, 
                   CONCAT(COALESCE(iu.first_name,''), ' ', COALESCE(iu.last_name,'')) as user_name

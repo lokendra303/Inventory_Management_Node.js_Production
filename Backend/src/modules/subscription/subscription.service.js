@@ -110,18 +110,6 @@ async function ensureTables() {
     );
   }
 
-  // Migrate any subscriptions still pointing at old plan IDs — move them to plan-free
-  await db.query(
-    `UPDATE institution_subscriptions
-     SET plan_id = 'plan-free'
-     WHERE plan_id NOT IN ('plan-free','plan-standard','plan-professional','plan-premium','plan-enterprise')`
-  );
-
-  // Now safe to delete old stale plan rows (no FK references remain)
-  await db.query(
-    `DELETE FROM subscription_plans WHERE id NOT IN ('plan-free','plan-standard','plan-professional','plan-premium','plan-enterprise')`
-  );
-
   tablesReady = true;
 }
 

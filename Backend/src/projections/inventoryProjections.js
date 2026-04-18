@@ -46,58 +46,43 @@ class InventoryProjectionService {
 
   async handlePurchaseReceived(institutionId, eventData) {
     const { itemId, warehouseId, quantity, unitCost } = eventData;
-    console.log('handlePurchaseReceived called:', { institutionId, itemId, warehouseId, quantity, unitCost });
 
     try {
-      // Get current projection using regular query
       const current = await db.query(
         'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
         [institutionId, itemId, warehouseId]
       );
-      console.log('Current projection found:', current.length);
 
       if (current.length === 0) {
-        // First stock receipt - create new projection
-        const newQuantityOnHand = quantity;
-        const newAverageCost = unitCost;
         const newTotalValue = quantity * unitCost;
-        console.log('Creating new projection:', { newQuantityOnHand, newAverageCost, newTotalValue });
-
-        const result = await db.query(
+        await db.query(
           `INSERT INTO inventory_projections 
            (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
            VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
-          [institutionId, itemId, warehouseId, newQuantityOnHand, newQuantityOnHand, newAverageCost, newTotalValue]
+          [institutionId, itemId, warehouseId, quantity, quantity, unitCost, newTotalValue]
         );
-        console.log('Insert result:', result);
       } else {
-        // Update existing projection
-        const currentProjection = current[0];
-        const currentValue = currentProjection.quantity_on_hand * currentProjection.average_cost;
-        const newValue = quantity * unitCost;
-        
-        const newQuantityOnHand = currentProjection.quantity_on_hand + quantity;
-        const newTotalValue = currentValue + newValue;
-        const newAverageCost = newTotalValue / newQuantityOnHand;
-        const newQuantityAvailable = currentProjection.quantity_available + quantity;
-        
-        console.log('Updating projection:', { newQuantityOnHand, newQuantityAvailable, newAverageCost, newTotalValue });
+        const p = current[0];
+        const newQty        = p.quantity_on_hand + quantity;
+        const newTotalValue = (p.quantity_on_hand * p.average_cost) + (quantity * unitCost);
+        const newAvgCost    = newTotalValue / newQty;
+        const newAvailable  = p.quantity_available + quantity;
 
-        const result = await db.query(
+        await db.query(
           `UPDATE inventory_projections 
            SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?, 
                last_movement_date = NOW(), version = version + 1
            WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [newQuantityOnHand, newQuantityAvailable, newAverageCost, newTotalValue, institutionId, itemId, warehouseId]
+          [newQty, newAvailable, newAvgCost, newTotalValue, institutionId, itemId, warehouseId]
         );
-        console.log('Update result:', result);
       }
       
-      // Check for low stock alerts
-      const reorderService = require('../services/inventory/reorderLevelService');
-      await reorderService.checkLowStock(institutionId, itemId, warehouseId);
+      try {
+        const reorderService = require('../services/inventory/reorderLevelService');
+        await reorderService.checkLowStock(institutionId, itemId, warehouseId);
+      } catch { /* non-fatal */ }
     } catch (error) {
-      console.error('Error in handlePurchaseReceived:', error);
+      logger.error('Error in handlePurchaseReceived', { institutionId, itemId, warehouseId, error: error.message });
       throw error;
     }
   }
