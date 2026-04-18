@@ -443,15 +443,19 @@ class SubscriptionService {
     if (sub.status === 'trial')     throw new Error('Trial subscriptions cannot be cancelled — they expire automatically');
     if (sub.plan_id === 'plan-free') throw new Error('The Free plan cannot be cancelled');
 
+    // Cancel current plan and immediately switch to Free plan
     await db.query(
       `UPDATE institution_subscriptions
-       SET status='cancelled', cancelled_at=NOW(), cancel_reason=?, updated_at=NOW()
+       SET plan_id='plan-free', billing_cycle='monthly', status='active',
+           cancelled_at=NOW(), cancel_reason=?,
+           current_period_start=NOW(), current_period_end=NULL,
+           trial_ends_at=NULL, updated_at=NOW()
        WHERE institution_id=?`,
       [reason || null, institutionId]
     );
 
-    logger.info('Subscription cancelled', { institutionId, reason });
-    return { message: 'Subscription cancelled. Access continues until end of current billing period.' };
+    logger.info('Subscription cancelled and switched to Free plan', { institutionId, reason });
+    return { message: 'Subscription cancelled. Your account has been switched to the Free plan.' };
   }
 
   // ─── Renew ───────────────────────────────────────────────────────────────

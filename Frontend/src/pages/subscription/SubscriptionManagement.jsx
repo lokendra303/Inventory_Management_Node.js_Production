@@ -834,20 +834,15 @@ export default function SubscriptionManagement() {
           message="What happens when you cancel?"
           description={
             <ul style={{ paddingLeft: 18, marginTop: 8 }}>
-              <li>Your access continues until the end of the current billing period.</li>
-              <li>You will not be charged again.</li>
-              <li>You can reactivate at any time by upgrading to a plan.</li>
+              <li>Your account is <strong>immediately switched to the Free plan</strong>.</li>
+              <li>Free plan limits apply right away (2 users, 1 warehouse, 100 items).</li>
+              <li>You can upgrade again at any time.</li>
               <li>Your data is preserved — nothing is deleted.</li>
             </ul>
           }
           style={{ borderRadius: 8 }}
         />
-        {subscription?.current_period_end && (
-          <div style={{ marginTop: 12, color: '#595959', fontSize: 13 }}>
-            <CalendarOutlined style={{ marginRight: 6 }} />
-            Current period ends: <strong>{new Date(subscription.current_period_end).toLocaleDateString('en-IN')}</strong>
-          </div>
-        )}
+        {/* No period end shown — cancellation switches to Free immediately */}
       </Modal>
       {/* ── Payment Modal ── */}
       <Modal
