@@ -205,11 +205,11 @@ class ItemActivityService {
     try {
       const { startDate, endDate, operationType } = filters;
       
-      let whereConditions = ['es.institution_id = ?', "JSON_EXTRACT(es.event_data, '$.itemId') = ?"];
+      let whereConditions = ['es.institution_id = ?', "JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = ?"];
       let params = [institutionId, itemId];
 
       if (warehouseId) {
-        whereConditions.push("JSON_EXTRACT(es.event_data, '$.warehouseId') = ?");
+        whereConditions.push("JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.warehouseId')) = ?");
         params.push(warehouseId);
       }
 
@@ -240,9 +240,9 @@ class ItemActivityService {
           w.name as warehouse_name,
           CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as performed_by
         FROM event_store es
-        JOIN items i ON JSON_EXTRACT(es.event_data, '$.itemId') = i.id
-        LEFT JOIN warehouses w ON JSON_EXTRACT(es.event_data, '$.warehouseId') = w.id
-        LEFT JOIN institution_users u ON JSON_EXTRACT(es.metadata, '$.userId') = u.id
+        JOIN items i ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = i.id
+        LEFT JOIN warehouses w ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.warehouseId')) = w.id
+        LEFT JOIN institution_users u ON JSON_UNQUOTE(JSON_EXTRACT(es.metadata, '$.userId')) = u.id
         WHERE ${whereConditions.join(' AND ')}
         ORDER BY es.created_at DESC
         LIMIT 1000`,
@@ -297,12 +297,12 @@ class ItemActivityService {
         ...logs.map(log => ({
           id: log.id,
           type: log.event_type,
-          quantity: JSON.parse(log.event_data).quantity,
-          reference: JSON.parse(log.event_data).poId || JSON.parse(log.event_data).soId || null,
+          quantity: (() => { try { const d = typeof log.event_data === 'object' ? log.event_data : JSON.parse(log.event_data); return d.quantity; } catch { return null; } })(),
+          reference: (() => { try { const d = typeof log.event_data === 'object' ? log.event_data : JSON.parse(log.event_data); return d.poId || d.soId || d.grnNumber || d.shipmentNumber || d.transferId || null; } catch { return null; } })(),
           warehouse: log.warehouse_name,
           performed_by: log.performed_by,
           timestamp: log.created_at,
-          details: JSON.parse(log.event_data)
+          details: (() => { try { return typeof log.event_data === 'object' ? log.event_data : JSON.parse(log.event_data); } catch { return {}; } })()
         })),
         ...adjustmentLogs.map(log => ({
           id: log.id,

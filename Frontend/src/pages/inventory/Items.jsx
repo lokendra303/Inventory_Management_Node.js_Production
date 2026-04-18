@@ -1786,43 +1786,57 @@ const viewItem = async (item) => {
                       <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                         <Timeline>
                           {itemHistory.map((log, index) => {
+                            const eventType = log.type || log.event_type || '';
                             const getEventColor = (type) => {
-                              if (type?.includes('RECEIVED')) return 'green';
-                              if (type?.includes('SHIPPED')) return 'red';
-                              if (type?.includes('RESERVED')) return 'orange';
-                              if (type?.includes('ADJUSTED')) return 'blue';
-                              if (type?.includes('TRANSFER')) return 'purple';
+                              if (['PurchaseReceived', 'SaleReturned', 'SaleReservationCancelled'].includes(type)) return 'green';
+                              if (['SaleShipped', 'PurchaseReturned', 'StockDamaged', 'StockExpired'].includes(type)) return 'red';
+                              if (['SaleReserved'].includes(type)) return 'orange';
+                              if (type === 'ADJUSTMENT') return 'blue';
+                              if (['TransferIn', 'TransferOut'].includes(type)) return 'purple';
                               return 'gray';
                             };
                             const getEventLabel = (type) => {
-                              if (type?.includes('RECEIVED')) return 'Stock Received';
-                              if (type?.includes('SHIPPED')) return 'Stock Shipped';
-                              if (type?.includes('RESERVED')) return 'Stock Reserved';
-                              if (type?.includes('CANCELLED')) return 'Reservation Cancelled';
-                              if (type?.includes('ADJUSTED')) return 'Stock Adjusted';
-                              if (type?.includes('TRANSFER_IN')) return 'Transfer In';
-                              if (type?.includes('TRANSFER_OUT')) return 'Transfer Out';
-                              return type;
+                              const labels = {
+                                PurchaseReceived: 'Stock Received (PO)',
+                                PurchaseReturned: 'Purchase Returned',
+                                SaleReserved: 'Stock Reserved (SO)',
+                                SaleShipped: 'Stock Shipped (SO)',
+                                SaleReturned: 'Sale Returned',
+                                SaleReservationCancelled: 'Reservation Cancelled',
+                                TransferIn: 'Transfer In',
+                                TransferOut: 'Transfer Out',
+                                StockDamaged: 'Stock Damaged',
+                                StockExpired: 'Stock Expired',
+                                ADJUSTMENT: 'Stock Adjusted',
+                              };
+                              return labels[type] || type;
                             };
+                            const qty = log.quantity ?? log.quantity_change;
+                            const isPositive = ['PurchaseReceived', 'TransferIn', 'SaleReturned', 'SaleReservationCancelled'].includes(eventType) || (eventType === 'ADJUSTMENT' && log.sub_type === 'increase');
+                            const isNegative = ['SaleShipped', 'SaleReserved', 'TransferOut', 'PurchaseReturned', 'StockDamaged', 'StockExpired'].includes(eventType) || (eventType === 'ADJUSTMENT' && log.sub_type === 'decrease');
+                            const signedQty = qty != null ? (isNegative ? -Math.abs(qty) : isPositive ? Math.abs(qty) : qty) : null;
+                            const unitCost = log.details?.unitCost || log.details?.unitPrice || log.unit_cost;
+                            const ref = log.reference || log.reference_number;
+                            const notes = log.reason || log.notes;
                             return (
-                              <Timeline.Item key={index} color={getEventColor(log.operation_type)}>
+                              <Timeline.Item key={index} color={getEventColor(eventType)}>
                                 <div style={{ marginBottom: 8 }}>
-                                  <Tag color={getEventColor(log.operation_type)}>{getEventLabel(log.operation_type)}</Tag>
+                                  <Tag color={getEventColor(eventType)}>{getEventLabel(eventType)}</Tag>
                                   <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
-                                    {new Date(log.operation_date).toLocaleString()}
+                                    {new Date(log.timestamp || log.operation_date).toLocaleString()}
                                   </span>
                                 </div>
                                 <div style={{ fontSize: 13 }}>
-                                  {log.warehouse_name && <div>Warehouse: <strong>{log.warehouse_name}</strong></div>}
-                                  {log.quantity_change && (
-                                    <div>Change: <strong style={{ color: log.quantity_change > 0 ? '#52c41a' : '#ff4d4f' }}>
-                                      {log.quantity_change > 0 ? '+' : ''}{log.quantity_change}
+                                  {log.warehouse && <div>Warehouse: <strong>{log.warehouse}</strong></div>}
+                                  {signedQty != null && (
+                                    <div>Quantity: <strong style={{ color: signedQty >= 0 ? '#52c41a' : '#ff4d4f' }}>
+                                      {signedQty > 0 ? '+' : ''}{signedQty}
                                     </strong></div>
                                   )}
-                                  {log.balance_after != null && <div>Balance After: <strong>{log.balance_after}</strong></div>}
-                                  {log.unit_cost && <div>Unit Cost: <strong>{formatPrice(log.unit_cost, currency, 'USD')}</strong></div>}
-                                  {log.reference_number && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Ref: {log.reference_number}</div>}
-                                  {log.notes && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Notes: {log.notes}</div>}
+                                  {unitCost != null && <div>Unit Cost: <strong>{formatPrice(unitCost, currency, 'USD')}</strong></div>}
+                                  {log.performed_by?.trim() && <div style={{ color: '#8c8c8c', fontSize: 12 }}>By: {log.performed_by}</div>}
+                                  {ref && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Ref: {ref}</div>}
+                                  {notes && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Notes: {notes}</div>}
                                 </div>
                               </Timeline.Item>
                             );
@@ -1878,15 +1892,15 @@ const viewItem = async (item) => {
                           },
                           {
                             title: 'Reason',
-                            dataIndex: 'change_reason',
-                            key: 'change_reason',
+                            dataIndex: 'reason',
+                            key: 'reason',
                             render: (v) => v || '-'
                           },
                           {
                             title: 'Date',
-                            dataIndex: 'changed_at',
-                            key: 'changed_at',
-                            render: (v) => new Date(v).toLocaleString()
+                            dataIndex: 'effective_date',
+                            key: 'effective_date',
+                            render: (v) => v ? new Date(v).toLocaleDateString() : '-'
                           }
                         ]}
                       />

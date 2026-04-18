@@ -41,22 +41,10 @@ router.get('/transfers',
   inventoryController.getTransferHistory
 );
 
-// GET /api/inventory/:itemId/:warehouseId
-router.get('/:itemId/:warehouseId', 
+// GET /api/inventory/item-logs/:itemId - Detailed item operation logs
+router.get('/item-logs/:itemId', 
   requirePermission('inventory_view'),
-  inventoryController.getCurrentStock
-);
-
-// GET /api/inventory/:itemId/:warehouseId/history
-router.get('/:itemId/:warehouseId/history', 
-  requirePermission('inventory_view'),
-  inventoryController.getInventoryHistory
-);
-
-// GET /api/inventory/item-activity/:itemId - Comprehensive item activity summary
-router.get('/item-activity/:itemId', 
-  requirePermission('inventory_view'),
-  inventoryController.getItemActivitySummary
+  inventoryController.getDetailedItemLogs
 );
 
 // GET /api/inventory/item-activity/:itemId/warehouse/:warehouseId - Item activity for specific warehouse
@@ -65,10 +53,22 @@ router.get('/item-activity/:itemId/warehouse/:warehouseId',
   inventoryController.getItemActivitySummary
 );
 
-// GET /api/inventory/item-logs/:itemId - Detailed item operation logs
-router.get('/item-logs/:itemId', 
+// GET /api/inventory/item-activity/:itemId - Comprehensive item activity summary
+router.get('/item-activity/:itemId', 
   requirePermission('inventory_view'),
-  inventoryController.getDetailedItemLogs
+  inventoryController.getItemActivitySummary
+);
+
+// GET /api/inventory/:itemId/:warehouseId/history
+router.get('/:itemId/:warehouseId/history', 
+  requirePermission('inventory_view'),
+  inventoryController.getInventoryHistory
+);
+
+// GET /api/inventory/:itemId/:warehouseId
+router.get('/:itemId/:warehouseId', 
+  requirePermission('inventory_view'),
+  inventoryController.getCurrentStock
 );
 
 // POST /api/inventory/receive - DISABLED
