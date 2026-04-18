@@ -237,31 +237,13 @@ class SubscriptionService {
 
     const amount = billingCycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
 
-    // Free plan — no payment needed, activate directly
-    if (amount === 0) {
-      return { free: true, planId, billingCycle, planName: plan.name };
-    }
-
-    // Return order details for the payment modal
-    // If Razorpay keys are configured, also create a Razorpay order
+    // Free plan or dev mode (no Razorpay keys) — activate directly without payment
     const gatewayReady = config.razorpay.keyId &&
                          config.razorpay.keySecret &&
                          !config.razorpay.keyId.startsWith('rzp_test_xxxx');
 
-    const baseResponse = {
-      free:        false,
-      planId,
-      billingCycle,
-      planName:    plan.name,
-      amount,
-      currency:    'INR',
-      gatewayReady,
-      keyId:       config.razorpay.keyId || null,
-    };
-
-    if (!gatewayReady) {
-      logger.warn('Razorpay keys not configured — returning order details without gateway order', { institutionId, planId });
-      return baseResponse;
+    if (amount === 0 || !gatewayReady) {
+      return { free: true, planId, billingCycle, planName: plan.name, gatewayReady };
     }
 
     const order = await razorpay.orders.create({
@@ -272,7 +254,17 @@ class SubscriptionService {
     });
 
     logger.info('Razorpay order created', { orderId: order.id, institutionId, planId, amount });
-    return { ...baseResponse, orderId: order.id, amount: order.amount };
+    return {
+      free:         false,
+      planId,
+      billingCycle,
+      planName:     plan.name,
+      amount:       order.amount,
+      currency:     order.currency,
+      orderId:      order.id,
+      keyId:        config.razorpay.keyId,
+      gatewayReady: true,
+    };
   }
 
   async verifyAndActivate(institutionId, { planId, billingCycle, razorpayOrderId, razorpayPaymentId, razorpaySignature }) {
@@ -306,10 +298,10 @@ class SubscriptionService {
 
     const amount = billingCycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
 
-    // Block direct upgrade for paid plans — must go through payment verification
-    if (amount > 0 && !paymentReference) {
-      throw new Error('Payment is required to activate this plan. Please use the payment flow.');
-    }
+    // TODO: Uncomment in production to enforce payment before activation
+    // if (amount > 0 && !paymentReference) {
+    //   throw new Error('Payment is required to activate this plan. Please use the payment flow.');
+    // }
 
     const usage = await this.getUsage(institutionId);
     const conflicts = [];

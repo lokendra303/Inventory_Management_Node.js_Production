@@ -1078,7 +1078,7 @@ export default function SubscriptionManagement() {
         )}
       </Modal>
 
-      {/* ── Downgrade Conflict Modal ── */}}}
+      {/* ── Downgrade Conflict Modal ── */}
       <Modal
         title={<span style={{ color: '#fa8c16' }}><WarningOutlined style={{ marginRight: 8 }} />Cannot Switch to {conflicts?.planName}</span>}
         open={!!conflicts}
