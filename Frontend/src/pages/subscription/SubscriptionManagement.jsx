@@ -39,7 +39,9 @@ export default function SubscriptionManagement() {
   const [billingCycle, setBillingCycle] = useState('monthly');
   const [actionLoading, setActionLoading] = useState(false);
   const [activeTab, setActiveTab]       = useState('overview');
-  const [conflicts, setConflicts]       = useState(null); // { planName, items: [] }
+  const [conflicts, setConflicts]       = useState(null);
+  const [paymentModal, setPaymentModal] = useState(false);
+  const [paymentOrder, setPaymentOrder] = useState(null); // order data from backend
 
   const navigate = useNavigate();
 
@@ -66,20 +68,98 @@ export default function SubscriptionManagement() {
     if (!selectedPlan) return message.warning('Please select a plan');
     setActionLoading(true);
     try {
-      await apiService.post('/subscription/upgrade', { planId: selectedPlan, billingCycle });
-      message.success('Plan upgraded successfully!');
+      const orderRes = await apiService.post('/subscription/payment/create-order', {
+        planId: selectedPlan, billingCycle,
+      });
+      if (!orderRes.success) throw new Error(orderRes.error || 'Failed to initiate payment');
+      const orderData = orderRes.data;
+
+      // Free plan — activate directly
+      if (orderData.free) {
+        await apiService.post('/subscription/upgrade', { planId: selectedPlan, billingCycle });
+        message.success(`Switched to ${orderData.planName} plan!`);
+        setUpgradeModal(false);
+        setSelectedPlan(null);
+        load();
+        return;
+      }
+
+      // Paid plan — show payment modal
       setUpgradeModal(false);
-      setSelectedPlan(null);
-      load();
+      setPaymentOrder(orderData);
+      setPaymentModal(true);
+
     } catch (e) {
       const data = e?.response?.data;
       if (data?.error === 'DOWNGRADE_BLOCKED') {
         setUpgradeModal(false);
         setConflicts({ planName: data.planName, items: data.conflicts });
       } else {
-        message.error(data?.error || e?.message || 'Failed to upgrade plan');
+        message.error(data?.error || e?.message || 'Failed to process upgrade');
       }
-    } finally { setActionLoading(false); }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePayNow = async () => {
+    if (!paymentOrder) return;
+    setActionLoading(true);
+    try {
+      if (paymentOrder.gatewayReady && paymentOrder.orderId) {
+        // Real Razorpay flow
+        if (!window.Razorpay) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Failed to load payment gateway'));
+            document.body.appendChild(script);
+          });
+        }
+        const options = {
+          key:         paymentOrder.keyId,
+          amount:      paymentOrder.amount * 100,
+          currency:    paymentOrder.currency,
+          name:        'IMS SEPCUNE',
+          description: `${paymentOrder.planName} Plan — ${paymentOrder.billingCycle}`,
+          order_id:    paymentOrder.orderId,
+          theme:       { color: '#667eea' },
+          handler: async (response) => {
+            try {
+              await apiService.post('/subscription/payment/verify', {
+                planId:            paymentOrder.planId,
+                billingCycle:      paymentOrder.billingCycle,
+                razorpayOrderId:   response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              });
+              message.success('Payment successful! Plan activated.');
+              setPaymentModal(false);
+              setPaymentOrder(null);
+              setSelectedPlan(null);
+              load();
+            } catch (err) {
+              message.error(err?.response?.data?.error || 'Payment verification failed.');
+            }
+          },
+          modal: { ondismiss: () => setActionLoading(false) },
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', (resp) => {
+          message.error(`Payment failed: ${resp.error.description}`);
+          setActionLoading(false);
+        });
+        rzp.open();
+      } else {
+        // Gateway not configured — show info, don't activate
+        message.warning('Payment gateway not configured. Please add Razorpay keys to enable payments.');
+        setActionLoading(false);
+      }
+    } catch (e) {
+      message.error(e?.message || 'Payment failed');
+      setActionLoading(false);
+    }
   };
 
   const handleCancel = async () => {
@@ -551,7 +631,12 @@ export default function SubscriptionManagement() {
           <Button key="upgrade" type="primary" loading={actionLoading} onClick={handleUpgrade}
             disabled={!selectedPlan}
             style={{ background: 'linear-gradient(135deg,#f7971e,#ffd200)', border: 'none' }}>
-            {isExpiredOrCancelled ? 'Reactivate' : 'Confirm Plan'}
+            {(() => {
+              if (!selectedPlan) return isExpiredOrCancelled ? 'Reactivate' : 'Confirm Plan';
+              const p = plans.find(pl => pl.id === selectedPlan);
+              const price = billingCycle === 'yearly' ? p?.price_yearly : p?.price_monthly;
+              return price === 0 ? 'Switch to Free' : isExpiredOrCancelled ? 'Pay & Reactivate' : 'Pay & Activate';
+            })()}
           </Button>,
         ]}
         width={1100}
@@ -764,7 +849,236 @@ export default function SubscriptionManagement() {
           </div>
         )}
       </Modal>
-      {/* ── Downgrade Conflict Modal ── */}
+      {/* ── Payment Modal ── */}
+      <Modal
+        title={null}
+        open={paymentModal}
+        onCancel={() => { setPaymentModal(false); setPaymentOrder(null); setActionLoading(false); }}
+        footer={null}
+        width={480}
+        centered
+        styles={{ body: { padding: 0 } }}
+      >
+        {paymentOrder && (
+          <div>
+            {/* Header */}
+            <div style={{
+              background: 'linear-gradient(135deg,#667eea,#764ba2)',
+              borderRadius: '8px 8px 0 0',
+              padding: '28px 28px 20px',
+              color: '#fff',
+            }}>
+              <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>Complete your purchase</div>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>{paymentOrder.planName} Plan</div>
+              <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4, textTransform: 'capitalize' }}>
+                {paymentOrder.billingCycle} billing
+              </div>
+            </div>
+
+            <div style={{ padding: '24px 28px' }}>
+
+              {/* Order summary */}
+              <div style={{ background: '#f9fafb', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
+                <div style={{ fontSize: 12, color: '#8c8c8c', fontWeight: 600, marginBottom: 10 }}>ORDER SUMMARY</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 14 }}>
+                  <span style={{ color: '#595959' }}>{paymentOrder.planName} Plan ({paymentOrder.billingCycle})</span>
+                  <span style={{ fontWeight: 700 }}>₹{Number(paymentOrder.amount).toLocaleString('en-IN')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+                  <span>GST (18%)</span>
+                  <span>Included</span>
+                </div>
+                <Divider style={{ margin: '10px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800 }}>
+                  <span>Total</span>
+                  <span style={{ color: '#667eea' }}>₹{Number(paymentOrder.amount).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              {/* Payment methods */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, color: '#8c8c8c', fontWeight: 600, marginBottom: 12 }}>PAY WITH</div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'UPI', icon: '📱' },
+                    { label: 'Card', icon: '💳' },
+                    { label: 'Net Banking', icon: '🏦' },
+                    { label: 'Wallet', icon: '👛' },
+                  ].map(m => (
+                    <div key={m.label} style={{
+                      flex: '1 1 80px', padding: '10px 8px', textAlign: 'center',
+                      border: '1px solid #f0f0f0', borderRadius: 8,
+                      background: '#fafafa', fontSize: 12, color: '#595959',
+                    }}>
+                      <div style={{ fontSize: 18, marginBottom: 4 }}>{m.icon}</div>
+                      {m.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Gateway status */}
+              {!paymentOrder.gatewayReady && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 16, borderRadius: 8, fontSize: 12 }}
+                  message="Payment gateway not configured"
+                  description="Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to your .env file to enable live payments."
+                />
+              )}
+
+              {/* Security badges */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
+                fontSize: 11, color: '#8c8c8c', justifyContent: 'center' }}>
+                <span>🔒 256-bit SSL</span>
+                <span>·</span>
+                <span>🛡️ PCI DSS Compliant</span>
+                <span>·</span>
+                <span>⚡ Powered by Razorpay</span>
+              </div>
+
+              {/* Action buttons */}
+              <Button
+                type="primary" block size="large"
+                loading={actionLoading}
+                disabled={!paymentOrder.gatewayReady}
+                onClick={handlePayNow}
+                style={{
+                  background: paymentOrder.gatewayReady
+                    ? 'linear-gradient(135deg,#667eea,#764ba2)'
+                    : '#d9d9d9',
+                  border: 'none', borderRadius: 10, height: 48,
+                  fontWeight: 700, fontSize: 15,
+                }}
+              >
+                {paymentOrder.gatewayReady
+                  ? `Pay ₹${Number(paymentOrder.amount).toLocaleString('en-IN')}`
+                  : 'Payment Gateway Not Configured'}
+              </Button>
+
+              <Button block size="large" onClick={() => { setPaymentModal(false); setPaymentOrder(null); }}
+                style={{ marginTop: 10, borderRadius: 10, height: 44 }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Payment Modal ── */}
+      <Modal
+        title={null}
+        open={paymentModal}
+        onCancel={() => { setPaymentModal(false); setPaymentOrder(null); setActionLoading(false); }}
+        footer={null}
+        width={460}
+        centered
+        styles={{ body: { padding: 0 } }}
+      >
+        {paymentOrder && (
+          <div>
+            {/* Gradient header */}
+            <div style={{
+              background: 'linear-gradient(135deg,#667eea,#764ba2)',
+              borderRadius: '8px 8px 0 0',
+              padding: '28px 28px 22px',
+              color: '#fff',
+            }}>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4, letterSpacing: 1 }}>COMPLETE YOUR PURCHASE</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>{paymentOrder.planName} Plan</div>
+              <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4, textTransform: 'capitalize' }}>
+                {paymentOrder.billingCycle} billing
+              </div>
+            </div>
+
+            <div style={{ padding: '24px 28px' }}>
+
+              {/* Order summary box */}
+              <div style={{ background: '#f9fafb', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 700, marginBottom: 10, letterSpacing: 0.5 }}>ORDER SUMMARY</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 14 }}>
+                  <span style={{ color: '#595959' }}>{paymentOrder.planName} ({paymentOrder.billingCycle})</span>
+                  <span style={{ fontWeight: 700 }}>₹{Number(paymentOrder.amount).toLocaleString('en-IN')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#8c8c8c', marginBottom: 6 }}>
+                  <span>GST (18%)</span>
+                  <span>Included</span>
+                </div>
+                <Divider style={{ margin: '10px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800 }}>
+                  <span>Total</span>
+                  <span style={{ color: '#667eea' }}>₹{Number(paymentOrder.amount).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              {/* Payment method icons */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 700, marginBottom: 12, letterSpacing: 0.5 }}>PAY WITH</div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  {[{ label: 'UPI', icon: '📱' }, { label: 'Card', icon: '💳' },
+                    { label: 'Net Banking', icon: '🏦' }, { label: 'Wallet', icon: '👛' }].map(m => (
+                    <div key={m.label} style={{
+                      flex: 1, padding: '10px 6px', textAlign: 'center',
+                      border: '1px solid #f0f0f0', borderRadius: 8,
+                      background: '#fafafa', fontSize: 11, color: '#595959',
+                    }}>
+                      <div style={{ fontSize: 20, marginBottom: 4 }}>{m.icon}</div>
+                      {m.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Gateway not configured warning */}
+              {!paymentOrder.gatewayReady && (
+                <Alert
+                  type="warning" showIcon
+                  style={{ marginBottom: 16, borderRadius: 8, fontSize: 12 }}
+                  message="Payment gateway not configured"
+                  description="Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to .env to enable live payments."
+                />
+              )}
+
+              {/* Security row */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 12,
+                fontSize: 11, color: '#8c8c8c', marginBottom: 20 }}>
+                <span>🔒 256-bit SSL</span>
+                <span>·</span>
+                <span>🛡️ PCI DSS</span>
+                <span>·</span>
+                <span>⚡ Razorpay</span>
+              </div>
+
+              {/* Pay button */}
+              <Button
+                type="primary" block size="large"
+                loading={actionLoading}
+                disabled={!paymentOrder.gatewayReady}
+                onClick={handlePayNow}
+                style={{
+                  background: paymentOrder.gatewayReady
+                    ? 'linear-gradient(135deg,#667eea,#764ba2)' : '#d9d9d9',
+                  border: 'none', borderRadius: 10, height: 48,
+                  fontWeight: 700, fontSize: 15,
+                }}
+              >
+                {paymentOrder.gatewayReady
+                  ? `Pay ₹${Number(paymentOrder.amount).toLocaleString('en-IN')}`
+                  : 'Configure Razorpay to Enable Payments'}
+              </Button>
+
+              <Button block size="large"
+                onClick={() => { setPaymentModal(false); setPaymentOrder(null); }}
+                style={{ marginTop: 10, borderRadius: 10, height: 44 }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Downgrade Conflict Modal ── */}}}
       <Modal
         title={<span style={{ color: '#fa8c16' }}><WarningOutlined style={{ marginRight: 8 }} />Cannot Switch to {conflicts?.planName}</span>}
         open={!!conflicts}

@@ -6,13 +6,14 @@ let tablesEnsured = false;
 
 async function ensureTables() {
   if (tablesEnsured) return;
+  tablesEnsured = true; // set early so retries don't re-run on error
 
-  // institutions extra columns
+  // institutions extra columns — ignore if already exist (errno 1060)
   for (const sql of [
     'ALTER TABLE institutions ADD COLUMN exchange_rate DECIMAL(15,6) NOT NULL DEFAULT 1',
     "ALTER TABLE institutions ADD COLUMN base_currency VARCHAR(10) NOT NULL DEFAULT 'USD'"
   ]) {
-    try { await db.query(sql); } catch (e) { if (e.code !== 'ER_DUP_FIELDNAME' && e.errno !== 1060) throw e; }
+    try { await db.query(sql); } catch (e) { if (e.errno !== 1060) { tablesEnsured = false; throw e; } }
   }
 
   // currencies master — one row per currency code per institution
@@ -276,7 +277,8 @@ class SettingsController {
       if (fromCurrency) { query += ' AND h.from_currency = ?'; params.push(fromCurrency); }
       if (toCurrency)   { query += ' AND h.to_currency = ?';   params.push(toCurrency); }
 
-      query += ` ORDER BY h.changed_at DESC LIMIT ${parseInt(limit)}`;
+      query += ' ORDER BY h.changed_at DESC LIMIT ?';
+      params.push(parseInt(limit) || 100);
 
       const history = await db.query(query, params);
       res.json({ success: true, data: history });

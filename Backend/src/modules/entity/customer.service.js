@@ -4,7 +4,9 @@ const logger = require('../../utils/logger');
 
 class CustomerService {
   async ensureColumns() {
-    try { await db.query('ALTER TABLE customers ADD COLUMN price_list_id VARCHAR(36) DEFAULT NULL'); } catch (e) {}
+    try { await db.query('ALTER TABLE customers ADD COLUMN price_list_id VARCHAR(36) DEFAULT NULL'); } catch (e) {
+      if (e.errno !== 1060) throw e;
+    }
   }
 
   async createCustomer(institutionId, customerData, userId) {

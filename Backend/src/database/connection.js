@@ -45,7 +45,10 @@ class Database {
         connection.release();
       }
     } catch (error) {
-      logger.error('Database query error:', { sql, params, error: error.message });
+      // Suppress expected DDL errors: 1060 = duplicate column, 1061 = duplicate key name
+      if (error.errno !== 1060 && error.errno !== 1061) {
+        logger.error('Database query error:', { sql, params, error: error.message });
+      }
       throw error;
     }
   }

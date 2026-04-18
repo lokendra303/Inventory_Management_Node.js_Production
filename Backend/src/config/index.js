@@ -40,10 +40,15 @@ module.exports = {
   },
   
   rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60 * 1000, // 1 minute window
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000 // 100 requests per minute
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60 * 1000,
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000
   },
-  
+
+  razorpay: {
+    keyId:     process.env.RAZORPAY_KEY_ID     || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+  },
+
   logging: {
     level: process.env.LOG_LEVEL || 'info'
   }
