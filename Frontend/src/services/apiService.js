@@ -1,15 +1,6 @@
 import axios from 'axios';
 import { Modal } from 'antd';
-
-// Auto-select API URL based on where the app is accessed from
-const getApiBaseUrl = () => {
-  const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-  }
-  // Accessed from mobile or another device on the same host / LAN
-  return process.env.REACT_APP_LAN_API_URL || `http://${hostname}:5000/api`;
-};
+import { getApiBaseUrl } from '../config/appConfig';
 
 // Simple rate limiter to prevent 429 errors
 class RateLimiter {

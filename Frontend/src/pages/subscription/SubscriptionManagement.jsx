@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import apiService from '../../services/apiService';
+import { RAZORPAY_CHECKOUT_SCRIPT } from '../../config/appConfig';
 
 const FEATURE_LABELS = {
   inventory:   'Inventory Management',
@@ -113,7 +114,7 @@ export default function SubscriptionManagement() {
         if (!window.Razorpay) {
           await new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+            script.src = RAZORPAY_CHECKOUT_SCRIPT;
             script.onload = resolve;
             script.onerror = () => reject(new Error('Failed to load payment gateway'));
             document.body.appendChild(script);

@@ -1,14 +1,7 @@
 import axios from 'axios';
+import { getApiBaseUrl } from '../config/appConfig';
 
 const TOKEN_KEY = 'platformAdminToken';
-
-const getApiBaseUrl = () => {
-  const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-  }
-  return process.env.REACT_APP_LAN_API_URL || `http://${hostname}:5000/api`;
-};
 
 const platformApi = axios.create({
   baseURL: getApiBaseUrl(),

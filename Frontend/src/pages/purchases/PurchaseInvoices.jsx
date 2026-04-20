@@ -8,6 +8,7 @@ import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
+import { mediaUrl } from '../../config/appConfig';
 
 const STATUS_CONFIG = {
   draft:          { color: 'orange',  label: 'Draft' },
@@ -71,9 +72,9 @@ const PurchaseInvoices = () => {
         const address      = settings.address || `${data.header.address.line1}, ${data.header.address.city}, ${data.header.address.state}`;
         const phone        = settings.phone || data.header.contact.phone;
         const email        = settings.email || data.header.contact.email;
-        const logoUrl      = settings.logo_path      ? `http://localhost:5000${settings.logo_path}`      : data.header.branding?.logoUrl;
-        const stampUrl     = settings.stamp_path     ? `http://localhost:5000${settings.stamp_path}`     : data.header.branding?.stampUrl;
-        const signatureUrl = settings.signature_path ? `http://localhost:5000${settings.signature_path}` : data.header.branding?.signatureUrl;
+        const logoUrl      = settings.logo_path      ? mediaUrl(settings.logo_path)      : data.header.branding?.logoUrl;
+        const stampUrl     = settings.stamp_path     ? mediaUrl(settings.stamp_path)     : data.header.branding?.stampUrl;
+        const signatureUrl = settings.signature_path ? mediaUrl(settings.signature_path) : data.header.branding?.signatureUrl;
         setPreviewContent(
           <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>

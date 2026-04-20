@@ -1,18 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Card, Table, Input, Button, Space, Tag, Typography, Select,
+  Card, Table, Input, Button, Space, Tag, Typography, Select, message,
 } from 'antd';
-import { SearchOutlined, EyeOutlined } from '@ant-design/icons';
+import { SearchOutlined, EyeOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import platformApi from '../services/platformApi';
+import { institutionStatusLabel } from '../config/institutionDisplay';
 
 const { Title } = Typography;
-
-function institutionStatusLabel(dbStatus) {
-  if (dbStatus === 'inactive') return 'Suspended';
-  if (dbStatus === 'active') return 'Active';
-  return dbStatus || '—';
-}
 
 export default function PlatformTenants() {
   const navigate = useNavigate();
@@ -52,6 +47,26 @@ export default function PlatformTenants() {
   const runSearch = () => {
     setPage(1);
     setAppliedSearch(searchInput.trim());
+  };
+
+  const exportCsv = async () => {
+    try {
+      const res = await platformApi.get('/platform/institutions/export');
+      if (!res.success || !res.csv) {
+        message.error(res.error || 'Export failed');
+        return;
+      }
+      const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.filename || 'tenants.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      message.success('Download started');
+    } catch (e) {
+      message.error(e.response?.data?.error || e.message);
+    }
   };
 
   const columns = [
@@ -114,6 +129,7 @@ export default function PlatformTenants() {
             ]}
           />
           <Button type="primary" onClick={runSearch}>Search</Button>
+          <Button icon={<DownloadOutlined />} onClick={exportCsv}>Export CSV</Button>
         </Space>
         <Table
           rowKey="id"

@@ -4,6 +4,18 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const config = require('../../config');
 const logger = require('../../utils/logger');
+const subscriptionService = require('../subscription/subscription.service');
+
+/** Feature keys stored in subscription_plans.features JSON; `all` grants every module. */
+const PLAN_FEATURE_OPTIONS = [
+  { key: 'inventory', label: 'Inventory' },
+  { key: 'sales', label: 'Sales' },
+  { key: 'purchases', label: 'Purchases' },
+  { key: 'reports', label: 'Reports' },
+  { key: 'workflows', label: 'Workflows' },
+  { key: 'price_lists', label: 'Price lists' },
+  { key: 'all', label: 'All features (unlimited modules)' },
+];
 
 let schemaReady = false;
 
@@ -294,6 +306,260 @@ async function setInstitutionStatus(id, apiStatus) {
   return true;
 }
 
+const INSTITUTION_PATCH_FIELDS = [
+  'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'postal_code',
+  'website', 'contact_person', 'plan', 'institution_type', 'registration_number', 'tax_id',
+];
+
+async function updateInstitutionProfile(id, body) {
+  await ensureSchema();
+  if (!body || typeof body !== 'object') throw new Error('Invalid body');
+
+  const updates = {};
+  for (const k of INSTITUTION_PATCH_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(body, k) || body[k] === undefined) continue;
+    let v = body[k];
+    if (k === 'name' || k === 'email') {
+      if (typeof v !== 'string' || !v.trim()) {
+        throw new Error(k === 'email' ? 'Email cannot be empty' : 'Name cannot be empty');
+      }
+      updates[k] = v.trim();
+      continue;
+    }
+    if (typeof v === 'string') v = v.trim() || null;
+    updates[k] = v;
+  }
+  if (Object.keys(updates).length === 0) throw new Error('No allowed fields to update');
+
+  if (updates.email) {
+    const normalized = String(updates.email).trim().toLowerCase();
+    const dup = await db.query(
+      'SELECT id FROM institutions WHERE email = ? AND id != ?',
+      [normalized, id]
+    );
+    if (dup.length > 0) throw new Error('Email already in use by another tenant');
+    updates.email = normalized;
+  }
+
+  const keys = Object.keys(updates);
+  const setClause = keys.map((col) => `${col} = ?`).join(', ');
+  const values = keys.map((col) => updates[col]);
+  values.push(id);
+
+  let result;
+  try {
+    result = await db.query(
+      `UPDATE institutions SET ${setClause}, updated_at = NOW() WHERE id = ?`,
+      values
+    );
+  } catch (e) {
+    logger.warn('Platform institution patch without updated_at', { error: e.message });
+    result = await db.query(`UPDATE institutions SET ${setClause} WHERE id = ?`, values);
+  }
+  if (!result || result.affectedRows === 0) throw new Error('Institution not found');
+  return getInstitution(id);
+}
+
+function normalizePlanFeatures(raw) {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map((x) => String(x).trim()).filter(Boolean);
+  if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw);
+      if (Array.isArray(p)) return p.map((x) => String(x).trim()).filter(Boolean);
+    } catch (_) {
+      /* comma-separated */
+    }
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function featuresToJson(arr) {
+  const list = normalizePlanFeatures(arr);
+  const allowed = new Set(PLAN_FEATURE_OPTIONS.map((f) => f.key));
+  for (const k of list) {
+    if (!allowed.has(k)) {
+      throw new Error(`Unknown feature key: ${k}`);
+    }
+  }
+  if (list.includes('all') && list.length > 1) {
+    return JSON.stringify(['all']);
+  }
+  return JSON.stringify(list);
+}
+
+function parseLimit(v, field) {
+  if (v === '' || v === null || v === undefined) throw new Error(`${field} is required`);
+  const n = parseInt(v, 10);
+  if (Number.isNaN(n)) throw new Error(`${field} must be a number`);
+  if (n < -1) throw new Error(`${field} must be ≥ -1 (-1 = unlimited)`);
+  return n;
+}
+
+function parseMoney(v, field) {
+  const n = v === '' || v == null ? 0 : Number(v);
+  if (Number.isNaN(n) || n < 0) throw new Error(`${field} must be a non-negative number`);
+  return Math.round(n * 100) / 100;
+}
+
+async function listSubscriptionPlans() {
+  await ensureSchema();
+  await subscriptionService.ensureTablesReady();
+  try {
+    const rows = await db.query(`
+      SELECT id, name, description, price_monthly, price_yearly, max_users, max_warehouses, max_items,
+             features, is_active, sort_order, created_at
+      FROM subscription_plans
+      ORDER BY sort_order ASC, name ASC
+    `);
+    return (rows || []).map((r) => ({
+      ...r,
+      features: typeof r.features === 'string' ? normalizePlanFeatures(r.features) : normalizePlanFeatures(r.features),
+    }));
+  } catch (e) {
+    logger.warn('Platform listSubscriptionPlans failed', { error: e.message });
+    return [];
+  }
+}
+
+function getPlanFeatureCatalog() {
+  return PLAN_FEATURE_OPTIONS;
+}
+
+async function createSubscriptionPlan(body) {
+  await ensureSchema();
+  await subscriptionService.ensureTablesReady();
+
+  const id = (body.id || '').trim();
+  if (!id || !/^[a-z0-9][a-z0-9-]{0,62}$/i.test(id)) {
+    throw new Error('Plan id is required (letters, numbers, hyphens; max 63 chars)');
+  }
+  const name = (body.name || '').trim();
+  if (!name) throw new Error('Plan name is required');
+
+  const existing = await db.query('SELECT id FROM subscription_plans WHERE id = ?', [id]);
+  if (existing.length) throw new Error('A plan with this id already exists');
+
+  const description = body.description != null ? String(body.description) : '';
+  const price_monthly = parseMoney(body.price_monthly, 'price_monthly');
+  const price_yearly = parseMoney(body.price_yearly, 'price_yearly');
+  const max_users = parseLimit(body.max_users, 'max_users');
+  const max_warehouses = parseLimit(body.max_warehouses, 'max_warehouses');
+  const max_items = parseLimit(body.max_items, 'max_items');
+  const featuresJson = featuresToJson(body.features);
+  const is_active = body.is_active === false || body.is_active === 0 ? 0 : 1;
+  const sort_order = parseInt(body.sort_order, 10);
+  const sort = Number.isNaN(sort_order) ? 99 : sort_order;
+
+  await db.query(
+    `INSERT INTO subscription_plans
+     (id, name, description, price_monthly, price_yearly, max_users, max_warehouses, max_items, features, is_active, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, name, description, price_monthly, price_yearly, max_users, max_warehouses, max_items, featuresJson, is_active, sort]
+  );
+
+  const [row] = await db.query('SELECT * FROM subscription_plans WHERE id = ?', [id]);
+  return {
+    ...row,
+    features: normalizePlanFeatures(row.features),
+  };
+}
+
+async function updateSubscriptionPlan(planId, body) {
+  await ensureSchema();
+  await subscriptionService.ensureTablesReady();
+
+  const id = (planId || '').trim();
+  const cur = await db.query('SELECT * FROM subscription_plans WHERE id = ?', [id]);
+  if (!cur.length) throw new Error('Plan not found');
+
+  const updates = {};
+  if (body.name !== undefined) {
+    const name = String(body.name).trim();
+    if (!name) throw new Error('Name cannot be empty');
+    updates.name = name;
+  }
+  if (body.description !== undefined) updates.description = body.description == null ? '' : String(body.description);
+  if (body.price_monthly !== undefined) updates.price_monthly = parseMoney(body.price_monthly, 'price_monthly');
+  if (body.price_yearly !== undefined) updates.price_yearly = parseMoney(body.price_yearly, 'price_yearly');
+  if (body.max_users !== undefined) updates.max_users = parseLimit(body.max_users, 'max_users');
+  if (body.max_warehouses !== undefined) updates.max_warehouses = parseLimit(body.max_warehouses, 'max_warehouses');
+  if (body.max_items !== undefined) updates.max_items = parseLimit(body.max_items, 'max_items');
+  if (body.features !== undefined) {
+    updates.features = featuresToJson(body.features);
+  }
+  if (body.is_active !== undefined) {
+    updates.is_active = body.is_active === false || body.is_active === 0 ? 0 : 1;
+  }
+  if (body.sort_order !== undefined) {
+    const s = parseInt(body.sort_order, 10);
+    updates.sort_order = Number.isNaN(s) ? 0 : s;
+  }
+
+  const keys = Object.keys(updates);
+  if (keys.length === 0) throw new Error('No fields to update');
+
+  const setClause = keys.map((k) => `${k} = ?`).join(', ');
+  const values = keys.map((k) => updates[k]);
+  values.push(id);
+
+  await db.query(`UPDATE subscription_plans SET ${setClause} WHERE id = ?`, values);
+
+  const [row] = await db.query('SELECT * FROM subscription_plans WHERE id = ?', [id]);
+  return {
+    ...row,
+    features: normalizePlanFeatures(row.features),
+  };
+}
+
+async function getRecentTenantLogins(limit = 30) {
+  await ensureSchema();
+  const n = Math.min(100, Math.max(5, parseInt(limit, 10) || 30));
+  const limitSql = `${Number(n)}`;
+  try {
+    return await db.query(`
+      SELECT u.id AS user_id, u.email, u.first_name, u.last_name, u.role, u.last_login, u.status AS user_status,
+             i.id AS institution_id, i.name AS institution_name, i.status AS institution_status
+      FROM institution_users u
+      INNER JOIN institutions i ON i.id = u.institution_id
+      WHERE u.last_login IS NOT NULL
+      ORDER BY u.last_login DESC
+      LIMIT ${limitSql}
+    `);
+  } catch (e) {
+    logger.warn('Platform getRecentTenantLogins failed', { error: e.message });
+    return [];
+  }
+}
+
+async function exportInstitutionsCsv() {
+  await ensureSchema();
+  const rows = await db.query(`
+    SELECT i.id, i.name, i.email, i.mobile, i.status, i.city, i.state, i.country, i.plan, i.contact_person,
+           (SELECT COUNT(*) FROM institution_users u WHERE u.institution_id = i.id AND u.status = 'active') AS active_users,
+           (SELECT COUNT(*) FROM items it WHERE it.institution_id = i.id AND it.status = 'active') AS active_items
+    FROM institutions i
+    ORDER BY i.name ASC
+  `);
+
+  const headers = [
+    'id', 'name', 'email', 'mobile', 'status', 'city', 'state', 'country', 'plan', 'contact_person',
+    'active_users', 'active_items',
+  ];
+  const esc = (v) => {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const lines = [headers.join(',')];
+  for (const r of rows || []) {
+    lines.push(headers.map((h) => esc(r[h])).join(','));
+  }
+  return lines.join('\r\n');
+}
+
 module.exports = {
   ensureSchema,
   login,
@@ -302,4 +568,11 @@ module.exports = {
   listInstitutions,
   getInstitution,
   setInstitutionStatus,
+  updateInstitutionProfile,
+  listSubscriptionPlans,
+  getPlanFeatureCatalog,
+  createSubscriptionPlan,
+  updateSubscriptionPlan,
+  getRecentTenantLogins,
+  exportInstitutionsCsv,
 };

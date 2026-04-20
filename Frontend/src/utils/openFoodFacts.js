@@ -1,4 +1,6 @@
-const OFF_BASE = 'https://world.openfoodfacts.org/api/v2/product';
+const OFF_BASE =
+  process.env.REACT_APP_OPENFOODFACTS_API_BASE
+  || 'https://world.openfoodfacts.org/api/v2/product';
 
 /**
  * Lookup product data from Open Food Facts by barcode or EAN.

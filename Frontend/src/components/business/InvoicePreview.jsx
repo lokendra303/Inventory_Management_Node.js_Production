@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Typography, Divider, Space, Image } from 'antd';
 import apiService from '../../services/apiService';
+import { mediaUrl } from '../../config/appConfig';
 
 const { Title, Text } = Typography;
 
@@ -22,10 +23,7 @@ const InvoicePreview = () => {
     }
   };
 
-  const getImageUrl = (path) => {
-    if (!path) return null;
-    return `http://localhost:5000${path}?t=${Date.now()}`;
-  };
+  const getImageUrl = (path) => mediaUrl(path, { cacheBust: true });
 
   return (
     <Card 

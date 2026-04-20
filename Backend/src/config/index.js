@@ -1,11 +1,44 @@
 require('dotenv').config();
 
+function buildCorsOrigins() {
+  const fromEnv = process.env.CORS_ORIGINS;
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  if (process.env.NODE_ENV === 'production') {
+    const fe = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    return fe ? [fe] : [];
+  }
+  const fe = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  return [
+    fe,
+    'http://localhost:3001',
+    /^http:\/\/192\.168\./,
+    /^http:\/\/172\./,
+    /^http:\/\/10\./,
+  ];
+}
+
+/** Base URL for absolute links to this server (uploads, server-side PDF image fetch). No trailing slash. */
+function resolvePublicBaseUrl() {
+  const fromEnv = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+  const port = process.env.PORT || 5000;
+  return `http://127.0.0.1:${port}`;
+}
+
 module.exports = {
   server: {
     port: process.env.PORT || 5000,
     host: process.env.HOST || 'localhost',
     env: process.env.NODE_ENV || 'development'
   },
+
+  cors: {
+    origins: buildCorsOrigins(),
+  },
+
+  resolvePublicBaseUrl,
   
   database: {
     host: process.env.DB_HOST ,
@@ -13,7 +46,7 @@ module.exports = {
     database: process.env.DB_NAME ,
     user: process.env.DB_USER ,
     password: process.env.DB_PASSWORD ,
-    connectionLimit: 20,
+    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT, 10) || 20,
     charset: 'utf8mb4_unicode_ci'
   },
   

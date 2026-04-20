@@ -2,6 +2,7 @@ import React from 'react';
 import { Layout, Menu, Button, Typography, Space } from 'antd';
 import {
   DashboardOutlined, TeamOutlined, LogoutOutlined, SafetyCertificateOutlined,
+  CreditCardOutlined, HistoryOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { platformToken } from '../services/platformApi';
@@ -24,9 +25,13 @@ export default function PlatformAdminShell() {
     navigate('/platform/login', { replace: true });
   };
 
-  const selected = location.pathname.startsWith('/platform/tenants')
-    ? ['/platform/tenants']
-    : ['/platform/dashboard'];
+  const path = location.pathname;
+  const selected = (() => {
+    if (path.startsWith('/platform/tenants')) return ['/platform/tenants'];
+    if (path.startsWith('/platform/plans')) return ['/platform/plans'];
+    if (path.startsWith('/platform/activity')) return ['/platform/activity'];
+    return ['/platform/dashboard'];
+  })();
 
   if (!platformToken.get()) {
     return null;
@@ -66,6 +71,18 @@ export default function PlatformAdminShell() {
               icon: <TeamOutlined />,
               label: 'Tenants',
               onClick: () => navigate('/platform/tenants'),
+            },
+            {
+              key: '/platform/plans',
+              icon: <CreditCardOutlined />,
+              label: 'Plans',
+              onClick: () => navigate('/platform/plans'),
+            },
+            {
+              key: '/platform/activity',
+              icon: <HistoryOutlined />,
+              label: 'Recent logins',
+              onClick: () => navigate('/platform/activity'),
             },
           ]}
         />

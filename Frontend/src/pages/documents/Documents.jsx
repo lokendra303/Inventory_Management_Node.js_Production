@@ -10,6 +10,7 @@ import {
   AppstoreOutlined, UnorderedListOutlined, CloudUploadOutlined
 } from '@ant-design/icons';
 import { documentService } from '../../services/documentService';
+import { mediaUrl } from '../../config/appConfig';
 import '../../styles/Documents.css';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ const Documents = () => {
           <div className="docs-file-name-cell">
             <span className="docs-file-icon" style={{ color }}>{icon}</span>
             <div className="docs-file-info">
-              <a href={`http://localhost:5000${record.file_path}`} target="_blank" rel="noopener noreferrer">{text}</a>
+              <a href={mediaUrl(record.file_path)} target="_blank" rel="noopener noreferrer">{text}</a>
               {record.file_size && <div className="docs-file-size">{formatSize(record.file_size)}</div>}
             </div>
           </div>
@@ -173,12 +174,12 @@ const Documents = () => {
         <Space size={2}>
           <Tooltip title="Preview">
             <Button type="text" size="small" icon={<EyeOutlined />}
-              onClick={() => window.open(`http://localhost:5000${record.file_path}`, '_blank')} />
+              onClick={() => window.open(mediaUrl(record.file_path), '_blank')} />
           </Tooltip>
           <Tooltip title="Download">
             <Button type="text" size="small" icon={<DownloadOutlined />}
               onClick={() => {
-                fetch(`http://localhost:5000${record.file_path}`)
+                fetch(mediaUrl(record.file_path))
                   .then(r => r.blob()).then(blob => {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');

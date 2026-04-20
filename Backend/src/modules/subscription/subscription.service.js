@@ -102,6 +102,11 @@ async function ensureTables() {
 }
 
 class SubscriptionService {
+  /** Ensure subscription_plans / institution_subscriptions tables exist (for platform admin & startup). */
+  async ensureTablesReady() {
+    await ensureTables();
+  }
+
   async getPlanById(planId) {
     const [plan] = await db.query('SELECT * FROM subscription_plans WHERE id=? AND is_active=1', [planId]);
     if (!plan) throw new Error('Plan not found');

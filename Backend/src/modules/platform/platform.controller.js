@@ -58,6 +58,77 @@ class PlatformController {
       res.status(400).json({ success: false, error: error.message });
     }
   }
+
+  async updateInstitution(req, res) {
+    try {
+      const data = await platformAdminService.updateInstitutionProfile(req.params.id, req.body);
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async listPlans(req, res) {
+    try {
+      const data = await platformAdminService.listSubscriptionPlans();
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Platform list plans error', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async planFeatureOptions(req, res) {
+    try {
+      const data = platformAdminService.getPlanFeatureCatalog();
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async createPlan(req, res) {
+    try {
+      const data = await platformAdminService.createSubscriptionPlan(req.body);
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async updatePlan(req, res) {
+    try {
+      const data = await platformAdminService.updateSubscriptionPlan(req.params.planId, req.body);
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async recentLogins(req, res) {
+    try {
+      const limit = req.query.limit;
+      const data = await platformAdminService.getRecentTenantLogins(limit);
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Platform recent logins error', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async exportInstitutions(req, res) {
+    try {
+      const csv = await platformAdminService.exportInstitutionsCsv();
+      res.json({
+        success: true,
+        filename: `tenants-${new Date().toISOString().slice(0, 10)}.csv`,
+        csv,
+      });
+    } catch (error) {
+      logger.error('Platform export institutions error', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
 }
 
 module.exports = new PlatformController();

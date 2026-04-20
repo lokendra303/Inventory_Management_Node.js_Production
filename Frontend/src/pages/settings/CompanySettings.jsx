@@ -10,6 +10,7 @@ import {
   CheckCircleFilled, BulbOutlined, CameraOutlined
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
+import { mediaUrl } from '../../config/appConfig';
 import InvoicePreview from '../../components/business/InvoicePreview';
 import { useAuth } from '../../hooks/useAuth.jsx';
 
@@ -101,7 +102,7 @@ const CompanySettings = () => {
     } finally { setLoading(false); }
   };
 
-  const getImageUrl = (path) => path ? `http://localhost:5000${path}?t=${Date.now()}` : null;
+  const getImageUrl = (path) => mediaUrl(path, { cacheBust: true });
 
   const UploadCard = ({ type, path, title, description, icon }) => (
     <Card

@@ -27,18 +27,9 @@ class Server {
       contentSecurityPolicy: false
     }));
 
-    // CORS
+    // CORS — CORS_ORIGINS (comma-separated) or FRONTEND_URL; dev allows LAN regexes
     this.app.use(cors({
-      origin: process.env.NODE_ENV === 'production'
-        ? ['https://*.yourdomain.com']
-        : [
-            'http://localhost:3000',
-            'http://localhost:3001',
-            // Allow any device on local network
-            /^http:\/\/192\.168\./,
-            /^http:\/\/172\./,
-            /^http:\/\/10\./
-          ],
+      origin: config.cors.origins,
       credentials: true
     }));
 

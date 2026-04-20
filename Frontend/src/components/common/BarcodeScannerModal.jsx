@@ -2,11 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Spin, Alert, Button } from 'antd';
 import { QRCodeSVG } from 'qrcode.react';
 import apiService from '../../services/apiService';
+import { getWsBaseUrl } from '../../config/appConfig';
 
-const wsBase = (() => {
-  const api = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-  return api.replace(/^http/, 'ws').replace('/api', '');
-})();
+const wsBase = getWsBaseUrl();
 
 const BarcodeScannerModal = ({ open, onClose, onBarcode }) => {
   const [qrUrl, setQrUrl] = useState('');

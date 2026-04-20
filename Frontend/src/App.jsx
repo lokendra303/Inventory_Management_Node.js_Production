@@ -11,6 +11,8 @@ import PlatformAdminShell from './platform/PlatformAdminShell.jsx';
 import PlatformDashboard from './platform/PlatformDashboard.jsx';
 import PlatformTenants from './platform/PlatformTenants.jsx';
 import PlatformTenantDetail from './platform/PlatformTenantDetail.jsx';
+import PlatformPlans from './platform/PlatformPlans.jsx';
+import PlatformActivity from './platform/PlatformActivity.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
 import Inventory from './pages/inventory/Inventory.jsx';
 import Packages from './pages/inventory/Packages.jsx';
@@ -237,6 +239,8 @@ function App() {
             <Route path="dashboard" element={<PlatformDashboard />} />
             <Route path="tenants" element={<PlatformTenants />} />
             <Route path="tenants/:id" element={<PlatformTenantDetail />} />
+            <Route path="plans" element={<PlatformPlans />} />
+            <Route path="activity" element={<PlatformActivity />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/platform/login" replace />} />

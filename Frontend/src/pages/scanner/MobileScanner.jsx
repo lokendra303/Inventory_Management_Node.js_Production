@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { getApiBaseUrl } from '../../config/appConfig';
 
-const apiBase = process.env.REACT_APP_API_URL || 'http://192.168.1.83:5000/api';
+const apiBase = getApiBaseUrl();
 
 const MobileScanner = () => {
   const videoRef = useRef(null);

@@ -4,12 +4,13 @@ const path = require('path');
 const logger = require('../../utils/logger');
 const db = require('../../database/connection');
 const axios = require('axios');
+const { resolvePublicBaseUrl } = require('../../config');
 
 class InvoicePDFService {
   async downloadImage(url) {
     try {
       if (!url) return null;
-      const fullUrl = url.startsWith('http') ? url : `http://localhost:5000${url}`;
+      const fullUrl = url.startsWith('http') ? url : `${resolvePublicBaseUrl()}${url}`;
       const response = await axios.get(fullUrl, { responseType: 'arraybuffer' });
       return Buffer.from(response.data);
     } catch (err) {
