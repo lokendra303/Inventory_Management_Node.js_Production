@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Input } from 'antd';
 import {
   LockOutlined, MailOutlined, ArrowRightOutlined,
   SafetyCertificateOutlined, ArrowLeftOutlined
 } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import platformApi, { platformToken } from '../../services/platformApi';
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -262,6 +264,12 @@ const CSS = `
 `;
 
 export default function PlatformAdminLogin() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (platformToken.get()) {
+      navigate('/platform/dashboard', { replace: true });
+    }
+  }, [navigate]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [form] = Form.useForm();
@@ -270,13 +278,19 @@ export default function PlatformAdminLogin() {
     setLoading(true);
     setError('');
     try {
-      // TODO: call platform admin login API endpoint
-      // const res = await fetch('/api/platform/auth/login', { ... })
-      console.log('Platform admin login:', values.email);
-      // Placeholder — will be wired to backend in next step
-      setError('Platform admin backend not connected yet.');
+      const res = await platformApi.post('/platform/auth/login', {
+        email: values.email,
+        password: values.password,
+      });
+      if (res.success && res.data?.token) {
+        platformToken.set(res.data.token);
+        navigate('/platform/dashboard', { replace: true });
+        return;
+      }
+      setError(res.error || 'Login failed');
     } catch (err) {
-      setError(err.message || 'Login failed. Please try again.');
+      const msg = err.response?.data?.error || err.message || 'Login failed. Please try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }

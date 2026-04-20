@@ -7,6 +7,10 @@ import { withPermission } from './components/common/PermissionWrapper.jsx';
 import ErrorBoundary from './components/common/ErrorBoundary.jsx';
 import Login from './pages/auth/Login.jsx';
 import PlatformAdminLogin from './pages/auth/PlatformAdminLogin.jsx';
+import PlatformAdminShell from './platform/PlatformAdminShell.jsx';
+import PlatformDashboard from './platform/PlatformDashboard.jsx';
+import PlatformTenants from './platform/PlatformTenants.jsx';
+import PlatformTenantDetail from './platform/PlatformTenantDetail.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
 import Inventory from './pages/inventory/Inventory.jsx';
 import Packages from './pages/inventory/Packages.jsx';
@@ -223,11 +227,19 @@ function App() {
       </Router>
     );
   }
-  if (path === '/platform/login') {
+  if (path.startsWith('/platform')) {
     return (
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/platform/login" element={<PlatformAdminLogin />} />
+          <Route path="/platform" element={<PlatformAdminShell />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<PlatformDashboard />} />
+            <Route path="tenants" element={<PlatformTenants />} />
+            <Route path="tenants/:id" element={<PlatformTenantDetail />} />
+            <Route path="*" element={<Navigate to="dashboard" replace />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/platform/login" replace />} />
         </Routes>
       </Router>
     );

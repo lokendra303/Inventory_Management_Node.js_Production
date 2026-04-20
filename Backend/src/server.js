@@ -71,9 +71,14 @@ class Server {
       next();
     });
 
-    // Institution context extraction (skip for all /auth routes)
+    // Institution context extraction (skip auth, health, barcode, platform admin API)
     this.app.use('/api', (req, res, next) => {
-      if (req.path.startsWith('/auth') || req.path === '/health' || req.path.startsWith('/barcode')) {
+      if (
+        req.path.startsWith('/auth')
+        || req.path === '/health'
+        || req.path.startsWith('/barcode')
+        || req.path.startsWith('/platform')
+      ) {
         return next();
       }
       return extractInstitutionContext(req, res, next);
@@ -81,7 +86,7 @@ class Server {
     
     // Comprehensive audit logging middleware (after authentication)
     this.app.use('/api', auditMiddleware({
-      skipRoutes: ['/health', '/auth/verify', '/auth/refresh']
+      skipRoutes: ['/health', '/auth/verify', '/auth/refresh', '/platform']
     }));
     
     // v2.1 - OTP auth routes are public
@@ -99,6 +104,9 @@ class Server {
 
     // Auth routes (public — no token required)
     this.app.use('/api/auth', require('./modules/auth/auth.routes'));
+
+    // Platform super-admin (separate JWT; no institution context)
+    this.app.use('/api/platform', require('./modules/platform/platform.routes'));
 
     // API routes (protected)
     this.app.use('/api', require('./routes/api'));
