@@ -102,6 +102,97 @@ async function ensureTables() {
 }
 
 class SubscriptionService {
+  async getPlanById(planId) {
+    const [plan] = await db.query('SELECT * FROM subscription_plans WHERE id=? AND is_active=1', [planId]);
+    if (!plan) throw new Error('Plan not found');
+    return plan;
+  }
+
+  buildLimitConflicts(plan, usage) {
+    const conflicts = [];
+    if (plan.max_users !== -1 && usage.users > plan.max_users) {
+      conflicts.push({ resource: 'users', current: usage.users, allowed: plan.max_users, path: '/users' });
+    }
+    if (plan.max_warehouses !== -1 && usage.warehouses > plan.max_warehouses) {
+      conflicts.push({ resource: 'warehouses', current: usage.warehouses, allowed: plan.max_warehouses, path: '/warehouses' });
+    }
+    if (plan.max_items !== -1 && usage.items > plan.max_items) {
+      conflicts.push({ resource: 'items', current: usage.items, allowed: plan.max_items, path: '/items' });
+    }
+    return conflicts;
+  }
+
+  async applyResourceDeactivations(institutionId, deactivations = {}) {
+    if (deactivations.warehouses?.length) {
+      const ph = deactivations.warehouses.map(() => '?').join(',');
+      await db.query(
+        `UPDATE warehouses SET status='inactive', updated_at=NOW() WHERE institution_id=? AND id IN (${ph})`,
+        [institutionId, ...deactivations.warehouses]
+      );
+    }
+    if (deactivations.users?.length) {
+      const ph = deactivations.users.map(() => '?').join(',');
+      await db.query(
+        `UPDATE institution_users SET status='inactive', updated_at=NOW() WHERE institution_id=? AND id IN (${ph})`,
+        [institutionId, ...deactivations.users]
+      );
+    }
+    if (deactivations.items?.length) {
+      const ph = deactivations.items.map(() => '?').join(',');
+      await db.query(
+        `UPDATE items SET status='inactive', updated_at=NOW() WHERE institution_id=? AND id IN (${ph})`,
+        [institutionId, ...deactivations.items]
+      );
+    }
+  }
+
+  pickAutoDeactivations(conflicts = []) {
+    const deactivations = { warehouses: [], users: [], items: [] };
+    for (const conflict of conflicts) {
+      const deactivateCount = Math.max(0, Number(conflict.current) - Number(conflict.allowed));
+      const ids = (conflict.records || [])
+        .slice(-deactivateCount)
+        .map(record => record.id)
+        .filter(Boolean);
+      if (ids.length) {
+        deactivations[conflict.resource] = ids;
+      }
+    }
+    return deactivations;
+  }
+
+  async switchToFreePlan(institutionId, { reason, markCancelled = false, deactivations = null, autoDeactivate = false }) {
+    const freePlan = await this.getPlanById('plan-free');
+    const usage = await this.getUsage(institutionId);
+    const conflicts = this.buildLimitConflicts(freePlan, usage);
+
+    if (conflicts.length > 0) {
+      let finalDeactivations = deactivations || null;
+      if (!finalDeactivations && autoDeactivate) {
+        const preview = await this.getDowngradePreview(institutionId, 'plan-free');
+        finalDeactivations = this.pickAutoDeactivations(preview.conflicts || []);
+      }
+      if (finalDeactivations) {
+        await this.applyResourceDeactivations(institutionId, finalDeactivations);
+      } else {
+        const err = new Error('DOWNGRADE_BLOCKED');
+        err.code = 'DOWNGRADE_BLOCKED';
+        err.conflicts = conflicts;
+        err.planName = freePlan.name;
+        throw err;
+      }
+    }
+
+    await db.query(
+      `UPDATE institution_subscriptions
+       SET plan_id='plan-free', billing_cycle='monthly', status='active',
+           cancelled_at=${markCancelled ? 'NOW()' : 'NULL'}, cancel_reason=?,
+           current_period_start=NOW(), current_period_end=NULL,
+           trial_ends_at=NULL, updated_at=NOW()
+       WHERE institution_id=?`,
+      [reason || null, institutionId]
+    );
+  }
 
   // ─── Plans ───────────────────────────────────────────────────────────────
 
@@ -134,20 +225,21 @@ class SubscriptionService {
       : null;
 
     if (sub.status === 'trial' && sub.trial_ends_at && new Date(sub.trial_ends_at) < new Date()) {
-      await db.query(
-        `UPDATE institution_subscriptions SET status='expired', updated_at=NOW() WHERE institution_id=?`,
-        [institutionId]
-      );
-      sub.status = 'expired';
-      sub.days_remaining = 0;
+      await this.switchToFreePlan(institutionId, {
+        reason: 'Trial expired; switched to Free plan',
+        markCancelled: false,
+        autoDeactivate: true
+      });
+      return this.getSubscription(institutionId);
     }
 
     if (sub.status === 'active' && sub.current_period_end && new Date(sub.current_period_end) < new Date()) {
-      await db.query(
-        `UPDATE institution_subscriptions SET status='expired', updated_at=NOW() WHERE institution_id=?`,
-        [institutionId]
-      );
-      sub.status = 'expired';
+      await this.switchToFreePlan(institutionId, {
+        reason: 'Subscription period ended; switched to Free plan',
+        markCancelled: false,
+        autoDeactivate: true
+      });
+      return this.getSubscription(institutionId);
     }
 
     return sub;
@@ -232,8 +324,7 @@ class SubscriptionService {
 
   async createPaymentOrder(institutionId, { planId, billingCycle }) {
     await ensureTables();
-    const [plan] = await db.query('SELECT * FROM subscription_plans WHERE id=? AND is_active=1', [planId]);
-    if (!plan) throw new Error('Plan not found');
+    const plan = await this.getPlanById(planId);
 
     const amount = billingCycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
 
@@ -293,8 +384,7 @@ class SubscriptionService {
 
   async upgradePlan(institutionId, { planId, billingCycle, paymentReference, paymentMethod, notes }) {
     await ensureTables();
-    const [plan] = await db.query('SELECT * FROM subscription_plans WHERE id=? AND is_active=1', [planId]);
-    if (!plan) throw new Error('Plan not found');
+    const plan = await this.getPlanById(planId);
 
     const amount = billingCycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
 
@@ -304,13 +394,7 @@ class SubscriptionService {
     // }
 
     const usage = await this.getUsage(institutionId);
-    const conflicts = [];
-    if (plan.max_users      !== -1 && usage.users      > plan.max_users)
-      conflicts.push({ resource: 'users',      current: usage.users,      allowed: plan.max_users,      path: '/users' });
-    if (plan.max_warehouses !== -1 && usage.warehouses > plan.max_warehouses)
-      conflicts.push({ resource: 'warehouses', current: usage.warehouses, allowed: plan.max_warehouses, path: '/warehouses' });
-    if (plan.max_items      !== -1 && usage.items      > plan.max_items)
-      conflicts.push({ resource: 'items',      current: usage.items,      allowed: plan.max_items,      path: '/items' });
+    const conflicts = this.buildLimitConflicts(plan, usage);
 
     if (conflicts.length > 0) {
       const err = new Error('DOWNGRADE_BLOCKED');
@@ -353,8 +437,7 @@ class SubscriptionService {
 
   async getDowngradePreview(institutionId, planId) {
     await ensureTables();
-    const [plan] = await db.query('SELECT * FROM subscription_plans WHERE id=? AND is_active=1', [planId]);
-    if (!plan) throw new Error('Plan not found');
+    const plan = await this.getPlanById(planId);
 
     const result = { planId, planName: plan.name, conflicts: [] };
 
@@ -408,27 +491,7 @@ class SubscriptionService {
   async downgradeWithDeactivation(institutionId, { planId, billingCycle, deactivations }) {
     await ensureTables();
 
-    if (deactivations.warehouses?.length) {
-      const ph = deactivations.warehouses.map(() => '?').join(',');
-      await db.query(
-        `UPDATE warehouses SET status='inactive', updated_at=NOW() WHERE institution_id=? AND id IN (${ph})`,
-        [institutionId, ...deactivations.warehouses]
-      );
-    }
-    if (deactivations.users?.length) {
-      const ph = deactivations.users.map(() => '?').join(',');
-      await db.query(
-        `UPDATE institution_users SET status='inactive', updated_at=NOW() WHERE institution_id=? AND id IN (${ph})`,
-        [institutionId, ...deactivations.users]
-      );
-    }
-    if (deactivations.items?.length) {
-      const ph = deactivations.items.map(() => '?').join(',');
-      await db.query(
-        `UPDATE items SET status='inactive', updated_at=NOW() WHERE institution_id=? AND id IN (${ph})`,
-        [institutionId, ...deactivations.items]
-      );
-    }
+    await this.applyResourceDeactivations(institutionId, deactivations || {});
 
     logger.info('Downgrade deactivations applied', { institutionId, planId, deactivations });
     return this.upgradePlan(institutionId, { planId, billingCycle: billingCycle || 'monthly', notes: 'Downgrade with deactivation' });
@@ -436,23 +499,19 @@ class SubscriptionService {
 
   // ─── Cancel ──────────────────────────────────────────────────────────────
 
-  async cancelSubscription(institutionId, { reason }) {
+  async cancelSubscription(institutionId, { reason, deactivations, autoDeactivate = false }) {
     await ensureTables();
     const sub = await this.getSubscription(institutionId);
     if (sub.status === 'cancelled') throw new Error('Subscription is already cancelled');
     if (sub.status === 'trial')     throw new Error('Trial subscriptions cannot be cancelled — they expire automatically');
     if (sub.plan_id === 'plan-free') throw new Error('The Free plan cannot be cancelled');
 
-    // Cancel current plan and immediately switch to Free plan
-    await db.query(
-      `UPDATE institution_subscriptions
-       SET plan_id='plan-free', billing_cycle='monthly', status='active',
-           cancelled_at=NOW(), cancel_reason=?,
-           current_period_start=NOW(), current_period_end=NULL,
-           trial_ends_at=NULL, updated_at=NOW()
-       WHERE institution_id=?`,
-      [reason || null, institutionId]
-    );
+    await this.switchToFreePlan(institutionId, {
+      reason: reason || 'User requested cancellation',
+      markCancelled: true,
+      deactivations: deactivations || null,
+      autoDeactivate: Boolean(autoDeactivate)
+    });
 
     logger.info('Subscription cancelled and switched to Free plan', { institutionId, reason });
     return { message: 'Subscription cancelled. Your account has been switched to the Free plan.' };

@@ -40,6 +40,7 @@ export default function SubscriptionManagement() {
   const [actionLoading, setActionLoading] = useState(false);
   const [activeTab, setActiveTab]       = useState('overview');
   const [conflicts, setConflicts]       = useState(null);
+  const [conflictAction, setConflictAction] = useState(null);
   const [paymentModal, setPaymentModal] = useState(false);
   const [paymentOrder, setPaymentOrder] = useState(null); // order data from backend
 
@@ -93,6 +94,7 @@ export default function SubscriptionManagement() {
       const data = e?.response?.data;
       if (data?.error === 'DOWNGRADE_BLOCKED') {
         setUpgradeModal(false);
+        setConflictAction('upgrade');
         setConflicts({ planName: data.planName, items: data.conflicts });
       } else {
         message.error(data?.error || e?.message || 'Failed to process upgrade');
@@ -166,12 +168,37 @@ export default function SubscriptionManagement() {
     setActionLoading(true);
     try {
       await apiService.post('/subscription/cancel', { reason: 'User requested cancellation' });
-      message.success('Subscription cancelled. Access continues until end of billing period.');
+      message.success('Subscription cancelled. Account switched to Free plan.');
       setCancelModal(false);
       load();
     } catch (e) {
-      message.error(e?.response?.data?.error || e?.message || 'Failed to cancel subscription');
+      const data = e?.response?.data;
+      if (data?.error === 'DOWNGRADE_BLOCKED') {
+        setCancelModal(false);
+        setConflictAction('cancel');
+        setConflicts({ planName: data.planName, items: data.conflicts });
+      } else {
+        message.error(data?.error || e?.message || 'Failed to cancel subscription');
+      }
     } finally { setActionLoading(false); }
+  };
+
+  const handleAutoResolveCancelConflicts = async () => {
+    setActionLoading(true);
+    try {
+      await apiService.post('/subscription/cancel', {
+        reason: 'User requested cancellation (auto-deactivate over-limit records)',
+        autoDeactivate: true,
+      });
+      message.success('Subscription cancelled and over-limit resources were deactivated for Free plan.');
+      setConflicts(null);
+      setConflictAction(null);
+      load();
+    } catch (e) {
+      message.error(e?.response?.data?.error || e?.message || 'Failed to auto-resolve downgrade conflicts');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const usagePct   = (used, max) => max === -1 ? 0 : Math.round((used / max) * 100);
@@ -1077,12 +1104,23 @@ export default function SubscriptionManagement() {
       <Modal
         title={<span style={{ color: '#fa8c16' }}><WarningOutlined style={{ marginRight: 8 }} />Cannot Switch to {conflicts?.planName}</span>}
         open={!!conflicts}
-        onCancel={() => setConflicts(null)}
+        onCancel={() => { setConflicts(null); setConflictAction(null); }}
         footer={[
-          <Button key="close" onClick={() => setConflicts(null)}>Close</Button>,
+          <Button key="close" onClick={() => { setConflicts(null); setConflictAction(null); }}>Close</Button>,
+          conflictAction === 'cancel' ? (
+            <Button
+              key="auto-resolve-cancel"
+              type="primary"
+              loading={actionLoading}
+              onClick={handleAutoResolveCancelConflicts}
+              style={{ background: '#fa8c16', border: 'none' }}
+            >
+              Auto-Deactivate Extras & Switch to Free
+            </Button>
+          ) : null,
           <Button key="upgrade" type="primary"
             style={{ background: 'linear-gradient(135deg,#f7971e,#ffd200)', border: 'none' }}
-            onClick={() => { setConflicts(null); setUpgradeModal(true); }}>
+            onClick={() => { setConflicts(null); setConflictAction(null); setUpgradeModal(true); }}>
             Choose a Different Plan
           </Button>,
         ]}>
