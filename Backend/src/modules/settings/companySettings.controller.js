@@ -51,6 +51,14 @@ class CompanySettingsController {
         );
       }
 
+      // Keep institution master name in sync with company settings name.
+      if (companyName && companyName.trim()) {
+        await db.query(
+          'UPDATE institutions SET name = ?, updated_at = NOW() WHERE id = ?',
+          [companyName.trim(), institutionId]
+        );
+      }
+
       res.json({
         success: true,
         message: 'Settings updated successfully'

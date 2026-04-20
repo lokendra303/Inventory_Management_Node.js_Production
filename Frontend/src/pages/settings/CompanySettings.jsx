@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import InvoicePreview from '../../components/business/InvoicePreview';
+import { useAuth } from '../../hooks/useAuth.jsx';
 
 const { Title, Text } = Typography;
 
@@ -26,6 +27,7 @@ const labelIcon = (icon, color) => (
 );
 
 const CompanySettings = () => {
+  const { fetchProfile } = useAuth();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({});
@@ -62,7 +64,8 @@ const CompanySettings = () => {
       const response = await apiService.put('/company-settings', values);
       if (response.success) {
         message.success('Settings saved successfully');
-        loadSettings();
+        await loadSettings();
+        await fetchProfile();
         // Mark onboarding step complete if all 3 required fields are filled
         if (values.companyName && values.address && values.phone) {
           apiService.post('/onboarding/complete', { stepId: 'company_profile' }).catch(() => {});
