@@ -1,5 +1,4 @@
 const db = require('../../database/connection');
-const logger = require('../../utils/logger');
 
 class AnalyticsService {
   // ─── #12 ABC ANALYSIS ────────────────────────────────────

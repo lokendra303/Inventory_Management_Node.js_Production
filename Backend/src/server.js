@@ -8,7 +8,6 @@ const fs = require('fs');
 const config = require('./config');
 const db = require('./database/connection');
 const logger = require('./utils/logger');
-const routes = require('./routes');
 const { extractInstitutionContext } = require('./middleware/auth');
 const auditMiddleware = require('./middleware/auditMiddleware');
 
@@ -38,10 +37,7 @@ class Server {
             // Allow any device on local network
             /^http:\/\/192\.168\./,
             /^http:\/\/172\./,
-            /^http:\/\/10\./,
-            // Allow ngrok tunnels
-            /\.ngrok-free\.app$/,
-            /\.ngrok\.io$/
+            /^http:\/\/10\./
           ],
       credentials: true
     }));

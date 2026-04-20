@@ -5,6 +5,124 @@ const inventoryService = require('../inventory/inventory.service');
 const warehouseOptimizationService = require('../warehouse/warehouseOptimization.service');
 
 class SalesOrderService {
+  async shipSalesOrder(institutionId, soId, shipmentData, userId) {
+    const shipmentNumber = shipmentData.shipmentNumber || `SHIP-${Date.now()}`;
+    const linesToShip = Array.isArray(shipmentData.lines) ? shipmentData.lines : [];
+
+    if (linesToShip.length === 0) {
+      throw new Error('At least one shipment line is required');
+    }
+
+    return db.transaction(async (connection) => {
+      const [soRows] = await connection.execute(
+        'SELECT id, so_number, status FROM sales_orders WHERE institution_id = ? AND id = ?',
+        [institutionId, soId]
+      );
+
+      if (soRows.length === 0) {
+        throw new Error('Sales order not found');
+      }
+
+      const so = soRows[0];
+      if (!['confirmed', 'partially_shipped'].includes(so.status)) {
+        throw new Error(`Cannot create shipment for SO in status "${so.status}"`);
+      }
+
+      const [soLines] = await connection.execute(
+        `SELECT id, item_id, warehouse_id, unit_price, quantity_ordered, quantity_shipped
+         FROM sales_order_lines
+         WHERE institution_id = ? AND so_id = ?`,
+        [institutionId, soId]
+      );
+
+      const lineMap = new Map(soLines.map((line) => [line.id, line]));
+
+      for (const line of linesToShip) {
+        if (!line.soLineId || typeof line.soLineId !== 'string') {
+          throw new Error('Each shipment line must include soLineId');
+        }
+        const qty = Number(line.quantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          throw new Error('Shipment quantity must be a positive number');
+        }
+
+        const soLine = lineMap.get(line.soLineId);
+        if (!soLine) {
+          throw new Error(`SO line not found: ${line.soLineId}`);
+        }
+
+        const ordered = Number(soLine.quantity_ordered || 0);
+        const alreadyShipped = Number(soLine.quantity_shipped || 0);
+        const pending = ordered - alreadyShipped;
+        if (qty > pending) {
+          throw new Error(`Cannot ship ${qty} for line ${line.soLineId}. Pending: ${pending}`);
+        }
+
+        await inventoryService.shipStock(institutionId, {
+          itemId: soLine.item_id,
+          warehouseId: soLine.warehouse_id,
+          quantity: qty,
+          unitPrice: Number(soLine.unit_price || 0),
+          soId,
+          soLineId: soLine.id,
+          shipmentNumber
+        }, userId);
+
+        const newShipped = alreadyShipped + qty;
+        const nextStatus = newShipped >= ordered ? 'shipped' : 'partially_shipped';
+        await connection.execute(
+          `UPDATE sales_order_lines
+           SET quantity_shipped = ?, status = ?, updated_at = NOW()
+           WHERE institution_id = ? AND id = ?`,
+          [newShipped, nextStatus, institutionId, soLine.id]
+        );
+      }
+
+      const [totalsRows] = await connection.execute(
+        `SELECT
+            COALESCE(SUM(quantity_ordered), 0) AS totalOrdered,
+            COALESCE(SUM(quantity_shipped), 0) AS totalShipped
+         FROM sales_order_lines
+         WHERE institution_id = ? AND so_id = ?`,
+        [institutionId, soId]
+      );
+      const totalOrdered = Number(totalsRows[0].totalOrdered || 0);
+      const totalShipped = Number(totalsRows[0].totalShipped || 0);
+
+      let soStatus = 'confirmed';
+      if (totalShipped >= totalOrdered && totalOrdered > 0) {
+        soStatus = 'shipped';
+      } else if (totalShipped > 0) {
+        soStatus = 'partially_shipped';
+      }
+
+      await connection.execute(
+        'UPDATE sales_orders SET status = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+        [soStatus, institutionId, soId]
+      );
+
+      logger.info('SO shipment created', {
+        institutionId,
+        soId,
+        shipmentNumber,
+        lines: linesToShip.length,
+        totalOrdered,
+        totalShipped,
+        status: soStatus,
+        userId
+      });
+
+      return {
+        soId,
+        soNumber: so.so_number,
+        shipmentNumber,
+        status: soStatus,
+        totalOrdered,
+        totalShipped
+      };
+    });
+  }
+
   async createSalesOrder(institutionId, soData, userId) {
     const {
       soNumber,

@@ -2,7 +2,6 @@ const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const invoiceTemplateService = require('./invoiceTemplate.service');
 const invoicePDFService = require('./invoicePDF.service');
-const autoInvoiceService = require('./autoInvoice.service');
 const emailService = require('../../services/emailService');
 const { v4: uuidv4 } = require('uuid');
 const { roundToTwo, safeAdd, safeSubtract } = require('../../utils/precision');

@@ -1,5 +1,3 @@
-const { v4: uuidv4 } = require('uuid');
-const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const reorderLevelService = require('../inventory/reorderLevel.service');
 const purchaseOrderService = require('./purchaseOrder.service');

@@ -7,7 +7,7 @@ const getApiBaseUrl = () => {
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
   }
-  // Accessed from mobile or another device on LAN / ngrok
+  // Accessed from mobile or another device on the same host / LAN
   return process.env.REACT_APP_LAN_API_URL || `http://${hostname}:5000/api`;
 };
 
@@ -62,7 +62,6 @@ class ApiService {
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
       },
     });
 

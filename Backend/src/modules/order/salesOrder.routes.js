@@ -26,6 +26,14 @@ router.get('/:id',
   salesOrderController.getSalesOrder
 );
 
+// POST /api/sales-orders/:id/ship
+router.post('/:id/ship',
+  requirePermission('inventory_ship'),
+  validateInstitutionConsistency,
+  auditLog('sales_order_shipped'),
+  salesOrderController.shipSalesOrder
+);
+
 // PUT /api/sales-orders/:id/status
 router.put('/:id/status',
   validate(schemas.updateSOStatusSchema),

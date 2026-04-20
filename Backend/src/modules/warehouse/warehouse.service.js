@@ -358,9 +358,6 @@ class WarehouseService {
   }
 
   async getWarehouseMovements(institutionId, warehouseId, limit = 100, offset = 0) {
-    // Get recent inventory movements for this warehouse
-    const eventStore = require('../../events/eventStore');
-    
     const events = await db.query(
       `SELECT es.*, i.sku, i.name as item_name
        FROM event_store es

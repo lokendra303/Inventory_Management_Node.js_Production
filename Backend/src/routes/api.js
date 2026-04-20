@@ -3,10 +3,8 @@ const { requireAuth, validateInstitutionConsistency } = require('../middleware/a
 
 const router = express.Router();
 
-// Public routes — no auth required
-router.use('/barcode', require('./barcode'));
-
 // Protected routes — auth required below this line
+// Note: public barcode routes are mounted once on the app at /api/barcode in server.js
 router.use(requireAuth);
 router.use(validateInstitutionConsistency);
 

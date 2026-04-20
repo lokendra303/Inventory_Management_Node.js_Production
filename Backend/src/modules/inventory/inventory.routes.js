@@ -71,14 +71,6 @@ router.get('/:itemId/:warehouseId',
   inventoryController.getCurrentStock
 );
 
-// POST /api/inventory/receive - DISABLED
-// router.post('/receive', 
-//   validate(schemas.receiveStockSchema),
-//   requirePermission('inventory_receive'),
-//   auditLog('stock_received'),
-//   inventoryController.receiveStock
-// );
-
 // POST /api/inventory/reserve
 router.post('/reserve', 
   validate(schemas.reserveStockSchema),

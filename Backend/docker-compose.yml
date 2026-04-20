@@ -19,19 +19,6 @@ services:
       - ims_network
     restart: unless-stopped
 
-  # Redis Cache
-  redis:
-    image: redis:7-alpine
-    container_name: ims_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - ims_network
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-
   # Backend API
   backend:
     build:
@@ -45,15 +32,12 @@ services:
       DB_NAME: ims_sepcune
       DB_USER: imsuser
       DB_PASSWORD: imspassword
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
       JWT_SECRET: your-production-jwt-secret-change-this
       PORT: 3000
     ports:
       - "3000:3000"
     depends_on:
       - mysql
-      - redis
     networks:
       - ims_network
     restart: unless-stopped
@@ -80,8 +64,6 @@ services:
 
 volumes:
   mysql_data:
-    driver: local
-  redis_data:
     driver: local
 
 networks:

@@ -5,6 +5,34 @@ const emailService = require('../../services/emailService');
 const logger = require('../../utils/logger');
 
 class SalesOrderController {
+  async shipSalesOrder(req, res) {
+    try {
+      const result = await salesOrderService.shipSalesOrder(
+        req.institutionId,
+        req.params.id,
+        req.body,
+        req.user.userId
+      );
+
+      res.status(201).json({
+        success: true,
+        message: 'Shipment created successfully',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Failed to create SO shipment', {
+        error: error.message,
+        institutionId: req.institutionId,
+        soId: req.params.id,
+        userId: req.user?.userId
+      });
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
   async createSalesOrder(req, res) {
     try {
       const soId = await salesOrderService.createSalesOrder(

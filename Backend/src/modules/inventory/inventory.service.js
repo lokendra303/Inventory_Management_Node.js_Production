@@ -150,6 +150,34 @@ class InventoryService {
     const idempotencyKey = `ship-${soLineId}-${shipmentNumber}`;
 
     try {
+      // Zoho-like behavior: shipment consumes reserved stock for SO lines.
+      const projection = await projectionService.getInventoryProjection(institutionId, itemId, warehouseId);
+      const reservedQty = projection ? Number(projection.quantity_reserved || 0) : 0;
+      const shipQty = Number(quantity);
+      if (reservedQty < shipQty) {
+        throw new Error(`Insufficient reserved stock: reserved ${reservedQty}, requested ${shipQty}`);
+      }
+
+      if (soId && soLineId && soId !== '00000000-0000-0000-0000-000000000000' && soLineId !== '00000000-0000-0000-0000-000000000000') {
+        const soLines = await db.query(
+          `SELECT quantity_ordered, quantity_shipped
+           FROM sales_order_lines
+           WHERE institution_id = ? AND so_id = ? AND id = ?`,
+          [institutionId, soId, soLineId]
+        );
+
+        if (soLines.length === 0) {
+          throw new Error('Sales order line not found for shipment');
+        }
+
+        const orderedQty = Number(soLines[0].quantity_ordered || 0);
+        const alreadyShipped = Number(soLines[0].quantity_shipped || 0);
+        const pending = orderedQty - alreadyShipped;
+        if (shipQty > pending) {
+          throw new Error(`Cannot ship ${shipQty}; pending quantity is ${pending}`);
+        }
+      }
+
       const eventId = await eventStore.appendEvent(
         institutionId,
         'inventory',
@@ -449,6 +477,10 @@ class InventoryService {
   }
 
   async getTransferHistory(institutionId, limit = 100, offset = 0) {
+    // LIMIT/OFFSET must be literals: bound placeholders break mysql2 prepared
+    // execution with ER_WRONG_ARGUMENTS / "Incorrect arguments to mysqld_stmt_execute".
+    const lim = Math.min(Math.max(Number.parseInt(String(limit), 10) || 100, 1), 1000);
+    const off = Math.max(Number.parseInt(String(offset), 10) || 0, 0);
     const rows = await db.query(
       `SELECT 
          es.id, es.event_data, es.created_at, es.created_by,
@@ -461,8 +493,8 @@ class InventoryService {
        JOIN warehouses tw ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.toWarehouseId')) = tw.id
        WHERE es.institution_id = ? AND es.event_type = 'TransferOut'
        ORDER BY es.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [institutionId, parseInt(limit) || 100, parseInt(offset) || 0]
+       LIMIT ${lim} OFFSET ${off}`,
+      [institutionId]
     );
 
     return rows.map(r => {
@@ -682,8 +714,9 @@ class InventoryService {
     if (itemId) { query += ' AND ia.item_id = ?'; params.push(itemId); }
     if (warehouseId) { query += ' AND ia.warehouse_id = ?'; params.push(warehouseId); }
 
-    query += ' ORDER BY ia.created_at DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit) || 50, parseInt(offset) || 0);
+    const lim = Math.min(Math.max(Number.parseInt(String(limit), 10) || 50, 1), 1000);
+    const off = Math.max(Number.parseInt(String(offset), 10) || 0, 0);
+    query += ` ORDER BY ia.created_at DESC LIMIT ${lim} OFFSET ${off}`;
     return db.query(query, params);
   }
 

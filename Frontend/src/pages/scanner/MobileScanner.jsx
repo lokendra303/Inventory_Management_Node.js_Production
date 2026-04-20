@@ -40,7 +40,7 @@ const MobileScanner = () => {
       }
     } catch {
       setStatus('error');
-      setMessage('Network error — make sure phone and PC are on the same WiFi or use ngrok.');
+      setMessage('Network error — make sure phone and PC are on the same Wi‑Fi and the API is reachable.');
     }
   };
 
@@ -51,18 +51,15 @@ const MobileScanner = () => {
       return;
     }
 
-    let ZXing;
-
     const startScanner = async () => {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw Object.assign(new Error('Camera API not available. Open this link over HTTPS (use ngrok) — HTTP blocks camera access on mobile browsers.'), { name: 'NotSecureError' });
+          throw Object.assign(new Error('Camera API not available. Open this page over HTTPS — HTTP blocks camera access on mobile browsers.'), { name: 'NotSecureError' });
         }
 
         // Dynamically import ZXing to avoid SSR issues
         const mod = await import('@zxing/browser');
         const libMod = await import('@zxing/library');
-        ZXing = mod;
 
         // Request camera
         const stream = await navigator.mediaDevices.getUserMedia({

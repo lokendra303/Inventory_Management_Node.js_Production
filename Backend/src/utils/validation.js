@@ -271,7 +271,7 @@ const updatePOStatusSchema = Joi.object({
 
 // Sales Order status update schema
 const updateSOStatusSchema = Joi.object({
-  status: Joi.string().valid('draft', 'confirmed', 'shipped', 'delivered', 'cancelled').required()
+  status: Joi.string().valid('draft', 'confirmed', 'partially_shipped', 'shipped', 'delivered', 'cancelled').required()
 }).unknown(true);
 
 // Automation Rule schemas
