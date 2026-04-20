@@ -1,9 +1,9 @@
 import React from 'react';
-import { Layout, Button, Dropdown, Space } from 'antd';
+import { Layout, Dropdown } from 'antd';
 import {
   MenuFoldOutlined, MenuUnfoldOutlined,
   LogoutOutlined, ClockCircleOutlined, ControlOutlined,
-  BankOutlined, UserOutlined, CaretDownOutlined,
+  BankOutlined, CaretDownOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useNavigate } from 'react-router-dom';
@@ -184,18 +184,15 @@ const Header = ({ collapsed, setCollapsed, user, isMobile }) => {
               border: '1px solid rgba(102,126,234,0.35)',
             }}>
               <BankOutlined style={{ fontSize: 12, color: '#818cf8' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-                <span style={{ fontSize: 9, fontWeight: 500, color: 'rgba(129,140,248,0.65)', letterSpacing: 0.8, textTransform: 'uppercase' }}>Institution</span>
-                <span style={{
-                  fontSize: 12, fontWeight: 700,
-                  color: 'rgba(255,255,255,0.9)',
-                  letterSpacing: 0.2,
-                  maxWidth: 150,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {user.institutionName}
-                </span>
-              </div>
+              <span style={{
+                fontSize: 15, fontWeight: 700,
+                color: 'rgba(255,255,255,0.9)',
+                letterSpacing: 0.2,
+                maxWidth: 150,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {user.institutionName}
+              </span>
             </div>
           )}
 
