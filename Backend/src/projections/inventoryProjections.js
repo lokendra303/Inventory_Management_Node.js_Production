@@ -20,8 +20,20 @@ class InventoryProjectionService {
         case INVENTORY_EVENTS.SALE_SHIPPED:
           await this.handleSaleShipped(institutionId, eventData);
           break;
+        case INVENTORY_EVENTS.SALE_RETURNED:
+          await this.handleSaleReturned(institutionId, eventData);
+          break;
+        case INVENTORY_EVENTS.PURCHASE_RETURNED:
+          await this.handlePurchaseReturned(institutionId, eventData);
+          break;
         case INVENTORY_EVENTS.STOCK_ADJUSTED:
           await this.handleStockAdjusted(institutionId, eventData);
+          break;
+        case INVENTORY_EVENTS.STOCK_DAMAGED:
+          await this.handleStockDamaged(institutionId, eventData);
+          break;
+        case INVENTORY_EVENTS.STOCK_EXPIRED:
+          await this.handleStockExpired(institutionId, eventData);
           break;
         case INVENTORY_EVENTS.TRANSFER_OUT:
           await this.handleTransferOut(institutionId, eventData);
@@ -90,29 +102,39 @@ class InventoryProjectionService {
   async handleSaleReserved(institutionId, eventData) {
     const { itemId, warehouseId, quantity } = eventData;
 
-    await db.query(
+    const result = await db.query(
       `UPDATE inventory_projections 
        SET quantity_reserved = quantity_reserved + ?, 
            quantity_available = quantity_available - ?,
            last_movement_date = NOW(),
            version = version + 1
-       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, institutionId, itemId, warehouseId]
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+         AND quantity_available >= ?`,
+      [quantity, quantity, institutionId, itemId, warehouseId, quantity]
     );
+
+    if (!result.affectedRows) {
+      throw new Error(`Insufficient available stock for reservation: ${itemId} @ ${warehouseId}`);
+    }
   }
 
   async handleSaleReservationCancelled(institutionId, eventData) {
     const { itemId, warehouseId, quantity } = eventData;
 
-    await db.query(
+    const result = await db.query(
       `UPDATE inventory_projections 
        SET quantity_reserved = quantity_reserved - ?, 
            quantity_available = quantity_available + ?,
            last_movement_date = NOW(),
            version = version + 1
-       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+         AND quantity_reserved >= ?`,
       [quantity, quantity, institutionId, itemId, warehouseId]
     );
+
+    if (!result.affectedRows) {
+      throw new Error(`Insufficient reserved stock to release: ${itemId} @ ${warehouseId}`);
+    }
   }
 
   async handleSaleShipped(institutionId, eventData) {
@@ -130,27 +152,35 @@ class InventoryProjectionService {
       
       // If stock was reserved, reduce from reserved; otherwise reduce from available
       if (currentReserved >= quantityToShip) {
-        await db.query(
+        const result = await db.query(
           `UPDATE inventory_projections 
            SET quantity_on_hand = quantity_on_hand - ?,
                quantity_reserved = quantity_reserved - ?,
                last_movement_date = NOW(),
                version = version + 1
-           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [quantityToShip, quantityToShip, institutionId, itemId, warehouseId]
+           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+             AND quantity_reserved >= ? AND quantity_on_hand >= ?`,
+          [quantityToShip, quantityToShip, institutionId, itemId, warehouseId, quantityToShip, quantityToShip]
         );
+        if (!result.affectedRows) {
+          throw new Error(`Unable to ship from reserved stock: ${itemId} @ ${warehouseId}`);
+        }
       } else {
         const fromAvailable = quantityToShip - currentReserved;
-        await db.query(
+        const result = await db.query(
           `UPDATE inventory_projections 
            SET quantity_on_hand = quantity_on_hand - ?,
                quantity_reserved = 0,
                quantity_available = quantity_available - ?,
                last_movement_date = NOW(),
                version = version + 1
-           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [quantityToShip, fromAvailable, institutionId, itemId, warehouseId]
+           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+             AND quantity_on_hand >= ? AND quantity_available >= ?`,
+          [quantityToShip, fromAvailable, institutionId, itemId, warehouseId, quantityToShip, fromAvailable]
         );
+        if (!result.affectedRows) {
+          throw new Error(`Insufficient stock for shipment: ${itemId} @ ${warehouseId}`);
+        }
       }
 
       // Always recalculate total_value after quantity update
@@ -197,26 +227,32 @@ class InventoryProjectionService {
   }
 
   async handleTransferOut(institutionId, eventData) {
-    const { itemId, warehouseId, quantity } = eventData;
+    const { itemId, warehouseId, fromWarehouseId, quantity } = eventData;
+    const sourceWarehouseId = fromWarehouseId || warehouseId;
 
-    await db.query(
+    const result = await db.query(
       `UPDATE inventory_projections 
        SET quantity_on_hand = quantity_on_hand - ?,
            quantity_available = quantity_available - ?,
            total_value = (quantity_on_hand - ?) * average_cost,
            last_movement_date = NOW(),
            version = version + 1
-       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, quantity, institutionId, itemId, warehouseId]
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+         AND quantity_available >= ? AND quantity_on_hand >= ?`,
+      [quantity, quantity, quantity, institutionId, itemId, sourceWarehouseId, quantity, quantity]
     );
+    if (!result.affectedRows) {
+      throw new Error(`Insufficient stock for transfer out: ${itemId} @ ${sourceWarehouseId}`);
+    }
   }
 
   async handleTransferIn(institutionId, eventData) {
-    const { itemId, warehouseId, quantity } = eventData;
+    const { itemId, warehouseId, toWarehouseId, quantity } = eventData;
+    const destinationWarehouseId = toWarehouseId || warehouseId;
 
     const current = await db.query(
       'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-      [institutionId, itemId, warehouseId]
+      [institutionId, itemId, destinationWarehouseId]
     );
 
     if (current.length === 0) {
@@ -224,7 +260,7 @@ class InventoryProjectionService {
         `INSERT INTO inventory_projections 
          (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
          VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
-        [institutionId, itemId, warehouseId, quantity, quantity]
+        [institutionId, itemId, destinationWarehouseId, quantity, quantity]
       );
     } else {
       await db.query(
@@ -235,8 +271,76 @@ class InventoryProjectionService {
              last_movement_date = NOW(),
              version = version + 1
          WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-        [quantity, quantity, quantity, institutionId, itemId, warehouseId]
+        [quantity, quantity, quantity, institutionId, itemId, destinationWarehouseId]
       );
+    }
+  }
+
+  async handleSaleReturned(institutionId, eventData) {
+    const { itemId, warehouseId, quantity } = eventData;
+    await db.query(
+      `UPDATE inventory_projections
+       SET quantity_on_hand = quantity_on_hand + ?,
+           quantity_available = quantity_available + ?,
+           total_value = (quantity_on_hand + ?) * average_cost,
+           last_movement_date = NOW(),
+           version = version + 1
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+      [quantity, quantity, quantity, institutionId, itemId, warehouseId]
+    );
+  }
+
+  async handlePurchaseReturned(institutionId, eventData) {
+    const { itemId, warehouseId, quantity } = eventData;
+    const result = await db.query(
+      `UPDATE inventory_projections
+       SET quantity_on_hand = quantity_on_hand - ?,
+           quantity_available = quantity_available - ?,
+           total_value = (quantity_on_hand - ?) * average_cost,
+           last_movement_date = NOW(),
+           version = version + 1
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+         AND quantity_on_hand >= ? AND quantity_available >= ?`,
+      [quantity, quantity, quantity, institutionId, itemId, warehouseId, quantity, quantity]
+    );
+    if (!result.affectedRows) {
+      throw new Error(`Insufficient stock for purchase return: ${itemId} @ ${warehouseId}`);
+    }
+  }
+
+  async handleStockDamaged(institutionId, eventData) {
+    const { itemId, warehouseId, quantity } = eventData;
+    const result = await db.query(
+      `UPDATE inventory_projections
+       SET quantity_on_hand = quantity_on_hand - ?,
+           quantity_available = quantity_available - ?,
+           total_value = (quantity_on_hand - ?) * average_cost,
+           last_movement_date = NOW(),
+           version = version + 1
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+         AND quantity_on_hand >= ? AND quantity_available >= ?`,
+      [quantity, quantity, quantity, institutionId, itemId, warehouseId, quantity, quantity]
+    );
+    if (!result.affectedRows) {
+      throw new Error(`Insufficient stock to mark damaged: ${itemId} @ ${warehouseId}`);
+    }
+  }
+
+  async handleStockExpired(institutionId, eventData) {
+    const { itemId, warehouseId, quantity } = eventData;
+    const result = await db.query(
+      `UPDATE inventory_projections
+       SET quantity_on_hand = quantity_on_hand - ?,
+           quantity_available = quantity_available - ?,
+           total_value = (quantity_on_hand - ?) * average_cost,
+           last_movement_date = NOW(),
+           version = version + 1
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+         AND quantity_on_hand >= ? AND quantity_available >= ?`,
+      [quantity, quantity, quantity, institutionId, itemId, warehouseId, quantity, quantity]
+    );
+    if (!result.affectedRows) {
+      throw new Error(`Insufficient stock to mark expired: ${itemId} @ ${warehouseId}`);
     }
   }
 

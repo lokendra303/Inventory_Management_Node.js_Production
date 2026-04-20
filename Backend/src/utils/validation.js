@@ -317,6 +317,7 @@ const createSalesInvoiceSchema = Joi.object({
   customerName: Joi.string().max(255).required(),
   soId: Joi.string().uuid().optional(),
   deliveryNoteId: Joi.string().uuid().optional(),
+  warehouseId: Joi.string().uuid().optional(),
   invoiceDate: Joi.date().required(),
   dueDate: Joi.date().optional(),
   currency: Joi.string().length(3).default('USD'),
@@ -326,6 +327,7 @@ const createSalesInvoiceSchema = Joi.object({
   lines: Joi.array().items(Joi.object({
     soLineId: Joi.string().uuid().optional(),
     deliveryLineId: Joi.string().uuid().optional(),
+    warehouseId: Joi.string().uuid().optional(),
     itemId: Joi.string().uuid().optional().allow(null),
     itemName: Joi.string().max(255).required(),
     quantity: Joi.number().positive().required(),

@@ -1,4 +1,16 @@
 const db = require('../../database/connection');
+const { INVENTORY_EVENTS } = require('../../events/inventoryEvents');
+
+function buildUtcDayRange(dateStr) {
+  const start = new Date(`${dateStr}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return {
+    start: start.toISOString().slice(0, 19).replace('T', ' '),
+    end: end.toISOString().slice(0, 19).replace('T', ' ')
+  };
+}
 
 class ReportsService {
   // Inventory Reports
@@ -45,12 +57,18 @@ class ReportsService {
     const params = [institutionId];
 
     if (filters.startDate) {
-      query += ' AND DATE(es.created_at) >= ?';
-      params.push(filters.startDate);
+      const range = buildUtcDayRange(filters.startDate);
+      if (range) {
+        query += ' AND es.created_at >= ?';
+        params.push(range.start);
+      }
     }
     if (filters.endDate) {
-      query += ' AND DATE(es.created_at) <= ?';
-      params.push(filters.endDate);
+      const range = buildUtcDayRange(filters.endDate);
+      if (range) {
+        query += ' AND es.created_at < ?';
+        params.push(range.end);
+      }
     }
     if (filters.itemId) {
       query += ' AND JSON_UNQUOTE(JSON_EXTRACT(es.event_data, "$.itemId")) = ?';
@@ -107,17 +125,23 @@ class ReportsService {
       JOIN items i ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = i.id
       LEFT JOIN warehouses wf ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.fromWarehouseId')) = wf.id
       LEFT JOIN warehouses wt ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.toWarehouseId')) = wt.id
-      WHERE es.institution_id = ? AND es.event_type IN ('TRANSFER_OUT', 'TRANSFER_IN')
+      WHERE es.institution_id = ? AND es.event_type IN (?, ?)
     `;
-    const params = [institutionId];
+    const params = [institutionId, INVENTORY_EVENTS.TRANSFER_OUT, INVENTORY_EVENTS.TRANSFER_IN];
 
     if (filters.startDate) {
-      query += ' AND DATE(es.created_at) >= ?';
-      params.push(filters.startDate);
+      const range = buildUtcDayRange(filters.startDate);
+      if (range) {
+        query += ' AND es.created_at >= ?';
+        params.push(range.start);
+      }
     }
     if (filters.endDate) {
-      query += ' AND DATE(es.created_at) <= ?';
-      params.push(filters.endDate);
+      const range = buildUtcDayRange(filters.endDate);
+      if (range) {
+        query += ' AND es.created_at < ?';
+        params.push(range.end);
+      }
     }
     if (filters.fromWarehouseId) {
       query += ' AND JSON_UNQUOTE(JSON_EXTRACT(es.event_data, "$.fromWarehouseId")) = ?';

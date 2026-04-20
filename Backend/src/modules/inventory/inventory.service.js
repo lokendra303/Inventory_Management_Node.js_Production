@@ -6,6 +6,21 @@ const projectionService = require('../../projections/inventoryProjections');
 const logger = require('../../utils/logger');
 
 class InventoryService {
+  async applyProjectionForNewEvent(eventId, institutionId, eventType, eventData) {
+    if (!eventId) {
+      logger.info('Skipping projection update for duplicate event', {
+        institutionId,
+        eventType,
+        itemId: eventData.itemId,
+        warehouseId: eventData.warehouseId || eventData.fromWarehouseId || eventData.toWarehouseId
+      });
+      return false;
+    }
+
+    await projectionService.handleInventoryEvent(institutionId, eventType, eventData);
+    return true;
+  }
+
   async receiveStock(institutionId, data, userId) {
     const { 
       itemId, 
@@ -53,8 +68,7 @@ class InventoryService {
         idempotencyKey
       );
 
-      // Update projection
-      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.PURCHASE_RECEIVED, {
+      await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.PURCHASE_RECEIVED, {
         itemId,
         warehouseId,
         quantity,
@@ -118,8 +132,7 @@ class InventoryService {
         idempotencyKey
       );
 
-      // Update projection
-      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.SALE_RESERVED, {
+      await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.SALE_RESERVED, {
         itemId,
         warehouseId,
         quantity
@@ -150,15 +163,24 @@ class InventoryService {
     const idempotencyKey = `ship-${soLineId}-${shipmentNumber}`;
 
     try {
-      // Zoho-like behavior: shipment consumes reserved stock for SO lines.
       const projection = await projectionService.getInventoryProjection(institutionId, itemId, warehouseId);
       const reservedQty = projection ? Number(projection.quantity_reserved || 0) : 0;
+      const availableQty = projection ? Number(projection.quantity_available || 0) : 0;
       const shipQty = Number(quantity);
-      if (reservedQty < shipQty) {
+      const hasSalesOrderRef = Boolean(
+        soId &&
+        soLineId &&
+        soId !== '00000000-0000-0000-0000-000000000000' &&
+        soLineId !== '00000000-0000-0000-0000-000000000000'
+      );
+      if (hasSalesOrderRef && reservedQty < shipQty) {
         throw new Error(`Insufficient reserved stock: reserved ${reservedQty}, requested ${shipQty}`);
       }
+      if (!hasSalesOrderRef && availableQty < shipQty) {
+        throw new Error(`Insufficient available stock: available ${availableQty}, requested ${shipQty}`);
+      }
 
-      if (soId && soLineId && soId !== '00000000-0000-0000-0000-000000000000' && soLineId !== '00000000-0000-0000-0000-000000000000') {
+      if (hasSalesOrderRef) {
         const soLines = await db.query(
           `SELECT quantity_ordered, quantity_shipped
            FROM sales_order_lines
@@ -197,8 +219,7 @@ class InventoryService {
         idempotencyKey
       );
 
-      // Update projection
-      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.SALE_SHIPPED, {
+      await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.SALE_SHIPPED, {
         itemId,
         warehouseId,
         quantity
@@ -320,13 +341,10 @@ class InventoryService {
         throw new Error(`Insufficient stock: available ${availableQty}, requested ${requestedQty}`);
       }
 
-      const averageCost = parseFloat(sourceProjection[0].average_cost) || 0;
-      const transferValue = requestedQty * averageCost;
-
       // Record transfer event for history
       const transferDate = new Date().toISOString();
       const idempotencyKey = `transfer-${transferId}`;
-      await eventStore.appendEvent(
+      const outEventId = await eventStore.appendEvent(
         institutionId, 'inventory',
         createAggregateId(itemId, fromWarehouseId),
         INVENTORY_EVENTS.TRANSFER_OUT,
@@ -334,7 +352,7 @@ class InventoryService {
         { userId },
         idempotencyKey
       );
-      await eventStore.appendEvent(
+      const inEventId = await eventStore.appendEvent(
         institutionId, 'inventory',
         createAggregateId(itemId, toWarehouseId),
         INVENTORY_EVENTS.TRANSFER_IN,
@@ -343,42 +361,18 @@ class InventoryService {
         `${idempotencyKey}-in`
       );
 
-      // Deduct from source — recalculate total_value from updated quantity
-      await db.query(
-        `UPDATE inventory_projections 
-         SET quantity_on_hand = quantity_on_hand - ?,
-             quantity_available = quantity_available - ?,
-             total_value = (quantity_on_hand - ?) * average_cost,
-             last_movement_date = NOW()
-         WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-        [requestedQty, requestedQty, requestedQty, institutionId, itemId, fromWarehouseId]
-      );
-
-      const destExists = await db.query(
-        'SELECT id, average_cost FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-        [institutionId, itemId, toWarehouseId]
-      );
-
-      if (destExists.length === 0) {
-        // New record at destination — carry average_cost from source
-        await db.query(
-          `INSERT INTO inventory_projections 
-           (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
-           VALUES (UUID(), ?, ?, ?, ?, ?, 0, ?, ?, NOW(), 1)`,
-          [institutionId, itemId, toWarehouseId, requestedQty, requestedQty, averageCost, transferValue]
-        );
-      } else {
-        // Existing record — recalculate total_value from updated quantity
-        await db.query(
-          `UPDATE inventory_projections 
-           SET quantity_on_hand = quantity_on_hand + ?,
-               quantity_available = quantity_available + ?,
-               total_value = (quantity_on_hand + ?) * average_cost,
-               last_movement_date = NOW()
-           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-          [requestedQty, requestedQty, requestedQty, institutionId, itemId, toWarehouseId]
-        );
-      }
+      await this.applyProjectionForNewEvent(outEventId, institutionId, INVENTORY_EVENTS.TRANSFER_OUT, {
+        itemId,
+        fromWarehouseId,
+        toWarehouseId,
+        quantity: requestedQty
+      });
+      await this.applyProjectionForNewEvent(inEventId, institutionId, INVENTORY_EVENTS.TRANSFER_IN, {
+        itemId,
+        fromWarehouseId,
+        toWarehouseId,
+        quantity: requestedQty
+      });
 
       return transferId;
     } catch (error) {
@@ -417,8 +411,6 @@ class InventoryService {
     const revertId = uuidv4();
     const revertDate = new Date().toISOString();
     const idempotencyKey = `revert-${transferId}`;
-    const averageCost = parseFloat(destProjection[0].average_cost) || 0;
-
     await eventStore.appendEvent(
       institutionId, 'inventory',
       createAggregateId(itemId, toWarehouseId),
@@ -436,41 +428,18 @@ class InventoryService {
       `${idempotencyKey}-in`
     );
 
-    // Deduct from destination
-    await db.query(
-      `UPDATE inventory_projections
-       SET quantity_on_hand = quantity_on_hand - ?,
-           quantity_available = quantity_available - ?,
-           total_value = (quantity_on_hand - ?) * average_cost,
-           last_movement_date = NOW()
-       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-      [quantity, quantity, quantity, institutionId, itemId, toWarehouseId]
-    );
-
-    // Add back to source
-    const srcExists = await db.query(
-      'SELECT id FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-      [institutionId, itemId, fromWarehouseId]
-    );
-
-    if (srcExists.length === 0) {
-      await db.query(
-        `INSERT INTO inventory_projections
-         (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
-         VALUES (UUID(), ?, ?, ?, ?, ?, 0, ?, ?, NOW(), 1)`,
-        [institutionId, itemId, fromWarehouseId, quantity, quantity, averageCost, quantity * averageCost]
-      );
-    } else {
-      await db.query(
-        `UPDATE inventory_projections
-         SET quantity_on_hand = quantity_on_hand + ?,
-             quantity_available = quantity_available + ?,
-             total_value = (quantity_on_hand + ?) * average_cost,
-             last_movement_date = NOW()
-         WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-        [quantity, quantity, quantity, institutionId, itemId, fromWarehouseId]
-      );
-    }
+    await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.TRANSFER_OUT, {
+      itemId,
+      fromWarehouseId: toWarehouseId,
+      toWarehouseId: fromWarehouseId,
+      quantity
+    });
+    await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.TRANSFER_IN, {
+      itemId,
+      fromWarehouseId: toWarehouseId,
+      toWarehouseId: fromWarehouseId,
+      quantity
+    });
 
     logger.info('Transfer reverted', { transferId, revertId, institutionId, userId });
     return revertId;
@@ -562,8 +531,7 @@ class InventoryService {
         idempotencyKey
       );
 
-      // Update projection - add back to stock
-      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.SALE_RETURNED, {
+      await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.SALE_RETURNED, {
         itemId,
         warehouseId,
         quantity
@@ -612,11 +580,10 @@ class InventoryService {
         idempotencyKey
       );
 
-      // Update projection - remove from stock
-      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.PURCHASE_RETURNED, {
+      await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.PURCHASE_RETURNED, {
         itemId,
         warehouseId,
-        quantity: -quantity
+        quantity
       });
 
       return eventId;
@@ -649,11 +616,10 @@ class InventoryService {
         idempotencyKey
       );
 
-      // Update projection - remove from available stock
-      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.STOCK_DAMAGED, {
+      await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.STOCK_DAMAGED, {
         itemId,
         warehouseId,
-        quantity: -quantity
+        quantity
       });
 
       return eventId;
@@ -686,11 +652,10 @@ class InventoryService {
         idempotencyKey
       );
 
-      // Update projection - remove from available stock
-      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.STOCK_EXPIRED, {
+      await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.STOCK_EXPIRED, {
         itemId,
         warehouseId,
-        quantity: -quantity
+        quantity
       });
 
       return eventId;
@@ -762,8 +727,7 @@ class InventoryService {
         idempotencyKey
       );
 
-      // Update projection - release reserved stock
-      await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED, {
+      await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED, {
         itemId,
         warehouseId,
         quantity
@@ -778,15 +742,31 @@ class InventoryService {
 
   async deleteInventory(institutionId, itemId, warehouseId, userId) {
     try {
+      const current = await db.query(
+        'SELECT quantity_on_hand, quantity_reserved FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+        [institutionId, itemId, warehouseId]
+      );
+      if (!current.length) {
+        throw new Error('Inventory record not found');
+      }
+      if (Number(current[0].quantity_on_hand || 0) !== 0 || Number(current[0].quantity_reserved || 0) !== 0) {
+        throw new Error('Cannot delete inventory with non-zero on-hand or reserved quantity');
+      }
+      const history = await db.query(
+        `SELECT COUNT(*) as count
+         FROM event_store
+         WHERE institution_id = ? AND aggregate_type = 'inventory' AND aggregate_id = ?`,
+        [institutionId, createAggregateId(itemId, warehouseId)]
+      );
+      if (Number(history[0]?.count || 0) > 0) {
+        throw new Error('Cannot delete inventory with event history; use stock adjustment workflow');
+      }
+
       // Delete inventory projection
       const result = await db.query(
         'DELETE FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
         [institutionId, itemId, warehouseId]
       );
-
-      if (result.affectedRows === 0) {
-        throw new Error('Inventory record not found');
-      }
 
       logger.info('Inventory deleted', { itemId, warehouseId, institutionId, userId });
       return true;

@@ -67,6 +67,26 @@ const EVENT_SCHEMAS = {
     shippedDate: 'string',
     shipmentNumber: 'string'
   },
+
+  [INVENTORY_EVENTS.SALE_RETURNED]: {
+    itemId: 'string',
+    warehouseId: 'string',
+    quantity: 'number',
+    unitPrice: 'number',
+    soId: 'string',
+    soLineId: 'string',
+    returnedDate: 'string'
+  },
+
+  [INVENTORY_EVENTS.PURCHASE_RETURNED]: {
+    itemId: 'string',
+    warehouseId: 'string',
+    quantity: 'number',
+    unitCost: 'number',
+    poId: 'string',
+    poLineId: 'string',
+    returnedDate: 'string'
+  },
   
   [INVENTORY_EVENTS.STOCK_ADJUSTED]: {
     itemId: 'string',
@@ -93,6 +113,22 @@ const EVENT_SCHEMAS = {
     quantity: 'number',
     transferId: 'string',
     transferDate: 'string'
+  },
+
+  [INVENTORY_EVENTS.STOCK_DAMAGED]: {
+    itemId: 'string',
+    warehouseId: 'string',
+    quantity: 'number',
+    reason: 'string',
+    damagedDate: 'string'
+  },
+
+  [INVENTORY_EVENTS.STOCK_EXPIRED]: {
+    itemId: 'string',
+    warehouseId: 'string',
+    quantity: 'number',
+    expiryDate: 'string',
+    expiredDate: 'string'
   }
 };
 
@@ -119,7 +155,19 @@ function validateEventData(eventType, eventData) {
   }
 
   // Additional validations
-  if (eventType.includes('SALE_') || eventType.includes('TRANSFER_') || eventType.includes('PURCHASE_')) {
+  const positiveQuantityEvents = new Set([
+    INVENTORY_EVENTS.PURCHASE_RECEIVED,
+    INVENTORY_EVENTS.PURCHASE_RETURNED,
+    INVENTORY_EVENTS.SALE_RESERVED,
+    INVENTORY_EVENTS.SALE_SHIPPED,
+    INVENTORY_EVENTS.SALE_RETURNED,
+    INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED,
+    INVENTORY_EVENTS.TRANSFER_OUT,
+    INVENTORY_EVENTS.TRANSFER_IN,
+    INVENTORY_EVENTS.STOCK_DAMAGED,
+    INVENTORY_EVENTS.STOCK_EXPIRED
+  ]);
+  if (positiveQuantityEvents.has(eventType)) {
     if (eventData.quantity <= 0) {
       throw new Error('Quantity must be positive');
     }

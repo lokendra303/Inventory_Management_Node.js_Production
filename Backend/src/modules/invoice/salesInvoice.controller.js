@@ -5,6 +5,7 @@ const invoicePDFService = require('./invoicePDF.service');
 const emailService = require('../../services/emailService');
 const { v4: uuidv4 } = require('uuid');
 const { roundToTwo, safeAdd, safeSubtract } = require('../../utils/precision');
+const { INVENTORY_EVENTS, createAggregateId } = require('../../events/inventoryEvents');
 
 class SalesInvoiceController {
   // Create Sales Invoice
@@ -78,7 +79,8 @@ class SalesInvoiceController {
           user?.userId || 1
         ]);
 
-        for (const line of invoiceData.lines) {
+        for (let index = 0; index < invoiceData.lines.length; index += 1) {
+          const line = invoiceData.lines[index];
           const quantity = line.quantity || 0;
           const unitPrice = line.unitPrice || 0;
           const lineTotal = quantity * unitPrice;
@@ -108,11 +110,75 @@ class SalesInvoiceController {
             discountAmount
           ]);
 
-          // Direct inventory deduction for manual invoices
           if (line.itemId && quantity > 0) {
+            const warehouseId = line.warehouseId || invoiceData.warehouseId;
+            if (!warehouseId) {
+              throw new Error('Warehouse is required for stock item lines on sales invoice');
+            }
+
+            const [projection] = await connection.execute(
+              `SELECT quantity_on_hand, quantity_available, average_cost, version
+               FROM inventory_projections
+               WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+               FOR UPDATE`,
+              [institutionId, line.itemId, warehouseId]
+            );
+            if (!projection) {
+              throw new Error(`No inventory found for item ${line.itemId} in warehouse ${warehouseId}`);
+            }
+
+            const onHand = Number(projection.quantity_on_hand || 0);
+            const available = Number(projection.quantity_available || 0);
+            const averageCost = Number(projection.average_cost || 0);
+            if (available < quantity || onHand < quantity) {
+              throw new Error(`Insufficient stock for item ${line.itemName || line.itemId} in selected warehouse`);
+            }
+
+            const newOnHand = onHand - quantity;
+            const newAvailable = available - quantity;
+            const newTotalValue = newOnHand * averageCost;
+
             await connection.execute(
-              'UPDATE items SET stock_quantity = stock_quantity - ? WHERE id = ? AND institution_id = ?',
-              [quantity, line.itemId, institutionId]
+              `UPDATE inventory_projections
+               SET quantity_on_hand = ?, quantity_available = ?, total_value = ?, last_movement_date = NOW(), version = version + 1
+               WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+              [newOnHand, newAvailable, newTotalValue, institutionId, line.itemId, warehouseId]
+            );
+
+            const aggregateId = createAggregateId(line.itemId, warehouseId);
+            const [versionRow] = await connection.execute(
+              `SELECT COALESCE(MAX(aggregate_version), 0) as currentVersion
+               FROM event_store
+               WHERE institution_id = ? AND aggregate_type = 'inventory' AND aggregate_id = ?
+               FOR UPDATE`,
+              [institutionId, aggregateId]
+            );
+            const nextVersion = Number(versionRow.currentVersion || 0) + 1;
+            await connection.execute(
+              `INSERT INTO event_store
+               (id, institution_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_data, metadata, idempotency_key, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                uuidv4(),
+                institutionId,
+                'inventory',
+                aggregateId,
+                nextVersion,
+                INVENTORY_EVENTS.SALE_SHIPPED,
+                JSON.stringify({
+                  itemId: line.itemId,
+                  warehouseId,
+                  quantity,
+                  unitPrice,
+                  soId: line.soId || invoiceData.soId || '00000000-0000-0000-0000-000000000000',
+                  soLineId: line.soLineId || '00000000-0000-0000-0000-000000000000',
+                  shipmentNumber: invoiceNumber,
+                  shippedDate: new Date().toISOString()
+                }),
+                JSON.stringify({ userId: user?.userId || 1, source: 'sales_invoice' }),
+                `sales-invoice-${invoiceId}-${index}`,
+                user?.userId || 1
+              ]
             );
 
             await connection.execute(`
