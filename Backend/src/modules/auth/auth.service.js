@@ -6,11 +6,8 @@ const config = require('../../config');
 const logger = require('../../utils/logger');
 const { ROLE_PERMISSIONS } = require('../../constants/permissions');
 const emailService = require('../../services/emailService');
+const otpService = require('./otp.service');
 
-// In-memory OTP store
-// Login OTPs: key = `${email}:${institutionId}`, value = { otp, expiresAt, userId, institutionId }
-// Registration OTPs: key = `reg:${email}`, value = { otp, expiresAt }
-const otpStore = new Map();
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 class AuthService {
@@ -197,8 +194,14 @@ class AuthService {
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const key = `${email}:${user.institution_id}`;
-    otpStore.set(key, { otp, expiresAt: Date.now() + OTP_TTL_MS, userId: user.id, institutionId: user.institution_id });
+    await otpService.createOtp({
+      purpose: 'login',
+      email,
+      otp,
+      institutionId: user.institution_id,
+      userId: user.id,
+      ttlMs: OTP_TTL_MS
+    });
 
     // Send OTP email (non-fatal — log warning if email fails)
     try {
@@ -219,8 +222,12 @@ class AuthService {
   // Send OTP for pre-registration email verification
   async sendRegistrationOtp(email) {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const key = `reg:${email}`;
-    otpStore.set(key, { otp, expiresAt: Date.now() + OTP_TTL_MS });
+    await otpService.createOtp({
+      purpose: 'registration',
+      email,
+      otp,
+      ttlMs: OTP_TTL_MS
+    });
 
     try {
       await emailService.sendEmail({
@@ -239,33 +246,24 @@ class AuthService {
 
   // Verify pre-registration OTP (does NOT issue JWT)
   async verifyRegistrationOtp(email, otp) {
-    const key = `reg:${email}`;
-    const record = otpStore.get(key);
-
-    if (!record) throw new Error('OTP not found or already used. Please request a new OTP.');
-    if (Date.now() > record.expiresAt) {
-      otpStore.delete(key);
-      throw new Error('OTP has expired. Please request a new OTP.');
-    }
-    if (record.otp !== otp) throw new Error('Invalid OTP.');
-
-    otpStore.delete(key); // one-time use
+    await otpService.verifyOtp({ purpose: 'registration', email, otp });
     return { success: true };
   }
 
   // Step 2: verify login OTP and issue JWT
   async verifyOtp(email, otp, institutionId) {
-    const key = `${email}:${institutionId}`;
-    const record = otpStore.get(key);
-
-    if (!record) throw new Error('OTP not found or already used. Please login again.');
-    if (Date.now() > record.expiresAt) {
-      otpStore.delete(key);
-      throw new Error('OTP has expired. Please login again.');
+    try {
+      await otpService.verifyOtp({ purpose: 'login', email, otp, institutionId });
+    } catch (err) {
+      // Preserve the "login again" hint on missing/expired login OTPs
+      if (err.message && err.message.includes('not found')) {
+        throw new Error('OTP not found or already used. Please login again.');
+      }
+      if (err.message && err.message.includes('expired')) {
+        throw new Error('OTP has expired. Please login again.');
+      }
+      throw err;
     }
-    if (record.otp !== otp) throw new Error('Invalid OTP.');
-
-    otpStore.delete(key); // one-time use
     return this.issueToken(email, institutionId);
   }
 
@@ -817,8 +815,13 @@ class AuthService {
     if (users.length === 0) throw new Error('This email is not registered. Please check and try again.');
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const key = `reset:${email}`;
-    otpStore.set(key, { otp, expiresAt: Date.now() + OTP_TTL_MS });
+    await otpService.createOtp({
+      purpose: 'password_reset',
+      email,
+      otp,
+      userId: users[0].id,
+      ttlMs: OTP_TTL_MS
+    });
 
     try {
       await emailService.sendEmail({
@@ -837,17 +840,7 @@ class AuthService {
 
   // Verify reset OTP and return a short-lived reset token
   async verifyResetOtp(email, otp) {
-    const key = `reset:${email}`;
-    const record = otpStore.get(key);
-
-    if (!record) throw new Error('OTP not found or already used. Please request a new OTP.');
-    if (Date.now() > record.expiresAt) {
-      otpStore.delete(key);
-      throw new Error('OTP has expired. Please request a new OTP.');
-    }
-    if (record.otp !== otp) throw new Error('Invalid OTP.');
-
-    otpStore.delete(key);
+    await otpService.verifyOtp({ purpose: 'password_reset', email, otp });
 
     // Issue a short-lived reset token (10 min)
     const resetToken = require('jsonwebtoken').sign(
