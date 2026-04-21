@@ -1,0 +1,8 @@
+.company-settings {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.company-settings__intro {
+  margin-bottom: 20px;
+}

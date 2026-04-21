@@ -16,9 +16,8 @@ export const documentService = {
     if (associatedEntity) formData.append('associatedEntity', associatedEntity);
     if (associatedEntityId) formData.append('associatedEntityId', associatedEntityId);
 
-    return apiService.post('/documents/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
+    // Let axios set multipart boundary (same as company-settings uploads; do not force Content-Type).
+    return apiService.post('/documents/upload', formData);
   },
 
   getDocuments: async (folderId = null, view = 'all') => {

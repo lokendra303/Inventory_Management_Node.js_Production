@@ -48,13 +48,23 @@ export function getServerOrigin() {
   return api.replace(/\/api\/?$/, '');
 }
 
-/** Build absolute URL for paths like /uploads/... returned by the API */
+/**
+ * Absolute or same-origin URL for /uploads/... paths from the API.
+ * In dev with relative `/api`, use root-relative `/uploads/...` so the CRA dev server
+ * proxies to the same target as package.json "proxy" (localhost:5000). Cross-origin
+ * http://127.0.0.1:5000 often breaks previews (cookies, mixed setups, IPv4/IPv6).
+ */
 export function mediaUrl(path, { cacheBust = false } = {}) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
-  const base = getServerOrigin();
   const p = path.startsWith('/') ? path : `/${path}`;
-  return cacheBust ? `${base}${p}?t=${Date.now()}` : `${base}${p}`;
+  const api = getApiBaseUrl();
+  if (api.startsWith('/') && typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    return cacheBust ? `${p}?t=${Date.now()}` : p;
+  }
+  const base = getServerOrigin().replace(/\/$/, '');
+  const q = cacheBust ? `?t=${Date.now()}` : '';
+  return `${base}${p}${q}`;
 }
 
 /**

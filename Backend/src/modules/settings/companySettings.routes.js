@@ -52,4 +52,13 @@ router.put('/', companySettingsController.updateSettings);
 router.post('/upload/:fileType', upload.single('file'), companySettingsController.uploadFile);
 router.delete('/upload/:fileType', companySettingsController.deleteFile);
 
+router.post('/addresses', companySettingsController.addAddress.bind(companySettingsController));
+router.put('/addresses/:id', companySettingsController.updateAddress.bind(companySettingsController));
+router.delete('/addresses/:id', companySettingsController.deleteAddress.bind(companySettingsController));
+
+router.patch('/stamps/:id', companySettingsController.patchStamp.bind(companySettingsController));
+router.delete('/stamps/:id', companySettingsController.deleteStamp.bind(companySettingsController));
+router.patch('/signatures/:id', companySettingsController.patchSignature.bind(companySettingsController));
+router.delete('/signatures/:id', companySettingsController.deleteSignature.bind(companySettingsController));
+
 module.exports = router;

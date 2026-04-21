@@ -81,6 +81,12 @@ class ApiService {
             }
           }
         }
+
+        // Multipart uploads: default axios JSON Content-Type breaks multer (no file parsed).
+        if (config.data instanceof FormData) {
+          delete config.headers['Content-Type'];
+        }
+
         return config;
       },
       (error) => {
