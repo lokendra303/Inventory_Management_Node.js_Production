@@ -5,6 +5,15 @@ const fs = require('fs');
 const multi = require('./companySettingsMulti.service');
 
 class CompanySettingsController {
+  resolveUploadAbsolutePath(relativeUploadPath) {
+    const rel = String(relativeUploadPath || '').replace(/^\/+/, '');
+    const candidates = [
+      path.join(__dirname, '../../../', rel), // Backend/uploads/... (current)
+      path.join(__dirname, '../../', rel), // Backend/src/uploads/... (legacy)
+    ];
+    return candidates.find((p) => fs.existsSync(p)) || candidates[0];
+  }
+
   async getSettings(req, res) {
     try {
       const { institutionId } = req;
@@ -213,7 +222,7 @@ class CompanySettingsController {
       );
 
       if (settings && settings[columnName]) {
-        const fp = path.join(__dirname, '../../', settings[columnName]);
+        const fp = this.resolveUploadAbsolutePath(settings[columnName]);
         if (fs.existsSync(fp)) {
           fs.unlinkSync(fp);
         }

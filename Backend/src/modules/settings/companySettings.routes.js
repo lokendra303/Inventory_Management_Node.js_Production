@@ -13,7 +13,7 @@ router.use(requireRole(['admin', 'super_admin']));
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const { fileType } = req.params;
-    const uploadDir = path.join(__dirname, `../../uploads/company/${fileType}s`);
+    const uploadDir = path.join(__dirname, `../../../uploads/company/${fileType}s`);
     
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });

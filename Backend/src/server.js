@@ -49,7 +49,12 @@ class Server {
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
     // Serve static uploads (BEFORE authentication)
-    this.app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+    // Support both current and legacy upload locations.
+    this.app.use(
+      '/uploads',
+      express.static(path.join(__dirname, '..', 'uploads')),
+      express.static(path.join(__dirname, 'uploads'))
+    );
 
     // Request logging
     this.app.use((req, res, next) => {
