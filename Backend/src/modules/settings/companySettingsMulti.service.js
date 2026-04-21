@@ -3,17 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const { resolveUploadAbsolutePath } = require('../../shared/storage/fileStorage');
 
 let tablesReady = false;
-
-function resolveUploadAbsolutePath(relativeUploadPath) {
-  const rel = String(relativeUploadPath || '').replace(/^\/+/, '');
-  const candidates = [
-    path.join(__dirname, '../../../', rel), // Backend/uploads/... (current)
-    path.join(__dirname, '../../', rel), // Backend/src/uploads/... (legacy)
-  ];
-  return candidates.find((p) => fs.existsSync(p)) || candidates[0];
-}
 
 async function ensureTables() {
   if (tablesReady) return;
@@ -361,7 +353,7 @@ async function deleteStamp(institutionId, stampId) {
   if (!row) throw new Error('Stamp not found');
 
   if (row.file_path) {
-    const abs = resolveUploadAbsolutePath(row.file_path);
+    const abs = resolveUploadAbsolutePath(path.join(__dirname, '../..'), row.file_path);
     if (fs.existsSync(abs)) {
       try { fs.unlinkSync(abs); } catch (e) { logger.warn('Stamp file delete', { error: e.message }); }
     }
@@ -444,7 +436,7 @@ async function deleteSignature(institutionId, sigId) {
   if (!row) throw new Error('Signature not found');
 
   if (row.file_path) {
-    const abs = resolveUploadAbsolutePath(row.file_path);
+    const abs = resolveUploadAbsolutePath(path.join(__dirname, '../..'), row.file_path);
     if (fs.existsSync(abs)) {
       try { fs.unlinkSync(abs); } catch (e) { logger.warn('Signature file delete', { error: e.message }); }
     }
