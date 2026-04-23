@@ -43,6 +43,25 @@ const ICON_COLORS = {
   'settings-menu'  : '#a0a0b0',
 };
 
+/* ── Active-child resolution ──────────────────────────
+ * Pick at most one child as "active" using a longest-prefix-match rule.
+ * Fixes the case where `/warehouses` would also light up when the current
+ * URL is `/warehouses/locations` — both match under plain prefix logic.
+ * The child with the longer key wins; `/warehouses/123/edit` still lights
+ * up `/warehouses` because it's the longest-matching key among siblings.
+ */
+const resolveActiveChildKey = (children, pathname) => {
+  let best = null;
+  for (const c of children || []) {
+    if (!c || !c.key) continue;
+    const k = String(c.key);
+    if (pathname === k || pathname.startsWith(k + '/')) {
+      if (best === null || k.length > best.length) best = k;
+    }
+  }
+  return best;
+};
+
 /* ── Flyout popup (collapsed submenu) ───────────────── */
 const CollapsedFlyout = ({ item, iconColor, location, onNavigate, anchorRef }) => {
   const [visible, setVisible] = useState(false);
@@ -126,18 +145,18 @@ const CollapsedFlyout = ({ item, iconColor, location, onNavigate, anchorRef }) =
             <span style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>{item.label}</span>
           </div>
 
-          {item.children?.map(child => {
-            const active = location.pathname === child.key || location.pathname.startsWith(child.key + '/');
-            return (
+          {(() => {
+            const activeKey = resolveActiveChildKey(item.children, location.pathname);
+            return item.children?.map(child => (
               <FlyoutChild
                 key={child.key}
                 child={child}
-                active={active}
+                active={child.key === activeKey}
                 accentColor={iconColor}
                 onNavigate={onNavigate}
               />
-            );
-          })}
+            ));
+          })()}
         </div>
       )}
     </div>
@@ -244,18 +263,18 @@ const SubMenu = ({ item, location, onNavigate, iconColor }) => {
         borderRadius: open ? '0 0 10px 10px' : 0,
         margin: '0 8px',
       }}>
-        {item.children?.map(child => {
-          const active = location.pathname === child.key || location.pathname.startsWith(child.key + '/');
-          return (
+        {(() => {
+          const activeKey = resolveActiveChildKey(item.children, location.pathname);
+          return item.children?.map(child => (
             <ChildItem
               key={child.key}
               child={child}
-              active={active}
+              active={child.key === activeKey}
               onNavigate={onNavigate}
               accentColor={iconColor}
             />
-          );
-        })}
+          ));
+        })()}
       </div>
     </div>
   );
