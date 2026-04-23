@@ -10,9 +10,9 @@ class WarehouseService {
     const warehouseId = uuidv4();
 
     await db.query(
-      `INSERT INTO warehouses (id, institution_id, code, name, type, address, contact_person, phone, email, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [warehouseId, institutionId, code, name, type || 'standard', address, contactPerson, phone, email]
+      `INSERT INTO warehouses (id, institution_id, code, name, type, address, contact_person, phone, email, status, created_by) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+      [warehouseId, institutionId, code, name, type || 'standard', address, contactPerson, phone, email, userId || null]
     );
 
     logger.info('Warehouse created', { warehouseId, institutionId, code, userId });
@@ -72,6 +72,8 @@ class WarehouseService {
     }
 
     updateFields.push('updated_at = NOW()');
+    updateFields.push('updated_by = ?');
+    updateValues.push(userId || null);
 
     const result = await db.query(
       `UPDATE warehouses SET ${updateFields.join(', ')} WHERE institution_id = ? AND id = ?`,
@@ -113,9 +115,23 @@ class WarehouseService {
         throw new Error('Warehouse ID is required');
       }
       
-      // Get warehouse basic info
+      // Warehouse row + creator / last editor display names from institution_users
       const warehouses = await db.query(
-        'SELECT * FROM warehouses WHERE institution_id = ? AND id = ?',
+        `SELECT w.*,
+            COALESCE(
+              NULLIF(TRIM(CONCAT_WS(' ', cu.first_name, cu.last_name)), ''),
+              cu.email,
+              CAST(w.created_by AS CHAR)
+            ) AS created_by_display,
+            COALESCE(
+              NULLIF(TRIM(CONCAT_WS(' ', uu.first_name, uu.last_name)), ''),
+              uu.email,
+              CAST(w.updated_by AS CHAR)
+            ) AS updated_by_display
+         FROM warehouses w
+         LEFT JOIN institution_users cu ON cu.id = w.created_by AND cu.institution_id = w.institution_id
+         LEFT JOIN institution_users uu ON uu.id = w.updated_by AND uu.institution_id = w.institution_id
+         WHERE w.institution_id = ? AND w.id = ?`,
         [institutionId, warehouseId]
       );
 
@@ -123,7 +139,12 @@ class WarehouseService {
         throw new Error('Warehouse not found');
       }
 
-      const warehouse = warehouses[0];
+      const row = warehouses[0];
+      const {
+        created_by_display: createdByName,
+        updated_by_display: updatedByName,
+        ...warehouse
+      } = row;
 
       // Get inventory summary
       const [inventorySummary] = await db.query(
@@ -195,6 +216,8 @@ class WarehouseService {
       return {
         ...warehouse,
         capacity_constraints: JSON.parse(warehouse.capacity_constraints || '{}'),
+        created_by_name: createdByName || null,
+        updated_by_name: updatedByName || null,
         summary,
         categories: itemsByCategory,
         topItems

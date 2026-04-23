@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Statistic, Row, Col, Descriptions, Tag, Divider, Popconfirm } from 'antd';
-import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Card, Table, Button, Space, Modal, Form, Input, Select, message, Statistic, Row, Col, Tag, Divider, Popconfirm, Tabs, Spin } from 'antd';
+import {
+  PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, CloseOutlined, SearchOutlined,
+  BankOutlined, EnvironmentOutlined, PhoneOutlined, MailOutlined, IdcardOutlined, ClockCircleOutlined,
+  BarChartOutlined, AppstoreOutlined, LineChartOutlined, WarningOutlined, TeamOutlined, UserOutlined,
+} from '@ant-design/icons';
+import './Warehouses.css';
 import apiService from '../../services/apiService';
 import { usePermissions } from '../../components/common/PermissionWrapper';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -19,13 +24,24 @@ const Warehouses = () => {
   const [editingTypeName, setEditingTypeName] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState(null);
   const [warehouseDetails, setWarehouseDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState(null);
+  const [statusCategory, setStatusCategory] = useState('all');
   const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
+  const detailsModalContentRef = useRef(null);
+  /** 'all' | 'active' | 'inactive' — category view for warehouse status */
   const [upgradeModal, setUpgradeModal] = useState({ open: false, limit: null, plan: null });
 
   const canManageWarehouses = hasPermission('warehouse_management');
   const canManageWarehouseTypes = hasPermission('warehouse_type_management');
+
+  const closeDetailsModal = useCallback(() => {
+    setDetailsModalVisible(false);
+    setSelectedWarehouse(null);
+    setWarehouseDetails(null);
+    setDetailsLoading(false);
+  }, []);
 
   const formatPrice = (value) => {
     const convertedValue = (value || 0) * exchangeRate;
@@ -33,6 +49,17 @@ const Warehouses = () => {
       style: 'currency',
       currency: currency
     }).format(convertedValue);
+  };
+
+  const formatDateTime = (value) => {
+    if (value == null || value === '') return '—';
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return '—';
+    }
   };
 
   const columns = [
@@ -47,9 +74,9 @@ const Warehouses = () => {
       key: 'status',
       width: 80,
       render: (status) => (
-        <span style={{ color: status === 'active' ? '#52c41a' : '#ff4d4f', fontWeight: 500 }}>
+        <Tag color={status === 'active' ? 'success' : 'error'} style={{ margin: 0 }}>
           {status === 'active' ? 'Active' : 'Inactive'}
-        </span>
+        </Tag>
       )
     },
     {
@@ -77,15 +104,19 @@ const Warehouses = () => {
   ];
 
   const viewWarehouseDetails = async (warehouse) => {
+    setSelectedWarehouse(warehouse);
+    setWarehouseDetails(null);
+    setDetailsLoading(true);
+    setDetailsModalVisible(true);
     try {
-      setSelectedWarehouse(warehouse);
-      setDetailsModalVisible(true);
       const response = await apiService.get(`/warehouses/${warehouse.id}/details`);
       if (response.success) {
         setWarehouseDetails(response.data);
       }
     } catch (error) {
       message.error('Failed to load warehouse details');
+    } finally {
+      setDetailsLoading(false);
     }
   };
 
@@ -201,11 +232,75 @@ const fetchWarehouses = async () => {
     fetchWarehouses();
   }, []);
 
+  useEffect(() => {
+    if (!detailsModalVisible) return undefined;
+
+    const handlePointerDownOutside = (event) => {
+      const modalNode = detailsModalContentRef.current;
+      if (!modalNode) return;
+      if (modalNode.contains(event.target)) return;
+      closeDetailsModal();
+    };
+
+    document.addEventListener('mousedown', handlePointerDownOutside, true);
+    document.addEventListener('touchstart', handlePointerDownOutside, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDownOutside, true);
+      document.removeEventListener('touchstart', handlePointerDownOutside, true);
+    };
+  }, [detailsModalVisible, closeDetailsModal]);
+
+  const statusSummary = useMemo(() => {
+    const active = warehouses.filter((w) => w.status === 'active').length;
+    const inactive = warehouses.filter((w) => w.status === 'inactive').length;
+    return { active, inactive, total: warehouses.length };
+  }, [warehouses]);
+
+  const tableData = useMemo(() => {
+    const searched = warehouses.filter(
+      (wh) =>
+        !searchText ||
+        wh.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+        wh.code?.toLowerCase().includes(searchText.toLowerCase())
+    );
+    if (statusCategory === 'active') return searched.filter((w) => w.status === 'active');
+    if (statusCategory === 'inactive') return searched.filter((w) => w.status === 'inactive');
+    return searched;
+  }, [warehouses, searchText, statusCategory]);
+
   return (
     <div style={{ padding: '16px' }}>
       <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Warehouses</h1>
+
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={8}>
+          <Card size="small" bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+            <Statistic title="Total warehouses" value={statusSummary.total} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card size="small" bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+            <Statistic
+              title="Active"
+              value={statusSummary.active}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card size="small" bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+            <Statistic
+              title="Inactive"
+              value={statusSummary.inactive}
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
       <Card>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
           {canManageWarehouses && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
               Add Warehouse
@@ -215,23 +310,58 @@ const fetchWarehouses = async () => {
             placeholder="Search by name or code..."
             prefix={<SearchOutlined />}
             value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            style={{ flex: 1, maxWidth: 300 }}
+            onChange={(e) => setSearchText(e.target.value)}
+            style={{ flex: 1, maxWidth: 300, minWidth: 200 }}
             allowClear
           />
         </div>
+
+        <Tabs
+          activeKey={statusCategory}
+          onChange={setStatusCategory}
+          style={{ marginBottom: 12 }}
+          items={[
+            {
+              key: 'all',
+              label: `All (${statusSummary.total})`,
+            },
+            {
+              key: 'active',
+              label: (
+                <span>
+                  <Tag color="success" style={{ marginRight: 6 }}>Active</Tag>
+                  ({statusSummary.active})
+                </span>
+              ),
+            },
+            {
+              key: 'inactive',
+              label: (
+                <span>
+                  <Tag color="error" style={{ marginRight: 6 }}>Inactive</Tag>
+                  ({statusSummary.inactive})
+                </span>
+              ),
+            },
+          ]}
+        />
+
         <Table
           columns={columns}
-          dataSource={warehouses.filter(wh =>
-            !searchText ||
-            wh.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-            wh.code?.toLowerCase().includes(searchText.toLowerCase())
-          )}
+          dataSource={tableData}
           loading={loading}
           rowKey="id"
           scroll={{ x: 400 }}
           size="small"
           pagination={{ size: 'small' }}
+          locale={{
+            emptyText:
+              statusCategory === 'active'
+                ? 'No active warehouses. Switch to Inactive or create a new warehouse.'
+                : statusCategory === 'inactive'
+                  ? 'No inactive warehouses.'
+                  : 'No warehouses yet.',
+          }}
         />
       </Card>
 
@@ -450,94 +580,232 @@ const fetchWarehouses = async () => {
         </Form>
       </Modal>
 
-      {/* Warehouse Details Modal */}
+      {/* details close: custom native <button> in .wh-details-root (z-index) — ant .ant-modal-close was unreliable with flex/body hit-testing in this screen */}
       <Modal
-        title={`Warehouse Details - ${selectedWarehouse?.name}`}
+        title={null}
         open={detailsModalVisible}
-        onCancel={() => { setDetailsModalVisible(false); setSelectedWarehouse(null); setWarehouseDetails(null); }}
+        closable={false}
         footer={null}
-        width="min(1000px, 96vw)"
-        style={{ top: 16 }}
+        mask
+        maskClosable={true}
+        keyboard
+        onCancel={closeDetailsModal}
+        getContainer={() => document.body}
+        zIndex={10050}
+        wrapClassName="wh-details-modal-wrap"
+        width="min(1100px, 90vw)"
+        centered
+        className="warehouse-details-modal"
+        styles={{
+          content: {
+            position: 'relative',
+            padding: 0,
+            borderRadius: 16,
+            maxHeight: 'min(86vh, 1040px)',
+            display: 'flex',
+            flexDirection: 'column',
+          },
+          /* Do not set body overflow: auto — the scrollbar sits on the right edge and overlaps the hero X; scroll .wh-details-body only */
+          body: { padding: 0, flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+        }}
+        destroyOnClose
+        /* No enter/exit motion: zoom/fade can leave content in a bad hit-testing state during/after open */
+        maskTransitionName=""
+        transitionName=""
       >
-        {warehouseDetails && (
-          <div>
-            <Descriptions title="Basic Information" bordered column={{ xs: 1, sm: 2 }} style={{ marginBottom: 24 }}>
-              <Descriptions.Item label="Code">{warehouseDetails.code}</Descriptions.Item>
-              <Descriptions.Item label="Name">{warehouseDetails.name}</Descriptions.Item>
-              <Descriptions.Item label="Type">{warehouseDetails.type_name || 'Standard'}</Descriptions.Item>
-              <Descriptions.Item label="Status">
-                <Tag color={warehouseDetails.status === 'active' ? 'green' : 'red'}>
-                  {warehouseDetails.status?.toUpperCase()}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Address" span={2}>{warehouseDetails.address || 'N/A'}</Descriptions.Item>
-              <Descriptions.Item label="Contact Person">{warehouseDetails.contact_person || 'N/A'}</Descriptions.Item>
-              <Descriptions.Item label="Phone">{warehouseDetails.phone || 'N/A'}</Descriptions.Item>
-            </Descriptions>
-
-            <Card title="Inventory Summary" style={{ marginBottom: 24 }}>
-              <Row gutter={[16, 16]}>
-                <Col xs={12} sm={6}>
-                  <Statistic title="Total Items" value={warehouseDetails.summary?.total_items || 0} />
-                </Col>
-                <Col xs={12} sm={6}>
-                  <Statistic title="Total Qty" value={warehouseDetails.summary?.total_quantity || 0} />
-                </Col>
-                <Col xs={12} sm={6}>
-                  <Statistic title="Available" value={warehouseDetails.summary?.total_available || 0} valueStyle={{ color: '#52c41a' }} />
-                </Col>
-                <Col xs={12} sm={6}>
-                  <Statistic title="Reserved" value={warehouseDetails.summary?.total_reserved || 0} valueStyle={{ color: '#faad14' }} />
-                </Col>
-              </Row>
-              <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-                <Col xs={12} sm={12}>
-                  <Statistic title="Total Value" value={formatPrice(warehouseDetails.summary?.total_value || 0)} />
-                </Col>
-                <Col xs={12} sm={12}>
-                  <Statistic
-                    title="Low Stock Items"
-                    value={warehouseDetails.summary?.low_stock_items || 0}
-                    valueStyle={{ color: warehouseDetails.summary?.low_stock_items > 0 ? '#cf1322' : '#3f8600' }}
-                  />
-                </Col>
-              </Row>
-            </Card>
-
-            <Card title="Items by Category" style={{ marginBottom: 24 }}>
-              <Table
-                dataSource={warehouseDetails.categories || []}
-                columns={[
-                  { title: 'Category', dataIndex: 'category', key: 'category', ellipsis: true },
-                  { title: 'Items', dataIndex: 'item_count', key: 'item_count', width: 70 },
-                  { title: 'Total Qty', dataIndex: 'total_quantity', key: 'total_quantity', width: 90 },
-                  { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', width: 120, render: (v) => formatPrice(v) }
-                ]}
-                pagination={false}
-                size="small"
-                scroll={{ x: 'max-content' }}
-              />
-            </Card>
-
-            <Card title="Top Items by Value">
-              <Table
-                dataSource={warehouseDetails.topItems || []}
-                columns={[
-                  { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 90, ellipsis: true },
-                  { title: 'Name', dataIndex: 'name', key: 'name', width: 130, ellipsis: true },
-                  { title: 'Category', dataIndex: 'category', key: 'category', width: 110, ellipsis: true },
-                  { title: 'Qty', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand', width: 70 },
-                  { title: 'Unit', dataIndex: 'unit', key: 'unit', width: 60 },
-                  { title: 'Avg Cost', dataIndex: 'average_cost', key: 'average_cost', width: 110, render: (v) => formatPrice(v) },
-                  { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', width: 120, render: (v) => formatPrice(v) }
-                ]}
-                pagination={{ pageSize: 10, size: 'small' }}
-                size="small"
-                scroll={{ x: 'max-content' }}
-              />
-            </Card>
+        <div className="wh-details-root" ref={detailsModalContentRef}>
+          <div className="wh-details-hero">
+            <div className="wh-details-hero-inner">
+              <div className="wh-details-hero-icon" aria-hidden>
+                <BankOutlined />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h2>{selectedWarehouse?.name || 'Warehouse'}</h2>
+                <div className="wh-details-hero-sub">
+                  {selectedWarehouse?.code && <span className="wh-code-pill">{selectedWarehouse.code}</span>}
+                  {warehouseDetails && (
+                    <Tag color={warehouseDetails.status === 'active' ? 'success' : 'error'} style={{ margin: 0 }}>
+                      {warehouseDetails.status === 'active' ? 'Active' : 'Inactive'}
+                    </Tag>
+                  )}
+                  {warehouseDetails?.type_name && (
+                    <span style={{ opacity: 0.9 }}>{warehouseDetails.type_name}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="wh-details-close-btn"
+              aria-label="Close"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeDetailsModal();
+              }}
+            >
+              <CloseOutlined />
+            </button>
           </div>
-        )}
+
+          {detailsLoading && (
+            <div className="wh-details-spin">
+              <Spin size="large" tip="Loading details…" />
+            </div>
+          )}
+
+          {!detailsLoading && warehouseDetails && (
+            <div className="wh-details-body">
+              <div className="wh-section">
+                <div className="wh-section-title">
+                  <IdcardOutlined /> Contact &amp; location
+                </div>
+                <div className="wh-info-grid">
+                  <div className="wh-info-tile">
+                    <div className="wh-info-tile-label">Address</div>
+                    <div className="wh-info-tile-value">
+                      <EnvironmentOutlined style={{ color: '#6366f1', marginRight: 6 }} />
+                      {warehouseDetails.address || '—'}
+                    </div>
+                  </div>
+                  <div className="wh-info-tile">
+                    <div className="wh-info-tile-label">Contact</div>
+                    <div className="wh-info-tile-value">
+                      <UserOutlined style={{ color: '#6366f1', marginRight: 6 }} />
+                      {warehouseDetails.contact_person || '—'}
+                    </div>
+                  </div>
+                  <div className="wh-info-tile">
+                    <div className="wh-info-tile-label">Phone</div>
+                    <div className="wh-info-tile-value">
+                      <PhoneOutlined style={{ color: '#6366f1', marginRight: 6 }} />
+                      {warehouseDetails.phone || '—'}
+                    </div>
+                  </div>
+                  <div className="wh-info-tile">
+                    <div className="wh-info-tile-label">Email</div>
+                    <div className="wh-info-tile-value">
+                      <MailOutlined style={{ color: '#6366f1', marginRight: 6 }} />
+                      {warehouseDetails.email || '—'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="wh-section">
+                <div className="wh-section-title">
+                  <ClockCircleOutlined /> Record
+                </div>
+                <div className="wh-record-row">
+                  <div className="wh-info-tile">
+                    <div className="wh-info-tile-label">Created</div>
+                    <div className="wh-info-tile-value">{formatDateTime(warehouseDetails.created_at)}</div>
+                  </div>
+                  <div className="wh-info-tile">
+                    <div className="wh-info-tile-label">Created by</div>
+                    <div className="wh-info-tile-value">
+                      <TeamOutlined style={{ color: '#6366f1', marginRight: 6 }} />
+                      {warehouseDetails.created_by_name
+                        || (warehouseDetails.created_by ? `User ${warehouseDetails.created_by}` : '—')}
+                    </div>
+                  </div>
+                  <div className="wh-info-tile">
+                    <div className="wh-info-tile-label">Last updated</div>
+                    <div className="wh-info-tile-value">{formatDateTime(warehouseDetails.updated_at)}</div>
+                  </div>
+                  <div className="wh-info-tile">
+                    <div className="wh-info-tile-label">Last updated by</div>
+                    <div className="wh-info-tile-value">
+                      <UserOutlined style={{ color: '#6366f1', marginRight: 6 }} />
+                      {warehouseDetails.updated_by_name
+                        || (warehouseDetails.updated_by ? `User ${warehouseDetails.updated_by}` : '—')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="wh-section">
+                <div className="wh-section-title">
+                  <BarChartOutlined /> Inventory snapshot
+                </div>
+                <div className="wh-stat-row">
+                  <div className="wh-stat-card" style={{ ['--wh-accent']: '#6366f1' }}>
+                    <Statistic title="Items" value={warehouseDetails.summary?.total_items || 0} valueStyle={{ color: '#312e81' }} />
+                  </div>
+                  <div className="wh-stat-card" style={{ ['--wh-accent']: '#7c3aed' }}>
+                    <Statistic title="Total Qty" value={warehouseDetails.summary?.total_quantity || 0} valueStyle={{ color: '#4c1d95' }} />
+                  </div>
+                  <div className="wh-stat-card" style={{ ['--wh-accent']: '#16a34a' }}>
+                    <Statistic title="Available" value={warehouseDetails.summary?.total_available || 0} valueStyle={{ color: '#15803d' }} />
+                  </div>
+                  <div className="wh-stat-card" style={{ ['--wh-accent']: '#ea580c' }}>
+                    <Statistic title="Reserved" value={warehouseDetails.summary?.total_reserved || 0} valueStyle={{ color: '#c2410c' }} />
+                  </div>
+                </div>
+                <div className="wh-stat-row" style={{ marginTop: 10 }}>
+                  <div className="wh-stat-card" style={{ ['--wh-accent']: '#0d9488', flex: 1, minWidth: 140 }}>
+                    <Statistic title="Total value" value={formatPrice(warehouseDetails.summary?.total_value || 0)} valueStyle={{ color: '#0f766e', fontSize: '1.1rem' }} />
+                  </div>
+                  <div
+                    className="wh-stat-card"
+                    style={{
+                      ['--wh-accent']: (warehouseDetails.summary?.low_stock_items || 0) > 0 ? '#dc2626' : '#16a34a',
+                      flex: 1,
+                      minWidth: 140
+                    }}
+                  >
+                    <Statistic
+                      title="Low stock lines"
+                      value={warehouseDetails.summary?.low_stock_items || 0}
+                      prefix={(warehouseDetails.summary?.low_stock_items || 0) > 0 ? <WarningOutlined /> : null}
+                      valueStyle={{ color: (warehouseDetails.summary?.low_stock_items || 0) > 0 ? '#b91c1c' : '#166534' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="wh-section">
+                <div className="wh-table-card">
+                  <Card title={<span><AppstoreOutlined style={{ marginRight: 8, color: '#6366f1' }} />Items by category</span>} size="small" style={{ border: 'none' }} styles={{ body: { padding: 0 } }}>
+                    <Table
+                      dataSource={warehouseDetails.categories || []}
+                      columns={[
+                        { title: 'Category', dataIndex: 'category', key: 'category', ellipsis: true },
+                        { title: 'Items', dataIndex: 'item_count', key: 'item_count', width: 80 },
+                        { title: 'Total Qty', dataIndex: 'total_quantity', key: 'total_quantity', width: 100 },
+                        { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', width: 130, render: (v) => formatPrice(v) }
+                      ]}
+                      pagination={false}
+                      size="small"
+                      scroll={{ x: 'max-content' }}
+                    />
+                  </Card>
+                </div>
+              </div>
+
+              <div className="wh-section" style={{ marginBottom: 0 }}>
+                <div className="wh-table-card">
+                  <Card title={<span><LineChartOutlined style={{ marginRight: 8, color: '#6366f1' }} />Top items by value</span>} size="small" style={{ border: 'none' }} styles={{ body: { padding: 0 } }}>
+                    <Table
+                      dataSource={warehouseDetails.topItems || []}
+                      columns={[
+                        { title: 'SKU', dataIndex: 'sku', key: 'sku', width: 90, ellipsis: true },
+                        { title: 'Name', dataIndex: 'name', key: 'name', width: 130, ellipsis: true },
+                        { title: 'Category', dataIndex: 'category', key: 'category', width: 110, ellipsis: true },
+                        { title: 'Qty', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand', width: 70 },
+                        { title: 'Unit', dataIndex: 'unit', key: 'unit', width: 60 },
+                        { title: 'Avg Cost', dataIndex: 'average_cost', key: 'average_cost', width: 110, render: (v) => formatPrice(v) },
+                        { title: 'Total Value', dataIndex: 'total_value', key: 'total_value', width: 120, render: (v) => formatPrice(v) }
+                      ]}
+                      pagination={{ pageSize: 10, size: 'small' }}
+                      size="small"
+                      scroll={{ x: 'max-content' }}
+                    />
+                  </Card>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
 
       {/* Upgrade Plan Modal */}

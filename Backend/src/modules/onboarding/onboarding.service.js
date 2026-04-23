@@ -92,14 +92,14 @@ class OnboardingService {
       // company_profile: check if company_settings has at least 3 core fields filled
       db.query(
         `SELECT COUNT(*) as c FROM company_settings cs
-         WHERE cs.institution_id=?
+         WHERE BINARY cs.institution_id=?
            AND cs.company_name IS NOT NULL AND cs.company_name != ""
            AND cs.phone IS NOT NULL AND cs.phone != ""
            AND (
              (cs.address IS NOT NULL AND TRIM(cs.address) != "")
              OR EXISTS (
                SELECT 1 FROM company_addresses ca
-               WHERE ca.institution_id = cs.institution_id AND ca.address IS NOT NULL AND TRIM(ca.address) != ""
+               WHERE BINARY ca.institution_id = BINARY cs.institution_id AND ca.address IS NOT NULL AND TRIM(ca.address) != ""
              )
            )`,
         [institutionId]

@@ -1,0 +1,308 @@
+/* Warehouse details modal — no keyframe/entrance motion (avoids transform stacking that blocked the close control) */
+
+/* App.css sets .ant-modal-content { overflow: hidden !important } — must win so hero close and hit targets work */
+.warehouse-details-modal .ant-modal-content {
+  position: relative;
+  border-radius: 16px;
+  overflow: visible !important;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+}
+
+/* App.css @media (max-width: 768px) sets .ant-modal-body { overflow-y: auto !important } — that scrollbar overlaps the header X; keep body non-scrolling */
+.warehouse-details-modal .ant-modal-body {
+  position: relative;
+  z-index: 0;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  pointer-events: auto;
+}
+
+.wh-details-modal-wrap.ant-modal-wrap {
+  pointer-events: auto;
+}
+
+.wh-details-root {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #f4f6fb;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.wh-details-hero .wh-details-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  /* Above hero::before and hero-inner; hero itself is z-index:2 vs body:0 (see .wh-details-hero) */
+  z-index: 5;
+  touch-action: manipulation;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto !important;
+}
+
+.wh-details-hero .wh-details-close-btn:hover {
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+
+.wh-details-hero .wh-details-close-btn:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+
+.wh-details-close-btn .anticon,
+.wh-details-close-btn svg {
+  pointer-events: none;
+}
+
+.wh-details-hero {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  padding: 22px 64px 20px 24px;
+  background: linear-gradient(135deg, #1a1744 0%, #302b63 45%, #4b3f8c 100%);
+  color: #fff;
+  overflow: visible;
+}
+
+.wh-details-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0; /* never intercept — decoration only */
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  pointer-events: none;
+}
+
+.wh-details-hero-inner {
+  position: relative;
+  z-index: 0;
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.wh-details-hero-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #ffd666;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.wh-details-hero h2 {
+  margin: 0 0 4px 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.wh-details-hero-sub {
+  font-size: 0.8rem;
+  opacity: 0.82;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.wh-details-hero .wh-code-pill {
+  display: inline-block;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.wh-details-body {
+  position: relative;
+  z-index: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px 20px 20px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wh-section {
+  margin-bottom: 18px;
+}
+
+.wh-section-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #64748b;
+  margin-bottom: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wh-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.wh-info-tile {
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e8ecf4;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.wh-info-tile:hover {
+  box-shadow: 0 10px 28px rgba(79, 70, 229, 0.1);
+  border-color: #c7d2fe;
+}
+
+.wh-info-tile-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.wh-info-tile-value {
+  font-size: 0.95rem;
+  color: #0f172a;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.wh-record-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .wh-record-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wh-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.wh-stat-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px 12px;
+  text-align: center;
+  border: 1px solid #e8ecf4;
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow 0.25s ease;
+}
+
+.wh-stat-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--wh-accent, #6366f1);
+  border-radius: 0 0 12px 12px;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s ease;
+}
+
+.wh-stat-card:hover {
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.12);
+}
+
+.wh-stat-card:hover::after {
+  transform: scaleX(1);
+}
+
+.wh-stat-card .ant-statistic-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b !important;
+  margin-bottom: 4px !important;
+}
+
+.wh-stat-card .ant-statistic-content-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.wh-table-card {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e8ecf4;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.wh-table-card .ant-card-head {
+  border-bottom: 1px solid #f1f5f9;
+  min-height: 48px;
+  padding: 0 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.wh-details-spin {
+  position: relative;
+  z-index: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  overflow-y: auto;
+}
