@@ -6,11 +6,9 @@ import {
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
   ThunderboltOutlined, PlayCircleOutlined, PauseCircleOutlined,
-  HistoryOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  ShoppingCartOutlined, ShopOutlined
+  HistoryOutlined, CheckCircleOutlined, CloseCircleOutlined
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
-import { SalesOrderFlow, PurchaseOrderFlow } from './ProcessGuides.jsx';
 
 const MODULES = ['inventory', 'sales_order', 'purchase_order', 'invoice', 'item'];
 const TRIGGER_EVENTS = {
@@ -22,6 +20,29 @@ const TRIGGER_EVENTS = {
 };
 const OPERATORS = ['equals', 'not_equals', 'greater_than', 'less_than', 'contains'];
 const ACTION_TYPES = ['send_notification', 'update_status'];
+const SUPPORTED_AUTO_TRIGGERS = ['stock_received', 'stock_adjusted'];
+const EVENT_FIELD_HINTS = {
+  stock_received: ['itemId', 'warehouseId', 'quantity', 'unitCost'],
+  stock_adjusted: ['itemId', 'warehouseId', 'quantity', 'adjustmentType'],
+  stock_low: ['itemId', 'warehouseId', 'quantity'],
+  stock_transferred: ['itemId', 'fromWarehouseId', 'toWarehouseId', 'quantity'],
+  so_created: ['soId', 'customerId', 'status'],
+  so_confirmed: ['soId', 'customerId', 'status'],
+  so_shipped: ['soId', 'shipmentNumber', 'status'],
+  so_cancelled: ['soId', 'status', 'cancellationReason'],
+  po_created: ['poId', 'vendorId', 'status'],
+  po_confirmed: ['poId', 'vendorId', 'status'],
+  po_received: ['poId', 'grnId', 'status'],
+  po_cancelled: ['poId', 'status'],
+  invoice_created: ['invoiceId', 'invoiceType', 'status', 'amount'],
+  invoice_sent: ['invoiceId', 'invoiceType', 'status', 'amount'],
+  invoice_paid: ['invoiceId', 'invoiceType', 'status', 'amount'],
+  invoice_overdue: ['invoiceId', 'invoiceType', 'status', 'dueDate'],
+  item_created: ['itemId', 'name', 'sku', 'status'],
+  item_updated: ['itemId', 'name', 'status'],
+  item_deactivated: ['itemId', 'status'],
+};
+
 
 export default function WorkflowAutomation() {
   const [rules, setRules] = useState([]);
@@ -33,6 +54,7 @@ export default function WorkflowAutomation() {
   const [conditions, setConditions] = useState([]);
   const [actions, setActions] = useState([]);
   const [selectedModule, setSelectedModule] = useState('inventory');
+  const selectedTriggerEvent = Form.useWatch('triggerEvent', form);
 
   const loadRules = useCallback(async () => {
     setLoading(true);
@@ -72,7 +94,45 @@ export default function WorkflowAutomation() {
   const saveRule = async () => {
     try {
       const values = await form.validateFields();
-      const payload = { ...values, conditions, actions };
+      const normalizedConditions = (conditions || [])
+        .map(c => ({
+          field: (c.field || '').trim(),
+          operator: c.operator || 'equals',
+          value: (c.value ?? '').toString().trim(),
+        }))
+        .filter(c => c.field !== '' || c.value !== '');
+
+      const invalidCondition = normalizedConditions.find(c => !c.field || !c.value);
+      if (invalidCondition) {
+        message.error('Each condition must have Field, Operator, and Value');
+        return;
+      }
+
+      const normalizedActions = (actions || []).map(a => ({
+        type: a.type,
+        title: (a.title || '').trim(),
+        message: (a.message || '').trim(),
+        field: (a.field || (a.type === 'update_status' ? 'status' : '')).trim(),
+        value: (a.value || '').trim(),
+        module: a.module || (a.type === 'update_status' ? 'item' : undefined),
+      }));
+
+      if (!normalizedActions.length) {
+        message.error('Please add at least one action');
+        return;
+      }
+
+      const invalidAction = normalizedActions.find(a => {
+        if (a.type === 'send_notification') return !a.title || !a.message;
+        if (a.type === 'update_status') return !a.value;
+        return false;
+      });
+      if (invalidAction) {
+        message.error('Please complete all required action fields');
+        return;
+      }
+
+      const payload = { ...values, conditions: normalizedConditions, actions: normalizedActions };
       if (editing) {
         await apiService.put(`/workflows/${editing.id}`, payload);
         message.success('Workflow rule updated');
@@ -112,7 +172,17 @@ export default function WorkflowAutomation() {
 
   // Action helpers
   const addAction = () => setActions(a => [...a, { type: 'send_notification', title: '', message: '' }]);
-  const updateAction = (i, key, val) => setActions(a => a.map((x, idx) => idx === i ? { ...x, [key]: val } : x));
+  const updateAction = (i, key, val) => setActions(a => a.map((x, idx) => {
+    if (idx !== i) return x;
+    const next = { ...x, [key]: val };
+    if (key === 'type' && val === 'send_notification') {
+      return { type: 'send_notification', title: '', message: '' };
+    }
+    if (key === 'type' && val === 'update_status') {
+      return { type: 'update_status', module: 'item', field: 'status', value: '' };
+    }
+    return next;
+  }));
   const removeAction = (i) => setActions(a => a.filter((_, idx) => idx !== i));
 
   const ruleColumns = [
@@ -245,16 +315,6 @@ export default function WorkflowAutomation() {
             </Card>
           )
         },
-        {
-          key: 'so-flow',
-          label: <span><ShoppingCartOutlined /> Sales Order Flow</span>,
-          children: <SalesOrderFlow />,
-        },
-        {
-          key: 'po-flow',
-          label: <span><ShopOutlined /> Purchase Order Flow</span>,
-          children: <PurchaseOrderFlow />,
-        },
       ]} />
 
       {/* Rule Builder Modal */}
@@ -273,6 +333,12 @@ export default function WorkflowAutomation() {
         width={680}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 14 }}
+            message="Rule setup order: Select Module -> Select Trigger Event -> Add optional Conditions -> Add one or more Actions"
+          />
           <Row gutter={14}>
             <Col span={14}>
               <Form.Item name="name" label="Rule Name" rules={[{ required: true }]}>
@@ -298,10 +364,24 @@ export default function WorkflowAutomation() {
                   ))}
                 </Select>
               </Form.Item>
+              {selectedTriggerEvent && (
+                <div style={{ marginTop: -8, marginBottom: 10, fontSize: 12, color: '#8c8c8c' }}>
+                  Suggested fields for this event: {(EVENT_FIELD_HINTS[selectedTriggerEvent] || ['fieldName']).join(', ')}
+                </div>
+              )}
+              {selectedTriggerEvent && !SUPPORTED_AUTO_TRIGGERS.includes(selectedTriggerEvent) && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="This trigger may not auto-fire yet"
+                  description="Current backend automatically fires: stock_received and stock_adjusted."
+                />
+              )}
             </Col>
             <Col span={10}>
               <Form.Item name="description" label="Description">
-                <Input placeholder="Optional" />
+                <Input placeholder="Optional: when and why this rule is used" />
               </Form.Item>
             </Col>
           </Row>
@@ -321,7 +401,7 @@ export default function WorkflowAutomation() {
           {conditions.map((cond, i) => (
             <Row gutter={8} key={i} style={{ marginBottom: 8 }}>
               <Col span={7}>
-                <Input placeholder="Field (e.g. quantity)" value={cond.field}
+                <Input placeholder="Field (e.g. quantity, itemId)" value={cond.field}
                   onChange={e => updateCondition(i, 'field', e.target.value)} />
               </Col>
               <Col span={6}>
@@ -351,17 +431,44 @@ export default function WorkflowAutomation() {
               extra={<Button danger size="small" onClick={() => removeAction(i)}>✕</Button>}>
               <Row gutter={8}>
                 <Col span={8}>
+                  <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Action Type</div>
                   <Select value={action.type} onChange={v => updateAction(i, 'type', v)} style={{ width: '100%' }}>
                     {ACTION_TYPES.map(t => <Select.Option key={t} value={t}>{t.replace('_', ' ')}</Select.Option>)}
                   </Select>
                 </Col>
                 <Col span={8}>
-                  <Input placeholder="Title / Field" value={action.title || action.field || ''}
-                    onChange={e => updateAction(i, action.type === 'update_status' ? 'field' : 'title', e.target.value)} />
+                  <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+                    {action.type === 'update_status' ? 'Field' : 'Notification Title'}
+                  </div>
+                  <Input
+                    placeholder={action.type === 'update_status' ? 'status (fixed for now)' : 'e.g. Low Stock Alert'}
+                    value={action.title || action.field || ''}
+                    disabled={action.type === 'update_status'}
+                    onChange={e => updateAction(i, action.type === 'update_status' ? 'field' : 'title', e.target.value)}
+                  />
                 </Col>
                 <Col span={8}>
-                  <Input placeholder="Message / Value" value={action.message || action.value || ''}
-                    onChange={e => updateAction(i, action.type === 'update_status' ? 'value' : 'message', e.target.value)} />
+                  <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+                    {action.type === 'update_status' ? 'Status Value' : 'Notification Message'}
+                  </div>
+                  {action.type === 'update_status' ? (
+                    <Select
+                      value={action.value || undefined}
+                      placeholder="Select item status"
+                      onChange={v => updateAction(i, 'value', v)}
+                      style={{ width: '100%' }}
+                    >
+                      <Select.Option value="active">active</Select.Option>
+                      <Select.Option value="inactive">inactive</Select.Option>
+                      <Select.Option value="discontinued">discontinued</Select.Option>
+                    </Select>
+                  ) : (
+                    <Input
+                      placeholder="e.g. Item stock adjusted. Please review."
+                      value={action.message || ''}
+                      onChange={e => updateAction(i, 'message', e.target.value)}
+                    />
+                  )}
                 </Col>
               </Row>
             </Card>

@@ -70,6 +70,7 @@ import TaxManagement from './pages/tax/TaxManagement.jsx';
 import PriceLists from './pages/price-lists/PriceLists.jsx';
 import SubscriptionManagement from './pages/subscription/SubscriptionManagement.jsx';
 import WorkflowAutomation from './pages/workflows/WorkflowAutomation.jsx';
+import UserGuides from './pages/workflows/UserGuides.jsx';
 
 const { Content } = Layout;
 
@@ -209,6 +210,7 @@ function AppContent() {
             <Route path="/price-lists" element={<PriceLists />} />
             <Route path="/subscription" element={<SubscriptionManagement />} />
             <Route path="/workflows" element={<WorkflowAutomation />} />
+            <Route path="/user-guides" element={<UserGuides />} />
             <Route path="/purchase-invoices" element={<ProtectedPurchaseInvoices />} />
             <Route path="/sales-invoices" element={<ProtectedSalesInvoices />} />
             <Route path="/scan" element={<MobileScanner />} />

@@ -275,6 +275,127 @@ Items may have **variants** (parent/child via `parent_item_id` + JSON
 `variant_attributes`) and a **default bin** (`items.default_bin_id`,
 surfaced on the item form).
 
+### 5.1 Price Lists — user guide (all processes)
+
+This section is the practical operator guide for the `PriceLists.jsx` page
+and where those prices are consumed in Sales Orders.
+
+#### A) Create a new price list
+
+1. Open **Price Lists** and click **New Price List**.
+2. Fill:
+   - `List Name` (required).
+   - `Description` (optional).
+   - `Currency` (defaults to institution active currency if not selected).
+   - `Type` (`sales` or `purchase`; sales is used by SO flow).
+   - `Discount Type` (`percentage` or `fixed`) + `Discount Value`.
+   - `isDefault` (if checked, previous default for that list type is unset).
+3. Save. The list appears in **All Price Lists**.
+
+Backend behavior:
+- `POST /api/price-lists`
+- Creates/uses `price_lists` table if missing (`ensureTables()` bootstrap).
+- If `isDefault = true`, clears prior default of the same `pricelist_type`.
+
+#### B) Edit / deactivate a price list
+
+- **Edit:** update name, description, currency, discount model/value, type, or default flag.
+- **Delete in UI:** this is a soft delete only (`status = inactive`), not a hard delete.
+
+Backend behavior:
+- `PUT /api/price-lists/:id` for updates.
+- `DELETE /api/price-lists/:id` sets `status = 'inactive'`.
+- Listing endpoint `GET /api/price-lists` only returns `status = 'active'`.
+
+#### C) Add item pricing rules to a list
+
+1. Click **View** on a list.
+2. Click **Add Item**.
+3. Choose item and set one of these models:
+   - **Custom Price**: absolute unit price override.
+   - **Discount**: item-level discount (`percentage` or `fixed`).
+4. Save.
+
+Backend behavior:
+- `POST /api/price-lists/:id/items`
+- Upsert rule by unique `(price_list_id, item_id)`.
+- Existing item rule is updated; new one is inserted.
+
+#### D) Edit/remove item rules
+
+- Edit an existing row from list details.
+- Remove an item from a list with delete action.
+
+Backend behavior:
+- Edit uses same upsert endpoint.
+- Remove calls `DELETE /api/price-lists/:id/items/:itemId`.
+
+#### E) Assign price list to customer
+
+Price lists are typically linked at customer master level:
+
+1. Create or edit customer (`NewCustomer.jsx` / `EditCustomer.jsx`).
+2. Set **Price List** field.
+3. Save customer.
+
+Runtime usage:
+- In SO create form, selecting customer auto-loads `GET /api/customers/:id/price-list`.
+- If found, SO form auto-fills `priceListId` and applies prices/discounts.
+
+#### F) Sales Order pricing precedence (actual current logic)
+
+When SO has a selected price list, `SalesOrders.jsx` builds per-item pricing map:
+
+1. If item has `custom_price > 0` in list item rule:
+   - `unitPrice = custom_price`
+   - `discountRate = 0`
+2. Else if item-level discount exists:
+   - `unitPrice = base item selling price`
+   - `discountRate = item discount` (fixed is converted to % for UI line).
+3. Else if list-level discount exists:
+   - `unitPrice = base item selling price`
+   - `discountRate = list discount` (fixed is converted to % for UI line).
+4. Else:
+   - `unitPrice = base item selling price`
+   - `discountRate = 0`
+
+Important scope rule:
+- Price list effects are applied only for items present in `price_list_items`
+  returned by `GET /api/price-lists/:id`.
+- Items not present in the list continue with normal item selling price.
+
+#### G) Default price list behavior
+
+- A default flag is maintained in DB (`is_default`) and shown in list UI.
+- SO page does not auto-pick default globally by itself.
+- SO auto-selection is customer-driven (customer’s assigned price list).
+- User can still manually choose another price list in SO form.
+
+#### H) Permissions, plan gates, and errors
+
+- All `/api/price-lists/*` routes are feature-gated:
+  `checkFeature('price_lists')`.
+- If current subscription does not include price lists, UI shows warning and
+  list fetch fails with permission/plan message.
+- Controller wraps service errors and returns HTTP 400 with `{ success:false, error }`.
+
+#### I) Quick operational checklist
+
+1. Create list (`sales` type) with base discount policy.
+2. Add specific item overrides for exception SKUs.
+3. Assign list to target customer segment.
+4. Create SO for that customer and verify line auto-pricing.
+5. For missing item coverage, add that item to list or set manual line price.
+
+```mermaid
+flowchart LR
+  PL[Create Price List] --> PLI[Add Item Rules]
+  PLI --> CUST[Assign to Customer]
+  CUST --> SO[Create Sales Order]
+  SO --> AUTO[Auto-apply unit price/discount]
+  AUTO --> INV[Confirm SO -> Invoice flow]
+```
+
 ---
 
 ## 6. Warehouse hierarchy (Zones → Racks → Bins)

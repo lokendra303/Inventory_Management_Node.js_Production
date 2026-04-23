@@ -23,6 +23,7 @@ export default function PriceLists() {
   const [itemModal, setItemModal] = useState(false);
   const [editingList, setEditingList] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
+  const [activeTypeTab, setActiveTypeTab] = useState('all');
   const [listForm] = Form.useForm();
   const [itemForm] = Form.useForm();
 
@@ -188,6 +189,14 @@ export default function PriceLists() {
     }
   ];
 
+  const listsByType = {
+    all: lists,
+    sales: lists.filter(l => l.pricelist_type === 'sales' || l.pricelist_type == null),
+    purchase: lists.filter(l => l.pricelist_type === 'purchase')
+  };
+
+  const filteredLists = listsByType[activeTypeTab] || listsByType.all;
+
   return (
     <div style={{ padding: 24, background: '#f5f6fa', minHeight: '100vh' }}>
       {/* Header */}
@@ -217,9 +226,24 @@ export default function PriceLists() {
         {/* Lists panel */}
         <Col xs={24} lg={selected ? 10 : 24}>
           <Card bordered={false} style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
-            title={<strong>All Price Lists ({lists.length})</strong>}>
-            <Table dataSource={lists} columns={listColumns} rowKey="id"
-              loading={loading} pagination={{ pageSize: 10 }} size="small"
+            title={<strong>Price Lists by Category</strong>}>
+            <Tabs
+              activeKey={activeTypeTab}
+              onChange={setActiveTypeTab}
+              items={[
+                { key: 'all', label: `All (${listsByType.all.length})` },
+                { key: 'sales', label: `Sales (${listsByType.sales.length})` },
+                { key: 'purchase', label: `Purchase (${listsByType.purchase.length})` }
+              ]}
+              style={{ marginBottom: 8 }}
+            />
+            <Table
+              dataSource={filteredLists}
+              columns={listColumns}
+              rowKey="id"
+              loading={loading}
+              pagination={{ pageSize: 10 }}
+              size="small"
               rowClassName={r => r.id === selected?.id ? 'ant-table-row-selected' : ''}
             />
           </Card>

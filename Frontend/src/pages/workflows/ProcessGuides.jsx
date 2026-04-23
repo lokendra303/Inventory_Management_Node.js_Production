@@ -6,7 +6,7 @@ import {
   FileDoneOutlined, TruckOutlined,
   BankOutlined, DatabaseOutlined, InfoCircleOutlined, RollbackOutlined,
   ContainerOutlined, TeamOutlined, GiftOutlined, DollarCircleOutlined,
-  UserOutlined, SolutionOutlined,
+  UserOutlined, SolutionOutlined, TagsOutlined, SettingOutlined,
 } from '@ant-design/icons';
 
 /**
@@ -479,6 +479,7 @@ const SalesMenuMap = () => (
       pagination={false}
       dataSource={SALES_MENU_ROWS}
       rowKey="key"
+      scroll={{ x: 980 }}
       columns={[
         { title: 'Sidebar', dataIndex: 'menu', width: 170,
           render: (t, r) => (
@@ -498,7 +499,7 @@ const SalesMenuMap = () => (
             return <Tag>{v}</Tag>;
           },
         },
-        { title: 'Note', dataIndex: 'note' },
+        { title: 'Note', dataIndex: 'note', width: 220 },
       ]}
     />
   </Card>
@@ -701,6 +702,118 @@ const PO_ALT_PATHS = [
   { title: 'Cancel before receive', color: '#fa541c', desc: 'POST /purchase-orders/:id/cancel — PO is cancelled; inventory is untouched if no GRN was posted.' },
 ];
 
+/* ---------------------------------------------------------------------- */
+/* Price List flow data                                                    */
+/* Source of truth: docs/WORKFLOW.md §5.1                                  */
+/* ---------------------------------------------------------------------- */
+
+const PL_PHASES = [
+  {
+    title: 'Prerequisites — items and customer segments',
+    icon: <UserOutlined />,
+    color: '#8c8c8c',
+    summary: 'Define sellable items first, then decide which customer segments need special pricing (e.g. retail, wholesale, VIP).',
+    endpoint: 'setup — one-time',
+    tables: ['items', 'customers'],
+    branches: [
+      { label: 'Tip', desc: 'Use one list per policy, then assign to customer groups.', tone: 'info' },
+    ],
+  },
+  {
+    title: 'Create Price List',
+    icon: <TagsOutlined />,
+    color: '#11998e',
+    status: 'active',
+    summary: 'Create list with currency, type (sales/purchase), and optional list-level discount. Mark as default if required for that type.',
+    endpoint: 'POST /api/price-lists',
+    tables: ['price_lists'],
+    detail: (
+      <>
+        Creates price-list master row. If <code>is_default = true</code>, backend clears previous default for the same
+        <code>pricelist_type</code>. If currency is omitted, institution currency is used.
+      </>
+    ),
+  },
+  {
+    title: 'Configure Item Rules',
+    icon: <SettingOutlined />,
+    color: '#667eea',
+    summary: 'Add item-level pricing logic: custom price override or item discount (% / fixed). One rule per item per list.',
+    endpoint: 'POST /api/price-lists/:id/items',
+    tables: ['price_list_items'],
+    detail: (
+      <>
+        Upsert behavior: existing <code>(price_list_id, item_id)</code> row updates; otherwise inserts new row.
+        Rule precedence later in SO is: custom price {'>'} item discount {'>'} list discount {'>'} base price.
+      </>
+    ),
+    branches: [
+      { label: 'Custom price', desc: 'Absolute unit price replacement for that item.', tone: 'ok' },
+      { label: 'Discount rule', desc: 'Keeps base selling price and applies discount.', tone: 'info' },
+    ],
+  },
+  {
+    title: 'Assign List to Customer',
+    icon: <TeamOutlined />,
+    color: '#722ed1',
+    summary: 'Link the price list on customer create/edit form so sales teams do not choose pricing manually every time.',
+    endpoint: 'GET /api/customers/:id/price-list',
+    tables: ['customers'],
+    detail: (
+      <>
+        In SO create form, selecting customer auto-fetches assigned list. If found, SO form auto-populates
+        <code>priceListId</code> and applies mapped unit price/discount on matching line items.
+      </>
+    ),
+  },
+  {
+    title: 'Apply in Sales Order',
+    icon: <ShoppingCartOutlined />,
+    color: '#fa8c16',
+    status: 'pricing applied',
+    summary: 'Create SO; selected price list drives unit price/discount per item. Items not present in list mapping use normal selling price.',
+    endpoint: 'GET /api/price-lists/:id + POST /api/sales-orders',
+    tables: ['sales_orders', 'sales_order_lines'],
+    detail: (
+      <>
+        SO UI loads list item map and calculates line values in this order:
+        custom price, else item-level discount, else list-level discount, else base selling price.
+      </>
+    ),
+    branches: [
+      { label: 'Manual override', desc: 'User can still edit line unit price/discount before saving SO.', tone: 'info' },
+    ],
+  },
+  {
+    title: 'Maintain / Deactivate List',
+    icon: <FileDoneOutlined />,
+    color: '#13c2c2',
+    optional: true,
+    summary: 'Update list details any time. Delete action is soft-delete (inactive), so list disappears from active listing but history remains.',
+    endpoint: 'PUT /api/price-lists/:id, DELETE /api/price-lists/:id',
+    tables: ['price_lists', 'price_list_items'],
+    detail: (
+      <>
+        Deletion sets <code>status = inactive</code>; list is filtered out from <code>GET /api/price-lists</code>.
+        Existing sales documents remain unchanged.
+      </>
+    ),
+  },
+  {
+    title: 'Done',
+    icon: <CheckCircleFilled />,
+    color: C.okGreen,
+    summary: 'Pricing policies are centrally managed and consistently applied in SO creation, with customer-based auto-selection.',
+    terminal: true,
+  },
+];
+
+const PL_ALT_PATHS = [
+  { title: 'Feature gate', color: '#fa8c16', desc: "All price-list APIs are guarded by checkFeature('price_lists'). If plan doesn't include it, UI shows warning/permission error." },
+  { title: 'Default behavior', color: '#13c2c2', desc: 'Default list is stored and displayed, but SO auto-selection is primarily customer-assignment based.' },
+  { title: 'Scope of effect', color: '#722ed1', desc: 'Only items present in price_list_items receive price-list logic; others stay on normal selling price.' },
+];
+
 /** Maps every item under the Purchases sidebar to: role,when,inventory */
 const PURCHASES_MENU_ROWS = [
   { key: '1', menu: 'Vendors',            route: '/purchases/vendors',     role: 'Master data',              when: 'Before first PO', inv: '—',         note: 'Who you buy from' },
@@ -730,6 +843,7 @@ const PurchasesMenuMap = () => (
       pagination={false}
       dataSource={PURCHASES_MENU_ROWS}
       rowKey="key"
+      scroll={{ x: 980 }}
       columns={[
         { title: 'Sidebar', dataIndex: 'menu', width: 170,
           render: (t, r) => (
@@ -742,7 +856,7 @@ const PurchasesMenuMap = () => (
         { title: 'Role in the process', dataIndex: 'role', width: 200 },
         { title: 'Typical when', dataIndex: 'when', width: 150 },
         { title: 'Inventory', dataIndex: 'inv', width: 100, render: (v) => v === '—' ? <span style={{ color: C.muted }}>no change</span> : <Tag color="blue">{v}</Tag> },
-        { title: 'Note', dataIndex: 'note' },
+        { title: 'Note', dataIndex: 'note', width: 220 },
       ]}
     />
   </Card>
@@ -869,4 +983,31 @@ export const PurchaseOrderFlow = () => (
   </div>
 );
 
-export default { SalesOrderFlow, PurchaseOrderFlow };
+export const PriceListFlow = () => (
+  <div style={{ background: C.bgPage, borderRadius: 12, padding: 16 }}>
+    <FlowHeader
+      title="Price List — end-to-end lifecycle"
+      subtitle="Covers setup, item rules, customer assignment, and real Sales Order pricing behavior."
+      color1="#11998e" color2="#38ef7d"
+      legend={[
+        { label: 'Core phase', color: C.accent },
+        { label: 'Optional step', color: '#13c2c2' },
+        { label: 'Status change', color: '#722ed1' },
+        { label: 'Terminal', color: C.okGreen },
+      ]}
+    />
+    <Alert
+      type="info" showIcon style={{ marginBottom: 14 }}
+      message="Price list itself does not move inventory. It standardizes pricing that is consumed during Sales Order line creation."
+    />
+    <MiniNav phases={PL_PHASES} />
+    <div>
+      {PL_PHASES.map((p, i) => (
+        <PhaseCard key={p.title} phase={p} index={i} total={PL_PHASES.length} />
+      ))}
+    </div>
+    <AltPathsCard paths={PL_ALT_PATHS} />
+  </div>
+);
+
+export default { SalesOrderFlow, PurchaseOrderFlow, PriceListFlow };

@@ -9,6 +9,7 @@ import {
   ControlOutlined, TeamOutlined, FolderOpenOutlined, TransactionOutlined,
   DownOutlined, PieChartOutlined, AuditOutlined,
   PercentageOutlined, ThunderboltOutlined, CrownOutlined, TagsFilled,
+  BookOutlined,
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -40,6 +41,7 @@ const ICON_COLORS = {
   '/price-lists'   : '#11998e',
   '/subscription'  : '#f7971e',
   '/workflows'     : '#f5576c',
+  '/user-guides'   : '#66d9ef',
   'settings-menu'  : '#a0a0b0',
 };
 
@@ -556,6 +558,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         hasRole(['admin','super_admin']) && { key: '/settings',               label: 'All Settings' },
       ].filter(Boolean),
     },
+    { key: '/user-guides', icon: <BookOutlined />, label: 'User Guide' },
   ].filter(Boolean);
 
   const handleNavigate = (key) => {
