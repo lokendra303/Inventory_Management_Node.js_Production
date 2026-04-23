@@ -404,15 +404,42 @@ const Inventory = () => {
     }
   ];
 
+  const availablePct = stats.totalItems > 0
+    ? Math.round((inventory.reduce((s, i) => s + (parseFloat(i.quantity_available) || 0), 0) /
+      Math.max(inventory.reduce((s, i) => s + (parseFloat(i.quantity_on_hand) || 0), 0), 1)) * 100)
+    : 0;
+
   return (
-    <div style={{ padding: '20px 24px', background: '#f4f6fb', minHeight: '100vh' }}>
+    <div style={{ padding: '20px 24px', background: 'linear-gradient(180deg,#f8f9ff 0%,#eef3ff 100%)', minHeight: '100vh' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 18,
+        flexWrap: 'wrap',
+        gap: 12,
+        background: 'linear-gradient(135deg,#1890ff 0%,#667eea 45%,#764ba2 100%)',
+        borderRadius: 18,
+        padding: '18px 20px',
+        boxShadow: '0 10px 28px rgba(102,126,234,0.28)',
+        color: '#fff'
+      }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#1a1a2e', letterSpacing: '-0.3px' }}>Inventory Overview</h1>
-          <p style={{ margin: '2px 0 0', color: '#8c8c8c', fontSize: 13 }}>Real-time stock levels across all warehouses</p>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>Inventory Overview</h1>
+          <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.88)', fontSize: 13 }}>
+            Real-time stock visibility across warehouses and item lines
+          </p>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Tag color="blue" style={{ margin: 0, borderRadius: 14, border: 'none' }}>
+              {selectedWarehouse === 'all' ? 'All Warehouses' : `Warehouse Filter Applied`}
+            </Tag>
+            <Tag color={stats.lowStockCount > 0 ? 'red' : 'green'} style={{ margin: 0, borderRadius: 14, border: 'none' }}>
+              {stats.lowStockCount > 0 ? `${stats.lowStockCount} Low Stock` : 'Stock Healthy'}
+            </Tag>
+          </div>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => fetchData()} loading={loading} style={{ borderRadius: 8 }}>
+        <Button icon={<ReloadOutlined />} onClick={() => fetchData()} loading={loading} style={{ borderRadius: 10, border: 'none', fontWeight: 600 }}>
           Refresh
         </Button>
       </div>
@@ -423,14 +450,16 @@ const Inventory = () => {
           <Col xs={24} sm={8} key={card.title}>
             <div style={{
               background: card.gradient,
-              borderRadius: 16,
+              borderRadius: 18,
               padding: '20px 24px',
               color: '#fff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
-              minHeight: 100
+              boxShadow: '0 10px 24px rgba(0,0,0,0.16)',
+              minHeight: 104,
+              border: '1px solid rgba(255,255,255,0.14)',
+              transition: 'all 0.22s ease'
             }}>
               <div>
                 <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 4, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{card.title}</div>
@@ -443,10 +472,39 @@ const Inventory = () => {
         ))}
       </Row>
 
+      {/* Insight strip */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+        <Col xs={24} md={8}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <div style={{ fontSize: 12, color: '#8c8c8c' }}>Available Stock Ratio</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#11998e', lineHeight: 1.2 }}>{availablePct}%</div>
+            <div style={{ fontSize: 11, color: '#8c8c8c' }}>Available vs on-hand quantity</div>
+          </div>
+        </Col>
+        <Col xs={24} md={8}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <div style={{ fontSize: 12, color: '#8c8c8c' }}>Tracked Warehouses</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#1890ff', lineHeight: 1.2 }}>
+              {warehouses.filter(w => w.status === 'active').length}/{warehouses.length}
+            </div>
+            <div style={{ fontSize: 11, color: '#8c8c8c' }}>Active over total warehouses</div>
+          </div>
+        </Col>
+        <Col xs={24} md={8}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <div style={{ fontSize: 12, color: '#8c8c8c' }}>Inventory Coverage</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#764ba2', lineHeight: 1.2 }}>
+              {stats.totalItems?.toLocaleString() || 0}
+            </div>
+            <div style={{ fontSize: 11, color: '#8c8c8c' }}>Inventory lines currently tracked</div>
+          </div>
+        </Col>
+      </Row>
+
       {/* Table Card */}
-      <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', borderRadius: 18, boxShadow: '0 6px 18px rgba(0,0,0,0.08)', overflow: 'hidden', border: '1px solid #edf0f7' }}>
         {/* Toolbar */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', background: 'linear-gradient(180deg,#ffffff,#fafbff)' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
             <FilterOutlined style={{ color: '#8c8c8c' }} />
             <span style={{ fontWeight: 600, fontSize: 14, color: '#1a1a2e' }}>Stock Ledger</span>

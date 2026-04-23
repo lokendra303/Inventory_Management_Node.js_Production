@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Tag, Modal, Form, Select, InputNumber, Input, message, Card, Row, Col, Statistic, Typography, Alert } from 'antd';
-import { PlusOutlined, SendOutlined } from '@ant-design/icons';
+import { Table, Button, Tag, Modal, Form, Select, InputNumber, Input, message, Card, Row, Col, Statistic, Typography, Alert, Timeline, Divider } from 'antd';
+import { PlusOutlined, SendOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import dayjs from 'dayjs';
 
@@ -137,15 +137,56 @@ export default function Shipments() {
   };
 
   const totalShipped = shipments.reduce((s, r) => s + Number(r.total_quantity_shipped || 0), 0);
+  const detailOrderedQty = Number(viewOrder?.total_quantity_ordered || 0) > 0
+    ? Number(viewOrder.total_quantity_ordered || 0)
+    : (viewOrder?.lines || []).reduce((s, l) => s + Number(l.quantity_ordered || 0), 0);
+  const detailShippedQty = Number(viewOrder?.total_quantity_shipped || 0) > 0
+    ? Number(viewOrder.total_quantity_shipped || 0)
+    : (viewOrder?.lines || []).reduce((s, l) => s + Number(l.quantity_shipped || 0), 0);
+  const detailPendingQty = Math.max(0, detailOrderedQty - detailShippedQty);
 
   const columns = [
-    { title: 'SO Number', dataIndex: 'so_number', key: 'so_number', width: 140, ellipsis: true },
-    { title: 'Customer', dataIndex: 'customer_name', key: 'customer_name', width: 180, ellipsis: true },
-    { title: 'Status', dataIndex: 'status', key: 'status', width: 130, render: (status) => <Tag color={status === 'shipped' ? 'green' : 'blue'}>{status}</Tag> },
+    {
+      title: 'SO Number', dataIndex: 'so_number', key: 'so_number', width: 150, ellipsis: true,
+      render: (v) => <span style={{ fontWeight: 700, color: '#1a1a2e' }}>{v}</span>
+    },
+    {
+      title: 'Customer', dataIndex: 'customer_name', key: 'customer_name', width: 180, ellipsis: true,
+      render: (v) => <span style={{ fontWeight: 600, color: '#334155' }}>{v}</span>
+    },
+    {
+      title: 'Status', dataIndex: 'status', key: 'status', width: 130,
+      render: (status) => (
+        <Tag color={status === 'shipped' ? 'green' : status === 'partially_shipped' ? 'orange' : 'blue'} style={{ borderRadius: 12, fontWeight: 700 }}>
+          {String(status || '').replace('_', ' ').toUpperCase()}
+        </Tag>
+      )
+    },
     { title: 'Qty Shipped', dataIndex: 'total_quantity_shipped', key: 'total_quantity_shipped', width: 120,
       render: v => <Tag color="blue">{parseFloat(v || 0).toFixed(2)}</Tag> },
     { title: 'Qty Ordered', dataIndex: 'total_quantity_ordered', key: 'total_quantity_ordered', width: 120,
-      render: v => parseFloat(v || 0).toFixed(2) },
+      render: v => <span style={{ fontWeight: 600 }}>{parseFloat(v || 0).toFixed(2)}</span> },
+    {
+      title: 'Fulfilment', key: 'fulfilment', width: 120,
+      render: (_, row) => {
+        const ordered = Number(row.total_quantity_ordered || 0);
+        const shipped = Number(row.total_quantity_shipped || 0);
+        const pct = ordered > 0 ? Math.min(100, Math.round((shipped / ordered) * 100)) : 0;
+        return (
+          <span style={{
+            background: pct === 100 ? '#f6ffed' : '#fff7e6',
+            color: pct === 100 ? '#389e0d' : '#d46b08',
+            border: `1px solid ${pct === 100 ? '#b7eb8f' : '#ffd591'}`,
+            borderRadius: 10,
+            fontSize: 11,
+            fontWeight: 700,
+            padding: '2px 8px'
+          }}>
+            {pct}%
+          </span>
+        );
+      }
+    },
     { title: 'Date', dataIndex: 'created_at', key: 'created_at', width: 150,
       render: v => v ? dayjs(v).format('DD MMM YYYY HH:mm') : '-' },
     {
@@ -157,31 +198,41 @@ export default function Shipments() {
   ];
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: '18px' }}>Shipments</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>
+    <div style={{ padding: 20, background: 'linear-gradient(180deg,#f8f9ff 0%,#eef3ff 100%)', minHeight: '100vh' }}>
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16,
+        background: 'linear-gradient(135deg,#11998e 0%,#38ef7d 100%)', borderRadius: 16, padding: '16px 18px',
+        boxShadow: '0 10px 24px rgba(17,153,142,0.25)'
+      }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 800 }}>Shipments</h2>
+          <div style={{ color: 'rgba(255,255,255,0.88)', fontSize: 12 }}>Track shipped quantities and create dispatches from Sales Orders</div>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)} style={{ borderRadius: 10, border: 'none', fontWeight: 600 }}>
           Ship Stock
         </Button>
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={8}>
-          <Card>
+          <Card style={{ borderRadius: 14, boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }}>
             <Statistic title="Total Shipments" value={shipments.length} prefix={<SendOutlined />} />
           </Card>
         </Col>
         <Col xs={12} sm={8}>
-          <Card>
+          <Card style={{ borderRadius: 14, boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }}>
             <Statistic title="Units Shipped" value={totalShipped.toFixed(2)} />
           </Card>
         </Col>
       </Row>
 
-      <Table columns={columns} dataSource={shipments} rowKey={(r, i) => r.id || i}
-        loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: 'No shipments recorded yet' }} />
+      <div style={{ background: '#fff', borderRadius: 16, padding: 12, boxShadow: '0 6px 18px rgba(0,0,0,0.08)', border: '1px solid #edf0f7' }}>
+        <Table columns={columns} dataSource={shipments} rowKey={(r, i) => r.id || i}
+          loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
+          className="shipments-premium-table"
+          scroll={{ x: 'max-content' }}
+          locale={{ emptyText: 'No shipments recorded yet' }} />
+      </div>
 
       <Modal title="Ship Stock" open={createModal}
         onCancel={() => { setCreateModal(false); form.resetFields(); setSelectedOrder(null); }}
@@ -266,33 +317,81 @@ export default function Shipments() {
       >
         {viewOrder && (
           <>
-            <div style={{ marginBottom: 12 }}>
-              <Tag color="blue">{viewOrder.so_number}</Tag>
-              <Tag color={viewOrder.status === 'shipped' ? 'green' : 'gold'}>{viewOrder.status}</Tag>
-              <Text style={{ marginLeft: 8 }}>Customer: {viewOrder.customer_name || '-'}</Text>
+            <div style={{
+              marginBottom: 14, borderRadius: 12, padding: '14px 16px',
+              background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff'
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{viewOrder.so_number}</div>
+              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.92 }}>Customer: {viewOrder.customer_name || '-'}</div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                <Tag color="blue" style={{ borderRadius: 12, margin: 0 }}>SO</Tag>
+                <Tag color={viewOrder.status === 'shipped' ? 'green' : 'gold'} style={{ borderRadius: 12, margin: 0 }}>
+                  {String(viewOrder.status || '').replace('_', ' ').toUpperCase()}
+                </Tag>
+              </div>
             </div>
+            <Row gutter={[12, 12]} style={{ marginBottom: 14 }}>
+              <Col xs={12} md={6}><Card size="small" style={{ borderRadius: 10 }}><Statistic title="Total Lines" value={(viewOrder.lines || []).length} /></Card></Col>
+              <Col xs={12} md={6}><Card size="small" style={{ borderRadius: 10 }}><Statistic title="Ordered Qty" value={detailOrderedQty.toFixed(2)} /></Card></Col>
+              <Col xs={12} md={6}><Card size="small" style={{ borderRadius: 10 }}><Statistic title="Shipped Qty" value={detailShippedQty.toFixed(2)} /></Card></Col>
+              <Col xs={12} md={6}><Card size="small" style={{ borderRadius: 10 }}><Statistic title="Pending Qty" value={detailPendingQty.toFixed(2)} /></Card></Col>
+            </Row>
+            <Divider style={{ margin: '10px 0 12px' }}>Audit Trail</Divider>
+            <Timeline style={{ marginBottom: 12 }}>
+              <Timeline.Item dot={<ClockCircleOutlined style={{ color: '#1677ff' }} />}>
+                <Text strong>Sales Order Created</Text>
+                <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                  {viewOrder.created_at ? dayjs(viewOrder.created_at).format('DD MMM YYYY HH:mm:ss') : 'Not available'}
+                </div>
+              </Timeline.Item>
+              <Timeline.Item dot={<CheckCircleOutlined style={{ color: viewOrder.status === 'shipped' ? '#52c41a' : '#faad14' }} />}>
+                <Text strong>Shipment Status Updated</Text>
+                <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                  Current status: {String(viewOrder.status || '-').replace('_', ' ')}
+                </div>
+                <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                  Last update: {viewOrder.updated_at ? dayjs(viewOrder.updated_at).format('DD MMM YYYY HH:mm:ss') : 'Not available'}
+                </div>
+              </Timeline.Item>
+            </Timeline>
+            <Divider style={{ margin: '8px 0 12px' }}>Shipment Lines</Divider>
             <Table
               size="small"
               loading={viewLoading}
+              className="shipments-premium-table"
               rowKey={(r) => r.id}
               pagination={false}
               dataSource={viewOrder.lines || []}
               columns={[
-                { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
-                { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name' },
-                { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered' },
-                { title: 'Shipped', dataIndex: 'quantity_shipped', key: 'quantity_shipped' },
+                { title: 'Item', dataIndex: 'item_name', key: 'item_name', render: (v, r) => <div><div style={{ fontWeight: 600 }}>{v}</div><div style={{ fontSize: 11, color: '#8c8c8c' }}>{r.sku || '-'}</div></div> },
+                { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', render: (v) => <Tag style={{ borderRadius: 10 }}>{v}</Tag> },
+                { title: 'Ordered', dataIndex: 'quantity_ordered', key: 'quantity_ordered', align: 'right' },
+                { title: 'Shipped', dataIndex: 'quantity_shipped', key: 'quantity_shipped', align: 'right' },
                 {
                   title: 'Pending',
                   key: 'pending',
+                  align: 'right',
                   render: (_, r) => Number(r.quantity_ordered || 0) - Number(r.quantity_shipped || 0)
                 },
-                { title: 'Line Status', dataIndex: 'status', key: 'status' }
+                { title: 'Line Status', dataIndex: 'status', key: 'status', align: 'center', render: (v) => <Tag color={v === 'shipped' ? 'green' : v === 'partially_shipped' ? 'orange' : 'blue'}>{String(v || '').replace('_', ' ')}</Tag> }
               ]}
             />
           </>
         )}
       </Modal>
+      <style>{`
+        .shipments-premium-table .ant-table-thead > tr > th {
+          background: linear-gradient(180deg,#fafbff,#f3f6ff) !important;
+          font-weight: 700;
+          color: #334155;
+        }
+        .shipments-premium-table .ant-table-tbody > tr:nth-child(even) > td {
+          background: #fcfdff;
+        }
+        .shipments-premium-table .ant-table-tbody > tr:hover > td {
+          background: #f0f5ff !important;
+        }
+      `}</style>
     </div>
   );
 }

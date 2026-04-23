@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Table, Alert, Spin, Tag, Progress, DatePicker, Button } from 'antd';
+import { Card, Row, Col, Table, Alert, Spin, Tag, Progress, DatePicker, Segmented, Typography, Space } from 'antd';
 import {
   TagsOutlined, DatabaseOutlined, AlertOutlined,
   FundProjectionScreenOutlined, RiseOutlined, FallOutlined, BankOutlined,
@@ -12,6 +12,7 @@ import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 
 const { RangePicker } = DatePicker;
+const { Title, Text } = Typography;
 
 const PRESETS = [
   { label: '7D',  days: 6 },
@@ -201,17 +202,39 @@ const Dashboard = () => {
     : 0;
 
   return (
-    <div style={{ padding: '16px 16px 32px', background: '#f5f6fa', minHeight: '100vh' }}>
+    <div style={{ padding: '18px 18px 36px', background: 'linear-gradient(180deg,#f7f8fc 0%,#eef2ff 100%)', minHeight: '100vh' }}>
 
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 'clamp(18px, 4vw, 26px)', fontWeight: 700, margin: 0, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <FundProjectionScreenOutlined style={{ fontSize: 24, color: '#667eea' }} />
-          Dashboard
-        </h1>
-        <p style={{ margin: '4px 0 0', color: '#888', fontSize: 13 }}>
-          Welcome back! Here's your inventory overview.
-        </p>
+      <div style={{
+        marginBottom: 24,
+        background: 'linear-gradient(135deg,#667eea 0%,#764ba2 55%,#11998e 100%)',
+        borderRadius: 18,
+        padding: '20px 20px',
+        boxShadow: '0 10px 28px rgba(102,126,234,0.28)',
+        color: '#fff',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 14
+      }}>
+        <div>
+          <Title level={3} style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FundProjectionScreenOutlined style={{ fontSize: 24 }} />
+            Dashboard
+          </Title>
+          <Text style={{ color: 'rgba(255,255,255,0.88)', fontSize: 13 }}>
+            Live inventory, sales, and purchasing intelligence at a glance.
+          </Text>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Tag color="blue" style={{ borderRadius: 16, padding: '4px 10px', margin: 0, border: 'none' }}>
+            Range: {dateRange[0].format('DD MMM')} - {dateRange[1].format('DD MMM YYYY')}
+          </Tag>
+          <Tag color={dashboardData.lowStockCount > 0 ? 'red' : 'green'} style={{ borderRadius: 16, padding: '4px 10px', margin: 0, border: 'none' }}>
+            {dashboardData.lowStockCount > 0 ? `${dashboardData.lowStockCount} low-stock alerts` : 'All stock healthy'}
+          </Tag>
+        </div>
       </div>
 
       {/* Stat Cards */}
@@ -220,23 +243,31 @@ const Dashboard = () => {
           <Col xs={12} sm={8} md={8} lg={4} key={card.key}>
             <div style={{
               background: card.gradient,
-              borderRadius: 16,
+              borderRadius: 18,
               padding: '18px 14px',
               display: 'flex',
               alignItems: 'center',
               gap: 12,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+              boxShadow: '0 10px 24px rgba(0,0,0,0.16)',
               minHeight: 88,
-              transition: 'transform 0.2s',
+              transition: 'transform 0.22s ease, box-shadow 0.22s ease',
               cursor: 'default',
+              border: '1px solid rgba(255,255,255,0.14)',
             }}
-              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-4px) scale(1.01)';
+                e.currentTarget.style.boxShadow = '0 16px 28px rgba(0,0,0,0.2)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                e.currentTarget.style.boxShadow = '0 10px 24px rgba(0,0,0,0.16)';
+              }}
             >
               <div style={{
                 background: 'rgba(255,255,255,0.2)', borderRadius: 12,
                 width: 48, height: 48, display: 'flex', alignItems: 'center',
                 justifyContent: 'center', flexShrink: 0,
+                border: '1px solid rgba(255,255,255,0.28)'
               }}>
                 {card.icon}
               </div>
@@ -246,6 +277,11 @@ const Dashboard = () => {
                   color: '#fff', lineHeight: 1.1,
                 }}>
                   {(dashboardData[card.key] || 0).toLocaleString()}
+                  {card.suffix && (
+                    <span style={{ fontSize: 11, fontWeight: 500, marginLeft: 4, opacity: 0.9 }}>
+                      {card.suffix}
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 3 }}>
                   {card.label}
@@ -256,26 +292,54 @@ const Dashboard = () => {
         ))}
       </Row>
 
+      {/* Insight Strip */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} md={8}>
+          <Card bordered={false} style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#f7f9ff)' }} bodyStyle={{ padding: '12px 14px' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Stock Utilization</Text>
+            <div style={{ fontWeight: 700, fontSize: 22, color: '#667eea' }}>{stockUsagePercent}%</div>
+            <Text style={{ fontSize: 12, color: '#8c8c8c' }}>Reserved against total stock</Text>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card bordered={false} style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#f4fffb)' }} bodyStyle={{ padding: '12px 14px' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Availability Health</Text>
+            <div style={{ fontWeight: 700, fontSize: 22, color: '#11998e' }}>
+              {dashboardData.totalQuantity > 0 ? Math.round((dashboardData.totalAvailable / dashboardData.totalQuantity) * 100) : 0}%
+            </div>
+            <Text style={{ fontSize: 12, color: '#8c8c8c' }}>Sellable stock ratio</Text>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card bordered={false} style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#fff8f2)' }} bodyStyle={{ padding: '12px 14px' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Warehouse Status</Text>
+            <div style={{ fontWeight: 700, fontSize: 22, color: '#f7971e' }}>
+              {dashboardData.activeWarehouses}/{dashboardData.activeWarehouses + dashboardData.inactiveWarehouses}
+            </div>
+            <Text style={{ fontSize: 12, color: '#8c8c8c' }}>Active over total warehouses</Text>
+          </Card>
+        </Col>
+      </Row>
+
       {/* Charts Row */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} lg={16}>
           <Card
             title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><LineChartOutlined style={{ color: '#667eea' }} />Sales Revenue Trend</span>}
             extra={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {PRESETS.map(p => (
-                  <button
-                    key={p.label}
-                    onClick={() => onPresetClick(p)}
-                    style={{
-                      padding: '3px 12px', borderRadius: 8, border: '1.5px solid',
-                      fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                      borderColor: activePreset === p.label ? '#667eea' : '#e5e7eb',
-                      background: activePreset === p.label ? '#667eea' : 'white',
-                      color: activePreset === p.label ? 'white' : '#6b7280',
-                    }}
-                  >{p.label}</button>
-                ))}
+              <Space size={8} wrap>
+                <Segmented
+                  size="small"
+                  value={activePreset || 'custom'}
+                  onChange={(val) => {
+                    const picked = PRESETS.find(p => p.label === val);
+                    if (picked) onPresetClick(picked);
+                  }}
+                  options={[
+                    ...PRESETS.map(p => ({ label: p.label, value: p.label })),
+                    { label: 'Custom', value: 'custom' }
+                  ]}
+                />
                 <RangePicker
                   size="small"
                   value={dateRange}
@@ -286,9 +350,9 @@ const Dashboard = () => {
                   suffixIcon={<CalendarOutlined style={{ color: '#667eea' }} />}
                 />
                 {trendLoading && <ReloadOutlined spin style={{ color: '#667eea' }} />}
-              </div>
+              </Space>
             }
-            style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
+            style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
             bodyStyle={{ padding: '12px 16px 16px' }}
           >
             {dashboardData.stockTrend.length === 0 ? (
@@ -319,7 +383,7 @@ const Dashboard = () => {
         <Col xs={24} lg={8}>
           <Card
             title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><DatabaseOutlined style={{ color: '#667eea' }} />Stock Usage</span>}
-            style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)', height: '100%' }}
+            style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', height: '100%' }}
             bodyStyle={{ padding: '16px' }}
           >
             <div style={{ marginBottom: 20 }}>
@@ -358,7 +422,7 @@ const Dashboard = () => {
             extra={dashboardData.lowStockCount > 0 && (
               <Tag color="red">{dashboardData.lowStockCount} items</Tag>
             )}
-            style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
+            style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
             bodyStyle={{ padding: '0 0 8px' }}
           >
             {dashboardData.lowStockItems.length > 0 ? (
@@ -390,7 +454,7 @@ const Dashboard = () => {
                 </span>
               </span>
             }
-            style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}
+            style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
             bodyStyle={{ padding: '12px 16px 16px' }}
           >
             {dashboardData.stockTrend.length === 0 ? (
@@ -502,8 +566,7 @@ const Dashboard = () => {
                     paddingAngle={3}
                     dataKey="qty"
                     nameKey="name"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    labelLine={{ stroke: '#ccc', strokeWidth: 1 }}
+                    label={false}
                   >
                     {categoryStock.map((_, i) => (
                       <Cell key={i} fill={`url(#pieGrad${i % DONUT_COLORS.length})`} stroke="none" />

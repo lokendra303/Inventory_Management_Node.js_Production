@@ -80,29 +80,36 @@ export default function Putaways() {
   ];
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: '18px' }}>Putaways</h2>
+    <div style={{ padding: 20, background: 'linear-gradient(180deg,#f8f9ff 0%,#eef3ff 100%)', minHeight: '100vh' }}>
+      <div style={{
+        marginBottom: 16, background: 'linear-gradient(135deg,#f7971e 0%,#ffd200 100%)',
+        borderRadius: 16, padding: '16px 18px', boxShadow: '0 10px 24px rgba(247,151,30,0.24)'
+      }}>
+        <h2 style={{ margin: 0, fontSize: '22px', color: '#1a1a2e', fontWeight: 800 }}>Putaways</h2>
+        <div style={{ color: 'rgba(26,26,46,0.72)', fontSize: 12 }}>Complete receipt-to-warehouse putaway for pending GRN lines</div>
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={8}>
-          <Card>
+          <Card style={{ borderRadius: 14, boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }}>
             <Statistic title="Pending Putaways" value={pendingReceipts.length}
               prefix={<InboxOutlined />} valueStyle={{ color: '#fa8c16' }} />
           </Card>
         </Col>
         <Col xs={12} sm={8}>
-          <Card>
+          <Card style={{ borderRadius: 14, boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }}>
             <Statistic title="Units Pending" value={totalPending.toFixed(2)} />
           </Card>
         </Col>
       </Row>
 
-      <Table columns={columns} dataSource={pendingReceipts} rowKey={(r) => `${r.po_number}-${r.item_id}`}
-        loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: 'No pending putaways — all received goods have been put away' }} />
+      <div style={{ background: '#fff', borderRadius: 16, padding: 12, boxShadow: '0 6px 18px rgba(0,0,0,0.08)', border: '1px solid #edf0f7' }}>
+        <Table columns={columns} dataSource={pendingReceipts} rowKey={(r) => `${r.po_number}-${r.item_id}`}
+          loading={loading} size="small" pagination={{ pageSize: 20, size: 'small' }}
+          className="putaways-premium-table"
+          scroll={{ x: 'max-content' }}
+          locale={{ emptyText: 'No pending putaways — all received goods have been put away' }} />
+      </div>
 
       <Modal title={`Put Away — ${selected?.item_name}`} open={putawayModal}
         onCancel={() => { setPutawayModal(false); form.resetFields(); }}
@@ -128,6 +135,19 @@ export default function Putaways() {
           </Form.Item>
         </Form>
       </Modal>
+      <style>{`
+        .putaways-premium-table .ant-table-thead > tr > th {
+          background: linear-gradient(180deg,#fafbff,#f3f6ff) !important;
+          font-weight: 700;
+          color: #334155;
+        }
+        .putaways-premium-table .ant-table-tbody > tr:nth-child(even) > td {
+          background: #fcfdff;
+        }
+        .putaways-premium-table .ant-table-tbody > tr:hover > td {
+          background: #f0f5ff !important;
+        }
+      `}</style>
     </div>
   );
 }

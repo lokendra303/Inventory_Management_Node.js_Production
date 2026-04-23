@@ -129,9 +129,15 @@ const MoveOrders = () => {
   });
 
   return (
-    <div style={{ padding: 16 }}>
-      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Move Orders</h1>
-      <Card>
+    <div style={{ padding: 20, background: 'linear-gradient(180deg,#f8f9ff 0%,#eef3ff 100%)', minHeight: '100vh' }}>
+      <div style={{
+        marginBottom: 16, background: 'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',
+        borderRadius: 16, padding: '16px 18px', boxShadow: '0 10px 24px rgba(102,126,234,0.25)'
+      }}>
+        <h1 style={{ fontSize: '22px', margin: 0, color: '#fff', fontWeight: 800 }}>Move Orders</h1>
+        <div style={{ color: 'rgba(255,255,255,0.88)', fontSize: 12 }}>Transfer stock between warehouses with live quantity preview</div>
+      </div>
+      <Card style={{ borderRadius: 16, boxShadow: '0 6px 18px rgba(0,0,0,0.08)', border: '1px solid #edf0f7' }}>
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             Create Move Order
@@ -146,6 +152,7 @@ const MoveOrders = () => {
           />
         </Space>
         <Table dataSource={filteredList} columns={columns} rowKey="id" loading={historyLoading}
+          className="moveorders-premium-table"
           scroll={{ x: 'max-content' }} size="small"
           pagination={{ pageSize: 20, size: 'small' }} />
       </Card>
@@ -371,6 +378,19 @@ const MoveOrders = () => {
           </Form.Item>
         </Form>
       </Modal>
+      <style>{`
+        .moveorders-premium-table .ant-table-thead > tr > th {
+          background: linear-gradient(180deg,#fafbff,#f3f6ff) !important;
+          font-weight: 700;
+          color: #334155;
+        }
+        .moveorders-premium-table .ant-table-tbody > tr:nth-child(even) > td {
+          background: #fcfdff;
+        }
+        .moveorders-premium-table .ant-table-tbody > tr:hover > td {
+          background: #f0f5ff !important;
+        }
+      `}</style>
     </div>
   );
 };

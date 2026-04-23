@@ -326,13 +326,17 @@ export default function StockCount() {
   ];
 
   return (
-    <div style={{ padding: '20px 24px', background: '#f4f6fb', minHeight: '100vh' }}>
+    <div style={{ padding: '20px 24px', background: 'linear-gradient(180deg,#f8f9ff 0%,#eef3ff 100%)', minHeight: '100vh' }}>
 
       {/* Page Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12,
+        background: 'linear-gradient(135deg,#1890ff 0%,#667eea 100%)', borderRadius: 16, padding: '16px 18px',
+        boxShadow: '0 10px 24px rgba(24,144,255,0.25)'
+      }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#1a1a2e', letterSpacing: '-0.3px' }}>Stock Count</h1>
-          <p style={{ margin: '2px 0 0', color: '#8c8c8c', fontSize: 13 }}>Physical counts, variance tracking and inventory aging</p>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>Stock Count</h1>
+          <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.88)', fontSize: 13 }}>Physical counts, variance tracking and inventory aging</p>
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={loadCounts} loading={loading} style={{ borderRadius: 8 }}>Refresh</Button>
@@ -349,7 +353,11 @@ export default function StockCount() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {summaryStats.map(({ label, value, icon, bg }) => (
           <Col xs={12} sm={6} key={label}>
-            <div style={{ background: bg, borderRadius: 14, padding: '16px 20px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}>
+            <div
+              style={{ background: bg, borderRadius: 14, padding: '16px 20px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 8px 18px rgba(0,0,0,0.12)', border: '1px solid rgba(255,255,255,0.16)', transition: 'all 0.22s ease' }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+            >
               <div>
                 <div style={{ fontSize: 11, opacity: 0.85, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>{label}</div>
                 <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{value}</div>
@@ -361,11 +369,12 @@ export default function StockCount() {
       </Row>
 
       {/* Tabs */}
-      <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 6px 18px rgba(0,0,0,0.08)', border: '1px solid #edf0f7', overflow: 'hidden' }}>
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
           style={{ padding: '0 20px' }}
+          tabBarStyle={{ marginBottom: 12, paddingTop: 6 }}
           items={[
             {
               key: 'counts',
@@ -375,6 +384,7 @@ export default function StockCount() {
                   <Table
                     columns={countColumns} dataSource={counts} rowKey="id"
                     loading={loading} size="small"
+                    className="stockcount-premium-table"
                     pagination={{ pageSize: 20, showSizeChanger: true, size: 'small', showTotal: (t) => `${t} records`, style: { padding: '12px 0' } }}
                     scroll={{ x: 'max-content' }}
                     locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No stock counts yet" style={{ padding: '40px 0' }} /> }}
@@ -391,6 +401,7 @@ export default function StockCount() {
                   <Table
                     columns={agingColumns} dataSource={aging} rowKey={r => `${r.item_id}-${r.warehouse_name}`}
                     size="small"
+                    className="stockcount-premium-table"
                     pagination={{ pageSize: 50, showSizeChanger: true, size: 'small', showTotal: (t) => `${t} items`, style: { padding: '12px 0' } }}
                     scroll={{ x: 'max-content' }}
                     locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No aging data" style={{ padding: '40px 0' }} /> }}
@@ -492,6 +503,7 @@ export default function StockCount() {
             <Table
               columns={lineColumns} dataSource={countLines} rowKey="id"
               size="small"
+              className="stockcount-premium-table"
               pagination={{ pageSize: 20, size: 'small' }}
               scroll={{ x: 'max-content' }}
               style={{ fontSize: 13 }}
@@ -499,6 +511,20 @@ export default function StockCount() {
           </>
         )}
       </Modal>
+      <style>{`
+        .stockcount-premium-table .ant-table-thead > tr > th {
+          background: linear-gradient(180deg,#fafbff,#f3f6ff) !important;
+          font-weight: 700;
+          color: #334155;
+          border-bottom: 1px solid #e9edf7;
+        }
+        .stockcount-premium-table .ant-table-tbody > tr:nth-child(even) > td {
+          background: #fcfdff;
+        }
+        .stockcount-premium-table .ant-table-tbody > tr:hover > td {
+          background: #f0f5ff !important;
+        }
+      `}</style>
     </div>
   );
 }
