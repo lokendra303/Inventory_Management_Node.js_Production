@@ -1,4 +1,3 @@
-const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 
@@ -45,17 +44,16 @@ class OtpService {
       [purpose, email, institutionId]
     );
 
-    const id = uuidv4();
     const expiresAt = new Date(Date.now() + ttlMs);
 
-    await db.query(
+    const result = await db.query(
       `INSERT INTO otp_tokens 
-       (id, purpose, email, institution_id, user_id, otp_code, expires_at, ip_address, created_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [id, purpose, email, institutionId, userId, otp, expiresAt, ipAddress]
+       (purpose, email, institution_id, user_id, otp_code, expires_at, ip_address, created_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [purpose, email, institutionId, userId, otp, expiresAt, ipAddress]
     );
 
-    return id;
+    return result.insertId;
   }
 
   /**
@@ -74,7 +72,7 @@ class OtpService {
       `SELECT id, user_id, institution_id, otp_code, attempts, expires_at, consumed_at
          FROM otp_tokens 
         WHERE purpose = ? AND email = ? AND (institution_id <=> ?) AND consumed_at IS NULL
-        ORDER BY created_at DESC LIMIT 1`,
+        ORDER BY id DESC LIMIT 1`,
       [purpose, email, institutionId]
     );
 
