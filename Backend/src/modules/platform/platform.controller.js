@@ -116,6 +116,17 @@ class PlatformController {
     }
   }
 
+  async getInstitutionAudit(req, res) {
+    try {
+      const result = await platformAdminService.listInstitutionAuditLogs(req.params.id, req.query || {});
+      if (result === null) return res.status(404).json({ success: false, error: 'Institution not found' });
+      res.json({ success: true, ...result });
+    } catch (error) {
+      logger.error('Platform institution audit error', { error: error.message, id: req.params?.id });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
   async exportInstitutions(req, res) {
     try {
       const csv = await platformAdminService.exportInstitutionsCsv();

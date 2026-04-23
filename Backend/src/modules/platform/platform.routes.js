@@ -11,6 +11,7 @@ router.get('/stats', requirePlatformAuth, platformController.stats.bind(platform
 router.get('/institutions/export', requirePlatformAuth, platformController.exportInstitutions.bind(platformController));
 router.get('/institutions', requirePlatformAuth, platformController.listInstitutions.bind(platformController));
 router.get('/institutions/:id', requirePlatformAuth, platformController.getInstitution.bind(platformController));
+router.get('/institutions/:id/audit', requirePlatformAuth, platformController.getInstitutionAudit.bind(platformController));
 router.patch('/institutions/:id', requirePlatformAuth, platformController.updateInstitution.bind(platformController));
 router.patch('/institutions/:id/status', requirePlatformAuth, platformController.updateInstitutionStatus.bind(platformController));
 

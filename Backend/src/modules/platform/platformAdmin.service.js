@@ -513,6 +513,109 @@ async function updateSubscriptionPlan(planId, body) {
   };
 }
 
+/**
+ * Platform-admin view of a tenant's audit trail. Mirrors audit.controller.getAuditTrail
+ * but scoped to an arbitrary institution (read-only, no institution context needed
+ * because platform admins operate outside any tenant).
+ *
+ * @param {string} institutionId
+ * @param {{ entityType?: string, action?: string, userId?: string, search?: string,
+ *   startDate?: string, endDate?: string, page?: number|string, limit?: number|string }} query
+ */
+async function listInstitutionAuditLogs(institutionId, query = {}) {
+  await ensureSchema();
+  if (!institutionId) throw new Error('institutionId is required');
+
+  const inst = await db.query('SELECT id FROM institutions WHERE id = ?', [institutionId]);
+  if (!inst.length) return null;
+
+  const pageInt = Math.max(1, parseInt(query.page, 10) || 1);
+  const limitInt = Math.min(200, Math.max(1, parseInt(query.limit, 10) || 50));
+  const offset = (pageInt - 1) * limitInt;
+
+  const where = ['al.institution_id = ?'];
+  const params = [institutionId];
+  const joinParams = [institutionId];
+
+  if (query.entityType) { where.push('al.entity_type = ?'); params.push(query.entityType); }
+  if (query.action)     { where.push('al.action = ?'); params.push(query.action); }
+  if (query.userId)     { where.push('al.user_id = ?'); params.push(query.userId); }
+  if (query.startDate)  { where.push('DATE(al.created_at) >= ?'); params.push(query.startDate); }
+  if (query.endDate)    { where.push('DATE(al.created_at) <= ?'); params.push(query.endDate); }
+  if (query.search) {
+    where.push('(al.entity_id LIKE ? OR al.path LIKE ? OR al.description LIKE ? OR al.action LIKE ? OR al.entity_type LIKE ?)');
+    const like = `%${query.search}%`;
+    params.push(like, like, like, like, like);
+  }
+  const whereSql = where.join(' AND ');
+
+  let total = 0;
+  try {
+    const countRows = await db.query(
+      `SELECT COUNT(*) AS c FROM audit_logs al WHERE ${whereSql}`,
+      params
+    );
+    total = Number(countRows[0]?.c || 0);
+  } catch (e) {
+    logger.warn('Platform listInstitutionAuditLogs: count failed', { error: e.message, institutionId });
+    return { data: [], total: 0, page: pageInt, limit: limitInt, filters: { entityTypes: [], actions: [] } };
+  }
+
+  const rows = await db.query(
+    `SELECT al.id, al.institution_id, al.user_id, al.entity_type, al.entity_id,
+            al.action, al.method, al.path, al.status_code, al.duration,
+            al.ip_address, al.description, al.changes, al.request_body, al.created_at,
+            CONCAT(COALESCE(iu.first_name,''), ' ', COALESCE(iu.last_name,'')) AS user_name,
+            iu.email AS user_email,
+            iu.role  AS user_role
+       FROM audit_logs al
+       LEFT JOIN institution_users iu
+              ON iu.id = al.user_id AND iu.institution_id = ?
+      WHERE ${whereSql}
+      ORDER BY al.created_at DESC
+      LIMIT ${limitInt} OFFSET ${offset}`,
+    [...joinParams, ...params]
+  );
+
+  const data = rows.map((r) => ({
+    ...r,
+    user_name: (r.user_name || '').trim() || null,
+    changes: safeJson(r.changes),
+    request_body: safeJson(r.request_body),
+  }));
+
+  let entityTypes = [];
+  let actions = [];
+  try {
+    const et = await db.query(
+      `SELECT DISTINCT entity_type FROM audit_logs WHERE institution_id = ? AND entity_type IS NOT NULL AND entity_type <> '' ORDER BY entity_type`,
+      [institutionId]
+    );
+    entityTypes = et.map((r) => r.entity_type);
+    const ac = await db.query(
+      `SELECT DISTINCT action FROM audit_logs WHERE institution_id = ? AND action IS NOT NULL AND action <> '' ORDER BY action`,
+      [institutionId]
+    );
+    actions = ac.map((r) => r.action);
+  } catch (e) {
+    logger.warn('Platform listInstitutionAuditLogs: filter options failed', { error: e.message, institutionId });
+  }
+
+  return {
+    data,
+    total,
+    page: pageInt,
+    limit: limitInt,
+    filters: { entityTypes, actions },
+  };
+}
+
+function safeJson(value) {
+  if (value == null) return null;
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
 async function getRecentTenantLogins(limit = 30) {
   await ensureSchema();
   const n = Math.min(100, Math.max(5, parseInt(limit, 10) || 30));
@@ -575,4 +678,5 @@ module.exports = {
   updateSubscriptionPlan,
   getRecentTenantLogins,
   exportInstitutionsCsv,
+  listInstitutionAuditLogs,
 };
