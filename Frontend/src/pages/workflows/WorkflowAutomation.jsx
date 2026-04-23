@@ -6,9 +6,11 @@ import {
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
   ThunderboltOutlined, PlayCircleOutlined, PauseCircleOutlined,
-  HistoryOutlined, CheckCircleOutlined, CloseCircleOutlined
+  HistoryOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  ShoppingCartOutlined, ShopOutlined
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
+import { SalesOrderFlow, PurchaseOrderFlow } from './ProcessGuides.jsx';
 
 const MODULES = ['inventory', 'sales_order', 'purchase_order', 'invoice', 'item'];
 const TRIGGER_EVENTS = {
@@ -242,7 +244,17 @@ export default function WorkflowAutomation() {
                 locale={{ emptyText: 'No execution logs yet.' }} />
             </Card>
           )
-        }
+        },
+        {
+          key: 'so-flow',
+          label: <span><ShoppingCartOutlined /> Sales Order Flow</span>,
+          children: <SalesOrderFlow />,
+        },
+        {
+          key: 'po-flow',
+          label: <span><ShopOutlined /> Purchase Order Flow</span>,
+          children: <PurchaseOrderFlow />,
+        },
       ]} />
 
       {/* Rule Builder Modal */}
