@@ -28,6 +28,7 @@ const ICON_COLORS = {
   inventory      : '#38ef7d',
   items          : '#f093fb',
   '/warehouses'  : '#ffd200',
+  'warehouses'   : '#ffd200',
   sales          : '#f5576c',
   purchases      : '#f7971e',
   invoices       : '#11998e',
@@ -470,7 +471,11 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       ].filter(Boolean),
     },
     hasAnyPermission('warehouse_view','warehouse_management','warehouse_type_view','warehouse_type_management') && {
-      key: '/warehouses', icon: <BankOutlined />, label: 'Warehouses',
+      key: 'warehouses', icon: <BankOutlined />, label: 'Warehouses',
+      children: [
+        hasPermission('warehouse_view') && { key: '/warehouses',           label: 'Warehouses' },
+        hasPermission('warehouse_view') && { key: '/warehouses/locations', label: 'Zones / Racks / Bins' },
+      ].filter(Boolean),
     },
     hasAnyPermission('sales_view','sales_management','customer_view','customer_management') && {
       key: 'sales', icon: <FileDoneOutlined />, label: 'Sales',

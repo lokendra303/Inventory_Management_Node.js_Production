@@ -281,6 +281,41 @@ class ApiService {
     return this.delete(`/warehouses/${warehouseId}`);
   }
 
+  // Warehouse Locations (Zones / Racks / Bins)
+  async getWarehouseLocationConstants() {
+    return this.get('/warehouse-locations/constants');
+  }
+  async getWarehouseHierarchy(warehouseId) {
+    return this.get(`/warehouse-locations/warehouses/${warehouseId}/hierarchy`);
+  }
+  async getZones(params = {}) { return this.get('/warehouse-locations/zones', { params }); }
+  async createZone(data) { return this.post('/warehouse-locations/zones', data); }
+  async updateZone(zoneId, data) { return this.put(`/warehouse-locations/zones/${zoneId}`, data); }
+  async deleteZone(zoneId) { return this.delete(`/warehouse-locations/zones/${zoneId}`); }
+
+  async getRacks(params = {}) { return this.get('/warehouse-locations/racks', { params }); }
+  async createRack(data) { return this.post('/warehouse-locations/racks', data); }
+  async updateRack(rackId, data) { return this.put(`/warehouse-locations/racks/${rackId}`, data); }
+  async deleteRack(rackId) { return this.delete(`/warehouse-locations/racks/${rackId}`); }
+
+  async getBins(params = {}) { return this.get('/warehouse-locations/bins', { params }); }
+  async getBin(binId) { return this.get(`/warehouse-locations/bins/${binId}`); }
+  async createBin(data) { return this.post('/warehouse-locations/bins', data); }
+  async updateBin(binId, data) { return this.put(`/warehouse-locations/bins/${binId}`, data); }
+  async deleteBin(binId) { return this.delete(`/warehouse-locations/bins/${binId}`); }
+  async importBins(rows) { return this.post('/warehouse-locations/bins/import', { rows }); }
+
+  // Warehouse zone/bin type catalogs (user-customizable)
+  async getZoneTypes(params = {})       { return this.get('/warehouse-locations/zone-types', { params }); }
+  async createZoneType(data)            { return this.post('/warehouse-locations/zone-types', data); }
+  async updateZoneType(id, data)        { return this.put(`/warehouse-locations/zone-types/${id}`, data); }
+  async deleteZoneType(id)              { return this.delete(`/warehouse-locations/zone-types/${id}`); }
+
+  async getBinTypes(params = {})        { return this.get('/warehouse-locations/bin-types', { params }); }
+  async createBinType(data)             { return this.post('/warehouse-locations/bin-types', data); }
+  async updateBinType(id, data)         { return this.put(`/warehouse-locations/bin-types/${id}`, data); }
+  async deleteBinType(id)               { return this.delete(`/warehouse-locations/bin-types/${id}`); }
+
   // Purchase Orders API methods
   async getPurchaseOrders(params = {}) {
     return this.get('/purchase-orders', { params });

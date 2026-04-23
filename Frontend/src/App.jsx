@@ -22,6 +22,7 @@ import MoveOrders from './pages/inventory/MoveOrders.jsx';
 import Shipments from './pages/inventory/Shipments.jsx';
 import Putaways from './pages/inventory/Putaways.jsx';
 import Warehouses from './pages/settings/Warehouses.jsx';
+import WarehouseLocations from './pages/settings/WarehouseLocations.jsx';
 import PurchaseOrders from './pages/purchases/PurchaseOrders.jsx';
 import SalesOrders from './pages/sales/SalesOrders.jsx';
 import Users from './pages/settings/Users.jsx';
@@ -77,6 +78,7 @@ const ProtectedInventory = withPermission('inventory_view')(Inventory);
 const ProtectedPackages = withPermission('inventory_view')(Packages);
 const ProtectedItems = withPermission('item_view')(Items);
 const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
+const ProtectedWarehouseLocations = withPermission('warehouse_view')(WarehouseLocations);
 const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(InventoryAdjustments);
 const ProtectedInventoryShipments = withPermission('inventory_shipment')(Shipments);
 const ProtectedPutaways = withPermission('inventory_putaway')(Putaways);
@@ -177,6 +179,7 @@ function AppContent() {
             <Route path="/invoices/payments" element={<InvoicePayments />} />
 
             <Route path="/warehouses" element={<ProtectedWarehouses />} />
+            <Route path="/warehouses/locations" element={<ProtectedWarehouseLocations />} />
             <Route path="/purchase-orders" element={<ProtectedPurchaseOrders />} />
             <Route path="/sales-orders" element={<ProtectedSalesOrders />} />
             <Route path="/users" element={<ProtectedUsers />} />

@@ -43,7 +43,8 @@ class ItemService {
       openingStock = 0,
       openingValue = 0,
       asOfDate,
-      warehouseId
+      warehouseId,
+      defaultBinId = null
     } = itemData;
 
     // Validate custom fields based on item type
@@ -57,14 +58,14 @@ class ItemService {
     await db.query(
       `INSERT INTO items 
        (id, institution_id, created_by, sku, name, description, image, type, category, unit, barcode, hsn_code, 
-        custom_fields, valuation_method, allow_negative_stock, cost_price, selling_price, mrp, 
+        custom_fields, default_bin_id, valuation_method, allow_negative_stock, cost_price, selling_price, mrp, 
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
       [itemId, institutionId, userId, sku, name, description || null, image || null, type, category || null, unit, barcode || null, hsnCode || null,
-       JSON.stringify(customFields), valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
+       JSON.stringify(customFields), defaultBinId || null, valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
        shelfLifeDays || null, storageConditions || null, itemGroup || null, purchaseAccount || null, salesAccount || null,
@@ -125,7 +126,8 @@ class ItemService {
       isbn,
       mpn,
       openingStock,
-      openingValue
+      openingValue,
+      defaultBinId
     } = updateData;
 
     const updateFields = [];
@@ -252,6 +254,10 @@ class ItemService {
     if (openingValue !== undefined) {
       updateFields.push('opening_value = ?');
       updateValues.push(openingValue);
+    }
+    if (defaultBinId !== undefined) {
+      updateFields.push('default_bin_id = ?');
+      updateValues.push(defaultBinId || null);
     }
 
     if (updateFields.length === 0) {

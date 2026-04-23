@@ -116,13 +116,14 @@ class SalesInvoiceController {
               throw new Error('Warehouse is required for stock item lines on sales invoice');
             }
 
-            const [projection] = await connection.execute(
+            const [projectionRows] = await connection.execute(
               `SELECT quantity_on_hand, quantity_available, average_cost, version
                FROM inventory_projections
                WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
                FOR UPDATE`,
               [institutionId, line.itemId, warehouseId]
             );
+            const projection = Array.isArray(projectionRows) ? projectionRows[0] : projectionRows;
             if (!projection) {
               throw new Error(`No inventory found for item ${line.itemId} in warehouse ${warehouseId}`);
             }
@@ -146,14 +147,15 @@ class SalesInvoiceController {
             );
 
             const aggregateId = createAggregateId(line.itemId, warehouseId);
-            const [versionRow] = await connection.execute(
+            const [versionRows] = await connection.execute(
               `SELECT COALESCE(MAX(aggregate_version), 0) as currentVersion
                FROM event_store
                WHERE institution_id = ? AND aggregate_type = 'inventory' AND aggregate_id = ?
                FOR UPDATE`,
               [institutionId, aggregateId]
             );
-            const nextVersion = Number(versionRow.currentVersion || 0) + 1;
+            const versionRow = Array.isArray(versionRows) ? versionRows[0] : versionRows;
+            const nextVersion = Number(versionRow?.currentVersion || 0) + 1;
             await connection.execute(
               `INSERT INTO event_store
                (id, institution_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_data, metadata, idempotency_key, created_by)

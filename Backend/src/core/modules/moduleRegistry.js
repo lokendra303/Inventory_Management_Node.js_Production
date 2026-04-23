@@ -9,6 +9,7 @@ const moduleRegistry = [
   { path: '/categories', router: require('../../modules/entity/category.routes') },
   { path: '/warehouses', router: require('../../modules/warehouse/warehouse.routes') },
   { path: '/warehouse-types', router: require('../../modules/warehouse/warehouseType.routes') },
+  { path: '/warehouse-locations', router: require('../../modules/warehouse/warehouseLocation.routes') },
   { path: '/inventory', router: require('../../modules/inventory/inventory.routes') },
   { path: '/purchase-orders', router: require('../../modules/order/purchaseOrder.routes') },
   { path: '/vendors', router: require('../../modules/entity/vendor.routes') },
@@ -39,6 +40,7 @@ const moduleRegistry = [
   { path: '/price-lists', router: require('../../modules/price-lists/priceList.routes') },
   { path: '/subscription', router: require('../../modules/subscription/subscription.routes') },
   { path: '/workflows', router: require('../../modules/workflows/workflow.routes') },
+  { path: '/sku-rules', router: require('../../modules/settings/skuGenerator.routes') },
 ];
 
 module.exports = moduleRegistry;

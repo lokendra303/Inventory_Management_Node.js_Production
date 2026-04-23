@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
 import apiService from '../../services/apiService';
+import skuGeneratorService from '../../services/skuGeneratorService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
@@ -50,6 +51,125 @@ const Items = () => {
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [editingWarehouseId, setEditingWarehouseId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [binsForWarehouse, setBinsForWarehouse] = useState([]);
+  const [binsLoading, setBinsLoading] = useState(false);
+
+  // ---- SKU auto-generator (Zoho-style rules) ------------------------------
+  const [skuRulesOpen, setSkuRulesOpen] = useState(false);
+  const [skuRules, setSkuRules] = useState([]);
+  const [skuRulesLoading, setSkuRulesLoading] = useState(false);
+  const [skuRuleForm] = Form.useForm();
+  const [editingSkuRule, setEditingSkuRule] = useState(null);
+  const [skuGenerating, setSkuGenerating] = useState(false);
+
+  const loadSkuRules = async () => {
+    setSkuRulesLoading(true);
+    try {
+      const rules = await skuGeneratorService.listRules();
+      setSkuRules(Array.isArray(rules) ? rules : []);
+    } catch (e) {
+      message.error(e?.response?.data?.error || 'Failed to load SKU rules');
+    } finally {
+      setSkuRulesLoading(false);
+    }
+  };
+
+  // Handler for the "Generate" button next to the SKU field. Pulls the
+  // current category/brand/name off the form so the resolver can pick the
+  // correct category-scoped rule if one exists.
+  const handleGenerateSku = async () => {
+    setSkuGenerating(true);
+    try {
+      const ctx = {
+        category: form.getFieldValue('category'),
+        brand: form.getFieldValue('brand'),
+        name: form.getFieldValue('name')
+      };
+      const sku = await skuGeneratorService.generateSku(ctx);
+      if (sku) {
+        form.setFieldsValue({ sku });
+        message.success(`Generated SKU: ${sku}`);
+      }
+    } catch (e) {
+      const err = e?.response?.data?.error || e?.message || 'Failed to generate SKU';
+      message.error(err);
+    } finally {
+      setSkuGenerating(false);
+    }
+  };
+
+  const openSkuRulesModal = async () => {
+    setEditingSkuRule(null);
+    skuRuleForm.resetFields();
+    setSkuRulesOpen(true);
+    await loadSkuRules();
+  };
+
+  const startEditSkuRule = (rule) => {
+    setEditingSkuRule(rule);
+    skuRuleForm.setFieldsValue({
+      name: rule.name,
+      scope: rule.scope,
+      scopeValue: rule.scope_value,
+      prefixMode: rule.prefix_mode,
+      prefixStatic: rule.prefix_static,
+      prefixSource: rule.prefix_source,
+      prefixLength: rule.prefix_length,
+      separator: rule.separator,
+      useDate: !!rule.use_date,
+      dateFormat: rule.date_format,
+      useCounter: !!rule.use_counter,
+      counterStart: rule.counter_start,
+      counterPadding: rule.counter_padding,
+      isDefault: !!rule.is_default
+    });
+  };
+
+  const startNewSkuRule = () => {
+    setEditingSkuRule(null);
+    skuRuleForm.resetFields();
+    skuRuleForm.setFieldsValue({
+      scope: 'default',
+      prefixMode: 'static',
+      prefixLength: 3,
+      separator: '-',
+      useDate: false,
+      dateFormat: 'YYMM',
+      useCounter: true,
+      counterStart: 1,
+      counterPadding: 4,
+      isDefault: skuRules.length === 0
+    });
+  };
+
+  const submitSkuRule = async () => {
+    try {
+      const values = await skuRuleForm.validateFields();
+      if (editingSkuRule) {
+        await skuGeneratorService.updateRule(editingSkuRule.id, values);
+        message.success('SKU rule updated');
+      } else {
+        await skuGeneratorService.createRule(values);
+        message.success('SKU rule created');
+      }
+      setEditingSkuRule(null);
+      skuRuleForm.resetFields();
+      await loadSkuRules();
+    } catch (e) {
+      if (e?.errorFields) return; // validation
+      message.error(e?.response?.data?.error || 'Failed to save rule');
+    }
+  };
+
+  const removeSkuRule = async (id) => {
+    try {
+      await skuGeneratorService.deleteRule(id);
+      message.success('Rule removed');
+      await loadSkuRules();
+    } catch (e) {
+      message.error(e?.response?.data?.error || 'Failed to remove rule');
+    }
+  };
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
@@ -286,6 +406,7 @@ const Items = () => {
         barcode: values.barcode,
         openingStock: values.openingStock || 0,
         openingValue: values.openingValue || 0,
+        defaultBinId: values.defaultBinId || null,
         valuationMethod: values.valuationMethod,
         weight: values.weight,
         dimensions: dimensions,
@@ -355,6 +476,21 @@ const viewItem = async (item) => {
     }
   };
 
+  const fetchBinsForWarehouse = async (warehouseId) => {
+    if (!warehouseId) { setBinsForWarehouse([]); return; }
+    setBinsLoading(true);
+    try {
+      const res = await apiService.get('/warehouse-locations/bins', {
+        params: { warehouseId, status: 'active', limit: 1000 }
+      });
+      setBinsForWarehouse(res.success ? (res.data || []) : []);
+    } catch {
+      setBinsForWarehouse([]);
+    } finally {
+      setBinsLoading(false);
+    }
+  };
+
   const editItem = async (item) => {
     setEditingItem(item);
     setPriceCurrency(currency);
@@ -418,6 +554,7 @@ const viewItem = async (item) => {
       openingValue: fullItem.opening_value,
       valuationMethod: fullItem.valuation_method,
       warehouseId: finalWarehouseId,
+      defaultBinId: fullItem.default_bin_id || null,
       weight: fullItem.weight,
       length: fullItem.dimensions?.length,
       width: fullItem.dimensions?.width,
@@ -427,6 +564,7 @@ const viewItem = async (item) => {
       isbn: fullItem.isbn,
       mpn: fullItem.mpn
     });
+    fetchBinsForWarehouse(finalWarehouseId);
     setModalVisible(true);
   };
 
@@ -722,6 +860,25 @@ const viewItem = async (item) => {
               allowClear
             />
             {canManageItems && (
+              <Tooltip title="Configure SKU auto-generator rules (prefix, counter, date, per-category overrides)">
+                <Button
+                  icon={<SettingOutlined />}
+                  onClick={openSkuRulesModal}
+                  style={{
+                    background: '#fff',
+                    color: '#764ba2',
+                    border: '1.5px solid #764ba2',
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    fontSize: 13,
+                    height: 38,
+                  }}
+                >
+                  SKU Rules
+                </Button>
+              </Tooltip>
+            )}
+            {canManageItems && (
               <Button
                 icon={<PlusOutlined />}
                 onClick={openCreateModal}
@@ -876,7 +1033,24 @@ const viewItem = async (item) => {
                 <Row gutter={16}>
                   <Col xs={24} sm={12}>
                     <Form.Item name="sku" label="SKU" rules={[{ required: true, message: 'Please input SKU!' }]}>
-                      <Input placeholder="e.g. ITEM-001" style={{ borderRadius: 8 }} />
+                      <Input
+                        placeholder="e.g. ITEM-001"
+                        style={{ borderRadius: 8 }}
+                        addonAfter={(
+                          <Tooltip title="Generate SKU from your SKU rule (uses Category/Brand if configured)">
+                            <Button
+                              type="link"
+                              size="small"
+                              loading={skuGenerating}
+                              icon={<ThunderboltOutlined />}
+                              onClick={handleGenerateSku}
+                              style={{ padding: 0, height: 'auto', color: '#764ba2', fontWeight: 600 }}
+                            >
+                              Generate
+                            </Button>
+                          </Tooltip>
+                        )}
+                      />
                     </Form.Item>
                   </Col>
                   <Col xs={24} sm={12}>
@@ -1604,6 +1778,10 @@ const viewItem = async (item) => {
                 <Select
                   placeholder="Select warehouse"
                   allowClear
+                  onChange={(value) => {
+                    form.setFieldsValue({ defaultBinId: null });
+                    fetchBinsForWarehouse(value);
+                  }}
                   notFoundContent={
                     <div style={{ textAlign: 'center', padding: '8px 0' }}>
                       <div style={{ color: '#8c8c8c', marginBottom: 8 }}>No warehouses found</div>
@@ -1639,6 +1817,38 @@ const viewItem = async (item) => {
                     </Select.Option>
                   ))}
                 </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                noStyle
+                shouldUpdate={(prev, cur) => prev.warehouseId !== cur.warehouseId}
+              >
+                {({ getFieldValue }) => {
+                  const hasWarehouse = !!getFieldValue('warehouseId');
+                  return (
+                    <Form.Item
+                      name="defaultBinId"
+                      label="Default Bin (optional)"
+                      tooltip="Preferred putaway bin for this item. Used as the default destination in GRN / Putaway flows."
+                    >
+                      <Select
+                        placeholder={hasWarehouse ? 'Select bin' : 'Select a warehouse first'}
+                        allowClear
+                        showSearch
+                        loading={binsLoading}
+                        disabled={!hasWarehouse}
+                        optionFilterProp="label"
+                        options={binsForWarehouse.map(b => ({
+                          value: b.id,
+                          label: `${b.zone_code} / ${b.rack_code} / ${b.code}${b.name ? ` — ${b.name}` : ''}`
+                        }))}
+                      />
+                    </Form.Item>
+                  );
+                }}
               </Form.Item>
             </Col>
           </Row>
@@ -2081,6 +2291,235 @@ const viewItem = async (item) => {
         onClose={() => setScannerOpen(false)}
         onBarcode={handleBarcodeScan}
       />
+
+      {/* -------------------- SKU Auto-Generator: Manage Rules ----------------- */}
+      <Modal
+        title={<span><ThunderboltOutlined style={{ color: '#764ba2', marginRight: 8 }} />Manage SKU Rules</span>}
+        open={skuRulesOpen}
+        onCancel={() => { setSkuRulesOpen(false); setEditingSkuRule(null); skuRuleForm.resetFields(); }}
+        footer={null}
+        width={900}
+        destroyOnClose
+      >
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          {/* --- Existing rules list --- */}
+          <div style={{ flex: '1 1 340px', minWidth: 320 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <b style={{ fontSize: 14 }}>Active Rules</b>
+              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={startNewSkuRule} style={{ background: '#764ba2', border: 'none' }}>
+                New Rule
+              </Button>
+            </div>
+            <Table
+              size="small"
+              rowKey="id"
+              loading={skuRulesLoading}
+              dataSource={skuRules}
+              pagination={false}
+              locale={{ emptyText: 'No rules yet. Create one to start auto-generating SKUs.' }}
+              columns={[
+                {
+                  title: 'Name',
+                  dataIndex: 'name',
+                  render: (v, r) => (
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{v}</div>
+                      <div style={{ fontSize: 11, color: '#8c8c8c' }}>
+                        {r.scope === 'category' ? `Category: ${r.scope_value}` : 'Institution default'}
+                        {r.is_default ? <Tag color="purple" style={{ marginLeft: 6 }}>Default</Tag> : null}
+                      </div>
+                    </div>
+                  )
+                },
+                {
+                  title: 'Next',
+                  render: (_, r) => {
+                    const n = (Number(r.counter_current) || 0) + 1;
+                    const padded = String(n).padStart(r.counter_padding || 4, '0');
+                    return <Tag color="geekblue">{r.use_counter ? padded : '—'}</Tag>;
+                  }
+                },
+                {
+                  title: '',
+                  width: 90,
+                  render: (_, r) => (
+                    <Space size={4}>
+                      <Button size="small" type="link" onClick={() => startEditSkuRule(r)}>Edit</Button>
+                      <Popconfirm title="Remove this rule?" onConfirm={() => removeSkuRule(r.id)} okText="Remove" okButtonProps={{ danger: true }}>
+                        <Button size="small" type="link" danger>Delete</Button>
+                      </Popconfirm>
+                    </Space>
+                  )
+                }
+              ]}
+            />
+          </div>
+
+          {/* --- Edit / create form --- */}
+          <div style={{ flex: '1 1 420px', minWidth: 380, background: '#fafafb', padding: 16, borderRadius: 10, border: '1px solid #f0f0f0' }}>
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>
+              {editingSkuRule ? `Edit: ${editingSkuRule.name}` : 'Create a new rule'}
+            </div>
+            <Form
+              form={skuRuleForm}
+              layout="vertical"
+              initialValues={{
+                scope: 'default',
+                prefixMode: 'static',
+                prefixLength: 3,
+                separator: '-',
+                useDate: false,
+                dateFormat: 'YYMM',
+                useCounter: true,
+                counterStart: 1,
+                counterPadding: 4,
+                isDefault: false
+              }}
+            >
+              <Form.Item name="name" label="Rule Name" rules={[{ required: true, message: 'Name is required' }]}>
+                <Input placeholder="e.g. Default, Electronics, Apparel" />
+              </Form.Item>
+
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item name="scope" label="Applies To" rules={[{ required: true }]}>
+                    <Select>
+                      <Select.Option value="default">Institution default</Select.Option>
+                      <Select.Option value="category">Specific category</Select.Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(prev, cur) => prev.scope !== cur.scope}
+                  >
+                    {({ getFieldValue }) => getFieldValue('scope') === 'category' ? (
+                      <Form.Item name="scopeValue" label="Category" rules={[{ required: true, message: 'Pick a category' }]}>
+                        <Select
+                          placeholder="Select category"
+                          showSearch
+                          options={(categories || []).map(c => ({ value: c.name, label: c.name }))}
+                        />
+                      </Form.Item>
+                    ) : (
+                      <Form.Item name="isDefault" label="Usage">
+                        <Select>
+                          <Select.Option value={true}>Use as default</Select.Option>
+                          <Select.Option value={false}>Secondary (manual pick)</Select.Option>
+                        </Select>
+                      </Form.Item>
+                    )}
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Divider style={{ margin: '4px 0 12px', fontSize: 12 }} orientation="left">Prefix</Divider>
+              <Row gutter={12}>
+                <Col span={10}>
+                  <Form.Item name="prefixMode" label="Mode" rules={[{ required: true }]}>
+                    <Select>
+                      <Select.Option value="static">Static text</Select.Option>
+                      <Select.Option value="derived">Derived from field</Select.Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={14}>
+                  <Form.Item noStyle shouldUpdate={(p, c) => p.prefixMode !== c.prefixMode}>
+                    {({ getFieldValue }) => getFieldValue('prefixMode') === 'static' ? (
+                      <Form.Item name="prefixStatic" label="Text" rules={[{ required: true, message: 'Enter a prefix' }]}>
+                        <Input placeholder="e.g. ITEM, TSHIRT, EL" maxLength={20} />
+                      </Form.Item>
+                    ) : (
+                      <Row gutter={8}>
+                        <Col span={14}>
+                          <Form.Item name="prefixSource" label="Source" rules={[{ required: true }]}>
+                            <Select>
+                              <Select.Option value="category">Category name</Select.Option>
+                              <Select.Option value="brand">Brand name</Select.Option>
+                              <Select.Option value="name">Item name</Select.Option>
+                            </Select>
+                          </Form.Item>
+                        </Col>
+                        <Col span={10}>
+                          <Form.Item name="prefixLength" label="# chars">
+                            <InputNumber min={1} max={10} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    )}
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item name="separator" label="Separator">
+                <Select>
+                  <Select.Option value="-">Dash (-)</Select.Option>
+                  <Select.Option value="_">Underscore (_)</Select.Option>
+                  <Select.Option value="">None</Select.Option>
+                </Select>
+              </Form.Item>
+
+              <Divider style={{ margin: '4px 0 12px', fontSize: 12 }} orientation="left">Date segment (optional)</Divider>
+              <Row gutter={12}>
+                <Col span={10}>
+                  <Form.Item name="useDate" label="Include date">
+                    <Select>
+                      <Select.Option value={false}>No</Select.Option>
+                      <Select.Option value={true}>Yes</Select.Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={14}>
+                  <Form.Item noStyle shouldUpdate={(p, c) => p.useDate !== c.useDate}>
+                    {({ getFieldValue }) => getFieldValue('useDate') ? (
+                      <Form.Item name="dateFormat" label="Format" rules={[{ required: true }]}>
+                        <Select>
+                          <Select.Option value="YY">YY (26)</Select.Option>
+                          <Select.Option value="YYMM">YYMM (2604)</Select.Option>
+                          <Select.Option value="YYYYMM">YYYYMM (202604)</Select.Option>
+                          <Select.Option value="YYYYMMDD">YYYYMMDD (20260421)</Select.Option>
+                        </Select>
+                      </Form.Item>
+                    ) : null}
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Divider style={{ margin: '4px 0 12px', fontSize: 12 }} orientation="left">Counter</Divider>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name="useCounter" label="Include counter">
+                    <Select>
+                      <Select.Option value={true}>Yes</Select.Option>
+                      <Select.Option value={false}>No</Select.Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name="counterStart" label="Start at">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name="counterPadding" label="Zero-pad width">
+                    <InputNumber min={1} max={10} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                {editingSkuRule && (
+                  <Button onClick={() => { setEditingSkuRule(null); skuRuleForm.resetFields(); }}>Cancel edit</Button>
+                )}
+                <Button type="primary" onClick={submitSkuRule} style={{ background: '#764ba2', border: 'none' }}>
+                  {editingSkuRule ? 'Update Rule' : 'Create Rule'}
+                </Button>
+              </div>
+            </Form>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
