@@ -53,11 +53,22 @@ temp/
 tmp/
 *.tmp
 
-# Database files
+# Local / throwaway database dumps — never commit real tenant data
 *.db
 *.sqlite
 *.sqlite3
-*.sql
+dump.sql
+dumps/
+db-dumps/
+*.backup.sql
 
-# Database migrations (one-time scripts, run locally only)
-Backend/src/database/migrations/
+# ----------------------------------------------------------------------------
+# NOTE: Do NOT blanket-ignore *.sql or Backend/src/database/migrations/ —
+# the schema migrations under Backend/src/database/migrations/*.sql ARE the
+# canonical way to set up this project on a fresh machine. They live in git.
+# Only real-data dumps (above) should be ignored.
+# ----------------------------------------------------------------------------
+
+# Test artefacts produced by docs/testing/scripts/run_e2e_tests.js
+docs/testing/run.log
+docs/testing/results.json
