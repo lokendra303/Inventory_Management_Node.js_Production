@@ -368,6 +368,63 @@ CREATE TABLE IF NOT EXISTS `institution_profiles` (
   KEY `idx_inst_profile_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Backfill institution addresses from legacy company addresses
+INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order, created_at)
+SELECT a.id, a.institution_id, a.label, a.address, a.is_default, a.sort_order, a.created_at
+FROM company_addresses a
+LEFT JOIN institution_addresses ia ON ia.id = a.id
+WHERE ia.id IS NULL;
+
+-- Backfill stamps from legacy company stamps
+INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order, created_at)
+SELECT s.id, s.institution_id, 'stamp', s.label, s.file_path, s.is_default, s.sort_order, s.created_at
+FROM company_stamps s
+LEFT JOIN institution_documents d ON d.id = s.id
+WHERE d.id IS NULL;
+
+-- Backfill signatures from legacy company signatures
+INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order, created_at)
+SELECT s.id, s.institution_id, 'signature', s.label, s.file_path, s.is_default, s.sort_order, s.created_at
+FROM company_signatures s
+LEFT JOIN institution_documents d ON d.id = s.id
+WHERE d.id IS NULL;
+
+-- Backfill logo document from company_settings when no logo doc exists
+INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
+SELECT
+  UUID() AS id,
+  cs.institution_id COLLATE utf8mb4_unicode_ci,
+  'logo',
+  'Primary logo',
+  cs.logo_path,
+  1,
+  0
+FROM company_settings cs
+LEFT JOIN institution_documents d
+  ON d.institution_id = (cs.institution_id COLLATE utf8mb4_unicode_ci) AND d.doc_type = 'logo'
+WHERE cs.logo_path IS NOT NULL AND cs.logo_path <> '' AND d.id IS NULL;
+
+-- Backfill institution profile rows from company_settings
+INSERT INTO institution_profiles
+  (institution_id, company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, logo_path, authorized_signatory_name, authorized_signatory_designation)
+SELECT
+  cs.institution_id COLLATE utf8mb4_unicode_ci,
+  cs.company_name,
+  cs.address,
+  cs.phone,
+  cs.email,
+  cs.bank_name,
+  cs.account_number,
+  cs.ifsc_code,
+  cs.swift_code,
+  cs.logo_path,
+  cs.authorized_signatory_name,
+  cs.authorized_signatory_designation
+FROM company_settings cs
+LEFT JOIN institution_profiles p
+  ON p.institution_id = (cs.institution_id COLLATE utf8mb4_unicode_ci)
+WHERE p.id IS NULL;
+
 -- -----------------------------------------------------
 -- Table: currencies
 -- -----------------------------------------------------
