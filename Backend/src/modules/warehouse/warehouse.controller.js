@@ -1,6 +1,14 @@
 const warehouseService = require('./warehouse.service');
 const logger = require('../../utils/logger');
 
+function hasWarehouseAccess(req, warehouseId) {
+  const userWarehouseAccess = req.user?.warehouseAccess || [];
+  const role = req.user?.role;
+  // Admins or users with empty restriction list can access all warehouses.
+  if (role === 'admin' || userWarehouseAccess.length === 0) return true;
+  return userWarehouseAccess.includes(warehouseId);
+}
+
 class WarehouseController {
   async createWarehouse(req, res) {
     try {
@@ -67,6 +75,12 @@ class WarehouseController {
   async getWarehouse(req, res) {
     try {
       const { warehouseId } = req.params;
+      if (!hasWarehouseAccess(req, warehouseId)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied to this warehouse'
+        });
+      }
       const warehouse = await warehouseService.getWarehouse(req.institutionId, warehouseId);
       
       if (!warehouse) {
@@ -103,6 +117,12 @@ class WarehouseController {
           error: 'Warehouse ID is required'
         });
       }
+      if (!hasWarehouseAccess(req, warehouseId)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied to this warehouse'
+        });
+      }
       
       const details = await warehouseService.getWarehouseDetails(req.institutionId, warehouseId);
       
@@ -126,6 +146,12 @@ class WarehouseController {
   async updateWarehouse(req, res) {
     try {
       const { warehouseId } = req.params;
+      if (!hasWarehouseAccess(req, warehouseId)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied to this warehouse'
+        });
+      }
       await warehouseService.updateWarehouse(req.institutionId, warehouseId, req.body, req.user.userId);
       
       res.json({
@@ -149,6 +175,12 @@ class WarehouseController {
   async deleteWarehouse(req, res) {
     try {
       const { warehouseId } = req.params;
+      if (!hasWarehouseAccess(req, warehouseId)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied to this warehouse'
+        });
+      }
       await warehouseService.deleteWarehouse(req.institutionId, warehouseId, req.user.userId);
       
       res.json({

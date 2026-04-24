@@ -6,10 +6,68 @@ const logger = require('../../utils/logger');
 const { resolveUploadAbsolutePath } = require('../../shared/storage/fileStorage');
 
 let tablesReady = false;
+const ADDR_TABLE = 'institution_addresses';
 
 async function ensureTables() {
   if (tablesReady) return;
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS institution_addresses (
+      id VARCHAR(36) NOT NULL PRIMARY KEY,
+      institution_id VARCHAR(36) NOT NULL,
+      label VARCHAR(120) NOT NULL DEFAULT 'Address',
+      address TEXT NOT NULL,
+      is_default TINYINT(1) NOT NULL DEFAULT 0,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_inst_addr_inst (institution_id),
+      KEY idx_inst_addr_default (institution_id, is_default),
+      KEY idx_inst_addr_sort (institution_id, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS institution_documents (
+      id VARCHAR(36) NOT NULL PRIMARY KEY,
+      institution_id VARCHAR(36) NOT NULL,
+      doc_type VARCHAR(30) NOT NULL,
+      label VARCHAR(120) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      is_default TINYINT(1) NOT NULL DEFAULT 0,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      metadata JSON DEFAULT NULL,
+      KEY idx_inst_docs_type (institution_id, doc_type),
+      KEY idx_inst_docs_default (institution_id, doc_type, is_default),
+      KEY idx_inst_docs_sort (institution_id, doc_type, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS institution_profiles (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      institution_id VARCHAR(36) NOT NULL,
+      company_name VARCHAR(255) NULL,
+      address TEXT NULL,
+      phone VARCHAR(50) NULL,
+      email VARCHAR(255) NULL,
+      bank_name VARCHAR(255) NULL,
+      account_number VARCHAR(100) NULL,
+      ifsc_code VARCHAR(50) NULL,
+      swift_code VARCHAR(50) NULL,
+      logo_path VARCHAR(500) NULL,
+      authorized_signatory_name VARCHAR(255) NULL,
+      authorized_signatory_designation VARCHAR(255) NULL,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_inst_profile (institution_id),
+      KEY idx_inst_profile_email (email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // Legacy compatibility tables are still used by older endpoints/reports.
   await db.query(`
     CREATE TABLE IF NOT EXISTS company_addresses (
       id VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -56,55 +114,122 @@ async function migrateLegacyRows(institutionId) {
   await ensureTables();
 
   const [addrCnt] = await db.query(
-    'SELECT COUNT(*) AS c FROM company_addresses WHERE institution_id = ?',
+    'SELECT COUNT(*) AS c FROM institution_addresses WHERE institution_id = ?',
     [institutionId]
   );
   if (Number(addrCnt?.c || 0) === 0) {
-    const [cs] = await db.query(
-      'SELECT address FROM company_settings WHERE institution_id = ?',
+    const legacyRows = await db.query(
+      `SELECT id, institution_id, label, address, is_default, sort_order, created_at
+       FROM company_addresses WHERE institution_id = ?`,
       [institutionId]
     );
-    if (cs?.address && String(cs.address).trim()) {
-      await db.query(
-        `INSERT INTO company_addresses (id, institution_id, label, address, is_default, sort_order)
-         VALUES (?, ?, ?, ?, 1, 0)`,
-        [uuidv4(), institutionId, 'Registered office', String(cs.address).trim()]
+    if (legacyRows.length) {
+      for (const row of legacyRows) {
+        await db.query(
+          `INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+           ON DUPLICATE KEY UPDATE
+             label = VALUES(label),
+             address = VALUES(address),
+             is_default = VALUES(is_default),
+             sort_order = VALUES(sort_order)`,
+          [row.id, row.institution_id, row.label, row.address, row.is_default ? 1 : 0, row.sort_order || 0, row.created_at || null]
+        );
+      }
+    } else {
+      const [institution] = await db.query(
+        'SELECT address FROM institutions WHERE id = ?',
+        [institutionId]
       );
+      const [cs] = await db.query(
+        'SELECT address FROM company_settings WHERE institution_id = ?',
+        [institutionId]
+      );
+      const fallbackAddress = institution?.address || cs?.address;
+      if (fallbackAddress && String(fallbackAddress).trim()) {
+        await db.query(
+          `INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order)
+           VALUES (?, ?, ?, ?, 1, 0)`,
+          [uuidv4(), institutionId, 'Registered office', String(fallbackAddress).trim()]
+        );
+      }
     }
   }
 
-  const [stCnt] = await db.query(
-    'SELECT COUNT(*) AS c FROM company_stamps WHERE institution_id = ?',
+  const [docCnt] = await db.query(
+    'SELECT COUNT(*) AS c FROM institution_documents WHERE institution_id = ?',
     [institutionId]
   );
-  if (Number(stCnt?.c || 0) === 0) {
-    const [cs] = await db.query(
-      'SELECT stamp_path FROM company_settings WHERE institution_id = ?',
+  if (Number(docCnt?.c || 0) === 0) {
+    const legacyStamps = await db.query(
+      `SELECT id, institution_id, label, file_path, is_default, sort_order, created_at
+       FROM company_stamps WHERE institution_id = ?`,
       [institutionId]
     );
+    for (const row of legacyStamps) {
+      await db.query(
+        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order, created_at)
+         VALUES (?, ?, 'stamp', ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+         ON DUPLICATE KEY UPDATE
+           label = VALUES(label),
+           file_path = VALUES(file_path),
+           is_default = VALUES(is_default),
+           sort_order = VALUES(sort_order)`,
+        [row.id, row.institution_id, row.label, row.file_path, row.is_default ? 1 : 0, row.sort_order || 0, row.created_at || null]
+      );
+    }
+    const legacySignatures = await db.query(
+      `SELECT id, institution_id, label, file_path, is_default, sort_order, created_at
+       FROM company_signatures WHERE institution_id = ?`,
+      [institutionId]
+    );
+    for (const row of legacySignatures) {
+      await db.query(
+        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order, created_at)
+         VALUES (?, ?, 'signature', ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+         ON DUPLICATE KEY UPDATE
+           label = VALUES(label),
+           file_path = VALUES(file_path),
+           is_default = VALUES(is_default),
+           sort_order = VALUES(sort_order)`,
+        [row.id, row.institution_id, row.label, row.file_path, row.is_default ? 1 : 0, row.sort_order || 0, row.created_at || null]
+      );
+    }
+    const [cs] = await db.query(
+      'SELECT logo_path, stamp_path, signature_path FROM company_settings WHERE institution_id = ?',
+      [institutionId]
+    );
+    if (cs?.logo_path) {
+      await db.query(
+        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
+         SELECT ?, ?, 'logo', 'Primary logo', ?, 1, 0
+         WHERE NOT EXISTS (
+           SELECT 1 FROM institution_documents
+           WHERE institution_id = ? AND doc_type = 'logo'
+         )`,
+        [uuidv4(), institutionId, cs.logo_path, institutionId]
+      );
+    }
     if (cs?.stamp_path) {
       await db.query(
-        `INSERT INTO company_stamps (id, institution_id, label, file_path, is_default, sort_order)
-         VALUES (?, ?, ?, ?, 1, 0)`,
-        [uuidv4(), institutionId, 'Primary stamp', cs.stamp_path]
+        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
+         SELECT ?, ?, 'stamp', 'Primary stamp', ?, 1, 0
+         WHERE NOT EXISTS (
+           SELECT 1 FROM institution_documents
+           WHERE institution_id = ? AND doc_type = 'stamp'
+         )`,
+        [uuidv4(), institutionId, cs.stamp_path, institutionId]
       );
     }
-  }
-
-  const [sigCnt] = await db.query(
-    'SELECT COUNT(*) AS c FROM company_signatures WHERE institution_id = ?',
-    [institutionId]
-  );
-  if (Number(sigCnt?.c || 0) === 0) {
-    const [cs] = await db.query(
-      'SELECT signature_path FROM company_settings WHERE institution_id = ?',
-      [institutionId]
-    );
     if (cs?.signature_path) {
       await db.query(
-        `INSERT INTO company_signatures (id, institution_id, label, file_path, is_default, sort_order)
-         VALUES (?, ?, ?, ?, 1, 0)`,
-        [uuidv4(), institutionId, 'Primary signature', cs.signature_path]
+        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
+         SELECT ?, ?, 'signature', 'Primary signature', ?, 1, 0
+         WHERE NOT EXISTS (
+           SELECT 1 FROM institution_documents
+           WHERE institution_id = ? AND doc_type = 'signature'
+         )`,
+        [uuidv4(), institutionId, cs.signature_path, institutionId]
       );
     }
   }
@@ -112,6 +237,14 @@ async function migrateLegacyRows(institutionId) {
 
 async function listAddresses(institutionId) {
   await ensureTables();
+  await migrateLegacyRows(institutionId);
+
+  const rows = await db.query(
+    `SELECT id, label, address, is_default, sort_order, created_at
+     FROM institution_addresses WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
+    [institutionId]
+  );
+  if (rows.length) return rows;
   return db.query(
     `SELECT id, label, address, is_default, sort_order, created_at
      FROM company_addresses WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
@@ -119,9 +252,21 @@ async function listAddresses(institutionId) {
   );
 }
 
-async function listStamps(institutionId) {
+async function listDocsByType(institutionId, type) {
   await ensureTables();
+  await migrateLegacyRows(institutionId);
   return db.query(
+    `SELECT id, label, file_path, is_default, sort_order, created_at
+     FROM institution_documents
+     WHERE institution_id = ? AND doc_type = ?
+     ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
+    [institutionId, type]
+  );
+}
+
+async function listStamps(institutionId) {
+  const rows = await listDocsByType(institutionId, 'stamp');
+  return rows.length ? rows : db.query(
     `SELECT id, label, file_path, is_default, sort_order, created_at
      FROM company_stamps WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
     [institutionId]
@@ -129,8 +274,8 @@ async function listStamps(institutionId) {
 }
 
 async function listSignatures(institutionId) {
-  await ensureTables();
-  return db.query(
+  const rows = await listDocsByType(institutionId, 'signature');
+  return rows.length ? rows : db.query(
     `SELECT id, label, file_path, is_default, sort_order, created_at
      FROM company_signatures WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
     [institutionId]
@@ -143,15 +288,17 @@ async function clearDefaults(institutionId, table) {
 
 async function syncLegacyMirror(institutionId) {
   const [da] = await db.query(
-    `SELECT address FROM company_addresses WHERE institution_id = ? AND is_default = 1 LIMIT 1`,
+    `SELECT address FROM institution_addresses WHERE institution_id = ? AND is_default = 1 LIMIT 1`,
     [institutionId]
   );
   const [ds] = await db.query(
-    `SELECT file_path FROM company_stamps WHERE institution_id = ? AND is_default = 1 LIMIT 1`,
+    `SELECT file_path FROM institution_documents
+     WHERE institution_id = ? AND doc_type = 'stamp' AND is_default = 1 LIMIT 1`,
     [institutionId]
   );
   const [dg] = await db.query(
-    `SELECT file_path FROM company_signatures WHERE institution_id = ? AND is_default = 1 LIMIT 1`,
+    `SELECT file_path FROM institution_documents
+     WHERE institution_id = ? AND doc_type = 'signature' AND is_default = 1 LIMIT 1`,
     [institutionId]
   );
 
@@ -166,6 +313,10 @@ async function syncLegacyMirror(institutionId) {
       [da?.address ?? null, ds?.file_path ?? null, dg?.file_path ?? null, institutionId]
     );
   }
+
+  if (da?.address) {
+    await db.query('UPDATE institutions SET address = ?, updated_at = NOW() WHERE id = ?', [da.address, institutionId]);
+  }
 }
 
 async function addAddress(institutionId, { label, address, is_default }) {
@@ -176,28 +327,28 @@ async function addAddress(institutionId, { label, address, is_default }) {
   if (!addr) throw new Error('Address text is required');
 
   const def = !!is_default;
-  if (def) await clearDefaults(institutionId, 'company_addresses');
+  if (def) await clearDefaults(institutionId, ADDR_TABLE);
 
   const [maxRow] = await db.query(
-    'SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM company_addresses WHERE institution_id = ?',
+    'SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM institution_addresses WHERE institution_id = ?',
     [institutionId]
   );
   const sort = Number(maxRow?.n ?? 0);
 
   await db.query(
-    `INSERT INTO company_addresses (id, institution_id, label, address, is_default, sort_order)
+    `INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [id, institutionId, lab, addr, def ? 1 : 0, sort]
   );
 
   if (!def) {
     const [c] = await db.query(
-      'SELECT COUNT(*) AS c FROM company_addresses WHERE institution_id = ? AND is_default = 1',
+      'SELECT COUNT(*) AS c FROM institution_addresses WHERE institution_id = ? AND is_default = 1',
       [institutionId]
     );
     if (Number(c?.c || 0) === 0) {
       await db.query(
-        'UPDATE company_addresses SET is_default = 1 WHERE id = ? AND institution_id = ?',
+        'UPDATE institution_addresses SET is_default = 1 WHERE id = ? AND institution_id = ?',
         [id, institutionId]
       );
     }
@@ -210,7 +361,7 @@ async function addAddress(institutionId, { label, address, is_default }) {
 async function updateAddress(institutionId, addressId, { label, address, is_default }) {
   await ensureTables();
   const [row] = await db.query(
-    'SELECT id FROM company_addresses WHERE id = ? AND institution_id = ?',
+    'SELECT id FROM institution_addresses WHERE id = ? AND institution_id = ?',
     [addressId, institutionId]
   );
   if (!row) throw new Error('Address not found');
@@ -228,7 +379,7 @@ async function updateAddress(institutionId, addressId, { label, address, is_defa
     vals.push(a);
   }
   if (is_default !== undefined && is_default) {
-    await clearDefaults(institutionId, 'company_addresses');
+    await clearDefaults(institutionId, ADDR_TABLE);
     updates.push('is_default = 1');
   } else if (is_default === false) {
     updates.push('is_default = 0');
@@ -237,22 +388,22 @@ async function updateAddress(institutionId, addressId, { label, address, is_defa
   if (updates.length === 0) throw new Error('Nothing to update');
   vals.push(addressId, institutionId);
   await db.query(
-    `UPDATE company_addresses SET ${updates.join(', ')} WHERE id = ? AND institution_id = ?`,
+    `UPDATE institution_addresses SET ${updates.join(', ')} WHERE id = ? AND institution_id = ?`,
     vals
   );
 
   const [defCount] = await db.query(
-    'SELECT COUNT(*) AS c FROM company_addresses WHERE institution_id = ? AND is_default = 1',
+    'SELECT COUNT(*) AS c FROM institution_addresses WHERE institution_id = ? AND is_default = 1',
     [institutionId]
   );
   if (Number(defCount?.c || 0) === 0) {
     const [first] = await db.query(
-      'SELECT id FROM company_addresses WHERE institution_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
+      'SELECT id FROM institution_addresses WHERE institution_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
       [institutionId]
     );
     if (first) {
       await db.query(
-        'UPDATE company_addresses SET is_default = 1 WHERE id = ? AND institution_id = ?',
+        'UPDATE institution_addresses SET is_default = 1 WHERE id = ? AND institution_id = ?',
         [first.id, institutionId]
       );
     }
@@ -264,21 +415,21 @@ async function updateAddress(institutionId, addressId, { label, address, is_defa
 async function deleteAddress(institutionId, addressId) {
   await ensureTables();
   const [row] = await db.query(
-    'SELECT is_default FROM company_addresses WHERE id = ? AND institution_id = ?',
+    'SELECT is_default FROM institution_addresses WHERE id = ? AND institution_id = ?',
     [addressId, institutionId]
   );
   if (!row) throw new Error('Address not found');
 
-  await db.query('DELETE FROM company_addresses WHERE id = ? AND institution_id = ?', [addressId, institutionId]);
+  await db.query('DELETE FROM institution_addresses WHERE id = ? AND institution_id = ?', [addressId, institutionId]);
 
   if (row.is_default) {
     const [first] = await db.query(
-      'SELECT id FROM company_addresses WHERE institution_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
+      'SELECT id FROM institution_addresses WHERE institution_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
       [institutionId]
     );
     if (first) {
       await db.query(
-        'UPDATE company_addresses SET is_default = 1 WHERE id = ? AND institution_id = ?',
+        'UPDATE institution_addresses SET is_default = 1 WHERE id = ? AND institution_id = ?',
         [first.id, institutionId]
       );
     }
@@ -292,26 +443,29 @@ async function addStamp(institutionId, filePath, label) {
   const lab = (label || 'Stamp').trim().slice(0, 120);
 
   const [maxRow] = await db.query(
-    'SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM company_stamps WHERE institution_id = ?',
+    `SELECT COALESCE(MAX(sort_order), -1) + 1 AS n
+     FROM institution_documents
+     WHERE institution_id = ? AND doc_type = 'stamp'`,
     [institutionId]
   );
   const sort = Number(maxRow?.n ?? 0);
 
   const [c] = await db.query(
-    'SELECT COUNT(*) AS c FROM company_stamps WHERE institution_id = ?',
+    `SELECT COUNT(*) AS c FROM institution_documents
+     WHERE institution_id = ? AND doc_type = 'stamp'`,
     [institutionId]
   );
   const isFirst = Number(c?.c || 0) === 0;
   if (isFirst) {
     await db.query(
-      `INSERT INTO company_stamps (id, institution_id, label, file_path, is_default, sort_order)
-       VALUES (?, ?, ?, ?, 1, ?)`,
+      `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
+       VALUES (?, ?, 'stamp', ?, ?, 1, ?)`,
       [id, institutionId, lab, filePath, sort]
     );
   } else {
     await db.query(
-      `INSERT INTO company_stamps (id, institution_id, label, file_path, is_default, sort_order)
-       VALUES (?, ?, ?, ?, 0, ?)`,
+      `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
+       VALUES (?, ?, 'stamp', ?, ?, 0, ?)`,
       [id, institutionId, lab, filePath, sort]
     );
   }
@@ -323,21 +477,31 @@ async function addStamp(institutionId, filePath, label) {
 async function updateStamp(institutionId, stampId, { label, is_default }) {
   await ensureTables();
   const [row] = await db.query(
-    'SELECT id FROM company_stamps WHERE id = ? AND institution_id = ?',
+    `SELECT id FROM institution_documents
+     WHERE id = ? AND institution_id = ? AND doc_type = 'stamp'`,
     [stampId, institutionId]
   );
   if (!row) throw new Error('Stamp not found');
 
   if (label !== undefined) {
     await db.query(
-      'UPDATE company_stamps SET label = ? WHERE id = ? AND institution_id = ?',
+      `UPDATE institution_documents
+       SET label = ?
+       WHERE id = ? AND institution_id = ? AND doc_type = 'stamp'`,
       [String(label).trim().slice(0, 120), stampId, institutionId]
     );
   }
   if (is_default) {
-    await clearDefaults(institutionId, 'company_stamps');
     await db.query(
-      'UPDATE company_stamps SET is_default = 1 WHERE id = ? AND institution_id = ?',
+      `UPDATE institution_documents
+       SET is_default = 0
+       WHERE institution_id = ? AND doc_type = 'stamp'`,
+      [institutionId]
+    );
+    await db.query(
+      `UPDATE institution_documents
+       SET is_default = 1
+       WHERE id = ? AND institution_id = ? AND doc_type = 'stamp'`,
       [stampId, institutionId]
     );
   }
@@ -347,7 +511,8 @@ async function updateStamp(institutionId, stampId, { label, is_default }) {
 async function deleteStamp(institutionId, stampId) {
   await ensureTables();
   const [row] = await db.query(
-    'SELECT file_path, is_default FROM company_stamps WHERE id = ? AND institution_id = ?',
+    `SELECT file_path, is_default FROM institution_documents
+     WHERE id = ? AND institution_id = ? AND doc_type = 'stamp'`,
     [stampId, institutionId]
   );
   if (!row) throw new Error('Stamp not found');
@@ -359,16 +524,24 @@ async function deleteStamp(institutionId, stampId) {
     }
   }
 
-  await db.query('DELETE FROM company_stamps WHERE id = ? AND institution_id = ?', [stampId, institutionId]);
+  await db.query(
+    `DELETE FROM institution_documents
+     WHERE id = ? AND institution_id = ? AND doc_type = 'stamp'`,
+    [stampId, institutionId]
+  );
 
   if (row.is_default) {
     const [first] = await db.query(
-      'SELECT id FROM company_stamps WHERE institution_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
+      `SELECT id FROM institution_documents
+       WHERE institution_id = ? AND doc_type = 'stamp'
+       ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
       [institutionId]
     );
     if (first) {
       await db.query(
-        'UPDATE company_stamps SET is_default = 1 WHERE id = ? AND institution_id = ?',
+        `UPDATE institution_documents
+         SET is_default = 1
+         WHERE id = ? AND institution_id = ? AND doc_type = 'stamp'`,
         [first.id, institutionId]
       );
     }
@@ -382,20 +555,23 @@ async function addSignature(institutionId, filePath, label) {
   const lab = (label || 'Signature').trim().slice(0, 120);
 
   const [maxRow] = await db.query(
-    'SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM company_signatures WHERE institution_id = ?',
+    `SELECT COALESCE(MAX(sort_order), -1) + 1 AS n
+     FROM institution_documents
+     WHERE institution_id = ? AND doc_type = 'signature'`,
     [institutionId]
   );
   const sort = Number(maxRow?.n ?? 0);
 
   const [c] = await db.query(
-    'SELECT COUNT(*) AS c FROM company_signatures WHERE institution_id = ?',
+    `SELECT COUNT(*) AS c FROM institution_documents
+     WHERE institution_id = ? AND doc_type = 'signature'`,
     [institutionId]
   );
   const isFirst = Number(c?.c || 0) === 0;
 
   await db.query(
-    `INSERT INTO company_signatures (id, institution_id, label, file_path, is_default, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
+     VALUES (?, ?, 'signature', ?, ?, ?, ?)`,
     [id, institutionId, lab, filePath, isFirst ? 1 : 0, sort]
   );
 
@@ -406,21 +582,31 @@ async function addSignature(institutionId, filePath, label) {
 async function updateSignature(institutionId, sigId, { label, is_default }) {
   await ensureTables();
   const [row] = await db.query(
-    'SELECT id FROM company_signatures WHERE id = ? AND institution_id = ?',
+    `SELECT id FROM institution_documents
+     WHERE id = ? AND institution_id = ? AND doc_type = 'signature'`,
     [sigId, institutionId]
   );
   if (!row) throw new Error('Signature not found');
 
   if (label !== undefined) {
     await db.query(
-      'UPDATE company_signatures SET label = ? WHERE id = ? AND institution_id = ?',
+      `UPDATE institution_documents
+       SET label = ?
+       WHERE id = ? AND institution_id = ? AND doc_type = 'signature'`,
       [String(label).trim().slice(0, 120), sigId, institutionId]
     );
   }
   if (is_default) {
-    await clearDefaults(institutionId, 'company_signatures');
     await db.query(
-      'UPDATE company_signatures SET is_default = 1 WHERE id = ? AND institution_id = ?',
+      `UPDATE institution_documents
+       SET is_default = 0
+       WHERE institution_id = ? AND doc_type = 'signature'`,
+      [institutionId]
+    );
+    await db.query(
+      `UPDATE institution_documents
+       SET is_default = 1
+       WHERE id = ? AND institution_id = ? AND doc_type = 'signature'`,
       [sigId, institutionId]
     );
   }
@@ -430,7 +616,8 @@ async function updateSignature(institutionId, sigId, { label, is_default }) {
 async function deleteSignature(institutionId, sigId) {
   await ensureTables();
   const [row] = await db.query(
-    'SELECT file_path, is_default FROM company_signatures WHERE id = ? AND institution_id = ?',
+    `SELECT file_path, is_default FROM institution_documents
+     WHERE id = ? AND institution_id = ? AND doc_type = 'signature'`,
     [sigId, institutionId]
   );
   if (!row) throw new Error('Signature not found');
@@ -442,16 +629,24 @@ async function deleteSignature(institutionId, sigId) {
     }
   }
 
-  await db.query('DELETE FROM company_signatures WHERE id = ? AND institution_id = ?', [sigId, institutionId]);
+  await db.query(
+    `DELETE FROM institution_documents
+     WHERE id = ? AND institution_id = ? AND doc_type = 'signature'`,
+    [sigId, institutionId]
+  );
 
   if (row.is_default) {
     const [first] = await db.query(
-      'SELECT id FROM company_signatures WHERE institution_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
+      `SELECT id FROM institution_documents
+       WHERE institution_id = ? AND doc_type = 'signature'
+       ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
       [institutionId]
     );
     if (first) {
       await db.query(
-        'UPDATE company_signatures SET is_default = 1 WHERE id = ? AND institution_id = ?',
+        `UPDATE institution_documents
+         SET is_default = 1
+         WHERE id = ? AND institution_id = ? AND doc_type = 'signature'`,
         [first.id, institutionId]
       );
     }
@@ -494,12 +689,12 @@ async function upsertDefaultAddressText(institutionId, addressText) {
 
   if (def) {
     await db.query(
-      'UPDATE company_addresses SET address = ? WHERE id = ? AND institution_id = ?',
+      'UPDATE institution_addresses SET address = ? WHERE id = ? AND institution_id = ?',
       [text, def.id, institutionId]
     );
   } else {
     await db.query(
-      `INSERT INTO company_addresses (id, institution_id, label, address, is_default, sort_order)
+      `INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order)
        VALUES (?, ?, ?, ?, 1, 0)`,
       [uuidv4(), institutionId, 'Registered office', text]
     );

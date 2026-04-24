@@ -47,10 +47,10 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
-router.get('/', companySettingsController.getSettings);
-router.put('/', companySettingsController.updateSettings);
-router.post('/upload/:fileType', upload.single('file'), companySettingsController.uploadFile);
-router.delete('/upload/:fileType', companySettingsController.deleteFile);
+router.get('/', companySettingsController.getSettings.bind(companySettingsController));
+router.put('/', companySettingsController.updateSettings.bind(companySettingsController));
+router.post('/upload/:fileType', upload.single('file'), companySettingsController.uploadFile.bind(companySettingsController));
+router.delete('/upload/:fileType', companySettingsController.deleteFile.bind(companySettingsController));
 
 router.post('/addresses', companySettingsController.addAddress.bind(companySettingsController));
 router.put('/addresses/:id', companySettingsController.updateAddress.bind(companySettingsController));

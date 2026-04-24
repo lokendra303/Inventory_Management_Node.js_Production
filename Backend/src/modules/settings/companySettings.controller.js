@@ -6,6 +6,52 @@ const multi = require('./companySettingsMulti.service');
 const { resolveUploadAbsolutePath } = require('../../shared/storage/fileStorage');
 
 class CompanySettingsController {
+  async getInstitutionProfile(institutionId) {
+    const [profile] = await db.query(
+      'SELECT * FROM institution_profiles WHERE institution_id = ?',
+      [institutionId]
+    );
+    return profile || null;
+  }
+
+  async upsertInstitutionProfile(institutionId, payload) {
+    const [existing] = await db.query(
+      'SELECT id FROM institution_profiles WHERE institution_id = ?',
+      [institutionId]
+    );
+
+    const values = [
+      payload.companyName ?? null,
+      payload.address ?? null,
+      payload.phone ?? null,
+      payload.email ?? null,
+      payload.bankName ?? null,
+      payload.accountNumber ?? null,
+      payload.ifscCode ?? null,
+      payload.swiftCode ?? null,
+      payload.authorizedSignatoryName ?? null,
+      payload.authorizedSignatoryDesignation ?? null,
+      institutionId,
+    ];
+
+    if (existing) {
+      await db.query(
+        `UPDATE institution_profiles
+         SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?
+         WHERE institution_id = ?`,
+        values
+      );
+      return;
+    }
+
+    await db.query(
+      `INSERT INTO institution_profiles
+       (company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, authorized_signatory_name, authorized_signatory_designation, institution_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      values
+    );
+  }
+
   async getSettings(req, res) {
     try {
       const { institutionId } = req;
@@ -17,8 +63,24 @@ class CompanySettingsController {
         'SELECT * FROM company_settings WHERE institution_id = ?',
         [institutionId]
       );
+      const profile = await this.getInstitutionProfile(institutionId);
 
-      const data = await multi.attachMultiToSettingsRow(institutionId, settings || {});
+      const profileFirst = {
+        ...(settings || {}),
+        company_name: profile?.company_name ?? settings?.company_name ?? null,
+        address: profile?.address ?? settings?.address ?? null,
+        phone: profile?.phone ?? settings?.phone ?? null,
+        email: profile?.email ?? settings?.email ?? null,
+        bank_name: profile?.bank_name ?? settings?.bank_name ?? null,
+        account_number: profile?.account_number ?? settings?.account_number ?? null,
+        ifsc_code: profile?.ifsc_code ?? settings?.ifsc_code ?? null,
+        swift_code: profile?.swift_code ?? settings?.swift_code ?? null,
+        logo_path: profile?.logo_path ?? settings?.logo_path ?? null,
+        authorized_signatory_name: profile?.authorized_signatory_name ?? settings?.authorized_signatory_name ?? null,
+        authorized_signatory_designation: profile?.authorized_signatory_designation ?? settings?.authorized_signatory_designation ?? null,
+      };
+
+      const data = await multi.attachMultiToSettingsRow(institutionId, profileFirst);
 
       res.json({
         success: true,
@@ -42,18 +104,33 @@ class CompanySettingsController {
         'SELECT * FROM company_settings WHERE institution_id = ?',
         [institutionId]
       );
+      const profile = await this.getInstitutionProfile(institutionId);
       const p = prev || {};
+      const pf = profile || {};
 
-      const companyName = b.companyName !== undefined ? b.companyName : p.company_name;
-      const address = b.address !== undefined ? b.address : p.address;
-      const phone = b.phone !== undefined ? b.phone : p.phone;
-      const email = b.email !== undefined ? b.email : p.email;
-      const bankName = b.bankName !== undefined ? b.bankName : p.bank_name;
-      const accountNumber = b.accountNumber !== undefined ? b.accountNumber : p.account_number;
-      const ifscCode = b.ifscCode !== undefined ? b.ifscCode : p.ifsc_code;
-      const swiftCode = b.swiftCode !== undefined ? b.swiftCode : p.swift_code;
-      const authorizedSignatoryName = b.authorizedSignatoryName !== undefined ? b.authorizedSignatoryName : p.authorized_signatory_name;
-      const authorizedSignatoryDesignation = b.authorizedSignatoryDesignation !== undefined ? b.authorizedSignatoryDesignation : p.authorized_signatory_designation;
+      const companyName = b.companyName !== undefined ? b.companyName : (pf.company_name ?? p.company_name);
+      const address = b.address !== undefined ? b.address : (pf.address ?? p.address);
+      const phone = b.phone !== undefined ? b.phone : (pf.phone ?? p.phone);
+      const email = b.email !== undefined ? b.email : (pf.email ?? p.email);
+      const bankName = b.bankName !== undefined ? b.bankName : (pf.bank_name ?? p.bank_name);
+      const accountNumber = b.accountNumber !== undefined ? b.accountNumber : (pf.account_number ?? p.account_number);
+      const ifscCode = b.ifscCode !== undefined ? b.ifscCode : (pf.ifsc_code ?? p.ifsc_code);
+      const swiftCode = b.swiftCode !== undefined ? b.swiftCode : (pf.swift_code ?? p.swift_code);
+      const authorizedSignatoryName = b.authorizedSignatoryName !== undefined ? b.authorizedSignatoryName : (pf.authorized_signatory_name ?? p.authorized_signatory_name);
+      const authorizedSignatoryDesignation = b.authorizedSignatoryDesignation !== undefined ? b.authorizedSignatoryDesignation : (pf.authorized_signatory_designation ?? p.authorized_signatory_designation);
+
+      await this.upsertInstitutionProfile(institutionId, {
+        companyName,
+        address,
+        phone,
+        email,
+        bankName,
+        accountNumber,
+        ifscCode,
+        swiftCode,
+        authorizedSignatoryName,
+        authorizedSignatoryDesignation,
+      });
 
       const [existing] = await db.query(
         'SELECT id FROM company_settings WHERE institution_id = ?',
