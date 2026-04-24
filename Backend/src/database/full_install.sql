@@ -236,32 +236,6 @@ CREATE TABLE IF NOT EXISTS `categories` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- -----------------------------------------------------
--- Table: company_settings
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `company_settings` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `institution_id` varchar(255) NOT NULL,
-  `company_name` varchar(255) DEFAULT NULL,
-  `address` text,
-  `phone` varchar(50) DEFAULT NULL,
-  `email` varchar(255) DEFAULT NULL,
-  `bank_name` varchar(255) DEFAULT NULL,
-  `account_number` varchar(100) DEFAULT NULL,
-  `ifsc_code` varchar(50) DEFAULT NULL,
-  `swift_code` varchar(50) DEFAULT NULL,
-  `logo_path` varchar(500) DEFAULT NULL,
-  `stamp_path` varchar(500) DEFAULT NULL,
-  `signature_path` varchar(500) DEFAULT NULL,
-  `authorized_signatory_name` varchar(255) DEFAULT NULL,
-  `authorized_signatory_designation` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `institution_id` (`institution_id`),
-  KEY `idx_institution_id` (`institution_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- -----------------------------------------------------
 -- Table: institution_addresses
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `institution_addresses` (
@@ -269,6 +243,12 @@ CREATE TABLE IF NOT EXISTS `institution_addresses` (
   `institution_id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `label` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Address',
   `address` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `address_line1` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `address_line2` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `city` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `state` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `country` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `postal_code` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_default` tinyint(1) NOT NULL DEFAULT '0',
   `sort_order` int NOT NULL DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -322,42 +302,6 @@ CREATE TABLE IF NOT EXISTS `institution_profiles` (
   UNIQUE KEY `uq_inst_profile` (`institution_id`),
   KEY `idx_inst_profile_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Backfill logo document from company_settings when no logo doc exists
-INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
-SELECT
-  UUID() AS id,
-  cs.institution_id COLLATE utf8mb4_unicode_ci,
-  'logo',
-  'Primary logo',
-  cs.logo_path,
-  1,
-  0
-FROM company_settings cs
-LEFT JOIN institution_documents d
-  ON d.institution_id = (cs.institution_id COLLATE utf8mb4_unicode_ci) AND d.doc_type = 'logo'
-WHERE cs.logo_path IS NOT NULL AND cs.logo_path <> '' AND d.id IS NULL;
-
--- Backfill institution profile rows from company_settings
-INSERT INTO institution_profiles
-  (institution_id, company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, logo_path, authorized_signatory_name, authorized_signatory_designation)
-SELECT
-  cs.institution_id COLLATE utf8mb4_unicode_ci,
-  cs.company_name,
-  cs.address,
-  cs.phone,
-  cs.email,
-  cs.bank_name,
-  cs.account_number,
-  cs.ifsc_code,
-  cs.swift_code,
-  cs.logo_path,
-  cs.authorized_signatory_name,
-  cs.authorized_signatory_designation
-FROM company_settings cs
-LEFT JOIN institution_profiles p
-  ON p.institution_id = (cs.institution_id COLLATE utf8mb4_unicode_ci)
-WHERE p.id IS NULL;
 
 -- -----------------------------------------------------
 -- Table: currencies

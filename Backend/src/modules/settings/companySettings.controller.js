@@ -59,25 +59,20 @@ class CompanySettingsController {
       await multi.ensureTables();
       await multi.migrateLegacyRows(institutionId);
 
-      const [settings] = await db.query(
-        'SELECT * FROM company_settings WHERE institution_id = ?',
-        [institutionId]
-      );
       const profile = await this.getInstitutionProfile(institutionId);
 
       const profileFirst = {
-        ...(settings || {}),
-        company_name: profile?.company_name ?? settings?.company_name ?? null,
-        address: profile?.address ?? settings?.address ?? null,
-        phone: profile?.phone ?? settings?.phone ?? null,
-        email: profile?.email ?? settings?.email ?? null,
-        bank_name: profile?.bank_name ?? settings?.bank_name ?? null,
-        account_number: profile?.account_number ?? settings?.account_number ?? null,
-        ifsc_code: profile?.ifsc_code ?? settings?.ifsc_code ?? null,
-        swift_code: profile?.swift_code ?? settings?.swift_code ?? null,
-        logo_path: profile?.logo_path ?? settings?.logo_path ?? null,
-        authorized_signatory_name: profile?.authorized_signatory_name ?? settings?.authorized_signatory_name ?? null,
-        authorized_signatory_designation: profile?.authorized_signatory_designation ?? settings?.authorized_signatory_designation ?? null,
+        company_name: profile?.company_name ?? null,
+        address: profile?.address ?? null,
+        phone: profile?.phone ?? null,
+        email: profile?.email ?? null,
+        bank_name: profile?.bank_name ?? null,
+        account_number: profile?.account_number ?? null,
+        ifsc_code: profile?.ifsc_code ?? null,
+        swift_code: profile?.swift_code ?? null,
+        logo_path: profile?.logo_path ?? null,
+        authorized_signatory_name: profile?.authorized_signatory_name ?? null,
+        authorized_signatory_designation: profile?.authorized_signatory_designation ?? null,
       };
 
       const data = await multi.attachMultiToSettingsRow(institutionId, profileFirst);
@@ -100,24 +95,19 @@ class CompanySettingsController {
       const { institutionId } = req;
       const b = req.body;
 
-      const [prev] = await db.query(
-        'SELECT * FROM company_settings WHERE institution_id = ?',
-        [institutionId]
-      );
       const profile = await this.getInstitutionProfile(institutionId);
-      const p = prev || {};
       const pf = profile || {};
 
-      const companyName = b.companyName !== undefined ? b.companyName : (pf.company_name ?? p.company_name);
-      const address = b.address !== undefined ? b.address : (pf.address ?? p.address);
-      const phone = b.phone !== undefined ? b.phone : (pf.phone ?? p.phone);
-      const email = b.email !== undefined ? b.email : (pf.email ?? p.email);
-      const bankName = b.bankName !== undefined ? b.bankName : (pf.bank_name ?? p.bank_name);
-      const accountNumber = b.accountNumber !== undefined ? b.accountNumber : (pf.account_number ?? p.account_number);
-      const ifscCode = b.ifscCode !== undefined ? b.ifscCode : (pf.ifsc_code ?? p.ifsc_code);
-      const swiftCode = b.swiftCode !== undefined ? b.swiftCode : (pf.swift_code ?? p.swift_code);
-      const authorizedSignatoryName = b.authorizedSignatoryName !== undefined ? b.authorizedSignatoryName : (pf.authorized_signatory_name ?? p.authorized_signatory_name);
-      const authorizedSignatoryDesignation = b.authorizedSignatoryDesignation !== undefined ? b.authorizedSignatoryDesignation : (pf.authorized_signatory_designation ?? p.authorized_signatory_designation);
+      const companyName = b.companyName !== undefined ? b.companyName : pf.company_name;
+      const address = b.address !== undefined ? b.address : pf.address;
+      const phone = b.phone !== undefined ? b.phone : pf.phone;
+      const email = b.email !== undefined ? b.email : pf.email;
+      const bankName = b.bankName !== undefined ? b.bankName : pf.bank_name;
+      const accountNumber = b.accountNumber !== undefined ? b.accountNumber : pf.account_number;
+      const ifscCode = b.ifscCode !== undefined ? b.ifscCode : pf.ifsc_code;
+      const swiftCode = b.swiftCode !== undefined ? b.swiftCode : pf.swift_code;
+      const authorizedSignatoryName = b.authorizedSignatoryName !== undefined ? b.authorizedSignatoryName : pf.authorized_signatory_name;
+      const authorizedSignatoryDesignation = b.authorizedSignatoryDesignation !== undefined ? b.authorizedSignatoryDesignation : pf.authorized_signatory_designation;
 
       await this.upsertInstitutionProfile(institutionId, {
         companyName,
@@ -132,34 +122,18 @@ class CompanySettingsController {
         authorizedSignatoryDesignation,
       });
 
-      const [existing] = await db.query(
-        'SELECT id FROM company_settings WHERE institution_id = ?',
-        [institutionId]
-      );
-
-      if (existing) {
-        await db.query(
-          `UPDATE company_settings
-           SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?
-           WHERE institution_id = ?`,
-          [
-            companyName, address, phone, email, bankName, accountNumber, ifscCode, swiftCode,
-            authorizedSignatoryName, authorizedSignatoryDesignation, institutionId,
-          ]
-        );
-      } else {
-        await db.query(
-          `INSERT INTO company_settings (institution_id, company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, authorized_signatory_name, authorized_signatory_designation)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            institutionId, companyName, address, phone, email, bankName, accountNumber, ifscCode, swiftCode,
-            authorizedSignatoryName, authorizedSignatoryDesignation,
-          ]
-        );
-      }
-
-      if (address !== undefined && address !== null && String(address).trim()) {
-        await multi.upsertDefaultAddressText(institutionId, address);
+      const addressPayload = {
+        address,
+        address_line1: b.addressLine1 ?? b.address_line1,
+        address_line2: b.addressLine2 ?? b.address_line2,
+        city: b.city,
+        state: b.state,
+        country: b.country,
+        postal_code: b.postalCode ?? b.postal_code,
+      };
+      const hasStructuredAddressInput = Object.values(addressPayload).some((v) => v !== undefined && v !== null);
+      if (hasStructuredAddressInput) {
+        await multi.upsertDefaultAddressFields(institutionId, addressPayload);
       }
       await multi.syncLegacyMirror(institutionId);
 
@@ -223,15 +197,15 @@ class CompanySettingsController {
 
       const columnName = `${fileType}_path`;
       const [existing] = await db.query(
-        'SELECT id FROM company_settings WHERE institution_id = ?',
+        'SELECT id FROM institution_profiles WHERE institution_id = ?',
         [institutionId]
       );
 
       if (existing) {
-        await db.query(`UPDATE company_settings SET ${columnName} = ? WHERE institution_id = ?`, [filePath, institutionId]);
+        await db.query(`UPDATE institution_profiles SET ${columnName} = ? WHERE institution_id = ?`, [filePath, institutionId]);
       } else {
         await db.query(
-          `INSERT INTO company_settings (institution_id, ${columnName}) VALUES (?, ?)`,
+          `INSERT INTO institution_profiles (institution_id, ${columnName}) VALUES (?, ?)`,
           [institutionId, filePath]
         );
       }
@@ -261,24 +235,15 @@ class CompanySettingsController {
 
       if (fileType === 'stamp' || fileType === 'signature') {
         await multi.ensureTables();
-        const table = fileType === 'stamp' ? 'company_stamps' : 'company_signatures';
-        const [settings] = await db.query(
-          `SELECT ${fileType}_path FROM company_settings WHERE institution_id = ?`,
-          [institutionId]
+        const docs = await db.query(
+          `SELECT id FROM institution_documents
+           WHERE institution_id = ? AND doc_type = ? AND is_default = 1
+           ORDER BY sort_order ASC, created_at ASC`,
+          [institutionId, fileType]
         );
-        const col = `${fileType}_path`;
-        const p = settings?.[col];
-        if (p) {
-          const rows = await db.query(
-            `SELECT id FROM ${table} WHERE institution_id = ? AND file_path = ?`,
-            [institutionId, p]
-          );
-          if (rows.length) {
-            if (fileType === 'stamp') await multi.deleteStamp(institutionId, rows[0].id);
-            else await multi.deleteSignature(institutionId, rows[0].id);
-          } else {
-            await db.query(`UPDATE company_settings SET ${col} = NULL WHERE institution_id = ?`, [institutionId]);
-          }
+        if (docs.length) {
+          if (fileType === 'stamp') await multi.deleteStamp(institutionId, docs[0].id);
+          else await multi.deleteSignature(institutionId, docs[0].id);
         }
         await multi.syncLegacyMirror(institutionId);
         return res.json({ success: true, message: `${fileType} deleted successfully` });
@@ -286,7 +251,7 @@ class CompanySettingsController {
 
       const columnName = `${fileType}_path`;
       const [settings] = await db.query(
-        `SELECT ${columnName} FROM company_settings WHERE institution_id = ?`,
+        `SELECT ${columnName} FROM institution_profiles WHERE institution_id = ?`,
         [institutionId]
       );
 
@@ -298,7 +263,7 @@ class CompanySettingsController {
       }
 
       await db.query(
-        `UPDATE company_settings SET ${columnName} = NULL WHERE institution_id = ?`,
+        `UPDATE institution_profiles SET ${columnName} = NULL WHERE institution_id = ?`,
         [institutionId]
       );
 

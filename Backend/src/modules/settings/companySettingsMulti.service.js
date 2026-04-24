@@ -17,6 +17,12 @@ async function ensureTables() {
       institution_id VARCHAR(36) NOT NULL,
       label VARCHAR(120) NOT NULL DEFAULT 'Address',
       address TEXT NOT NULL,
+      address_line1 VARCHAR(255) NULL,
+      address_line2 VARCHAR(255) NULL,
+      city VARCHAR(100) NULL,
+      state VARCHAR(100) NULL,
+      country VARCHAR(100) NULL,
+      postal_code VARCHAR(20) NULL,
       is_default TINYINT(1) NOT NULL DEFAULT 0,
       sort_order INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
@@ -67,46 +73,6 @@ async function ensureTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
-  // Legacy compatibility tables are still used by older endpoints/reports.
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS company_addresses (
-      id VARCHAR(36) NOT NULL PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL,
-      label VARCHAR(120) NOT NULL DEFAULT 'Address',
-      address TEXT NOT NULL,
-      is_default TINYINT(1) NOT NULL DEFAULT 0,
-      sort_order INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-      KEY idx_company_addr_inst (institution_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS company_stamps (
-      id VARCHAR(36) NOT NULL PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL,
-      label VARCHAR(120) NOT NULL DEFAULT 'Stamp',
-      file_path VARCHAR(500) NOT NULL,
-      is_default TINYINT(1) NOT NULL DEFAULT 0,
-      sort_order INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-      KEY idx_company_stamp_inst (institution_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS company_signatures (
-      id VARCHAR(36) NOT NULL PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL,
-      label VARCHAR(120) NOT NULL DEFAULT 'Signature',
-      file_path VARCHAR(500) NOT NULL,
-      is_default TINYINT(1) NOT NULL DEFAULT 0,
-      sort_order INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-      KEY idx_company_sig_inst (institution_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-
   tablesReady = true;
 }
 
@@ -118,118 +84,27 @@ async function migrateLegacyRows(institutionId) {
     [institutionId]
   );
   if (Number(addrCnt?.c || 0) === 0) {
-    const legacyRows = await db.query(
-      `SELECT id, institution_id, label, address, is_default, sort_order, created_at
-       FROM company_addresses WHERE institution_id = ?`,
+    const [institution] = await db.query(
+      'SELECT address, city, state, country, postal_code FROM institutions WHERE id = ?',
       [institutionId]
     );
-    if (legacyRows.length) {
-      for (const row of legacyRows) {
-        await db.query(
-          `INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
-           ON DUPLICATE KEY UPDATE
-             label = VALUES(label),
-             address = VALUES(address),
-             is_default = VALUES(is_default),
-             sort_order = VALUES(sort_order)`,
-          [row.id, row.institution_id, row.label, row.address, row.is_default ? 1 : 0, row.sort_order || 0, row.created_at || null]
-        );
-      }
-    } else {
-      const [institution] = await db.query(
-        'SELECT address FROM institutions WHERE id = ?',
-        [institutionId]
-      );
-      const [cs] = await db.query(
-        'SELECT address FROM company_settings WHERE institution_id = ?',
-        [institutionId]
-      );
-      const fallbackAddress = institution?.address || cs?.address;
-      if (fallbackAddress && String(fallbackAddress).trim()) {
-        await db.query(
-          `INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order)
-           VALUES (?, ?, ?, ?, 1, 0)`,
-          [uuidv4(), institutionId, 'Registered office', String(fallbackAddress).trim()]
-        );
-      }
-    }
-  }
-
-  const [docCnt] = await db.query(
-    'SELECT COUNT(*) AS c FROM institution_documents WHERE institution_id = ?',
-    [institutionId]
-  );
-  if (Number(docCnt?.c || 0) === 0) {
-    const legacyStamps = await db.query(
-      `SELECT id, institution_id, label, file_path, is_default, sort_order, created_at
-       FROM company_stamps WHERE institution_id = ?`,
-      [institutionId]
-    );
-    for (const row of legacyStamps) {
+    const fallbackAddress = institution?.address;
+    if (fallbackAddress && String(fallbackAddress).trim()) {
       await db.query(
-        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order, created_at)
-         VALUES (?, ?, 'stamp', ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
-         ON DUPLICATE KEY UPDATE
-           label = VALUES(label),
-           file_path = VALUES(file_path),
-           is_default = VALUES(is_default),
-           sort_order = VALUES(sort_order)`,
-        [row.id, row.institution_id, row.label, row.file_path, row.is_default ? 1 : 0, row.sort_order || 0, row.created_at || null]
-      );
-    }
-    const legacySignatures = await db.query(
-      `SELECT id, institution_id, label, file_path, is_default, sort_order, created_at
-       FROM company_signatures WHERE institution_id = ?`,
-      [institutionId]
-    );
-    for (const row of legacySignatures) {
-      await db.query(
-        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order, created_at)
-         VALUES (?, ?, 'signature', ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
-         ON DUPLICATE KEY UPDATE
-           label = VALUES(label),
-           file_path = VALUES(file_path),
-           is_default = VALUES(is_default),
-           sort_order = VALUES(sort_order)`,
-        [row.id, row.institution_id, row.label, row.file_path, row.is_default ? 1 : 0, row.sort_order || 0, row.created_at || null]
-      );
-    }
-    const [cs] = await db.query(
-      'SELECT logo_path, stamp_path, signature_path FROM company_settings WHERE institution_id = ?',
-      [institutionId]
-    );
-    if (cs?.logo_path) {
-      await db.query(
-        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
-         SELECT ?, ?, 'logo', 'Primary logo', ?, 1, 0
-         WHERE NOT EXISTS (
-           SELECT 1 FROM institution_documents
-           WHERE institution_id = ? AND doc_type = 'logo'
-         )`,
-        [uuidv4(), institutionId, cs.logo_path, institutionId]
-      );
-    }
-    if (cs?.stamp_path) {
-      await db.query(
-        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
-         SELECT ?, ?, 'stamp', 'Primary stamp', ?, 1, 0
-         WHERE NOT EXISTS (
-           SELECT 1 FROM institution_documents
-           WHERE institution_id = ? AND doc_type = 'stamp'
-         )`,
-        [uuidv4(), institutionId, cs.stamp_path, institutionId]
-      );
-    }
-    if (cs?.signature_path) {
-      await db.query(
-        `INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
-         SELECT ?, ?, 'signature', 'Primary signature', ?, 1, 0
-         WHERE NOT EXISTS (
-           SELECT 1 FROM institution_documents
-           WHERE institution_id = ? AND doc_type = 'signature'
-         )`,
-        [uuidv4(), institutionId, cs.signature_path, institutionId]
+        `INSERT INTO institution_addresses
+         (id, institution_id, label, address, address_line1, city, state, country, postal_code, is_default, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+        [
+          uuidv4(),
+          institutionId,
+          'Registered office',
+          String(fallbackAddress).trim(),
+          String(fallbackAddress).trim(),
+          institution?.city || null,
+          institution?.state || null,
+          institution?.country || null,
+          institution?.postal_code || null,
+        ]
       );
     }
   }
@@ -240,16 +115,11 @@ async function listAddresses(institutionId) {
   await migrateLegacyRows(institutionId);
 
   const rows = await db.query(
-    `SELECT id, label, address, is_default, sort_order, created_at
+    `SELECT id, label, address, address_line1, address_line2, city, state, country, postal_code, is_default, sort_order, created_at
      FROM institution_addresses WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
     [institutionId]
   );
-  if (rows.length) return rows;
-  return db.query(
-    `SELECT id, label, address, is_default, sort_order, created_at
-     FROM company_addresses WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
-    [institutionId]
-  );
+  return rows;
 }
 
 async function listDocsByType(institutionId, type) {
@@ -265,21 +135,11 @@ async function listDocsByType(institutionId, type) {
 }
 
 async function listStamps(institutionId) {
-  const rows = await listDocsByType(institutionId, 'stamp');
-  return rows.length ? rows : db.query(
-    `SELECT id, label, file_path, is_default, sort_order, created_at
-     FROM company_stamps WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
-    [institutionId]
-  );
+  return listDocsByType(institutionId, 'stamp');
 }
 
 async function listSignatures(institutionId) {
-  const rows = await listDocsByType(institutionId, 'signature');
-  return rows.length ? rows : db.query(
-    `SELECT id, label, file_path, is_default, sort_order, created_at
-     FROM company_signatures WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
-    [institutionId]
-  );
+  return listDocsByType(institutionId, 'signature');
 }
 
 async function clearDefaults(institutionId, table) {
@@ -288,7 +148,8 @@ async function clearDefaults(institutionId, table) {
 
 async function syncLegacyMirror(institutionId) {
   const [da] = await db.query(
-    `SELECT address FROM institution_addresses WHERE institution_id = ? AND is_default = 1 LIMIT 1`,
+    `SELECT address, city, state, country, postal_code
+     FROM institution_addresses WHERE institution_id = ? AND is_default = 1 LIMIT 1`,
     [institutionId]
   );
   const [ds] = await db.query(
@@ -302,24 +163,17 @@ async function syncLegacyMirror(institutionId) {
     [institutionId]
   );
 
-  const [exists] = await db.query('SELECT id FROM company_settings WHERE institution_id = ?', [institutionId]);
-  if (exists) {
-    await db.query(
-      `UPDATE company_settings SET
-         address = COALESCE(?, address),
-         stamp_path = ?,
-         signature_path = ?
-       WHERE institution_id = ?`,
-      [da?.address ?? null, ds?.file_path ?? null, dg?.file_path ?? null, institutionId]
-    );
-  }
-
   if (da?.address) {
-    await db.query('UPDATE institutions SET address = ?, updated_at = NOW() WHERE id = ?', [da.address, institutionId]);
+    await db.query(
+      `UPDATE institutions
+       SET address = ?, city = ?, state = ?, country = ?, postal_code = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [da.address, da.city || null, da.state || null, da.country || null, da.postal_code || null, institutionId]
+    );
   }
 }
 
-async function addAddress(institutionId, { label, address, is_default }) {
+async function addAddress(institutionId, { label, address, address_line1, address_line2, city, state, country, postal_code, is_default }) {
   await ensureTables();
   const id = uuidv4();
   const lab = (label || 'Address').trim().slice(0, 120);
@@ -336,9 +190,23 @@ async function addAddress(institutionId, { label, address, is_default }) {
   const sort = Number(maxRow?.n ?? 0);
 
   await db.query(
-    `INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, institutionId, lab, addr, def ? 1 : 0, sort]
+    `INSERT INTO institution_addresses
+     (id, institution_id, label, address, address_line1, address_line2, city, state, country, postal_code, is_default, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      institutionId,
+      lab,
+      addr,
+      address_line1 !== undefined ? String(address_line1).trim() || null : null,
+      address_line2 !== undefined ? String(address_line2).trim() || null : null,
+      city !== undefined ? String(city).trim() || null : null,
+      state !== undefined ? String(state).trim() || null : null,
+      country !== undefined ? String(country).trim() || null : null,
+      postal_code !== undefined ? String(postal_code).trim() || null : null,
+      def ? 1 : 0,
+      sort
+    ]
   );
 
   if (!def) {
@@ -358,7 +226,7 @@ async function addAddress(institutionId, { label, address, is_default }) {
   return id;
 }
 
-async function updateAddress(institutionId, addressId, { label, address, is_default }) {
+async function updateAddress(institutionId, addressId, { label, address, address_line1, address_line2, city, state, country, postal_code, is_default }) {
   await ensureTables();
   const [row] = await db.query(
     'SELECT id FROM institution_addresses WHERE id = ? AND institution_id = ?',
@@ -377,6 +245,30 @@ async function updateAddress(institutionId, addressId, { label, address, is_defa
     if (!a) throw new Error('Address text cannot be empty');
     updates.push('address = ?');
     vals.push(a);
+  }
+  if (address_line1 !== undefined) {
+    updates.push('address_line1 = ?');
+    vals.push(String(address_line1).trim() || null);
+  }
+  if (address_line2 !== undefined) {
+    updates.push('address_line2 = ?');
+    vals.push(String(address_line2).trim() || null);
+  }
+  if (city !== undefined) {
+    updates.push('city = ?');
+    vals.push(String(city).trim() || null);
+  }
+  if (state !== undefined) {
+    updates.push('state = ?');
+    vals.push(String(state).trim() || null);
+  }
+  if (country !== undefined) {
+    updates.push('country = ?');
+    vals.push(String(country).trim() || null);
+  }
+  if (postal_code !== undefined) {
+    updates.push('postal_code = ?');
+    vals.push(String(postal_code).trim() || null);
   }
   if (is_default !== undefined && is_default) {
     await clearDefaults(institutionId, ADDR_TABLE);
@@ -674,6 +566,12 @@ async function attachMultiToSettingsRow(institutionId, settingsRow) {
     stamps,
     signatures,
     address: defAddr?.address ?? base.address ?? '',
+    address_line1: defAddr?.address_line1 ?? base.address_line1 ?? null,
+    address_line2: defAddr?.address_line2 ?? base.address_line2 ?? null,
+    city: defAddr?.city ?? base.city ?? null,
+    state: defAddr?.state ?? base.state ?? null,
+    country: defAddr?.country ?? base.country ?? null,
+    postal_code: defAddr?.postal_code ?? base.postal_code ?? null,
     stamp_path: defSt?.file_path ?? base.stamp_path ?? null,
     signature_path: defSig?.file_path ?? base.signature_path ?? null,
   };
@@ -694,11 +592,70 @@ async function upsertDefaultAddressText(institutionId, addressText) {
     );
   } else {
     await db.query(
-      `INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order)
-       VALUES (?, ?, ?, ?, 1, 0)`,
-      [uuidv4(), institutionId, 'Registered office', text]
+      `INSERT INTO institution_addresses
+       (id, institution_id, label, address, address_line1, is_default, sort_order)
+       VALUES (?, ?, ?, ?, ?, 1, 0)`,
+      [uuidv4(), institutionId, 'Registered office', text, text]
     );
   }
+  await syncLegacyMirror(institutionId);
+}
+
+async function upsertDefaultAddressFields(institutionId, payload = {}) {
+  await ensureTables();
+  const rows = await listAddresses(institutionId);
+  const def = rows.find((r) => r.is_default) || rows[0];
+
+  const normalized = {
+    address: payload.address !== undefined ? String(payload.address || '').trim() : undefined,
+    address_line1: payload.address_line1 !== undefined ? String(payload.address_line1 || '').trim() : undefined,
+    address_line2: payload.address_line2 !== undefined ? String(payload.address_line2 || '').trim() : undefined,
+    city: payload.city !== undefined ? String(payload.city || '').trim() : undefined,
+    state: payload.state !== undefined ? String(payload.state || '').trim() : undefined,
+    country: payload.country !== undefined ? String(payload.country || '').trim() : undefined,
+    postal_code: payload.postal_code !== undefined ? String(payload.postal_code || '').trim() : undefined,
+  };
+
+  if (normalized.address !== undefined && !normalized.address) {
+    throw new Error('Address text cannot be empty');
+  }
+
+  if (def) {
+    const updates = [];
+    const vals = [];
+    Object.entries(normalized).forEach(([k, v]) => {
+      if (v !== undefined) {
+        updates.push(`${k} = ?`);
+        vals.push(v || null);
+      }
+    });
+    if (updates.length > 0) {
+      vals.push(def.id, institutionId);
+      await db.query(
+        `UPDATE institution_addresses SET ${updates.join(', ')} WHERE id = ? AND institution_id = ?`,
+        vals
+      );
+    }
+  } else if (normalized.address) {
+    await db.query(
+      `INSERT INTO institution_addresses
+       (id, institution_id, label, address, address_line1, address_line2, city, state, country, postal_code, is_default, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+      [
+        uuidv4(),
+        institutionId,
+        'Registered office',
+        normalized.address,
+        normalized.address_line1 || normalized.address || null,
+        normalized.address_line2 || null,
+        normalized.city || null,
+        normalized.state || null,
+        normalized.country || null,
+        normalized.postal_code || null,
+      ]
+    );
+  }
+
   await syncLegacyMirror(institutionId);
 }
 
@@ -719,5 +676,6 @@ module.exports = {
   updateSignature,
   deleteSignature,
   upsertDefaultAddressText,
+  upsertDefaultAddressFields,
   syncLegacyMirror,
 };
