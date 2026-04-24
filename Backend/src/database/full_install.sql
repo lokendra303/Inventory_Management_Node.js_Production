@@ -236,21 +236,6 @@ CREATE TABLE IF NOT EXISTS `categories` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- -----------------------------------------------------
--- Table: company_addresses
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `company_addresses` (
-  `id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `institution_id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `label` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Address',
-  `address` text COLLATE utf8mb4_unicode_ci NOT NULL,
-  `is_default` tinyint(1) NOT NULL DEFAULT '0',
-  `sort_order` int NOT NULL DEFAULT '0',
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_company_addr_inst` (`institution_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- -----------------------------------------------------
 -- Table: company_settings
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `company_settings` (
@@ -275,36 +260,6 @@ CREATE TABLE IF NOT EXISTS `company_settings` (
   UNIQUE KEY `institution_id` (`institution_id`),
   KEY `idx_institution_id` (`institution_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- -----------------------------------------------------
--- Table: company_signatures
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `company_signatures` (
-  `id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `institution_id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `label` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Signature',
-  `file_path` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `is_default` tinyint(1) NOT NULL DEFAULT '0',
-  `sort_order` int NOT NULL DEFAULT '0',
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_company_sig_inst` (`institution_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- -----------------------------------------------------
--- Table: company_stamps
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `company_stamps` (
-  `id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `institution_id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `label` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Stamp',
-  `file_path` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `is_default` tinyint(1) NOT NULL DEFAULT '0',
-  `sort_order` int NOT NULL DEFAULT '0',
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_company_stamp_inst` (`institution_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------
 -- Table: institution_addresses
@@ -367,27 +322,6 @@ CREATE TABLE IF NOT EXISTS `institution_profiles` (
   UNIQUE KEY `uq_inst_profile` (`institution_id`),
   KEY `idx_inst_profile_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Backfill institution addresses from legacy company addresses
-INSERT INTO institution_addresses (id, institution_id, label, address, is_default, sort_order, created_at)
-SELECT a.id, a.institution_id, a.label, a.address, a.is_default, a.sort_order, a.created_at
-FROM company_addresses a
-LEFT JOIN institution_addresses ia ON ia.id = a.id
-WHERE ia.id IS NULL;
-
--- Backfill stamps from legacy company stamps
-INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order, created_at)
-SELECT s.id, s.institution_id, 'stamp', s.label, s.file_path, s.is_default, s.sort_order, s.created_at
-FROM company_stamps s
-LEFT JOIN institution_documents d ON d.id = s.id
-WHERE d.id IS NULL;
-
--- Backfill signatures from legacy company signatures
-INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order, created_at)
-SELECT s.id, s.institution_id, 'signature', s.label, s.file_path, s.is_default, s.sort_order, s.created_at
-FROM company_signatures s
-LEFT JOIN institution_documents d ON d.id = s.id
-WHERE d.id IS NULL;
 
 -- Backfill logo document from company_settings when no logo doc exists
 INSERT INTO institution_documents (id, institution_id, doc_type, label, file_path, is_default, sort_order)
