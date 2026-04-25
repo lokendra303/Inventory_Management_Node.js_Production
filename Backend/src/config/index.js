@@ -1,15 +1,25 @@
 require('dotenv').config();
 
+const ENV_PROFILE = (process.env.ENV_PROFILE || '').trim().toUpperCase();
+
+function getEnvByProfile(baseKey) {
+  if (ENV_PROFILE) {
+    const profileValue = process.env[`${baseKey}_${ENV_PROFILE}`];
+    if (profileValue && profileValue.trim()) return profileValue;
+  }
+  return process.env[baseKey];
+}
+
 function buildCorsOrigins() {
-  const fromEnv = process.env.CORS_ORIGINS;
+  const fromEnv = getEnvByProfile('CORS_ORIGINS');
   if (fromEnv && fromEnv.trim()) {
     return fromEnv.split(',').map((s) => s.trim()).filter(Boolean);
   }
+  const frontendUrl = (getEnvByProfile('FRONTEND_URL') || '').replace(/\/$/, '');
   if (process.env.NODE_ENV === 'production') {
-    const fe = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
-    return fe ? [fe] : [];
+    return frontendUrl ? [frontendUrl] : [];
   }
-  const fe = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const fe = frontendUrl || 'http://localhost:3000';
   return [
     fe,
     'http://localhost:3001',
@@ -21,7 +31,7 @@ function buildCorsOrigins() {
 
 /** Base URL for absolute links to this server (uploads, server-side PDF image fetch). No trailing slash. */
 function resolvePublicBaseUrl() {
-  const fromEnv = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  const fromEnv = (getEnvByProfile('PUBLIC_BASE_URL') || '').replace(/\/$/, '');
   if (fromEnv) return fromEnv;
   const port = process.env.PORT || 5000;
   return `http://127.0.0.1:${port}`;

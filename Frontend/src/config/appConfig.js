@@ -10,6 +10,15 @@
  */
 
 const DEFAULT_API_PORT = process.env.REACT_APP_API_PORT || '5000';
+const ENV_PROFILE = (process.env.REACT_APP_ENV_PROFILE || '').trim().toUpperCase();
+
+function getEnvByProfile(baseKey) {
+  if (ENV_PROFILE) {
+    const profileValue = process.env[`${baseKey}_${ENV_PROFILE}`];
+    if (profileValue && profileValue.trim()) return profileValue;
+  }
+  return process.env[baseKey];
+}
 
 function currentHostname() {
   if (typeof window === 'undefined') return 'localhost';
@@ -22,7 +31,7 @@ function currentHostname() {
  * Set REACT_APP_API_URL to force a full URL (e.g. direct to :5000 or another host).
  */
 export function getApiBaseUrl() {
-  const envUrl = process.env.REACT_APP_API_URL;
+  const envUrl = getEnvByProfile('REACT_APP_API_URL');
   if (envUrl) return envUrl.replace(/\/$/, '');
 
   const host = currentHostname();
@@ -33,13 +42,13 @@ export function getApiBaseUrl() {
     return `http://127.0.0.1:${DEFAULT_API_PORT}/api`;
   }
 
-  const lan = process.env.REACT_APP_LAN_API_URL;
+  const lan = getEnvByProfile('REACT_APP_LAN_API_URL');
   if (lan) return lan.replace(/\/$/, '');
   return `http://${host}:${DEFAULT_API_PORT}/api`;
 }
 
 export function getServerOrigin() {
-  const explicit = (process.env.REACT_APP_SERVER_ORIGIN || '').replace(/\/$/, '');
+  const explicit = (getEnvByProfile('REACT_APP_SERVER_ORIGIN') || '').replace(/\/$/, '');
   if (explicit) return explicit;
   const api = getApiBaseUrl();
   if (api.startsWith('/')) {
