@@ -46,7 +46,7 @@ export default function PlatformDashboard() {
     <div>
       <Title level={3} style={{ marginTop: 0 }}>Platform overview</Title>
       <Paragraph type="secondary">
-        Cross-tenant metrics. Tenant users sign in separately at the main app login.
+        Cross-institution metrics. Institution users sign in separately at the main app login.
       </Paragraph>
 
       <Row gutter={[16, 16]}>
@@ -68,7 +68,7 @@ export default function PlatformDashboard() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Active users (all tenants)"
+              title="Active users (all institutions)"
               value={stats?.activeUsers ?? 0}
               prefix={<UserOutlined />}
             />
@@ -94,7 +94,7 @@ export default function PlatformDashboard() {
         </Col>
       </Row>
 
-      <Card title="Subscriptions (tenant billing)" style={{ marginTop: 16 }}>
+      <Card title="Subscriptions (institution billing)" style={{ marginTop: 16 }}>
         <Space wrap>
           {Object.keys(sub).length === 0 && <span style={{ color: '#999' }}>No subscription rows yet</span>}
           {Object.entries(sub).map(([k, v]) => (

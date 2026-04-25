@@ -1018,7 +1018,7 @@ CREATE TABLE IF NOT EXISTS `inventory_history` (
   KEY `item_id` (`item_id`),
   KEY `warehouse_id` (`warehouse_id`),
   KEY `performed_by` (`performed_by`),
-  CONSTRAINT `inventory_history_ibfk_1` FOREIGN KEY (`institution_id`) REFERENCES `tenants` (`id`),
+  CONSTRAINT `inventory_history_ibfk_1` FOREIGN KEY (`institution_id`) REFERENCES `institutions` (`id`),
   CONSTRAINT `inventory_history_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`id`),
   CONSTRAINT `inventory_history_ibfk_3` FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -1824,7 +1824,7 @@ CREATE TABLE IF NOT EXISTS `temp_access_tokens` (
   KEY `idx_tenant_user` (`institution_id`,`target_user_id`),
   KEY `idx_expires` (`expires_at`),
   KEY `idx_active` (`is_active`),
-  CONSTRAINT `temp_access_tokens_ibfk_1` FOREIGN KEY (`institution_id`) REFERENCES `tenants` (`id`) ON DELETE CASCADE
+  CONSTRAINT `temp_access_tokens_ibfk_1` FOREIGN KEY (`institution_id`) REFERENCES `institutions` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- -----------------------------------------------------

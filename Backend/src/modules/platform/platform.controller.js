@@ -132,7 +132,7 @@ class PlatformController {
       const csv = await platformAdminService.exportInstitutionsCsv();
       res.json({
         success: true,
-        filename: `tenants-${new Date().toISOString().slice(0, 10)}.csv`,
+        filename: `institutions-${new Date().toISOString().slice(0, 10)}.csv`,
         csv,
       });
     } catch (error) {

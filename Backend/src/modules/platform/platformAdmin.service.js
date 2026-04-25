@@ -19,7 +19,7 @@ const PLAN_FEATURE_OPTIONS = [
 
 let schemaReady = false;
 
-/** Tenant institutions use active/inactive in most DBs; API uses suspended for clarity. */
+/** Institutions use active/inactive in most DBs; API uses suspended for clarity. */
 function institutionStatusToDb(apiStatus) {
   if (apiStatus === 'suspended') return 'inactive';
   if (apiStatus === 'active') return 'active';
@@ -337,7 +337,7 @@ async function updateInstitutionProfile(id, body) {
       'SELECT id FROM institutions WHERE email = ? AND id != ?',
       [normalized, id]
     );
-    if (dup.length > 0) throw new Error('Email already in use by another tenant');
+    if (dup.length > 0) throw new Error('Email already in use by another institution');
     updates.email = normalized;
   }
 
@@ -514,9 +514,9 @@ async function updateSubscriptionPlan(planId, body) {
 }
 
 /**
- * Platform-admin view of a tenant's audit trail. Mirrors audit.controller.getAuditTrail
+ * Platform-admin view of an institution's audit trail. Mirrors audit.controller.getAuditTrail
  * but scoped to an arbitrary institution (read-only, no institution context needed
- * because platform admins operate outside any tenant).
+ * because platform admins operate outside any institution).
  *
  * @param {string} institutionId
  * @param {{ entityType?: string, action?: string, userId?: string, search?: string,

@@ -60,7 +60,7 @@ export default function PlatformTenants() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = res.filename || 'tenants.csv';
+      a.download = res.filename || 'institutions.csv';
       a.click();
       URL.revokeObjectURL(url);
       message.success('Download started');
@@ -75,7 +75,7 @@ export default function PlatformTenants() {
       dataIndex: 'name',
       key: 'name',
       render: (text, row) => (
-        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => navigate(`/platform/tenants/${row.id}`)}>
+        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => navigate(`/platform/institutions/${row.id}`)}>
           {text || '—'}
         </Button>
       ),
@@ -96,7 +96,7 @@ export default function PlatformTenants() {
       key: 'actions',
       width: 90,
       render: (_, row) => (
-        <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/platform/tenants/${row.id}`)}>
+        <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/platform/institutions/${row.id}`)}>
           View
         </Button>
       ),
@@ -105,7 +105,7 @@ export default function PlatformTenants() {
 
   return (
     <div>
-      <Title level={3} style={{ marginTop: 0 }}>Tenants</Title>
+      <Title level={3} style={{ marginTop: 0 }}>Institutions</Title>
       <Card>
         <Space wrap style={{ marginBottom: 16 }}>
           <Input

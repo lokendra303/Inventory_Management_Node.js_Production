@@ -27,7 +27,7 @@ export default function PlatformAdminShell() {
 
   const path = location.pathname;
   const selected = (() => {
-    if (path.startsWith('/platform/tenants')) return ['/platform/tenants'];
+    if (path.startsWith('/platform/institutions')) return ['/platform/institutions'];
     if (path.startsWith('/platform/plans')) return ['/platform/plans'];
     if (path.startsWith('/platform/activity')) return ['/platform/activity'];
     return ['/platform/dashboard'];
@@ -67,10 +67,10 @@ export default function PlatformAdminShell() {
               onClick: () => navigate('/platform/dashboard'),
             },
             {
-              key: '/platform/tenants',
+              key: '/platform/institutions',
               icon: <TeamOutlined />,
-              label: 'Tenants',
-              onClick: () => navigate('/platform/tenants'),
+              label: 'Institutions',
+              onClick: () => navigate('/platform/institutions'),
             },
             {
               key: '/platform/plans',

@@ -143,7 +143,7 @@ export default function PlatformPlans() {
           <Title level={3} style={{ marginTop: 0, marginBottom: 4 }}>Subscription plans</Title>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
             Define prices, usage caps (use <Text code>-1</Text> for unlimited), and which modules each plan may access.
-            Changes apply to new checkouts and to feature checks for existing tenants on that plan.
+            Changes apply to new checkouts and to feature checks for existing institutions on that plan.
           </Paragraph>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>New plan</Button>
@@ -269,7 +269,7 @@ export default function PlatformPlans() {
             <Form.Item name="sort_order" label="Sort order" rules={[{ required: true }]}>
               <InputNumber min={0} max={999} step={1} style={{ width: 120 }} />
             </Form.Item>
-            <Form.Item name="is_active" label="Visible to tenants" valuePropName="checked">
+            <Form.Item name="is_active" label="Visible to institutions" valuePropName="checked">
               <Switch checkedChildren="on" unCheckedChildren="off" />
             </Form.Item>
           </Space>
@@ -278,7 +278,7 @@ export default function PlatformPlans() {
             name="features_all"
             label="Module access"
             valuePropName="checked"
-            extra="When off, pick modules below. When on, tenants get every gated module."
+            extra="When off, pick modules below. When on, institutions get every gated module."
           >
             <Checkbox>All features (same as including the “all” flag)</Checkbox>
           </Form.Item>

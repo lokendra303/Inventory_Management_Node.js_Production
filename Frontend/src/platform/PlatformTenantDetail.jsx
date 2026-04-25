@@ -66,7 +66,7 @@ export default function PlatformTenantDetail() {
       setSaving(true);
       const res = await platformApi.patch(`/platform/institutions/${id}`, values);
       if (res.success && res.data) {
-        message.success('Tenant updated');
+        message.success('Institution updated');
         setPayload(res.data);
         setEditOpen(false);
       } else message.error(res.error || 'Update failed');
@@ -82,7 +82,7 @@ export default function PlatformTenantDetail() {
     try {
       const res = await platformApi.patch(`/platform/institutions/${id}/status`, { status });
       if (res.success) {
-        message.success(`Tenant ${status === 'suspended' ? 'suspended' : 'activated'}`);
+        message.success(`Institution ${status === 'suspended' ? 'suspended' : 'activated'}`);
         const refreshed = await platformApi.get(`/platform/institutions/${id}`);
         if (refreshed.success) setPayload(refreshed.data);
       } else message.error(res.error);
@@ -100,7 +100,7 @@ export default function PlatformTenantDetail() {
   }
 
   if (!payload?.institution) {
-    return <Card>Tenant not found.</Card>;
+    return <Card>Institution not found.</Card>;
   }
 
   const { institution, stats, subscription, users } = payload;
@@ -108,8 +108,8 @@ export default function PlatformTenantDetail() {
 
   return (
     <div>
-      <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate('/platform/tenants')} style={{ marginBottom: 8, paddingLeft: 0 }}>
-        Back to tenants
+      <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate('/platform/institutions')} style={{ marginBottom: 8, paddingLeft: 0 }}>
+        Back to institutions
       </Button>
       <Title level={3} style={{ marginTop: 0 }}>{institution.name}</Title>
 
@@ -125,22 +125,22 @@ export default function PlatformTenantDetail() {
           <Descriptions.Item label="City / Country">{institution.city || '—'} / {institution.country || '—'}</Descriptions.Item>
         </Descriptions>
         <Space style={{ marginTop: 16 }} wrap>
-          <Button icon={<EditOutlined />} onClick={openEdit}>Edit tenant</Button>
+          <Button icon={<EditOutlined />} onClick={openEdit}>Edit institution</Button>
           {institution.status === 'active' ? (
-            <Button danger onClick={() => setStatus('suspended')}>Suspend tenant</Button>
+            <Button danger onClick={() => setStatus('suspended')}>Suspend institution</Button>
           ) : (
-            <Button type="primary" onClick={() => setStatus('active')}>Activate tenant</Button>
+            <Button type="primary" onClick={() => setStatus('active')}>Activate institution</Button>
           )}
         </Space>
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-          Suspending blocks tenant login. Data is not deleted.
+          Suspending blocks institution user login. Data is not deleted.
         </Typography.Paragraph>
       </Card>
 
       <RowCards stats={stats} />
 
       <Modal
-        title="Edit tenant"
+        title="Edit institution"
         open={editOpen}
         onCancel={() => setEditOpen(false)}
         onOk={saveEdit}
@@ -263,7 +263,7 @@ export default function PlatformTenantDetail() {
           {
             key: 'activity',
             label: 'Activity & Audit',
-            children: <TenantAuditTrail institutionId={id} users={users || []} />,
+            children: <InstitutionAuditTrail institutionId={id} users={users || []} />,
           },
         ]}
       />
@@ -299,7 +299,7 @@ function actionColor(action) {
   return ACTION_COLORS[key] || 'geekblue';
 }
 
-function TenantAuditTrail({ institutionId, users }) {
+function InstitutionAuditTrail({ institutionId, users }) {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -509,7 +509,7 @@ function TenantAuditTrail({ institutionId, users }) {
         loading={loading}
         dataSource={rows}
         columns={columns}
-        locale={{ emptyText: <Empty description="No audit activity for this tenant yet" /> }}
+        locale={{ emptyText: <Empty description="No audit activity for this institution yet" /> }}
         expandable={{
           expandedRowRender: (record) => <AuditRowDetail record={record} />,
           rowExpandable: (r) => Boolean(r.changes || r.request_body || r.description),

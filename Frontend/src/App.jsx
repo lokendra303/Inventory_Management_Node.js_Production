@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ConfigProvider, Layout, message } from 'antd';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { CurrencyProvider } from './contexts/CurrencyContext.jsx';
@@ -222,6 +222,11 @@ function AppContent() {
   );
 }
 
+function PlatformLegacyTenantsRedirect() {
+  const { id } = useParams();
+  return <Navigate to={id ? `/platform/institutions/${id}` : '/platform/institutions'} replace />;
+}
+
 function App() {
   // Render isolated pages BEFORE any providers — no auth, no loading
   const path = window.location.pathname;
@@ -242,8 +247,10 @@ function App() {
           <Route path="/platform" element={<PlatformAdminShell />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<PlatformDashboard />} />
-            <Route path="tenants" element={<PlatformTenants />} />
-            <Route path="tenants/:id" element={<PlatformTenantDetail />} />
+            <Route path="institutions" element={<PlatformTenants />} />
+            <Route path="institutions/:id" element={<PlatformTenantDetail />} />
+            <Route path="tenants" element={<Navigate to="/platform/institutions" replace />} />
+            <Route path="tenants/:id" element={<PlatformLegacyTenantsRedirect />} />
             <Route path="plans" element={<PlatformPlans />} />
             <Route path="activity" element={<PlatformActivity />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />

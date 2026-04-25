@@ -41,7 +41,7 @@ export default function PlatformActivity() {
     <div>
       <Space align="center" style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
         <div>
-          <Title level={3} style={{ marginTop: 0, marginBottom: 4 }}>Recent tenant logins</Title>
+          <Title level={3} style={{ marginTop: 0, marginBottom: 4 }}>Recent institution logins</Title>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
             Latest sign-ins across all institutions (from user records).
           </Paragraph>
@@ -67,20 +67,20 @@ export default function PlatformActivity() {
               render: (t) => (t ? new Date(t).toLocaleString() : '—'),
             },
             {
-              title: 'Tenant',
+              title: 'Institution',
               key: 'inst',
               render: (_, r) => (
                 <Button
                   type="link"
                   style={{ padding: 0, height: 'auto' }}
-                  onClick={() => navigate(`/platform/tenants/${r.institution_id}`)}
+                  onClick={() => navigate(`/platform/institutions/${r.institution_id}`)}
                 >
                   {r.institution_name || '—'}
                 </Button>
               ),
             },
             {
-              title: 'Tenant status',
+              title: 'Institution status',
               dataIndex: 'institution_status',
               key: 'is',
               width: 120,

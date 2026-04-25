@@ -306,7 +306,7 @@ export default function PlatformAdminLogin() {
         <div className="pa-card">
           <button className="pa-back-btn" onClick={() => { window.location.href = '/login'; }}>
             <ArrowLeftOutlined style={{ fontSize: 11 }} />
-            Back to Tenant Login
+            Back to application login
           </button>
 
           <div className="pa-badge">
@@ -321,7 +321,7 @@ export default function PlatformAdminLogin() {
           <div className="pa-title">Admin Portal</div>
           <div className="pa-sub">
             Restricted access — service provider only.<br />
-            Manage tenants, subscriptions & platform settings.
+            Manage institutions, subscriptions & platform settings.
           </div>
 
           {error && <div className="pa-error">{error}</div>}
