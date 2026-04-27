@@ -123,6 +123,16 @@ class Server {
           timestamp: new Date().toISOString()
         });
       });
+      // In development/ngrok API-only mode, return a helpful response for
+      // non-API paths instead of Express "Cannot GET /...".
+      this.app.get(/^\/(?!api\/).*/, (req, res) => {
+        res.status(200).json({
+          message: 'IMS SEPCUNE API Server',
+          info: 'Use /api/* endpoints for backend requests',
+          requestedPath: req.path,
+          environment: config.server.env,
+        });
+      });
     }
   }
 
