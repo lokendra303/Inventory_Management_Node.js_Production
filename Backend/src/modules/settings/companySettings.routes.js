@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const companySettingsController = require('./companySettings.controller');
-const { requireRole } = require('../auth/auth.middleware');
+const { requireRole, auditLog } = require('../auth/auth.middleware');
 
 // Restrict all company settings routes to admin and super_admin
 router.use(requireRole(['admin', 'super_admin']));
@@ -48,17 +48,17 @@ const upload = multer({
 });
 
 router.get('/', companySettingsController.getSettings.bind(companySettingsController));
-router.put('/', companySettingsController.updateSettings.bind(companySettingsController));
-router.post('/upload/:fileType', upload.single('file'), companySettingsController.uploadFile.bind(companySettingsController));
-router.delete('/upload/:fileType', companySettingsController.deleteFile.bind(companySettingsController));
+router.put('/', auditLog('company_settings_updated'), companySettingsController.updateSettings.bind(companySettingsController));
+router.post('/upload/:fileType', auditLog('company_settings_file_uploaded'), upload.single('file'), companySettingsController.uploadFile.bind(companySettingsController));
+router.delete('/upload/:fileType', auditLog('company_settings_file_deleted'), companySettingsController.deleteFile.bind(companySettingsController));
 
-router.post('/addresses', companySettingsController.addAddress.bind(companySettingsController));
-router.put('/addresses/:id', companySettingsController.updateAddress.bind(companySettingsController));
-router.delete('/addresses/:id', companySettingsController.deleteAddress.bind(companySettingsController));
+router.post('/addresses', auditLog('company_address_created'), companySettingsController.addAddress.bind(companySettingsController));
+router.put('/addresses/:id', auditLog('company_address_updated'), companySettingsController.updateAddress.bind(companySettingsController));
+router.delete('/addresses/:id', auditLog('company_address_deleted'), companySettingsController.deleteAddress.bind(companySettingsController));
 
-router.patch('/stamps/:id', companySettingsController.patchStamp.bind(companySettingsController));
-router.delete('/stamps/:id', companySettingsController.deleteStamp.bind(companySettingsController));
-router.patch('/signatures/:id', companySettingsController.patchSignature.bind(companySettingsController));
-router.delete('/signatures/:id', companySettingsController.deleteSignature.bind(companySettingsController));
+router.patch('/stamps/:id', auditLog('company_stamp_updated'), companySettingsController.patchStamp.bind(companySettingsController));
+router.delete('/stamps/:id', auditLog('company_stamp_deleted'), companySettingsController.deleteStamp.bind(companySettingsController));
+router.patch('/signatures/:id', auditLog('company_signature_updated'), companySettingsController.patchSignature.bind(companySettingsController));
+router.delete('/signatures/:id', auditLog('company_signature_deleted'), companySettingsController.deleteSignature.bind(companySettingsController));
 
 module.exports = router;

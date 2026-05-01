@@ -1,6 +1,12 @@
 const auditLogService = require('../modules/audit/auditLog.service');
 const logger = require('../utils/logger');
 
+/** Body as sent/parsed after route handlers (multer, etc.); snapshot taken at res.json time. */
+function getAuditRequestBody(req) {
+  if (req._auditBodySnapshot !== undefined) return req._auditBodySnapshot;
+  return req.body;
+}
+
 // Enhanced audit middleware that captures all user actions
 const auditMiddleware = (options = {}) => {
   return (req, res, next) => {
@@ -22,6 +28,16 @@ const auditMiddleware = (options = {}) => {
       res.json = originalJson; // restore immediately before calling
       if (!auditCaptured) {
         auditCaptured = true;
+        // Snapshot body here so multer and other parsers have finished populating req.body
+        try {
+          if (req.body && typeof req.body === 'object') {
+            req._auditBodySnapshot = JSON.parse(JSON.stringify(req.body));
+          }
+        } catch {
+          if (req.body && typeof req.body === 'object') {
+            req._auditBodySnapshot = { ...req.body };
+          }
+        }
         captureAuditLog(req, res, data, startTime);
       }
       return originalJson(data);
@@ -44,11 +60,15 @@ const captureAuditLog = async (req, res, responseData, startTime) => {
     // Extract entity information from request
     const entityInfo = extractEntityInfo(req);
     
-    // Determine action type
-    const action = determineAction(req.method, req.path, responseData);
+    // Prefer semantic action from route (auditLog('item_updated')), else HTTP-method-based action
+    const action = req.auditRouteAction || determineAction(req.method, req.path, responseData);
     
-    // Capture changes if available
-    const changes = captureChanges(req, responseData);
+    // Capture changes if available (includes route params, file meta, optional res.locals.auditExtra)
+    let changes = captureChanges(req, responseData);
+    if (res.locals && res.locals.auditExtra && typeof res.locals.auditExtra === 'object') {
+      changes = { ...(changes || {}), serverSnapshot: res.locals.auditExtra };
+    }
+    if (changes && Object.keys(changes).length === 0) changes = null;
 
     // Create audit log entry
     await auditLogService.logUserAction({
@@ -65,8 +85,8 @@ const captureAuditLog = async (req, res, responseData, startTime) => {
       userAgent: req.get('User-Agent'),
       statusCode: res.statusCode,
       duration: duration,
-      requestBody: sanitizeRequestBody(req.body),
-      description: generateDescription(action, entityInfo, req.user, req, responseData)
+      requestBody: sanitizeRequestBody(getAuditRequestBody(req)),
+      description: generateDescription(action, entityInfo, req.user, req, responseData, changes)
     });
 
   } catch (error) {
@@ -142,6 +162,8 @@ const extractEntityInfo = (req) => {
     { regex: /\/exchange-rates\/live-sync/,        type: 'exchange_rate',    idGroup: null },
     { regex: /\/exchange-rates\/live/,             type: 'exchange_rate',    idGroup: null },
     { regex: /\/exchange-rates/,                   type: 'exchange_rate',    idGroup: null },
+    { regex: /\/company-settings\/addresses\/([a-f0-9-]{36})/i, type: 'company_address', idGroup: 1 },
+    { regex: /\/company-settings\/addresses\/?$/i, type: 'company_address', idGroup: null },
     { regex: /\/company-settings/,                 type: 'company_settings', idGroup: null },
     { regex: /\/settings/,                         type: 'settings',         idGroup: null },
     // Tax
@@ -212,11 +234,12 @@ const extractEntityInfo = (req) => {
   }
 
   // Last resort: extract from request body
-  if (req.body) {
-    if (req.body.itemId)     return { type: 'item',     id: req.body.itemId };
-    if (req.body.customerId) return { type: 'customer', id: req.body.customerId };
-    if (req.body.vendorId)   return { type: 'vendor',   id: req.body.vendorId };
-    if (req.body.invoiceId)  return { type: 'invoice',  id: req.body.invoiceId };
+  const b = getAuditRequestBody(req);
+  if (b) {
+    if (b.itemId)     return { type: 'item',     id: b.itemId };
+    if (b.customerId) return { type: 'customer', id: b.customerId };
+    if (b.vendorId)   return { type: 'vendor',   id: b.vendorId };
+    if (b.invoiceId)  return { type: 'invoice',  id: b.invoiceId };
   }
 
   return { type: 'system', id: null };
@@ -246,66 +269,131 @@ const determineAction = (method, path, responseData) => {
   return baseAction;
 };
 
+// Flatten object keys up to maxDepth for audit summaries (dot paths)
+const flattenBodyKeys = (obj, prefix = '', maxDepth = 3, depth = 0) => {
+  if (!obj || typeof obj !== 'object' || depth >= maxDepth) return [];
+  const keys = [];
+  for (const k of Object.keys(obj)) {
+    const path = prefix ? `${prefix}.${k}` : k;
+    const v = obj[k];
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      keys.push(...flattenBodyKeys(v, path, maxDepth, depth + 1));
+    } else {
+      keys.push(path);
+    }
+  }
+  return keys;
+};
+
 // Capture changes from request and response
 const captureChanges = (req, responseData) => {
   const changes = {};
+  const body = getAuditRequestBody(req);
 
-  // Capture request body changes
-  if (req.body && typeof req.body === 'object') {
-    changes.input = sanitizeRequestBody(req.body);
+  if (req.params && typeof req.params === 'object' && Object.keys(req.params).length > 0) {
+    changes.routeParams = { ...req.params };
+  }
+  if (req.query && typeof req.query === 'object' && Object.keys(req.query).length > 0) {
+    changes.query = { ...req.query };
+  }
+  if (req.file && typeof req.file === 'object') {
+    changes.uploadedFile = {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+    };
   }
 
-  // Capture response data if it contains useful change information
+  if (body && typeof body === 'object' && Object.keys(body).length > 0) {
+    const input = sanitizeRequestBody(body);
+    changes.input = input;
+    changes.inputFields = flattenBodyKeys(input, '', 3, 0).slice(0, 50);
+  }
+
   if (responseData && typeof responseData === 'object') {
     try {
       const parsed = typeof responseData === 'string' ? JSON.parse(responseData) : responseData;
-      if (parsed.data && typeof parsed.data === 'object') {
-        changes.result = sanitizeResponseData(parsed.data);
+      if (parsed.message) changes.responseMessage = String(parsed.message).slice(0, 500);
+      if (parsed.success !== undefined) changes.success = parsed.success;
+
+      if (parsed.data !== undefined && parsed.data !== null) {
+        const d = parsed.data;
+        if (typeof d === 'object' && !Array.isArray(d)) {
+          changes.result = sanitizeResponseData(d);
+          const id = d.id || d.uuid || d._id;
+          if (id) changes.affectedId = String(id);
+        } else if (Array.isArray(d)) {
+          changes.resultSummary = { recordCount: d.length };
+          if (d.length === 1 && d[0] && typeof d[0] === 'object') {
+            changes.result = sanitizeResponseData(d[0]);
+          }
+        } else {
+          changes.result = d;
+        }
       }
     } catch (e) {
       // Ignore parsing errors
     }
   }
 
+  changes.operation = { method: req.method, path: req.originalUrl.split('?')[0] };
   return Object.keys(changes).length > 0 ? changes : null;
 };
+
+const SENSITIVE_KEY_REGEX = /password|passwd|pass|token|secret|apikey|api_key|authorization|auth|credential/i;
 
 // Sanitize request body to remove sensitive information
 const sanitizeRequestBody = (body) => {
   if (!body || typeof body !== 'object') return body;
 
-  const sanitized = { ...body };
-  const sensitiveFields = ['password', 'token', 'secret', 'key', 'auth'];
-  
-  for (const field of sensitiveFields) {
-    if (sanitized[field]) {
-      sanitized[field] = '[REDACTED]';
-    }
+  let clone;
+  try {
+    clone = JSON.parse(JSON.stringify(body));
+  } catch {
+    clone = Array.isArray(body) ? [...body] : { ...body };
   }
-
-  return sanitized;
+  const walk = (o) => {
+    if (!o || typeof o !== 'object') return;
+    for (const k of Object.keys(o)) {
+      if (SENSITIVE_KEY_REGEX.test(k)) {
+        o[k] = '[REDACTED]';
+        continue;
+      }
+      if (o[k] !== null && typeof o[k] === 'object' && !Array.isArray(o[k])) {
+        walk(o[k]);
+      }
+    }
+  };
+  walk(clone);
+  return clone;
 };
 
-// Sanitize response data
+// Sanitize response data (shallow; avoid huge payloads in audit JSON)
 const sanitizeResponseData = (data) => {
   if (!data || typeof data !== 'object') return data;
 
   const sanitized = { ...data };
-  const sensitiveFields = ['password', 'token', 'secret', 'key'];
-  
-  for (const field of sensitiveFields) {
-    if (sanitized[field]) {
-      sanitized[field] = '[REDACTED]';
+  const walk = (o, depth = 0) => {
+    if (!o || typeof o !== 'object' || depth > 2) return;
+    for (const k of Object.keys(o)) {
+      if (SENSITIVE_KEY_REGEX.test(k)) {
+        o[k] = '[REDACTED]';
+        continue;
+      }
+      if (o[k] !== null && typeof o[k] === 'object' && !Array.isArray(o[k])) {
+        walk(o[k], depth + 1);
+      }
     }
-  }
-
+  };
+  walk(sanitized, 0);
   return sanitized;
 };
 
 // Extract a human-readable name from request body or response data
 const extractEntityName = (req, responseData, entityType) => {
   // 1. Try request body first — most reliable for create/update
-  const body = req.body;
+  const body = getAuditRequestBody(req);
   if (body) {
     // Direct name fields
     if (body.name)          return body.name;
@@ -343,7 +431,7 @@ const extractEntityName = (req, responseData, entityType) => {
 };
 
 // Generate human-readable description
-const generateDescription = (action, entityInfo, user, req, responseData) => {
+const generateDescription = (action, entityInfo, user, req, responseData, changes) => {
   const entityLabels = {
     item:              'Item',
     item_draft:        'Item Draft',
@@ -358,6 +446,7 @@ const generateDescription = (action, entityInfo, user, req, responseData) => {
     user:              'User',
     exchange_rate:     'Exchange Rate',
     company_settings:  'Company Settings',
+    company_address:   'Company address',
     settings:          'Settings',
     tax_rate:          'Tax Rate',
     tax_group:         'Tax Group',
@@ -414,7 +503,33 @@ const generateDescription = (action, entityInfo, user, req, responseData) => {
     adjustment: `Adjusted ${entityName}`,
   };
 
-  return actionDescriptions[action] || `Performed ${action} on ${entityName}`;
+  let base = actionDescriptions[action] || `${String(action).replace(/_/g, ' ')} — ${entityName}`;
+
+  const fields = changes && Array.isArray(changes.inputFields) ? changes.inputFields : [];
+  if (fields.length > 0) {
+    base += `. Payload fields: ${fields.slice(0, 20).join(', ')}${fields.length > 20 ? '…' : ''}`;
+  }
+  if (changes && changes.responseMessage) {
+    base += `. Response: ${changes.responseMessage}`;
+  }
+  if (changes && changes.affectedId && !base.includes(changes.affectedId)) {
+    base += `. Record id: ${changes.affectedId}`;
+  }
+
+  const snap = changes && changes.serverSnapshot;
+  if (snap) {
+    if (snap.deleted && typeof snap.deleted === 'object') {
+      const d = snap.deleted;
+      const bits = [d.label, d.address || d.address_line1, d.city].filter(Boolean).join(' · ');
+      base += bits ? `. Removed: ${bits}` : '. Address removed (see detail for full record).';
+    } else if (snap.before && typeof snap.before === 'object' && snap.submitted) {
+      base += '. Previous vs submitted values are in the audit detail (server snapshot).';
+    } else if (snap.createdId) {
+      base += `. New record id: ${snap.createdId}`;
+    }
+  }
+
+  return base;
 };
 
 module.exports = auditMiddleware;

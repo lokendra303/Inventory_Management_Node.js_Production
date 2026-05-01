@@ -4,9 +4,10 @@ import {
   ClockCircleOutlined, FilterOutlined, DownloadOutlined, EyeOutlined,
   SearchOutlined, ReloadOutlined
 } from '@ant-design/icons';
-import { Card, Table, Tag, Button, Input, Select, DatePicker, Modal, Descriptions, Typography, Row, Col, Space, Tooltip, Badge } from 'antd';
+import { Card, Table, Tag, Button, Input, Select, DatePicker, Modal, Descriptions, Typography, Row, Col, Space, Tooltip, Badge, Collapse } from 'antd';
 import moment from 'moment';
 import apiService from '../../services/apiService';
+import { flattenAuditPayload, parseAuditObject } from '../../utils/auditDisplay';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -68,11 +69,20 @@ const AuditDashboard = () => {
     }
   };
 
-  const getActionColor = (action) => ({
-    create: 'green', update: 'blue', delete: 'red', view: 'default',
-    login: 'purple', logout: 'purple', approve: 'success', reject: 'warning',
-    payment: 'gold', transfer: 'cyan'
-  }[action] || 'default');
+  const getActionColor = (action) => {
+    const exact = {
+      create: 'green', update: 'blue', delete: 'red', view: 'default',
+      login: 'purple', logout: 'purple', approve: 'success', reject: 'warning',
+      payment: 'gold', transfer: 'cyan',
+    };
+    if (exact[action]) return exact[action];
+    const a = String(action || '').toLowerCase();
+    if (a.includes('delete') || a.includes('cancel') || a.includes('removed')) return 'red';
+    if (a.includes('create') || a.includes('add') || a.includes('login') || a.includes('confirm') || a.includes('posted')) return 'green';
+    if (a.includes('update') || a.includes('edit') || a.includes('sync') || a.includes('adjust')) return 'blue';
+    if (a.includes('view') || a.includes('export') || a.includes('report')) return 'default';
+    return 'geekblue';
+  };
 
   const formatDuration = (d) => !d ? 'N/A' : d < 1000 ? `${d}ms` : `${(d / 1000).toFixed(2)}s`;
 
@@ -110,8 +120,28 @@ const AuditDashboard = () => {
       title: 'Action',
       dataIndex: 'action',
       key: 'action',
-      width: 90,
-      render: (action) => <Tag color={getActionColor(action)} style={{ borderRadius: 20, textTransform: 'capitalize', fontWeight: 600 }}>{action}</Tag>,
+      width: 130,
+      render: (action) => (
+        <Tag color={getActionColor(action)} style={{ borderRadius: 20, fontWeight: 600, fontSize: 11 }}>
+          {String(action || '—').replace(/_/g, ' ')}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Fields',
+      key: 'fields_hint',
+      width: 140,
+      render: (_, record) => {
+        const fields = record.changes?.inputFields;
+        const hint = Array.isArray(fields) && fields.length
+          ? `${fields.slice(0, 3).join(', ')}${fields.length > 3 ? '…' : ''}`
+          : '—';
+        return (
+          <Tooltip title="Open View for full values (every field and nested address, etc.)">
+            <span style={{ fontSize: 11, color: '#8c8c8c' }}>{hint}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Entity',
@@ -459,7 +489,7 @@ const AuditDashboard = () => {
         open={showDetails}
         onCancel={() => setShowDetails(false)}
         footer={<Button style={{ borderRadius: 8 }} onClick={() => setShowDetails(false)}>Close</Button>}
-        width="min(760px, 96vw)"
+        width="min(920px, 96vw)"
         style={{ top: 40 }}
         styles={{ body: { background: '#fafbff' } }}
       >
@@ -475,7 +505,9 @@ const AuditDashboard = () => {
                 <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{selectedEntry.user_email}</div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <Tag color={getActionColor(selectedEntry.action)} style={{ borderRadius: 20, fontWeight: 700, textTransform: 'capitalize' }}>{selectedEntry.action}</Tag>
+                <Tag color={getActionColor(selectedEntry.action)} style={{ borderRadius: 20, fontWeight: 700 }}>
+                  {String(selectedEntry.action || '—').replace(/_/g, ' ')}
+                </Tag>
                 <Tag color={selectedEntry.status_code < 400 ? 'green' : 'red'} style={{ borderRadius: 20, fontWeight: 700 }}>{selectedEntry.status_code}</Tag>
               </div>
             </div>
@@ -515,22 +547,162 @@ const AuditDashboard = () => {
               )}
             </Descriptions>
 
-            {selectedEntry.changes && (
-              <div style={{ background: '#fff', border: '1px solid #ebebf5', borderRadius: 10, padding: '12px 16px' }}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: '#667eea', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Changes</div>
-                <pre style={{ background: '#f5f5ff', padding: 12, borderRadius: 8, overflow: 'auto', fontSize: 12, margin: 0, maxHeight: 200 }}>
-                  {JSON.stringify(selectedEntry.changes, null, 2)}
-                </pre>
-              </div>
-            )}
-            {selectedEntry.request_body && (
-              <div style={{ background: '#fff', border: '1px solid #ebebf5', borderRadius: 10, padding: '12px 16px' }}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: '#667eea', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Request Body</div>
-                <pre style={{ background: '#f5f5ff', padding: 12, borderRadius: 8, overflow: 'auto', fontSize: 12, margin: 0, maxHeight: 200 }}>
-                  {JSON.stringify(selectedEntry.request_body, null, 2)}
-                </pre>
-              </div>
-            )}
+            {(() => {
+              const snap = selectedEntry.changes?.serverSnapshot;
+              const payload = parseAuditObject(selectedEntry.request_body)
+                || parseAuditObject(selectedEntry.changes?.input);
+              const payloadRows = payload && typeof payload === 'object'
+                ? flattenAuditPayload(payload)
+                : [];
+              const resultRaw = parseAuditObject(selectedEntry.changes?.result);
+              const resultRows = resultRaw !== null && resultRaw !== undefined && typeof resultRaw === 'object'
+                ? flattenAuditPayload(resultRaw)
+                : [];
+              const deletedRows = snap?.deleted && typeof snap.deleted === 'object'
+                ? flattenAuditPayload(snap.deleted)
+                : [];
+              const beforeRows = snap?.before && typeof snap.before === 'object'
+                ? flattenAuditPayload(snap.before)
+                : [];
+              const submittedSnapRows = snap?.submitted && typeof snap.submitted === 'object'
+                ? flattenAuditPayload(snap.submitted)
+                : [];
+              const detailCol = [
+                {
+                  title: 'Field',
+                  dataIndex: 'key',
+                  key: 'key',
+                  width: '36%',
+                  render: (t) => <code style={{ fontSize: 11, wordBreak: 'break-all', color: '#434343' }}>{t}</code>,
+                },
+                {
+                  title: 'Value',
+                  dataIndex: 'value',
+                  key: 'value',
+                  render: (t) => (
+                    <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: '#1a1a2e' }}>{t}</span>
+                  ),
+                },
+              ];
+              const hasPayload = payloadRows.length > 0;
+              const hasResult = resultRows.length > 0;
+              const hasSnap = deletedRows.length > 0 || beforeRows.length > 0 || submittedSnapRows.length > 0 || !!snap?.createdId;
+              return (
+                <>
+                  {!hasPayload && !hasResult && !hasSnap && (
+                    <div style={{ background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#876800' }}>
+                      No stored request payload or response snapshot for this row (common for older logs or read-only requests). Use <strong>Description</strong> above and <strong>Raw JSON</strong> if present.
+                    </div>
+                  )}
+                  {snap?.createdId ? (
+                    <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 10, padding: '10px 14px', fontSize: 12 }}>
+                      <strong>New record id:</strong> <code>{snap.createdId}</code>
+                    </div>
+                  ) : null}
+                  {deletedRows.length > 0 && (
+                    <div style={{ background: '#fff', border: '1px solid #ffccc7', borderRadius: 10, padding: '12px 16px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#cf1322', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Deleted record — full values before removal
+                      </div>
+                      <Table
+                        size="small"
+                        pagination={deletedRows.length > 25 ? { pageSize: 25 } : false}
+                        columns={detailCol}
+                        dataSource={deletedRows.map((r, i) => ({ ...r, rowKey: `d-${i}` }))}
+                        rowKey="rowKey"
+                        scroll={{ x: true, y: 280 }}
+                      />
+                    </div>
+                  )}
+                  {beforeRows.length > 0 && (
+                    <div style={{ background: '#fff', border: '1px solid #ffe7ba', borderRadius: 10, padding: '12px 16px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#d46b08', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Previous values (before this update)
+                      </div>
+                      <Table
+                        size="small"
+                        pagination={beforeRows.length > 25 ? { pageSize: 25 } : false}
+                        columns={detailCol}
+                        dataSource={beforeRows.map((r, i) => ({ ...r, rowKey: `b-${i}` }))}
+                        rowKey="rowKey"
+                        scroll={{ x: true, y: 280 }}
+                      />
+                    </div>
+                  )}
+                  {submittedSnapRows.length > 0 && beforeRows.length > 0 && (
+                    <div style={{ background: '#fff', border: '1px solid #ebebf5', borderRadius: 10, padding: '12px 16px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#667eea', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Submitted update (payload copy at save time)
+                      </div>
+                      <Table
+                        size="small"
+                        pagination={submittedSnapRows.length > 25 ? { pageSize: 25 } : false}
+                        columns={detailCol}
+                        dataSource={submittedSnapRows.map((r, i) => ({ ...r, rowKey: `s-${i}` }))}
+                        rowKey="rowKey"
+                        scroll={{ x: true, y: 280 }}
+                      />
+                    </div>
+                  )}
+                  {payloadRows.length > 0 && (
+                    <div style={{ background: '#fff', border: '1px solid #ebebf5', borderRadius: 10, padding: '12px 16px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#667eea', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Request payload — what was sent (line‑by‑line)
+                      </div>
+                      <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+                        Nested objects (e.g. billing address) are expanded with dot paths like <code>address.city</code>.
+                      </Text>
+                      <Table
+                        size="small"
+                        pagination={payloadRows.length > 25 ? { pageSize: 25 } : false}
+                        columns={detailCol}
+                        dataSource={payloadRows.map((r, i) => ({ ...r, rowKey: `p-${i}` }))}
+                        rowKey="rowKey"
+                        scroll={{ x: true, y: 360 }}
+                      />
+                    </div>
+                  )}
+                  {resultRows.length > 0 && (
+                    <div style={{ background: '#fff', border: '1px solid #ebebf5', borderRadius: 10, padding: '12px 16px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#52c41a', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        API result data (from response)
+                      </div>
+                      <Table
+                        size="small"
+                        pagination={resultRows.length > 25 ? { pageSize: 25 } : false}
+                        columns={detailCol}
+                        dataSource={resultRows.map((r, i) => ({ ...r, rowKey: `r-${i}` }))}
+                        rowKey="rowKey"
+                        scroll={{ x: true, y: 280 }}
+                      />
+                    </div>
+                  )}
+                  {(selectedEntry.changes || selectedEntry.request_body) && (
+                    <Collapse
+                      size="small"
+                      items={[
+                        {
+                          key: 'raw',
+                          label: 'Raw JSON (technical)',
+                          children: (
+                            <pre style={{ background: '#f5f5ff', padding: 12, borderRadius: 8, overflow: 'auto', fontSize: 11, margin: 0, maxHeight: 240 }}>
+                              {JSON.stringify(
+                                {
+                                  changes: selectedEntry.changes,
+                                  request_body: selectedEntry.request_body,
+                                },
+                                null,
+                                2
+                              )}
+                            </pre>
+                          ),
+                        },
+                      ]}
+                    />
+                  )}
+                </>
+              );
+            })()}
             {selectedEntry.user_agent && (
               <div style={{ background: '#fff', border: '1px solid #ebebf5', borderRadius: 10, padding: '10px 16px' }}>
                 <div style={{ fontWeight: 700, fontSize: 12, color: '#667eea', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>User Agent</div>

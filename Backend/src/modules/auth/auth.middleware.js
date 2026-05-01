@@ -374,6 +374,9 @@ const createInstitutionRateLimit = (windowMs, max) => {
 // Audit logging middleware
 const auditLog = (action) => {
   return (req, res, next) => {
+    // Used by auditMiddleware (DB audit_logs): semantic action from route (e.g. item_updated).
+    req.auditRouteAction = action;
+
     const originalSend = res.send;
     
     res.send = function(data) {

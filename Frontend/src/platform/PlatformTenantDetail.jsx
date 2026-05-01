@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Card, Typography, Descriptions, Table, Button, Space, Tag, Spin, message, Modal, Form, Input, Row, Col,
-  Tabs, Select, DatePicker, Tooltip, Empty,
+  Tabs, Select, DatePicker, Tooltip, Empty, Collapse,
 } from 'antd';
 import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import platformApi from '../services/platformApi';
 import { institutionStatusLabel } from '../config/institutionDisplay';
+import { flattenAuditPayload, parseAuditObject } from '../utils/auditDisplay';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -529,40 +530,150 @@ function InstitutionAuditTrail({ institutionId, users }) {
 }
 
 function AuditRowDetail({ record }) {
-  const sections = [];
-  if (record.description) {
-    sections.push({ key: 'description', title: 'Description', content: record.description });
+  const detailCols = [
+    {
+      title: 'Field',
+      dataIndex: 'key',
+      key: 'key',
+      width: '38%',
+      render: (t) => <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{t}</code>,
+    },
+    {
+      title: 'Value',
+      dataIndex: 'value',
+      key: 'value',
+      render: (t) => <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12 }}>{t}</span>,
+    },
+  ];
+
+  const snap = record.changes?.serverSnapshot;
+  const payload = parseAuditObject(record.request_body) || parseAuditObject(record.changes?.input);
+  const payloadRows = payload && typeof payload === 'object' ? flattenAuditPayload(payload) : [];
+  const resultRaw = parseAuditObject(record.changes?.result);
+  const resultRows = resultRaw !== null && resultRaw !== undefined && typeof resultRaw === 'object'
+    ? flattenAuditPayload(resultRaw)
+    : [];
+  const deletedRows = snap?.deleted && typeof snap.deleted === 'object' ? flattenAuditPayload(snap.deleted) : [];
+  const beforeRows = snap?.before && typeof snap.before === 'object' ? flattenAuditPayload(snap.before) : [];
+  const submittedSnapRows = snap?.submitted && typeof snap.submitted === 'object' ? flattenAuditPayload(snap.submitted) : [];
+
+  if (!record.description && !payloadRows.length && !resultRows.length && !deletedRows.length && !beforeRows.length && !submittedSnapRows.length && !snap?.createdId && !record.changes && !record.request_body) {
+    return <Text type="secondary">No additional details.</Text>;
   }
-  if (record.changes) {
-    sections.push({ key: 'changes', title: 'Changes', content: formatJson(record.changes) });
-  }
-  if (record.request_body) {
-    sections.push({ key: 'request_body', title: 'Request body', content: formatJson(record.request_body) });
-  }
-  if (!sections.length) return <Text type="secondary">No additional details.</Text>;
+
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      {sections.map((s) => (
-        <div key={s.key}>
-          <Text strong>{s.title}</Text>
-          <pre
-            style={{
-              background: '#0f172a',
-              color: '#e2e8f0',
-              padding: 12,
-              borderRadius: 6,
-              overflowX: 'auto',
-              marginTop: 6,
-              marginBottom: 0,
-              fontSize: 12,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {s.content}
-          </pre>
+      {record.description ? (
+        <div>
+          <Text strong>Description</Text>
+          <div style={{ marginTop: 6, fontSize: 13 }}>{record.description}</div>
         </div>
-      ))}
+      ) : null}
+      {snap?.createdId ? (
+        <div style={{ fontSize: 12 }}>
+          <Text strong>New record id: </Text>
+          <code>{snap.createdId}</code>
+        </div>
+      ) : null}
+      {deletedRows.length > 0 ? (
+        <div>
+          <Text strong type="danger">Deleted record</Text>
+          <Table
+            style={{ marginTop: 8 }}
+            size="small"
+            rowKey={(_, i) => `d-${i}`}
+            columns={detailCols}
+            dataSource={deletedRows}
+            pagination={deletedRows.length > 20 ? { pageSize: 20 } : false}
+            scroll={{ y: 240 }}
+          />
+        </div>
+      ) : null}
+      {beforeRows.length > 0 ? (
+        <div>
+          <Text strong>Previous values</Text>
+          <Table
+            style={{ marginTop: 8 }}
+            size="small"
+            rowKey={(_, i) => `b-${i}`}
+            columns={detailCols}
+            dataSource={beforeRows}
+            pagination={beforeRows.length > 20 ? { pageSize: 20 } : false}
+            scroll={{ y: 240 }}
+          />
+        </div>
+      ) : null}
+      {submittedSnapRows.length > 0 && beforeRows.length > 0 ? (
+        <div>
+          <Text strong>Submitted update</Text>
+          <Table
+            style={{ marginTop: 8 }}
+            size="small"
+            rowKey={(_, i) => `s-${i}`}
+            columns={detailCols}
+            dataSource={submittedSnapRows}
+            pagination={submittedSnapRows.length > 20 ? { pageSize: 20 } : false}
+            scroll={{ y: 240 }}
+          />
+        </div>
+      ) : null}
+      {payloadRows.length > 0 ? (
+        <div>
+          <Text strong>Request payload (line‑by‑line)</Text>
+          <Table
+            style={{ marginTop: 8 }}
+            size="small"
+            rowKey={(_, i) => `p-${i}`}
+            columns={detailCols}
+            dataSource={payloadRows}
+            pagination={payloadRows.length > 20 ? { pageSize: 20 } : false}
+            scroll={{ y: 280 }}
+          />
+        </div>
+      ) : null}
+      {resultRows.length > 0 ? (
+        <div>
+          <Text strong>API result data</Text>
+          <Table
+            style={{ marginTop: 8 }}
+            size="small"
+            rowKey={(_, i) => `r-${i}`}
+            columns={detailCols}
+            dataSource={resultRows}
+            pagination={resultRows.length > 20 ? { pageSize: 20 } : false}
+            scroll={{ y: 220 }}
+          />
+        </div>
+      ) : null}
+      {(record.changes || record.request_body) ? (
+        <Collapse
+          size="small"
+          items={[
+            {
+              key: 'raw',
+              label: 'Raw JSON',
+              children: (
+                <pre
+                  style={{
+                    background: '#0f172a',
+                    color: '#e2e8f0',
+                    padding: 12,
+                    borderRadius: 6,
+                    overflowX: 'auto',
+                    margin: 0,
+                    fontSize: 11,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    maxHeight: 240,
+                  }}
+                >
+                  {formatJson({ changes: record.changes, request_body: record.request_body })}
+                </pre>
+              ),
+            },
+          ]}
+        />
+      ) : null}
     </Space>
   );
 }

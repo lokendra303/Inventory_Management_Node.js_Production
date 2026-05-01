@@ -284,6 +284,7 @@ class CompanySettingsController {
     try {
       const { institutionId } = req;
       const id = await multi.addAddress(institutionId, req.body);
+      res.locals.auditExtra = { submitted: req.body, createdId: id };
       res.json({ success: true, data: { id } });
     } catch (e) {
       res.status(400).json({ success: false, error: e.message });
@@ -293,6 +294,13 @@ class CompanySettingsController {
   async updateAddress(req, res) {
     try {
       const { institutionId } = req;
+      const beforeRows = await db.query(
+        `SELECT id, label, address, address_line1, address_line2, city, state, country, postal_code, is_default
+         FROM institution_addresses WHERE id = ? AND institution_id = ?`,
+        [req.params.id, institutionId]
+      );
+      const before = beforeRows[0] || null;
+      res.locals.auditExtra = { before, submitted: req.body };
       await multi.updateAddress(institutionId, req.params.id, req.body);
       res.json({ success: true });
     } catch (e) {
@@ -303,6 +311,12 @@ class CompanySettingsController {
   async deleteAddress(req, res) {
     try {
       const { institutionId } = req;
+      const rows = await db.query(
+        `SELECT id, label, address, address_line1, address_line2, city, state, country, postal_code, is_default
+         FROM institution_addresses WHERE id = ? AND institution_id = ?`,
+        [req.params.id, institutionId]
+      );
+      res.locals.auditExtra = { deleted: rows[0] || null };
       await multi.deleteAddress(institutionId, req.params.id);
       res.json({ success: true });
     } catch (e) {
