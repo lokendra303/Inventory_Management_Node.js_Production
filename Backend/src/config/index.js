@@ -17,7 +17,9 @@ function buildCorsOrigins() {
   }
   const frontendUrl = (getEnvByProfile('FRONTEND_URL') || '').replace(/\/$/, '');
   if (process.env.NODE_ENV === 'production') {
-    return frontendUrl ? [frontendUrl] : [];
+    if (frontendUrl) return [frontendUrl];
+    // No allowlist: echo Origin (works with credentials). Set FRONTEND_URL or CORS_ORIGINS to lock down.
+    return true;
   }
   const fe = frontendUrl || 'http://localhost:3000';
   return [
@@ -26,6 +28,8 @@ function buildCorsOrigins() {
     /^http:\/\/192\.168\./,
     /^http:\/\/172\./,
     /^http:\/\/10\./,
+    // Public / LAN numeric hosts (e.g. http://187.127.159.74 with API on another port)
+    /^http:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/,
   ];
 }
 
