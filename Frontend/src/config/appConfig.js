@@ -36,9 +36,6 @@ export function getApiBaseUrl() {
 
   const host = currentHostname();
   if (host === 'localhost' || host === '127.0.0.1') {
-    if (process.env.NODE_ENV === 'development') {
-      return '/api';
-    }
     return `http://127.0.0.1:${DEFAULT_API_PORT}/api`;
   }
 
@@ -74,20 +71,6 @@ export function mediaUrl(path, { cacheBust = false } = {}) {
   const base = getServerOrigin().replace(/\/$/, '');
   const q = cacheBust ? `?t=${Date.now()}` : '';
   return `${base}${p}${q}`;
-}
-
-/**
- * WebSocket base (no path) — barcode WS is on the Node server, not the CRA dev server.
- * When API uses relative `/api`, still connect to the real backend port.
- */
-export function getWsBaseUrl() {
-  const api = getApiBaseUrl();
-  if (api.startsWith('/')) {
-    const proto =
-      typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//127.0.0.1:${DEFAULT_API_PORT}`;
-  }
-  return api.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
 }
 
 export const RAZORPAY_CHECKOUT_SCRIPT =

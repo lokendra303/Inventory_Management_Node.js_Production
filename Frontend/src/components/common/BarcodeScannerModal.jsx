@@ -1,20 +1,27 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Spin, Alert, Button } from 'antd';
 import { QRCodeSVG } from 'qrcode.react';
 import apiService from '../../services/apiService';
-import { getWsBaseUrl } from '../../config/appConfig';
 
-const wsBase = getWsBaseUrl();
+/** Gap between polls — avoid hammering the API if the modal stays open. */
+const POLL_MS = 1500;
 
 const BarcodeScannerModal = ({ open, onClose, onBarcode }) => {
   const [qrUrl, setQrUrl] = useState('');
-  const [wsStatus, setWsStatus] = useState('connecting');
-  const wsRef = useRef(null);
+  const [pollStatus, setPollStatus] = useState('connecting');
 
   useEffect(() => {
     if (!open) return;
 
     let cancelled = false;
+    let pollTimeoutId = null;
+
+    const clearPollSchedule = () => {
+      if (pollTimeoutId != null) {
+        clearTimeout(pollTimeoutId);
+        pollTimeoutId = null;
+      }
+    };
 
     const init = async () => {
       try {
@@ -24,25 +31,36 @@ const BarcodeScannerModal = ({ open, onClose, onBarcode }) => {
         const sid = data.sessionId;
         const mobileHost = process.env.REACT_APP_MOBILE_URL || window.location.origin;
         setQrUrl(`${mobileHost}/scan?sessionId=${sid}`);
+        setPollStatus('waiting');
 
-        const ws = new WebSocket(`${wsBase}/ws/barcode?sessionId=${sid}`);
-        wsRef.current = ws;
-
-        ws.onopen = () => !cancelled && setWsStatus('waiting');
-        ws.onerror = () => !cancelled && setWsStatus('error');
-
-        ws.onmessage = (e) => {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.type === 'barcode' && msg.barcode) {
-              setWsStatus('received');
-              onBarcode(msg.barcode);
-              ws.close();
-            }
-          } catch (_) {}
+        const scheduleNext = () => {
+          if (cancelled) return;
+          pollTimeoutId = setTimeout(runPoll, POLL_MS);
         };
+
+        const runPoll = async () => {
+          if (cancelled) return;
+          pollTimeoutId = null;
+          try {
+            const res = await apiService.get(`/barcode/poll/${sid}`);
+            if (cancelled) return;
+            if (res.success && res.barcode) {
+              setPollStatus('received');
+              onBarcode(res.barcode);
+              return;
+            }
+          } catch (e) {
+            if (!cancelled && e.response?.status === 404) {
+              setPollStatus('error');
+              return;
+            }
+          }
+          scheduleNext();
+        };
+
+        runPoll();
       } catch {
-        if (!cancelled) setWsStatus('error');
+        if (!cancelled) setPollStatus('error');
       }
     };
 
@@ -50,10 +68,11 @@ const BarcodeScannerModal = ({ open, onClose, onBarcode }) => {
 
     return () => {
       cancelled = true;
-      wsRef.current?.close();
+      clearPollSchedule();
       setQrUrl('');
-      setWsStatus('connecting');
+      setPollStatus('connecting');
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- omit onBarcode to avoid resetting the poll when parent passes a new callback
   }, [open]);
 
   return (
@@ -66,23 +85,23 @@ const BarcodeScannerModal = ({ open, onClose, onBarcode }) => {
       centered
     >
       <div style={{ textAlign: 'center', padding: '16px 0' }}>
-        {wsStatus === 'connecting' && <Spin size="large" tip="Connecting..." />}
+        {pollStatus === 'connecting' && <Spin size="large" tip="Connecting..." />}
 
-        {wsStatus === 'error' && (
+        {pollStatus === 'error' && (
           <Alert type="error" message="Connection failed. Please close and try again." showIcon />
         )}
 
-        {(wsStatus === 'waiting' || wsStatus === 'received') && qrUrl && (
+        {(pollStatus === 'waiting' || pollStatus === 'received') && qrUrl && (
           <>
             <div style={{ display: 'inline-block', padding: 12, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
               <QRCodeSVG value={qrUrl} size={200} />
             </div>
             <div style={{ marginTop: 16, fontSize: 13, color: '#666' }}>
-              {wsStatus === 'received'
+              {pollStatus === 'received'
                 ? '✅ Barcode received! Closing...'
                 : 'Scan the QR code with your mobile to start scanning'}
             </div>
-            {wsStatus === 'waiting' && (
+            {pollStatus === 'waiting' && (
               <div style={{ marginTop: 8, fontSize: 12, color: '#aaa' }}>
                 Opens camera on your phone — no app needed
               </div>

@@ -55,7 +55,7 @@ Headline domains:
 - **Database:** MySQL (shared pool in `Backend/src/database/connection.js`).
 - **Frontend:** React + Ant Design + Vite. Entry: `Frontend/src/main.jsx`.
 - **Auth:** JWT bearer (access + refresh), email/OTP registration, institution-scoped tokens.
-- **Realtime:** WebSocket barcode channel (`Backend/src/services/barcodeSocket*`).
+- **Barcode pairing:** HTTP poll on `/api/barcode/poll/:sessionId` after `POST /api/barcode/session` (no WebSockets).
 
 ### 2.2 Request lifecycle
 

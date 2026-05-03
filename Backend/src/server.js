@@ -107,33 +107,14 @@ class Server {
     // API routes (protected)
     this.app.use('/api', require('./routes/api'));
 
-    // Serve static files in production
-    if (config.server.env === 'production') {
-      this.app.use(express.static(path.join(__dirname, '..', 'frontend', 'build')));
-      
-      this.app.get('*', (req, res) => {
-        res.sendFile(path.join(__dirname, '..', 'frontend', 'build', 'index.html'));
+    this.app.get(/^\/(?!api\/).*/, (req, res) => {
+      res.status(200).json({
+        message: 'IMS SEPCUNE API Server',
+        version: '1.0.0',
+        info: 'Use /api/* endpoints for backend requests',
+        environment: config.server.env,
       });
-    } else {
-      this.app.get('/', (req, res) => {
-        res.json({
-          message: 'IMS SEPCUNE API Server',
-          version: '1.0.0',
-          environment: config.server.env,
-          timestamp: new Date().toISOString()
-        });
-      });
-      // In development/ngrok API-only mode, return a helpful response for
-      // non-API paths instead of Express "Cannot GET /...".
-      this.app.get(/^\/(?!api\/).*/, (req, res) => {
-        res.status(200).json({
-          message: 'IMS SEPCUNE API Server',
-          info: 'Use /api/* endpoints for backend requests',
-          requestedPath: req.path,
-          environment: config.server.env,
-        });
-      });
-    }
+    });
   }
 
   setupErrorHandling() {
@@ -189,11 +170,6 @@ class Server {
       });
 
       this.server = server;
-
-      // Attach WebSocket server for real-time barcode push
-      const { attachWebSocketServer } = require('./services/barcodeScanService');
-      attachWebSocketServer(server);
-      logger.info('WebSocket barcode server attached');
 
       return server;
     } catch (error) {

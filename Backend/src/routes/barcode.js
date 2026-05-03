@@ -1,5 +1,5 @@
 const express = require('express');
-const { createSession, pushBarcode, sessionExists } = require('../services/barcodeScanService');
+const { createSession, pushBarcode, sessionExists, pollSession } = require('../services/barcodeScanService');
 
 const router = express.Router();
 
@@ -7,6 +7,16 @@ const router = express.Router();
 router.post('/session', (req, res) => {
   const sessionId = createSession();
   res.json({ success: true, sessionId });
+});
+
+// Desktop polls until mobile POSTs a barcode (or session expires)
+router.get('/poll/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const result = pollSession(sessionId);
+  if (!result.ok) {
+    return res.status(404).json({ success: false, error: 'Session not found or expired' });
+  }
+  res.json({ success: true, barcode: result.barcode });
 });
 
 // Mobile scanner page POSTs the scanned barcode here

@@ -29,7 +29,6 @@ function buildCorsOrigins() {
   ];
 }
 
-/** Base URL for absolute links to this server (uploads, server-side PDF image fetch). No trailing slash. */
 function resolvePublicBaseUrl() {
   const fromEnv = (getEnvByProfile('PUBLIC_BASE_URL') || '').replace(/\/$/, '');
   if (fromEnv) return fromEnv;

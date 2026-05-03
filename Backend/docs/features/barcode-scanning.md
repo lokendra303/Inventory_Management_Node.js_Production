@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Let a desktop session pair with a phone (or kiosk) to scan barcodes: create a short-lived session, show a QR/link to the mobile page, receive scans over HTTP POST, and push results to the desktop via WebSocket.
+Let a desktop session pair with a phone (or kiosk) to scan barcodes: create a short-lived session, show a QR/link to the mobile page, receive scans over HTTP POST, and let the desktop pick up results via HTTP polling.
 
 ## API base paths
 
@@ -16,7 +16,7 @@ Let a desktop session pair with a phone (or kiosk) to scan barcodes: create a sh
 ## Backend files
 
 - `Backend/src/routes/barcode.js`
-- `Backend/src/services/barcodeScanService.js` (session store + WebSocket `attachWebSocketServer` from `server.js`)
+- `Backend/src/services/barcodeScanService.js` (in-memory session store)
 
 ## Frontend
 
