@@ -4,9 +4,10 @@ import apiService from '../services/apiService';
 
 const AuthContext = createContext();
 
-const INACTIVITY_TIMEOUT = parseInt(process.env.REACT_APP_INACTIVITY_TIMEOUT);        // 15 minutes
-const ACTIVITY_THROTTLE = parseInt(process.env.REACT_APP_ACTIVITY_THROTTLE);           // 30 seconds
-const TOKEN_REFRESH_THRESHOLD = parseInt(process.env.REACT_APP_TOKEN_REFRESH_THRESHOLD); // refresh if token expires within 5 min
+// Defaults when env is unset — avoids NaN (which disables heartbeat refresh) and matches typical SME usage
+const INACTIVITY_TIMEOUT = parseInt(process.env.REACT_APP_INACTIVITY_TIMEOUT, 10) || 15 * 60 * 1000;
+const ACTIVITY_THROTTLE = parseInt(process.env.REACT_APP_ACTIVITY_THROTTLE, 10) || 30 * 1000;
+const TOKEN_REFRESH_THRESHOLD = parseInt(process.env.REACT_APP_TOKEN_REFRESH_THRESHOLD, 10) || 5 * 60 * 1000;
 const TOKEN_REFRESH_INTERVAL = 4 * 60 * 1000; // proactively refresh every 4 min
 
 export const useAuth = () => {
@@ -282,7 +283,24 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, fetchProfile, sessionSecondsLeft, sendOtp, verifyOtp, verifyLoginOtp, forgotPassword, verifyResetOtp, resetPassword, getEmailHint }}>
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      login,
+      logout,
+      register,
+      fetchProfile,
+      sessionSecondsLeft,
+      sendOtp,
+      verifyOtp,
+      verifyLoginOtp,
+      forgotPassword,
+      verifyResetOtp,
+      resetPassword,
+      getEmailHint,
+      /** Call while user is active without pointer on this tab (e.g. mobile barcode scanner modal). */
+      bumpSessionActivity: updateActivity,
+    }}>
       {children}
     </AuthContext.Provider>
   );

@@ -110,11 +110,14 @@ class ApiService {
           
           // Only show session expired modal if user was logged in (has token)
           // Don't show for login/profile endpoint failures
-          const isAuthEndpoint = error.config?.url?.includes('/auth/login') || 
-                                 error.config?.url?.includes('/auth/profile');
+          const reqUrl = error.config?.url || '';
+          const isAuthEndpoint = reqUrl.includes('/auth/login') ||
+                                 reqUrl.includes('/auth/profile');
+          // Public barcode relay — should not clear tenant session if something mis-returns 401
+          const isBarcodeRelay = reqUrl.includes('/barcode/');
           const hadToken = sessionStorage.getItem('token');
           
-          if (!isAuthEndpoint && hadToken) {
+          if (!isAuthEndpoint && !isBarcodeRelay && hadToken) {
             // Handle session expiration for authenticated users
             sessionStorage.removeItem('token');
             sessionStorage.removeItem('user');

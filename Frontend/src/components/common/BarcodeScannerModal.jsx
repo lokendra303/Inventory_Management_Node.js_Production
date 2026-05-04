@@ -2,13 +2,24 @@ import React, { useEffect, useState } from 'react';
 import { Modal, Spin, Alert, Button } from 'antd';
 import { QRCodeSVG } from 'qrcode.react';
 import apiService from '../../services/apiService';
+import { useAuth } from '../../hooks/useAuth.jsx';
+import { getMobileScannerOrigin } from '../../config/appConfig';
 
 /** Gap between polls — avoid hammering the API if the modal stays open. */
 const POLL_MS = 1500;
 
 const BarcodeScannerModal = ({ open, onClose, onBarcode }) => {
+  const { bumpSessionActivity } = useAuth();
   const [qrUrl, setQrUrl] = useState('');
   const [pollStatus, setPollStatus] = useState('connecting');
+
+  // Desktop tab gets no mouse/keyboard while user scans on phone — keep inactivity session alive
+  useEffect(() => {
+    if (!open) return;
+    bumpSessionActivity();
+    const id = setInterval(() => bumpSessionActivity(), POLL_MS);
+    return () => clearInterval(id);
+  }, [open, bumpSessionActivity]);
 
   useEffect(() => {
     if (!open) return;
@@ -29,7 +40,7 @@ const BarcodeScannerModal = ({ open, onClose, onBarcode }) => {
         if (cancelled || !data.success) return;
 
         const sid = data.sessionId;
-        const mobileHost = process.env.REACT_APP_MOBILE_URL || window.location.origin;
+        const mobileHost = getMobileScannerOrigin();
         setQrUrl(`${mobileHost}/scan?sessionId=${sid}`);
         setPollStatus('waiting');
 
@@ -41,6 +52,7 @@ const BarcodeScannerModal = ({ open, onClose, onBarcode }) => {
         const runPoll = async () => {
           if (cancelled) return;
           pollTimeoutId = null;
+          bumpSessionActivity();
           try {
             const res = await apiService.get(`/barcode/poll/${sid}`);
             if (cancelled) return;
