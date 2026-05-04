@@ -1743,6 +1743,28 @@ CREATE TABLE IF NOT EXISTS `subscription_billing_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- -----------------------------------------------------
+-- Table: subscription_upgrade_requests
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `subscription_upgrade_requests` (
+  `id` varchar(36) NOT NULL,
+  `institution_id` varchar(36) NOT NULL,
+  `requested_plan_id` varchar(36) NOT NULL,
+  `billing_cycle` enum('monthly','yearly') NOT NULL DEFAULT 'monthly',
+  `status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `request_message` text,
+  `admin_notes` text,
+  `reviewed_by` varchar(36) DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_sub_upg_inst` (`institution_id`),
+  KEY `idx_sub_upg_status` (`status`),
+  CONSTRAINT `subscription_upgrade_requests_ibfk_1` FOREIGN KEY (`institution_id`) REFERENCES `institutions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `subscription_upgrade_requests_ibfk_2` FOREIGN KEY (`requested_plan_id`) REFERENCES `subscription_plans` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- -----------------------------------------------------
 -- Table: tax_groups
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `tax_groups` (

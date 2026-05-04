@@ -13,14 +13,29 @@
  *
  * Conventions:
  *   - Migration files live in `Backend/src/database/migrations/*.sql`.
- *   - Filenames that sort alphabetically run in that order. Use a three-
- *     digit prefix so `010_…` sorts after `009_…`.
- *   - `000_initial_schema.sql` is the baseline, dumped from the live DB.
- *     Every migration after it should be idempotent so running against
- *     an existing legacy DB (one that was set up before this runner)
- *     is a safe no-op for already-applied changes.
- *   - Tracking lives in the `schema_migrations` table, which this runner
- *     creates automatically on first use.
+ *   - Files are run in lexicographic (alphabetical) filename order.
+ *
+ *   Legacy (already in repo): `NNN_description.sql` with zero-padded NNN
+ *   (`000_initial_schema.sql` … `020_…`). Keep these names as-is so
+ *   `schema_migrations.filename` stays valid.
+ *
+ *   New migrations (any new table/column/index from now on):
+ *     `YYYYMMDD_NNN_description.sql`
+ *     Example: `20260504_001_add_invoice_due_date.sql`
+ *     - YYYYMMDD = date the migration was authored (use repo “today” if needed).
+ *     - NNN = 001, 002, … for multiple files on the same day (always 3 digits).
+ *     Dated names sort after `0xx_…` and preserve chronological order.
+ *
+ *   One-shot MySQL imports (optional, alongside migrate.js):
+ *     Do not edit `full_install.sql` for new schema. Add a new file next to it:
+ *       `full_install_YYYYMMDD_NNN_short_description.sql`
+ *     (same date/sequence idea as migrations). Put only the new DDL there.
+ *     Fresh manual installs: run `full_install.sql` first, then each
+ *     `full_install_*.sql` in alphabetical order. See migrations/README.md.
+ *
+ *   - `000_initial_schema.sql` is the baseline snapshot. Incremental files
+ *     should be idempotent where possible so re-runs on legacy DBs no-op.
+ *   - Tracking lives in `schema_migrations` (created on first use).
  *
  * No dependency on external migration frameworks — keeps Node + mysql2 only.
  */

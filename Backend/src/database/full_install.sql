@@ -1,13 +1,17 @@
 ﻿-- =====================================================================
 -- full_install.sql — one-shot schema install for a new MySQL machine
 -- =====================================================================
--- Applies the same SQL as running migrations 000–010 in order (see
--- migrations/*.sql). For incremental, tracked installs prefer:
---   node src/database/migrate.js setup
--- (uses schema_migrations and skips already-applied files.)
+-- Historical baseline for one-shot import. For new tables/columns, do not
+-- edit this file — add `full_install_YYYYMMDD_NNN_description.sql` in the
+-- same directory (see migrations/README.md). Run those after this file, in
+-- name order.
+--
+-- Tracked installs (recommended):  node src/database/migrate.js setup
 --
 -- Usage (create DB first, then):
 --   mysql -h HOST -u USER -p DB_NAME < src/database/full_install.sql
+--   # then, if you use install add-ons:
+--   mysql -h HOST -u USER -p DB_NAME < src/database/full_install_YYYYMMDD_NNN_....sql
 --
 -- Requires MySQL 8.0+ (uses utf8mb4_0900_ai_ci, functional defaults, etc.)
 -- Generated: 2026-04-24 (concat of migrations/000..010)
@@ -1751,6 +1755,28 @@ CREATE TABLE IF NOT EXISTS `subscription_billing_history` (
   `notes` text,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- -----------------------------------------------------
+-- Table: subscription_upgrade_requests
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `subscription_upgrade_requests` (
+  `id` varchar(36) NOT NULL,
+  `institution_id` varchar(36) NOT NULL,
+  `requested_plan_id` varchar(36) NOT NULL,
+  `billing_cycle` enum('monthly','yearly') NOT NULL DEFAULT 'monthly',
+  `status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `request_message` text,
+  `admin_notes` text,
+  `reviewed_by` varchar(36) DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_sub_upg_inst` (`institution_id`),
+  KEY `idx_sub_upg_status` (`status`),
+  CONSTRAINT `subscription_upgrade_requests_ibfk_1` FOREIGN KEY (`institution_id`) REFERENCES `institutions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `subscription_upgrade_requests_ibfk_2` FOREIGN KEY (`requested_plan_id`) REFERENCES `subscription_plans` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- -----------------------------------------------------
