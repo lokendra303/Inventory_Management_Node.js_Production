@@ -12,63 +12,12 @@ const razorpay = new Razorpay({
 
 let tablesReady = false;
 
+/**
+ * Idempotent seed for default subscription tiers. Table DDL lives in migrations
+ * (000_initial_schema / full_install), not in application code.
+ */
 async function ensureTables() {
   if (tablesReady) return;
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS subscription_plans (
-      id VARCHAR(36) PRIMARY KEY,
-      name VARCHAR(100) NOT NULL,
-      description TEXT,
-      price_monthly DECIMAL(10,2) DEFAULT 0,
-      price_yearly DECIMAL(10,2) DEFAULT 0,
-      max_users INT DEFAULT 5,
-      max_warehouses INT DEFAULT 2,
-      max_items INT DEFAULT 500,
-      features JSON DEFAULT ('[]'),
-      is_active TINYINT(1) DEFAULT 1,
-      sort_order INT DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS institution_subscriptions (
-      id VARCHAR(36) PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL UNIQUE,
-      plan_id VARCHAR(36) NOT NULL,
-      billing_cycle ENUM('monthly','yearly','trial') DEFAULT 'trial',
-      status ENUM('active','expired','cancelled','trial') DEFAULT 'trial',
-      trial_ends_at TIMESTAMP NULL,
-      current_period_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      current_period_end TIMESTAMP NULL,
-      cancelled_at TIMESTAMP NULL,
-      cancel_reason VARCHAR(255) NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
-    )
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS subscription_billing_history (
-      id VARCHAR(36) PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL,
-      plan_id VARCHAR(36) NOT NULL,
-      plan_name VARCHAR(100) NOT NULL,
-      billing_cycle ENUM('monthly','yearly','trial') NOT NULL,
-      amount DECIMAL(10,2) DEFAULT 0,
-      currency VARCHAR(10) DEFAULT 'INR',
-      status ENUM('paid','pending','failed','refunded') DEFAULT 'paid',
-      payment_method VARCHAR(50) DEFAULT 'manual',
-      payment_reference VARCHAR(100) NULL,
-      period_start TIMESTAMP NOT NULL,
-      period_end TIMESTAMP NOT NULL,
-      invoice_number VARCHAR(50) NULL,
-      notes TEXT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
 
   // Seed plans — INR pricing
   const plans = [
@@ -101,8 +50,32 @@ async function ensureTables() {
   tablesReady = true;
 }
 
+function planAmount(plan, billingCycle) {
+  if (!plan) return 0;
+  const y = billingCycle === 'yearly';
+  const n = y ? plan.price_yearly : plan.price_monthly;
+  return Number(n) || 0;
+}
+
+function isPaidPlan(plan, billingCycle) {
+  return planAmount(plan, billingCycle) > 0;
+}
+
+function paymentGatewayReady() {
+  return Boolean(
+    config.razorpay.keyId &&
+    config.razorpay.keySecret &&
+    !String(config.razorpay.keyId).startsWith('rzp_test_xxxx')
+  );
+}
+
+function attachPaymentMeta(sub) {
+  if (!sub) return sub;
+  return { ...sub, payment_gateway_ready: paymentGatewayReady() };
+}
+
 class SubscriptionService {
-  /** Ensure subscription_plans / institution_subscriptions tables exist (for platform admin & startup). */
+  /** Seed default plans if missing; schema must exist (run DB migrations). */
   async ensureTablesReady() {
     await ensureTables();
   }
@@ -247,7 +220,7 @@ class SubscriptionService {
       return this.getSubscription(institutionId);
     }
 
-    return sub;
+    return attachPaymentMeta(sub);
   }
 
   async createTrialSubscription(institutionId) {
@@ -331,15 +304,18 @@ class SubscriptionService {
     await ensureTables();
     const plan = await this.getPlanById(planId);
 
-    const amount = billingCycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
+    const amount = planAmount(plan, billingCycle);
 
-    // Free plan or dev mode (no Razorpay keys) — activate directly without payment
-    const gatewayReady = config.razorpay.keyId &&
-                         config.razorpay.keySecret &&
-                         !config.razorpay.keyId.startsWith('rzp_test_xxxx');
+    const gatewayReady = paymentGatewayReady();
 
-    if (amount === 0 || !gatewayReady) {
+    if (amount === 0) {
       return { free: true, planId, billingCycle, planName: plan.name, gatewayReady };
+    }
+
+    if (!gatewayReady) {
+      throw new Error(
+        'Online payment is not available. Please contact your platform administrator to upgrade your plan.'
+      );
     }
 
     const order = await razorpay.orders.create({
@@ -387,16 +363,24 @@ class SubscriptionService {
 
   // ─── Upgrade ─────────────────────────────────────────────────────────────
 
-  async upgradePlan(institutionId, { planId, billingCycle, paymentReference, paymentMethod, notes }) {
+  async upgradePlan(institutionId, { planId, billingCycle, paymentReference, paymentMethod, notes }, opts = {}) {
     await ensureTables();
     const plan = await this.getPlanById(planId);
 
-    const amount = billingCycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
+    const amount = planAmount(plan, billingCycle || 'monthly');
+    const cycle = billingCycle || 'monthly';
 
-    // TODO: Uncomment in production to enforce payment before activation
-    // if (amount > 0 && !paymentReference) {
-    //   throw new Error('Payment is required to activate this plan. Please use the payment flow.');
-    // }
+    const targetPaid = isPaidPlan(plan, cycle);
+    if (targetPaid && !opts.platformAdminGrant && !paymentReference) {
+      const sub = await this.getSubscription(institutionId);
+      const currentPlan = await this.getPlanById(sub.plan_id);
+      const currentPaid = isPaidPlan(currentPlan, sub.billing_cycle || 'monthly');
+      if (!currentPaid) {
+        throw new Error(
+          'This plan can only be activated by your platform administrator until online billing is enabled.'
+        );
+      }
+    }
 
     const usage = await this.getUsage(institutionId);
     const conflicts = this.buildLimitConflicts(plan, usage);
@@ -410,8 +394,11 @@ class SubscriptionService {
     }
 
     const periodEnd     = new Date();
-    periodEnd.setMonth(periodEnd.getMonth() + (billingCycle === 'yearly' ? 12 : 1));
+    periodEnd.setMonth(periodEnd.getMonth() + (cycle === 'yearly' ? 12 : 1));
     const invoiceNumber = `INV-SUB-${Date.now()}`;
+
+    const billingStatus = opts.platformAdminGrant ? 'pending' : 'paid';
+    const payMethod = opts.platformAdminGrant ? 'platform_admin' : (paymentMethod || 'manual');
 
     await db.query(
       `INSERT INTO institution_subscriptions
@@ -421,7 +408,7 @@ class SubscriptionService {
          plan_id=VALUES(plan_id), billing_cycle=VALUES(billing_cycle),
          status='active', current_period_start=NOW(), current_period_end=VALUES(current_period_end),
          trial_ends_at=NULL, cancelled_at=NULL, cancel_reason=NULL, updated_at=NOW()`,
-      [uuidv4(), institutionId, planId, billingCycle || 'monthly', periodEnd]
+      [uuidv4(), institutionId, planId, cycle, periodEnd]
     );
 
     await db.query(
@@ -429,8 +416,8 @@ class SubscriptionService {
        (id, institution_id, plan_id, plan_name, billing_cycle, amount, currency, status,
         payment_method, payment_reference, period_start, period_end, invoice_number, notes)
        VALUES (?,?,?,?,?,?,?,?,?,?,NOW(),?,?,?)`,
-      [uuidv4(), institutionId, planId, plan.name, billingCycle || 'monthly',
-       amount, 'INR', 'paid', paymentMethod || 'manual',
+      [uuidv4(), institutionId, planId, plan.name, cycle,
+       amount, 'INR', billingStatus, payMethod,
        paymentReference || null, periodEnd, invoiceNumber, notes || null]
     );
 
@@ -536,6 +523,181 @@ class SubscriptionService {
       `SELECT * FROM subscription_billing_history WHERE institution_id=? ORDER BY created_at DESC`,
       [institutionId]
     );
+  }
+
+  // ─── Upgrade requests (tenant → platform admin) ──────────────────────────
+
+  async createUpgradeRequest(institutionId, { planId, billingCycle, message }) {
+    await ensureTables();
+    const pid = (planId || '').trim();
+    if (!pid) throw new Error('planId is required');
+
+    let cycle = billingCycle === 'yearly' ? 'yearly' : 'monthly';
+    const plan = await this.getPlanById(pid);
+    const sub = await this.getSubscription(institutionId);
+
+    if (sub.plan_id === pid && sub.billing_cycle === cycle) {
+      throw new Error('You are already on this plan and billing cycle.');
+    }
+
+    const dup = await db.query(
+      `SELECT id FROM subscription_upgrade_requests WHERE institution_id=? AND status='pending' LIMIT 1`,
+      [institutionId]
+    );
+    if (dup.length) {
+      throw new Error('You already have a pending upgrade request. Please wait for the platform administrator to review it.');
+    }
+
+    const msg = message != null ? String(message).trim().slice(0, 2000) : null;
+
+    const id = uuidv4();
+    await db.query(
+      `INSERT INTO subscription_upgrade_requests
+       (id, institution_id, requested_plan_id, billing_cycle, status, request_message)
+       VALUES (?, ?, ?, ?, 'pending', ?)`,
+      [id, institutionId, pid, cycle, msg || null]
+    );
+
+    logger.info('Subscription upgrade request created', { institutionId, planId: pid, cycle });
+    const [row] = await db.query(
+      `SELECT r.*, p.name AS requested_plan_name
+       FROM subscription_upgrade_requests r
+       JOIN subscription_plans p ON p.id = r.requested_plan_id
+       WHERE r.id=?`,
+      [id]
+    );
+    return row;
+  }
+
+  async listMyUpgradeRequests(institutionId) {
+    await ensureTables();
+    return db.query(
+      `SELECT r.*, p.name AS requested_plan_name
+       FROM subscription_upgrade_requests r
+       JOIN subscription_plans p ON p.id = r.requested_plan_id
+       WHERE r.institution_id=?
+       ORDER BY r.created_at DESC`,
+      [institutionId]
+    );
+  }
+
+  async listUpgradeRequestsForPlatform({ status = '', page = 1, limit = 20 }) {
+    await ensureTables();
+    const pageInt = Math.max(1, parseInt(page, 10) || 1);
+    const limitInt = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (pageInt - 1) * limitInt;
+    const limitSql = `${Number(limitInt)}`;
+    const offsetSql = `${Number(offset)}`;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (status === 'pending' || status === 'approved' || status === 'rejected') {
+      where += ' AND r.status = ?';
+      params.push(status);
+    }
+
+    const countRows = await db.query(
+      `SELECT COUNT(*) AS c FROM subscription_upgrade_requests r ${where}`,
+      params
+    );
+    const total = Number(countRows[0]?.c || 0);
+
+    const rows = await db.query(
+      `SELECT r.*, i.name AS institution_name, i.email AS institution_email,
+              p.name AS requested_plan_name
+       FROM subscription_upgrade_requests r
+       INNER JOIN institutions i ON i.id = r.institution_id
+       INNER JOIN subscription_plans p ON p.id = r.requested_plan_id
+       ${where}
+       ORDER BY r.created_at DESC
+       LIMIT ${limitSql} OFFSET ${offsetSql}`,
+      params
+    );
+
+    return { data: rows, total, page: pageInt, limit: limitInt };
+  }
+
+  async approveUpgradeRequest(requestId, platformAdminId, { adminNotes } = {}) {
+    await ensureTables();
+    const rid = (requestId || '').trim();
+    const [reqRow] = await db.query('SELECT * FROM subscription_upgrade_requests WHERE id=?', [rid]);
+    if (!reqRow) throw new Error('Request not found');
+    if (reqRow.status !== 'pending') throw new Error('Request is no longer pending');
+
+    try {
+      await this.upgradePlan(
+        reqRow.institution_id,
+        {
+          planId: reqRow.requested_plan_id,
+          billingCycle: reqRow.billing_cycle,
+          paymentReference: null,
+          paymentMethod: 'platform_admin',
+          notes: `Upgrade request ${rid}${adminNotes ? `: ${adminNotes}` : ''}`,
+        },
+        { platformAdminGrant: true }
+      );
+    } catch (e) {
+      if (e.code === 'DOWNGRADE_BLOCKED') throw e;
+      throw e;
+    }
+
+    const note = adminNotes != null ? String(adminNotes).trim().slice(0, 2000) : null;
+    await db.query(
+      `UPDATE subscription_upgrade_requests SET status='approved', reviewed_by=?, reviewed_at=NOW(),
+       admin_notes=?, updated_at=NOW() WHERE id=?`,
+      [platformAdminId, note || null, rid]
+    );
+
+    try {
+      const pr = await db.query('SELECT name FROM subscription_plans WHERE id = ?', [reqRow.requested_plan_id]);
+      if (pr.length) {
+        await db.query('UPDATE institutions SET plan = ?, updated_at = NOW() WHERE id = ?', [
+          pr[0].name,
+          reqRow.institution_id,
+        ]);
+      }
+    } catch (err) {
+      logger.warn('approveUpgradeRequest: institutions.plan sync skipped', { error: err.message });
+    }
+
+    logger.info('Subscription upgrade request approved', { requestId: rid, platformAdminId });
+    const [out] = await db.query(
+      `SELECT r.*, i.name AS institution_name, i.email AS institution_email,
+              p.name AS requested_plan_name
+       FROM subscription_upgrade_requests r
+       INNER JOIN institutions i ON i.id = r.institution_id
+       INNER JOIN subscription_plans p ON p.id = r.requested_plan_id
+       WHERE r.id=?`,
+      [rid]
+    );
+    return out;
+  }
+
+  async rejectUpgradeRequest(requestId, platformAdminId, { adminNotes } = {}) {
+    await ensureTables();
+    const rid = (requestId || '').trim();
+    const [reqRow] = await db.query('SELECT * FROM subscription_upgrade_requests WHERE id=?', [rid]);
+    if (!reqRow) throw new Error('Request not found');
+    if (reqRow.status !== 'pending') throw new Error('Request is no longer pending');
+
+    const note = adminNotes != null ? String(adminNotes).trim().slice(0, 2000) : null;
+    await db.query(
+      `UPDATE subscription_upgrade_requests SET status='rejected', reviewed_by=?, reviewed_at=NOW(),
+       admin_notes=?, updated_at=NOW() WHERE id=?`,
+      [platformAdminId, note || null, rid]
+    );
+
+    logger.info('Subscription upgrade request rejected', { requestId: rid, platformAdminId });
+    const [out] = await db.query(
+      `SELECT r.*, i.name AS institution_name, i.email AS institution_email,
+              p.name AS requested_plan_name
+       FROM subscription_upgrade_requests r
+       INNER JOIN institutions i ON i.id = r.institution_id
+       INNER JOIN subscription_plans p ON p.id = r.requested_plan_id
+       WHERE r.id=?`,
+      [rid]
+    );
+    return out;
   }
 }
 

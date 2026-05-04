@@ -1,4 +1,5 @@
 const platformAdminService = require('./platformAdmin.service');
+const subscriptionService = require('../subscription/subscription.service');
 const logger = require('../../utils/logger');
 
 class PlatformController {
@@ -64,6 +65,23 @@ class PlatformController {
       const data = await platformAdminService.updateInstitutionProfile(req.params.id, req.body);
       res.json({ success: true, data });
     } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async assignInstitutionSubscription(req, res) {
+    try {
+      const data = await platformAdminService.assignInstitutionSubscription(req.params.id, req.body);
+      res.json({ success: true, data });
+    } catch (error) {
+      if (error.code === 'DOWNGRADE_BLOCKED') {
+        return res.status(422).json({
+          success: false,
+          error: 'DOWNGRADE_BLOCKED',
+          conflicts: error.conflicts,
+          planName: error.planName,
+        });
+      }
       res.status(400).json({ success: false, error: error.message });
     }
   }
@@ -138,6 +156,47 @@ class PlatformController {
     } catch (error) {
       logger.error('Platform export institutions error', { error: error.message });
       res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async listSubscriptionRequests(req, res) {
+    try {
+      const { status, page, limit } = req.query;
+      const result = await subscriptionService.listUpgradeRequestsForPlatform({ status, page, limit });
+      res.json({ success: true, ...result });
+    } catch (error) {
+      logger.error('Platform list subscription requests error', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async approveSubscriptionRequest(req, res) {
+    try {
+      const data = await subscriptionService.approveUpgradeRequest(req.params.id, req.platformAdmin.id, {
+        adminNotes: req.body?.adminNotes,
+      });
+      res.json({ success: true, data });
+    } catch (error) {
+      if (error.code === 'DOWNGRADE_BLOCKED') {
+        return res.status(422).json({
+          success: false,
+          error: 'DOWNGRADE_BLOCKED',
+          conflicts: error.conflicts,
+          planName: error.planName,
+        });
+      }
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async rejectSubscriptionRequest(req, res) {
+    try {
+      const data = await subscriptionService.rejectUpgradeRequest(req.params.id, req.platformAdmin.id, {
+        adminNotes: req.body?.adminNotes,
+      });
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
     }
   }
 }

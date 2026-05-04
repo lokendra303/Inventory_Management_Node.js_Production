@@ -2,7 +2,7 @@ import React from 'react';
 import { Layout, Menu, Button, Typography, Space } from 'antd';
 import {
   DashboardOutlined, TeamOutlined, LogoutOutlined, SafetyCertificateOutlined,
-  CreditCardOutlined, HistoryOutlined,
+  CreditCardOutlined, HistoryOutlined, SendOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { platformToken } from '../services/platformApi';
@@ -29,6 +29,7 @@ export default function PlatformAdminShell() {
   const selected = (() => {
     if (path.startsWith('/platform/institutions')) return ['/platform/institutions'];
     if (path.startsWith('/platform/plans')) return ['/platform/plans'];
+    if (path.startsWith('/platform/subscription-requests')) return ['/platform/subscription-requests'];
     if (path.startsWith('/platform/activity')) return ['/platform/activity'];
     return ['/platform/dashboard'];
   })();
@@ -77,6 +78,12 @@ export default function PlatformAdminShell() {
               icon: <CreditCardOutlined />,
               label: 'Plans',
               onClick: () => navigate('/platform/plans'),
+            },
+            {
+              key: '/platform/subscription-requests',
+              icon: <SendOutlined />,
+              label: 'Subscription requests',
+              onClick: () => navigate('/platform/subscription-requests'),
             },
             {
               key: '/platform/activity',

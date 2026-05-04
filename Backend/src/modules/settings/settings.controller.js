@@ -6,62 +6,7 @@ let tablesEnsured = false;
 
 async function ensureTables() {
   if (tablesEnsured) return;
-  tablesEnsured = true; // set early so retries don't re-run on error
-
-  // institutions extra columns — ignore if already exist (errno 1060)
-  for (const sql of [
-    'ALTER TABLE institutions ADD COLUMN exchange_rate DECIMAL(15,6) NOT NULL DEFAULT 1',
-    "ALTER TABLE institutions ADD COLUMN base_currency VARCHAR(10) NOT NULL DEFAULT 'USD'"
-  ]) {
-    try { await db.query(sql); } catch (e) { if (e.errno !== 1060) { tablesEnsured = false; throw e; } }
-  }
-
-  // currencies master — one row per currency code per institution
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS currencies (
-      id            INT AUTO_INCREMENT PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL,
-      code          VARCHAR(10) NOT NULL,
-      name          VARCHAR(100) NOT NULL,
-      symbol        VARCHAR(10) NOT NULL,
-      is_base       TINYINT(1) NOT NULL DEFAULT 0,
-      is_active     TINYINT(1) NOT NULL DEFAULT 1,
-      created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_inst_code (institution_id, code)
-    )
-  `);
-
-  // exchange_rates — current rate per pair
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS exchange_rates (
-      id             INT AUTO_INCREMENT PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL,
-      from_currency  VARCHAR(10) NOT NULL,
-      to_currency    VARCHAR(10) NOT NULL,
-      rate           DECIMAL(15,6) NOT NULL DEFAULT 1,
-      updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_pair (institution_id, from_currency, to_currency)
-    )
-  `);
-
-  // currency_rate_history — full audit trail of every rate change
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS currency_rate_history (
-      id             INT AUTO_INCREMENT PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL,
-      from_currency  VARCHAR(10) NOT NULL,
-      to_currency    VARCHAR(10) NOT NULL,
-      rate           DECIMAL(15,6) NOT NULL,
-      inverse_rate   DECIMAL(15,6) NOT NULL,
-      changed_by     VARCHAR(36),
-      changed_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      note           VARCHAR(255),
-      INDEX idx_inst_pair (institution_id, from_currency, to_currency),
-      INDEX idx_changed_at (changed_at)
-    )
-  `);
-
+  // Currency / institution columns: 000_initial_schema — not created at runtime
   tablesEnsured = true;
 }
 

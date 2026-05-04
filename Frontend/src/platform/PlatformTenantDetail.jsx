@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Card, Typography, Descriptions, Table, Button, Space, Tag, Spin, message, Modal, Form, Input, Row, Col,
-  Tabs, Select, DatePicker, Tooltip, Empty, Collapse,
+  Tabs, Select, DatePicker, Tooltip, Empty, Collapse, Radio,
 } from 'antd';
 import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -21,7 +21,11 @@ export default function PlatformTenantDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  const [assignForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('overview');
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignPlans, setAssignPlans] = useState([]);
+  const [assignSaving, setAssignSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +83,55 @@ export default function PlatformTenantDetail() {
     }
   };
 
+  const openAssignSubscription = async () => {
+    const s = payload?.subscription;
+    assignForm.setFieldsValue({
+      planId: s?.plan_id || undefined,
+      billingCycle: s && ['monthly', 'yearly'].includes(s.billing_cycle) ? s.billing_cycle : 'monthly',
+      notes: '',
+    });
+    setAssignOpen(true);
+    try {
+      const res = await platformApi.get('/platform/plans');
+      if (res.success && Array.isArray(res.data)) {
+        setAssignPlans(res.data.filter((p) => p.is_active !== 0 && p.is_active !== false));
+      }
+    } catch (e) {
+      message.error(e.response?.data?.error || e.message || 'Failed to load plans');
+    }
+  };
+
+  const saveAssignSubscription = async () => {
+    try {
+      const values = await assignForm.validateFields();
+      setAssignSaving(true);
+      const res = await platformApi.patch(`/platform/institutions/${id}/subscription`, {
+        planId: values.planId,
+        billingCycle: values.billingCycle,
+        notes: values.notes || undefined,
+      });
+      if (res.success && res.data) {
+        message.success('Subscription plan assigned');
+        setPayload(res.data);
+        setAssignOpen(false);
+      } else {
+        message.error(res.error || 'Update failed');
+      }
+    } catch (e) {
+      if (e?.errorFields) return;
+      const d = e.response?.data;
+      if (d?.error === 'DOWNGRADE_BLOCKED') {
+        message.error(
+          `This plan exceeds the institution’s current usage (${d.planName || 'target plan'}). Adjust usage or pick another plan.`
+        );
+      } else {
+        message.error(d?.error || e.message);
+      }
+    } finally {
+      setAssignSaving(false);
+    }
+  };
+
   const setStatus = async (status) => {
     try {
       const res = await platformApi.patch(`/platform/institutions/${id}/status`, { status });
@@ -127,6 +180,7 @@ export default function PlatformTenantDetail() {
         </Descriptions>
         <Space style={{ marginTop: 16 }} wrap>
           <Button icon={<EditOutlined />} onClick={openEdit}>Edit institution</Button>
+          <Button type="primary" ghost onClick={openAssignSubscription}>Assign subscription plan</Button>
           {institution.status === 'active' ? (
             <Button danger onClick={() => setStatus('suspended')}>Suspend institution</Button>
           ) : (
@@ -136,7 +190,43 @@ export default function PlatformTenantDetail() {
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
           Suspending blocks institution user login. Data is not deleted.
         </Typography.Paragraph>
+        <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+          Paid tiers (Standard and above) are granted here until online billing is enabled. Tenants cannot self-activate paid plans without payment verification.
+        </Typography.Paragraph>
       </Card>
+
+      <Modal
+        title="Assign subscription plan"
+        open={assignOpen}
+        onCancel={() => setAssignOpen(false)}
+        onOk={saveAssignSubscription}
+        confirmLoading={assignSaving}
+        width={480}
+        destroyOnClose
+      >
+        <Form form={assignForm} layout="vertical" style={{ marginTop: 8 }}>
+          <Form.Item name="planId" label="Plan" rules={[{ required: true, message: 'Select a plan' }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="Choose plan"
+              options={assignPlans.map((p) => ({
+                value: p.id,
+                label: `${p.name} (${p.id})`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="billingCycle" label="Billing cycle" rules={[{ required: true }]}>
+            <Radio.Group>
+              <Radio.Button value="monthly">Monthly</Radio.Button>
+              <Radio.Button value="yearly">Yearly</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item name="notes" label="Notes (optional)">
+            <Input.TextArea rows={2} placeholder="e.g. Enterprise contract #…" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <RowCards stats={stats} />
 

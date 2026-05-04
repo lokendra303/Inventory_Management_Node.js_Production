@@ -3,21 +3,11 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('../../utils/logger');
 
 class AuditLogService {
-  constructor() {
-    this._schemaEnsured = false;
-  }
-
   // Enhanced audit logging for comprehensive user action tracking
   async logUserAction(auditData) {
     try {
       const auditId = uuidv4();
-      
-      // Ensure audit_logs table has all required columns (only once)
-      if (!this._schemaEnsured) {
-        await this.ensureAuditTableSchema();
-        this._schemaEnsured = true;
-      }
-      
+
       await db.query(
         `INSERT INTO audit_logs 
          (id, institution_id, user_id, service_account_id, entity_type, entity_id, action, method, path, 
@@ -68,65 +58,6 @@ class AuditLogService {
       requestBody: null,
       description
     });
-  }
-
-  // Ensure audit table has all required columns
-  async ensureAuditTableSchema() {
-    try {
-      // First, try to create the table if it doesn't exist
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS audit_logs (
-          id VARCHAR(36) PRIMARY KEY,
-          institution_id VARCHAR(36) NOT NULL,
-          user_id VARCHAR(36),
-          service_account_id VARCHAR(36),
-          entity_type VARCHAR(100),
-          entity_id VARCHAR(100),
-          action VARCHAR(50),
-          method VARCHAR(10),
-          path VARCHAR(500),
-          changes JSON,
-          ip_address VARCHAR(45),
-          user_agent TEXT,
-          status_code INT,
-          duration INT,
-          request_body JSON,
-          description TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Create indexes for better performance
-      const indexes = [
-        { name: 'idx_audit_logs_institution_id', sql: 'CREATE INDEX idx_audit_logs_institution_id ON audit_logs(institution_id)' },
-        { name: 'idx_audit_logs_user_id', sql: 'CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id)' },
-        { name: 'idx_audit_logs_entity', sql: 'CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id)' },
-        { name: 'idx_audit_logs_action', sql: 'CREATE INDEX idx_audit_logs_action ON audit_logs(action)' },
-        { name: 'idx_audit_logs_created_at', sql: 'CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at)' },
-        { name: 'idx_audit_logs_institution_created', sql: 'CREATE INDEX idx_audit_logs_institution_created ON audit_logs(institution_id, created_at)' },
-        { name: 'idx_audit_logs_user_created', sql: 'CREATE INDEX idx_audit_logs_user_created ON audit_logs(user_id, created_at)' }
-      ];
-
-      for (const index of indexes) {
-        try {
-          const existing = await db.query(
-            `SELECT COUNT(*) as cnt FROM information_schema.statistics 
-             WHERE table_schema = DATABASE() AND table_name = 'audit_logs' AND index_name = ?`,
-            [index.name]
-          );
-          if (existing[0].cnt === 0) {
-            await db.query(index.sql);
-          }
-        } catch (error) {
-          logger.debug('Audit index creation skipped', { index: index.name, error: error.message });
-        }
-      }
-      
-      logger.info('Audit logs table schema ensured successfully');
-    } catch (error) {
-      logger.error('Failed to ensure audit table schema', { error: error.message });
-    }
   }
 
   async getEntityLogs(institutionId, entityType, entityId, limit = 50) {

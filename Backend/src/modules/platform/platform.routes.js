@@ -13,6 +13,7 @@ router.get('/institutions', requirePlatformAuth, platformController.listInstitut
 router.get('/institutions/:id', requirePlatformAuth, platformController.getInstitution.bind(platformController));
 router.get('/institutions/:id/audit', requirePlatformAuth, platformController.getInstitutionAudit.bind(platformController));
 router.patch('/institutions/:id', requirePlatformAuth, platformController.updateInstitution.bind(platformController));
+router.patch('/institutions/:id/subscription', requirePlatformAuth, platformController.assignInstitutionSubscription.bind(platformController));
 router.patch('/institutions/:id/status', requirePlatformAuth, platformController.updateInstitutionStatus.bind(platformController));
 
 router.get('/plans/feature-options', requirePlatformAuth, platformController.planFeatureOptions.bind(platformController));
@@ -20,5 +21,9 @@ router.get('/plans', requirePlatformAuth, platformController.listPlans.bind(plat
 router.post('/plans', requirePlatformAuth, platformController.createPlan.bind(platformController));
 router.patch('/plans/:planId', requirePlatformAuth, platformController.updatePlan.bind(platformController));
 router.get('/activity/recent-logins', requirePlatformAuth, platformController.recentLogins.bind(platformController));
+
+router.get('/subscription-requests', requirePlatformAuth, platformController.listSubscriptionRequests.bind(platformController));
+router.post('/subscription-requests/:id/approve', requirePlatformAuth, platformController.approveSubscriptionRequest.bind(platformController));
+router.post('/subscription-requests/:id/reject', requirePlatformAuth, platformController.rejectSubscriptionRequest.bind(platformController));
 
 module.exports = router;

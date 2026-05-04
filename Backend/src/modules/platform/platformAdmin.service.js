@@ -30,19 +30,7 @@ function institutionStatusToDb(apiStatus) {
 async function ensureSchema() {
   if (schemaReady) return;
 
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS platform_admins (
-      id VARCHAR(36) NOT NULL PRIMARY KEY,
-      email VARCHAR(255) NOT NULL,
-      password_hash VARCHAR(255) NOT NULL,
-      name VARCHAR(200) NOT NULL,
-      status VARCHAR(20) NOT NULL DEFAULT 'active',
-      last_login TIMESTAMP NULL,
-      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_platform_admins_email (email)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
+  // platform_admins DDL: migrations / 000_initial_schema — not created at runtime
 
   const { bootstrapEmail, bootstrapPassword, bootstrapName } = config.platform || {};
   if (bootstrapEmail && bootstrapPassword) {
@@ -514,6 +502,56 @@ async function updateSubscriptionPlan(planId, body) {
 }
 
 /**
+ * Apply a subscription plan to an institution without payment (platform operator only).
+ * Used while online billing is unavailable or for enterprise allowlisting.
+ */
+async function assignInstitutionSubscription(institutionId, body = {}) {
+  await ensureSchema();
+  await subscriptionService.ensureTablesReady();
+
+  const id = (institutionId || '').trim();
+  const inst = await db.query('SELECT id FROM institutions WHERE id = ?', [id]);
+  if (!inst.length) throw new Error('Institution not found');
+
+  const planId = (body.planId || body.plan_id || '').trim();
+  if (!planId) throw new Error('planId is required');
+
+  let billingCycle = body.billingCycle || body.billing_cycle || 'monthly';
+  if (!['monthly', 'yearly'].includes(billingCycle)) billingCycle = 'monthly';
+
+  const notesRaw = body.notes != null ? String(body.notes) : '';
+  const notes = notesRaw.trim() ? notesRaw.trim().slice(0, 2000) : 'Assigned by platform administrator';
+
+  await subscriptionService.upgradePlan(
+    id,
+    {
+      planId,
+      billingCycle,
+      paymentReference: null,
+      paymentMethod: 'platform_admin',
+      notes,
+    },
+    { platformAdminGrant: true }
+  );
+
+  let planLabel = planId;
+  try {
+    const pr = await db.query('SELECT name FROM subscription_plans WHERE id = ?', [planId]);
+    if (pr.length) planLabel = pr[0].name;
+  } catch (e) {
+    logger.warn('assignInstitutionSubscription: plan name lookup failed', { error: e.message, planId });
+  }
+
+  try {
+    await db.query('UPDATE institutions SET plan = ?, updated_at = NOW() WHERE id = ?', [planLabel, id]);
+  } catch (e) {
+    logger.warn('assignInstitutionSubscription: institutions.plan sync skipped', { error: e.message, id });
+  }
+
+  return getInstitution(id);
+}
+
+/**
  * Platform-admin view of an institution's audit trail. Mirrors audit.controller.getAuditTrail
  * but scoped to an arbitrary institution (read-only, no institution context needed
  * because platform admins operate outside any institution).
@@ -679,4 +717,5 @@ module.exports = {
   getRecentTenantLogins,
   exportInstitutionsCsv,
   listInstitutionAuditLogs,
+  assignInstitutionSubscription,
 };

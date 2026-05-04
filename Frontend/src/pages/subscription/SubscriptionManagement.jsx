@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Button, Tag, Progress, Row, Col, Modal, Radio,
-  message, Spin, Table, Divider, Popconfirm, Alert, List
+  message, Spin, Table, Divider, Popconfirm, Alert, List, Input,
 } from 'antd';
 import {
   CrownOutlined, CheckCircleFilled, RocketOutlined,
@@ -44,29 +44,56 @@ export default function SubscriptionManagement() {
   const [conflictAction, setConflictAction] = useState(null);
   const [paymentModal, setPaymentModal] = useState(false);
   const [paymentOrder, setPaymentOrder] = useState(null); // order data from backend
+  const [upgradeRequests, setUpgradeRequests] = useState([]);
+  const [requestNote, setRequestNote] = useState('');
 
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [subRes, plansRes, usageRes, histRes] = await Promise.all([
+      const [subRes, plansRes, usageRes, histRes, reqRes] = await Promise.all([
         apiService.get('/subscription'),
         apiService.get('/subscription/plans'),
         apiService.get('/subscription/usage'),
         apiService.get('/subscription/billing-history'),
+        apiService.get('/subscription/upgrade-requests'),
       ]);
       if (subRes.success)   setSubscription(subRes.data);
       if (plansRes.success) setPlans(plansRes.data);
       if (usageRes.success) setUsage(usageRes.data);
       if (histRes.success)  setHistory(histRes.data);
+      if (reqRes.success)   setUpgradeRequests(reqRes.data || []);
     } catch { message.error('Failed to load subscription data'); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleUpgrade = async () => {
+  const handleSubmitUpgradeRequest = async () => {
+    if (!selectedPlan) return message.warning('Please select a plan');
+    setActionLoading(true);
+    try {
+      const res = await apiService.post('/subscription/upgrade-requests', {
+        planId: selectedPlan,
+        billingCycle,
+        message: requestNote.trim() || undefined,
+      });
+      if (!res.success) throw new Error(res.error || 'Request failed');
+      message.success('Your upgrade request was sent. A platform administrator will review it.');
+      setUpgradeModal(false);
+      setSelectedPlan(null);
+      setRequestNote('');
+      load();
+    } catch (e) {
+      const data = e?.response?.data;
+      message.error(data?.error || e?.message || 'Failed to submit request');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUpgradePay = async () => {
     if (!selectedPlan) return message.warning('Please select a plan');
     setActionLoading(true);
     try {
@@ -82,6 +109,7 @@ export default function SubscriptionManagement() {
         message.success(`Switched to ${orderData.planName} plan!`);
         setUpgradeModal(false);
         setSelectedPlan(null);
+        setRequestNote('');
         load();
         return;
       }
@@ -242,6 +270,29 @@ export default function SubscriptionManagement() {
 
   return (
     <div style={{ padding: 24, background: '#f5f6fa', minHeight: '100vh' }}>
+
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 20, borderRadius: 10 }}
+        message="Upgrading paid plans"
+        description="Choose a paid plan and either pay online (when the gateway is enabled) or send an upgrade request. Platform administrators review requests under Subscription requests in the admin console."
+      />
+
+      {upgradeRequests.some((r) => r.status === 'pending') && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 20, borderRadius: 10 }}
+          message="Upgrade request pending"
+          description={(() => {
+            const p = upgradeRequests.find((r) => r.status === 'pending');
+            return p
+              ? `You requested ${p.requested_plan_name} (${p.billing_cycle}). An administrator will approve or reject it soon.`
+              : '';
+          })()}
+        />
+      )}
 
       {/* ── Header ── */}
       <div style={{
@@ -653,20 +704,76 @@ export default function SubscriptionManagement() {
       <Modal
         title={<span><RocketOutlined style={{ marginRight: 8, color: '#f7971e' }} />Choose a Plan</span>}
         open={upgradeModal}
-        onCancel={() => { setUpgradeModal(false); setSelectedPlan(null); }}
-        footer={[
-          <Button key="cancel" onClick={() => { setUpgradeModal(false); setSelectedPlan(null); }}>Cancel</Button>,
-          <Button key="upgrade" type="primary" loading={actionLoading} onClick={handleUpgrade}
-            disabled={!selectedPlan}
-            style={{ background: 'linear-gradient(135deg,#f7971e,#ffd200)', border: 'none' }}>
-            {(() => {
-              if (!selectedPlan) return isExpiredOrCancelled ? 'Reactivate' : 'Confirm Plan';
-              const p = plans.find(pl => pl.id === selectedPlan);
-              const price = billingCycle === 'yearly' ? p?.price_yearly : p?.price_monthly;
-              return price === 0 ? 'Switch to Free' : isExpiredOrCancelled ? 'Pay & Reactivate' : 'Pay & Activate';
-            })()}
-          </Button>,
-        ]}
+        onCancel={() => { setUpgradeModal(false); setSelectedPlan(null); setRequestNote(''); }}
+        footer={(() => {
+          const p = plans.find((pl) => pl.id === selectedPlan);
+          const price = p ? (billingCycle === 'yearly' ? Number(p.price_yearly) : Number(p.price_monthly)) : null;
+          const isPaidSelection = price > 0;
+          const canPay = subscription?.payment_gateway_ready;
+
+          const cancelBtn = (
+            <Button key="cancel" onClick={() => { setUpgradeModal(false); setSelectedPlan(null); setRequestNote(''); }}>
+              Cancel
+            </Button>
+          );
+
+          if (!selectedPlan) {
+            return [
+              cancelBtn,
+              <Button key="go" type="primary" disabled style={{ background: 'linear-gradient(135deg,#f7971e,#ffd200)', border: 'none' }}>
+                {isExpiredOrCancelled ? 'Reactivate' : 'Confirm Plan'}
+              </Button>,
+            ];
+          }
+
+          if (!isPaidSelection) {
+            return [
+              cancelBtn,
+              <Button
+                key="upgrade"
+                type="primary"
+                loading={actionLoading}
+                onClick={handleUpgradePay}
+                style={{ background: 'linear-gradient(135deg,#f7971e,#ffd200)', border: 'none' }}
+              >
+                Switch to Free
+              </Button>,
+            ];
+          }
+
+          const payLabel = isExpiredOrCancelled ? 'Pay & Reactivate' : 'Pay & Activate';
+
+          if (!canPay) {
+            return [
+              cancelBtn,
+              <Button
+                key="req"
+                type="primary"
+                loading={actionLoading}
+                onClick={handleSubmitUpgradeRequest}
+                style={{ background: 'linear-gradient(135deg,#f7971e,#ffd200)', border: 'none' }}
+              >
+                Send upgrade request
+              </Button>,
+            ];
+          }
+
+          return [
+            cancelBtn,
+            <Button key="req" loading={actionLoading} onClick={handleSubmitUpgradeRequest}>
+              Send approval request
+            </Button>,
+            <Button
+              key="pay"
+              type="primary"
+              loading={actionLoading}
+              onClick={handleUpgradePay}
+              style={{ background: 'linear-gradient(135deg,#f7971e,#ffd200)', border: 'none' }}
+            >
+              {payLabel}
+            </Button>,
+          ];
+        })()}
         width={1100}
         styles={{ body: { padding: '16px 24px' } }}>
 
@@ -679,6 +786,35 @@ export default function SubscriptionManagement() {
             </Radio.Button>
           </Radio.Group>
         </div>
+
+        {selectedPlan && (() => {
+          const p = plans.find((pl) => pl.id === selectedPlan);
+          const pr = p ? (billingCycle === 'yearly' ? Number(p.price_yearly) : Number(p.price_monthly)) : 0;
+          if (pr <= 0) return null;
+          return (
+            <div style={{ marginBottom: 20 }}>
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 10, borderRadius: 10 }}
+                message="Paid plan"
+                description={
+                  subscription?.payment_gateway_ready
+                    ? 'Pay online now, or send a request for manual approval from an administrator.'
+                    : 'Online payment is not enabled. Submit a request and an administrator will assign this plan.'
+                }
+              />
+              <Input.TextArea
+                rows={2}
+                placeholder="Optional message to administrators (reference, number of seats, …)"
+                value={requestNote}
+                onChange={(e) => setRequestNote(e.target.value)}
+                maxLength={2000}
+                showCount
+              />
+            </div>
+          );
+        })()}
 
         {/* Plan cards — horizontal scroll on small screens */}
         <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8 }}>

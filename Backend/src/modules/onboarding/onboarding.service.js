@@ -11,22 +11,7 @@ const STEPS = [
   { id: 'invite_user',     label: 'Invite a team member',     path: '/users' },
 ];
 
-async function ensureTable() {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS onboarding_progress (
-      id VARCHAR(36) PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL UNIQUE,
-      completed_steps JSON NOT NULL DEFAULT ('[]'),
-      is_completed TINYINT(1) DEFAULT 0,
-      dismissed TINYINT(1) DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-}
-
 async function getOrCreate(institutionId) {
-  await ensureTable();
   let rows = await db.query('SELECT * FROM onboarding_progress WHERE institution_id = ?', [institutionId]);
   if (rows.length === 0) {
     await db.query(

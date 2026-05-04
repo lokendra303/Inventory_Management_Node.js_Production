@@ -13,6 +13,7 @@ import PlatformTenants from './platform/PlatformTenants.jsx';
 import PlatformTenantDetail from './platform/PlatformTenantDetail.jsx';
 import PlatformPlans from './platform/PlatformPlans.jsx';
 import PlatformActivity from './platform/PlatformActivity.jsx';
+import PlatformSubscriptionRequests from './platform/PlatformSubscriptionRequests.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
 import Inventory from './pages/inventory/Inventory.jsx';
 import Packages from './pages/inventory/Packages.jsx';
@@ -252,6 +253,7 @@ function App() {
             <Route path="tenants" element={<Navigate to="/platform/institutions" replace />} />
             <Route path="tenants/:id" element={<PlatformLegacyTenantsRedirect />} />
             <Route path="plans" element={<PlatformPlans />} />
+            <Route path="subscription-requests" element={<PlatformSubscriptionRequests />} />
             <Route path="activity" element={<PlatformActivity />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Route>

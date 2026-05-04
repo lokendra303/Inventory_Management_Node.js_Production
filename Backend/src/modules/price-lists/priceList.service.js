@@ -6,36 +6,7 @@ let tablesReady = false;
 
 async function ensureTables() {
   if (tablesReady) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS price_lists (
-      id VARCHAR(36) PRIMARY KEY,
-      institution_id VARCHAR(36) NOT NULL,
-      name VARCHAR(150) NOT NULL,
-      description VARCHAR(255),
-      currency VARCHAR(10) DEFAULT 'USD',
-      pricelist_type ENUM('sales','purchase') DEFAULT 'sales',
-      discount_type ENUM('percentage','fixed') DEFAULT 'percentage',
-      discount_value DECIMAL(10,4) DEFAULT 0,
-      is_default TINYINT(1) DEFAULT 0,
-      status ENUM('active','inactive') DEFAULT 'active',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS price_list_items (
-      id VARCHAR(36) PRIMARY KEY,
-      price_list_id VARCHAR(36) NOT NULL,
-      item_id VARCHAR(36) NOT NULL,
-      custom_price DECIMAL(15,4),
-      discount_type ENUM('percentage','fixed') DEFAULT 'percentage',
-      discount_value DECIMAL(10,4) DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_pl_item (price_list_id, item_id),
-      FOREIGN KEY (price_list_id) REFERENCES price_lists(id) ON DELETE CASCADE
-    )
-  `);
+  // Schema: 000_initial_schema — not created at runtime
   tablesReady = true;
 }
 

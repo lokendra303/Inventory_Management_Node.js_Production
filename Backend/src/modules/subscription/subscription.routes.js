@@ -6,6 +6,8 @@ router.get('/plans',                        c.getPlans);
 router.get('/',                             c.getSubscription);
 router.get('/usage',                        c.getUsage);
 router.get('/billing-history',              c.getBillingHistory);
+router.get('/upgrade-requests',             c.listMyUpgradeRequests);
+router.post('/upgrade-requests',            c.createUpgradeRequest);
 router.post('/payment/create-order',        c.createPaymentOrder);
 router.post('/payment/verify',              c.verifyAndActivate);
 router.post('/upgrade',                     c.upgradePlan);
