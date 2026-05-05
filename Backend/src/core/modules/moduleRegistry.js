@@ -38,6 +38,7 @@ const moduleRegistry = [
   { path: '/onboarding', router: require('../../modules/onboarding/onboarding.routes') },
   { path: '/tax', router: require('../../modules/tax/tax.routes') },
   { path: '/price-lists', router: require('../../modules/price-lists/priceList.routes') },
+  { path: '/production', router: require('../../modules/production/production.routes') },
   { path: '/subscription', router: require('../../modules/subscription/subscription.routes') },
   { path: '/workflows', router: require('../../modules/workflows/workflow.routes') },
   { path: '/sku-rules', router: require('../../modules/settings/skuGenerator.routes') },

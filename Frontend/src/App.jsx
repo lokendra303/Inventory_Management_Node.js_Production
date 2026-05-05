@@ -61,6 +61,7 @@ import InvoicePayments from './pages/sales/InvoiceMayments.jsx';
 import StockCount from './pages/inventory/StockCount.jsx';
 import ReorderLevels from './pages/inventory/ReorderLevels.jsx';
 import BatchTracking from './pages/inventory/BatchTracking.jsx';
+import Production from './pages/inventory/Production.jsx';
 import PurchaseReturns from './pages/purchases/PurchaseReturns.jsx';
 import ExchangeRateSettings from './pages/settings/ExchangeRateSettings.jsx';
 import MobileScanner from './pages/scanner/MobileScanner.jsx';
@@ -102,6 +103,7 @@ const ProtectedSalesInvoices = withPermission('invoice_view')(SalesInvoices);
 const ProtectedOutstandingInvoices = withPermission('invoice_view')(OutstandingInvoices);
 const ProtectedStockCount = withPermission('inventory_adjust')(StockCount);
 const ProtectedBatchTracking = withPermission('inventory_view')(BatchTracking);
+const ProtectedProduction = withPermission('production_view')(Production);
 const ProtectedPurchaseReturns = withPermission('purchase_view')(PurchaseReturns);
 const ProtectedAccounting = withPermission('invoice_view')(Accounting);
 const ProtectedAuditDashboard = withPermission('audit_view')(AuditDashboard);
@@ -166,6 +168,7 @@ function AppContent() {
             <Route path="/inventory/stock-count" element={<ProtectedStockCount />} />
             <Route path="/inventory/batch-tracking" element={<ProtectedBatchTracking />} />
             <Route path="/inventory/reorder-levels" element={<ReorderLevels />} />
+            <Route path="/production" element={<ProtectedProduction />} />
             <Route path="/items" element={<ProtectedItems />} />
             <Route path="/item-groups" element={<ItemGroups />} />
             <Route path="/sales/delivery-challans" element={<DeliveryChallans />} />

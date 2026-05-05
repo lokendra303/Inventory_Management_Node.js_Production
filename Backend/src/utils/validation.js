@@ -50,7 +50,7 @@ const createItemSchema = Joi.object({
   sku: Joi.string().max(100).required(),
   name: Joi.string().max(255).required(),
   description: Joi.string().optional(),
-  type: Joi.string().valid('simple', 'variant', 'composite', 'service').default('simple'),
+  type: Joi.string().valid('simple', 'variant', 'composite', 'service', 'manufactured').default('simple'),
   category: Joi.string().max(255).optional(),
   unit: Joi.string().max(50).default('pcs'),
   barcode: Joi.string().max(255).optional(),

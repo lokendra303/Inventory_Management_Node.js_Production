@@ -417,7 +417,7 @@ class ItemService {
     };
   }
 
-  async getItems(institutionId, filters = {}) {
+  async getItems(institutionId, filters = {}, limit = 100, offset = 0) {
     let query = `SELECT i.*, 
                  COALESCE(SUM(ip.quantity_on_hand), 0) as current_stock,
                  b.name as brand_name,
@@ -438,7 +438,35 @@ class ItemService {
       params.push(filters.status || 'active');
     }
 
-    query += ' GROUP BY i.id ORDER BY i.name';
+    if (filters.type) {
+      query += ' AND i.type = ?';
+      params.push(filters.type);
+    }
+
+    if (filters.category) {
+      query += ' AND i.category = ?';
+      params.push(filters.category);
+    }
+
+    if (filters.search) {
+      query += ' AND (i.name LIKE ? OR i.sku LIKE ? OR i.barcode LIKE ?)';
+      const searchToken = `%${filters.search}%`;
+      params.push(searchToken, searchToken, searchToken);
+    }
+
+    if (filters.productionOnly) {
+      // Backward compatible filter: production marker type, or legacy composite, or tagline in custom fields.
+      query += ` AND (
+        i.type = 'manufactured' OR
+        i.type = 'composite' OR
+        JSON_UNQUOTE(JSON_EXTRACT(i.custom_fields, '$.production_tagline')) IS NOT NULL
+      )`;
+    }
+
+    const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.floor(Number(limit))) : 100;
+    const safeOffset = Number.isFinite(Number(offset)) ? Math.max(0, Math.floor(Number(offset))) : 0;
+    // Some MySQL setups reject prepared placeholders for LIMIT/OFFSET; inject sanitized integers.
+    query += ` GROUP BY i.id ORDER BY i.name LIMIT ${safeLimit} OFFSET ${safeOffset}`;
 
     const items = await db.query(query, params);
 

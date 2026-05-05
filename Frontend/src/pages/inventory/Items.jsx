@@ -174,6 +174,10 @@ const Items = () => {
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
   const canManageItems = user?.permissions?.item_management || user?.permissions?.all;
+  const isProductionItem = (item) =>
+    item?.type === 'manufactured' ||
+    item?.type === 'composite' ||
+    !!item?.custom_fields?.production_tagline;
 
   const columns = [
     {
@@ -193,7 +197,21 @@ const Items = () => {
         </div>
       )
     },
-    { title: 'Type', dataIndex: 'type', key: 'type', render: v => v ? <Tag color="blue" style={{ borderRadius: 20, textTransform: 'capitalize' }}>{v}</Tag> : '-' },
+    {
+      title: 'Type',
+      dataIndex: 'type',
+      key: 'type',
+      render: (v, record) => {
+        if (!v) return '-';
+        const isProd = isProductionItem(record);
+        return (
+          <Space size={4}>
+            <Tag color={isProd ? 'purple' : 'blue'} style={{ borderRadius: 20, textTransform: 'capitalize' }}>{v}</Tag>
+            {isProd && <Tag color="magenta" style={{ borderRadius: 20 }}>Production</Tag>}
+          </Space>
+        );
+      }
+    },
     { title: 'Category', dataIndex: 'category', key: 'category', render: v => v ? <Tag color="orange" style={{ borderRadius: 20 }}>{v}</Tag> : '-' },
     { title: 'Unit', dataIndex: 'unit', key: 'unit', render: v => v || '-' },
     {
@@ -766,6 +784,7 @@ const viewItem = async (item) => {
       item.category?.toLowerCase().includes(searchText.toLowerCase())
     );
   });
+  const productionFilteredItems = filteredItems.filter(isProductionItem);
   const activeCount = items.filter(i => i.status === 'active').length;
   const lowStockCount = items.filter(i => (i.current_stock || 0) <= (i.min_stock_level || 0)).length;
 
@@ -910,6 +929,21 @@ const viewItem = async (item) => {
                 <Table
                   columns={columns}
                   dataSource={filteredItems}
+                  loading={loading}
+                  rowKey="id"
+                  scroll={{ x: 'max-content' }}
+                  rowClassName={(_, i) => i % 2 === 0 ? 'table-row-light' : 'table-row-dark'}
+                  pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `Total ${t} items`, style: { marginTop: 16 } }}
+                />
+              )
+            },
+            {
+              key: 'production-items',
+              label: <span>Production Items <Tag color="magenta" style={{ borderRadius: 20, marginLeft: 4 }}>{productionFilteredItems.length}</Tag></span>,
+              children: (
+                <Table
+                  columns={columns}
+                  dataSource={productionFilteredItems}
                   loading={loading}
                   rowKey="id"
                   scroll={{ x: 'max-content' }}
@@ -1066,6 +1100,7 @@ const viewItem = async (item) => {
                         <Select.Option value="simple">Simple</Select.Option>
                         <Select.Option value="variant">Variant</Select.Option>
                         <Select.Option value="composite">Composite</Select.Option>
+                        <Select.Option value="manufactured">Manufactured (Production)</Select.Option>
                         <Select.Option value="service">Service</Select.Option>
                       </Select>
                     </Form.Item>

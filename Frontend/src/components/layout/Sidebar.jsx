@@ -484,6 +484,9 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         hasPermission('inventory_receive')  && { key: '/inventory/putaways',      label: 'Putaways' },
       ].filter(Boolean),
     },
+    hasAnyPermission('production_view','production_management') && {
+      key: '/production', icon: <DatabaseOutlined />, label: 'Production'
+    },
     hasAnyPermission('item_view','item_management') && {
       key: 'items', icon: <TagsOutlined />, label: 'Items',
       children: [

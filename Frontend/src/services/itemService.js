@@ -82,6 +82,11 @@ class ItemService {
         { fieldName: 'assemblyInstructions', fieldLabel: 'Assembly Instructions', fieldType: 'textarea', isRequired: false },
         { fieldName: 'toolsRequired', fieldLabel: 'Tools Required', fieldType: 'textarea', isRequired: false }
       ],
+      manufactured: [
+        { fieldName: 'productionTagline', fieldLabel: 'Production Tagline', fieldType: 'text', isRequired: false },
+        { fieldName: 'defaultBatchSize', fieldLabel: 'Default Batch Size', fieldType: 'number', isRequired: false },
+        { fieldName: 'processInstructions', fieldLabel: 'Process Instructions', fieldType: 'textarea', isRequired: false }
+      ],
       variant: [
         { fieldName: 'size', fieldLabel: 'Size', fieldType: 'select', 
           options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'], isRequired: false },
@@ -164,6 +169,19 @@ class ItemService {
           assemblyTime: 120,
           assemblyInstructions: 'Follow the step-by-step guide for optimal cable management',
           toolsRequired: 'Screwdriver set, anti-static wrist strap'
+        }
+      },
+      manufactured: {
+        name: 'Energy Mix 20g',
+        sku: 'FG-001',
+        description: 'Manufactured finished good prepared from raw materials',
+        type: 'manufactured',
+        costPrice: 0,
+        sellingPrice: 0,
+        customFields: {
+          productionTagline: 'Production item',
+          defaultBatchSize: 20,
+          processInstructions: 'Define BOM and process cost before production run'
         }
       },
       variant: {

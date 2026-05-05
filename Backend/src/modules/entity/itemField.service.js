@@ -78,6 +78,11 @@ class ItemFieldService {
         { fieldName: 'assemblyTime', fieldLabel: 'Assembly Time (minutes)', fieldType: 'number' },
         { fieldName: 'assemblyInstructions', fieldLabel: 'Assembly Instructions', fieldType: 'textarea' }
       ],
+      manufactured: [
+        { fieldName: 'productionTagline', fieldLabel: 'Production Tagline', fieldType: 'text', isRequired: false },
+        { fieldName: 'defaultBatchSize', fieldLabel: 'Default Batch Size', fieldType: 'number', isRequired: false },
+        { fieldName: 'processInstructions', fieldLabel: 'Process Instructions', fieldType: 'textarea', isRequired: false }
+      ],
       variant: [
         { fieldName: 'variantAttribute1', fieldLabel: 'Size', fieldType: 'select', 
           options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },

@@ -37,7 +37,8 @@ class ItemController {
         type: req.query.type,
         category: req.query.category,
         status: req.query.status,
-        search: req.query.search
+        search: req.query.search,
+        productionOnly: ['true', '1', 'yes'].includes(String(req.query.productionOnly || '').toLowerCase())
       };
       
       const items = await itemService.getItems(req.institutionId, filters, limit, offset);

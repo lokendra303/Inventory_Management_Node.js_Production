@@ -93,7 +93,7 @@ class CategoryController {
 
   async updateCategory(req, res) {
     try {
-      const { categoryId } = req.params;
+      const { id: categoryId } = req.params;
       await categoryService.updateCategory(req.institutionId, categoryId, req.body, req.user.userId);
       
       res.json({
@@ -104,7 +104,7 @@ class CategoryController {
       logger.error('Failed to update category', { 
         error: error.message, 
         institutionId: req.institutionId,
-        categoryId: req.params.categoryId 
+        categoryId: req.params.id 
       });
       res.status(400).json({
         success: false,
@@ -115,7 +115,7 @@ class CategoryController {
 
   async deleteCategory(req, res) {
     try {
-      const { categoryId } = req.params;
+      const { id: categoryId } = req.params;
       await categoryService.deleteCategory(req.institutionId, categoryId, req.user.userId);
       
       res.json({
@@ -126,7 +126,7 @@ class CategoryController {
       logger.error('Failed to delete category', { 
         error: error.message, 
         institutionId: req.institutionId,
-        categoryId: req.params.categoryId 
+        categoryId: req.params.id 
       });
       res.status(400).json({
         success: false,
