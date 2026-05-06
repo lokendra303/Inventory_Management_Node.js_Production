@@ -586,54 +586,61 @@ class ItemService {
 
   async saveDraft(institutionId, userId, draftData) {
     const serialized = typeof draftData === 'string' ? draftData : JSON.stringify(draftData);
-    const existing = await db.query(
-      'SELECT id FROM items WHERE institution_id = ? AND created_by = ? AND status = \'draft\' LIMIT 1',
-      [institutionId, userId]
-    );
-
-    if (existing.length > 0) {
-      await db.query(
-        'UPDATE items SET draft_data = ?, updated_at = NOW() WHERE id = ?',
-        [serialized, existing[0].id]
-      );
-      return existing[0].id;
-    }
-
     const draftId = uuidv4();
+    const draftSku = `DRAFT-${draftId.slice(0, 8).toUpperCase()}`;
     await db.query(
       `INSERT INTO items (id, institution_id, created_by, draft_data, status, name, sku, type, unit, custom_fields)
-       VALUES (?, ?, ?, ?, 'draft', '', '', 'simple', 'pcs', '{}')`,
-      [draftId, institutionId, userId, serialized]
+       VALUES (?, ?, ?, ?, 'draft', ?, ?, 'simple', 'pcs', '{}')`,
+      [draftId, institutionId, userId, serialized, 'Item Draft', draftSku]
     );
     return draftId;
   }
 
   async getDraft(institutionId, userId) {
-    const rows = await db.query(
-      'SELECT id, draft_data, updated_at FROM items WHERE institution_id = ? AND created_by = ? AND status = \'draft\' LIMIT 1',
-      [institutionId, userId]
-    );
-    if (rows.length === 0) return null;
-
-    let parsed = rows[0].draft_data;
-    if (typeof parsed === 'string') {
-      try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
-    }
-    // handle double-serialized case
-    if (typeof parsed === 'string') {
-      try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
-    }
-
-    return {
-      id: rows[0].id,
-      data: parsed,
-      savedAt: rows[0].updated_at
-    };
+    const drafts = await this.getDrafts(institutionId, userId);
+    return drafts.length > 0 ? drafts[0] : null;
   }
 
-  async deleteDraft(institutionId, userId) {
+  async getDrafts(institutionId, userId) {
+    const rows = await db.query(
+      `SELECT id, draft_data, updated_at
+         FROM items
+        WHERE institution_id = ? AND created_by = ? AND status = 'draft'
+        ORDER BY updated_at DESC`,
+      [institutionId, userId]
+    );
+
+    return rows.map((row) => {
+      let parsed = row.draft_data;
+      if (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
+      }
+      // handle double-serialized case
+      if (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
+      }
+
+      return {
+        id: row.id,
+        data: parsed,
+        savedAt: row.updated_at
+      };
+    });
+  }
+
+  async deleteDraft(institutionId, userId, draftId = null) {
+    if (draftId) {
+      await db.query(
+        `DELETE FROM items
+         WHERE institution_id = ? AND created_by = ? AND status = 'draft' AND id = ?`,
+        [institutionId, userId, draftId]
+      );
+      return;
+    }
+
     await db.query(
-      'DELETE FROM items WHERE institution_id = ? AND created_by = ? AND status = \'draft\'',
+      `DELETE FROM items
+       WHERE institution_id = ? AND created_by = ? AND status = 'draft'`,
       [institutionId, userId]
     );
   }

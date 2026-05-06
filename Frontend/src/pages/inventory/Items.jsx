@@ -15,6 +15,7 @@ const Items = () => {
   const { currency } = useCurrency();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [itemTypes, setItemTypes] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [priceCurrency, setPriceCurrency] = useState('USD');
   const [currencies] = useState(getCurrencies());
@@ -46,6 +47,7 @@ const Items = () => {
   const [editingTypeId, setEditingTypeId] = useState(null);
   const [editingTypeName, setEditingTypeName] = useState('');
   const [draftBanner, setDraftBanner] = useState(null);
+  const [activeDraftId, setActiveDraftId] = useState(null);
   const [duplicateBanner, setDuplicateBanner] = useState(null); // { sourceName }
   const [drafts, setDrafts] = useState([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
@@ -174,6 +176,7 @@ const Items = () => {
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
   const canViewCategories = user?.permissions?.category_view || user?.permissions?.all;
+  const canViewItems = user?.permissions?.item_view || user?.permissions?.all;
   const canManageItems = user?.permissions?.item_management || user?.permissions?.all;
 
   /** Add category from the item modal: persists when user has category_management, else local pick list only */
@@ -201,6 +204,41 @@ const Items = () => {
       setCategories(prev => [...prev, { id: `local-${Date.now()}`, name }]);
       form.setFieldsValue({ category: name });
       message.success(`Using "${name}" for this item`);
+    }
+  };
+
+  const handleInlineAddItemType = async () => {
+    const raw = prompt('Enter new item type:');
+    if (!raw?.trim()) return;
+    const name = raw.trim().toLowerCase();
+    if (itemTypes.some(t => t.name === name)) {
+      message.info('Item type already in the list');
+      form.setFieldsValue({ type: name });
+      return;
+    }
+    try {
+      const response = await apiService.post('/item-types', { name });
+      if (response?.success && response.data?.typeId) {
+        setItemTypes(prev => [...prev, { id: response.data.typeId, name, is_active: true }]);
+        form.setFieldsValue({ type: name });
+        message.success('Item type added');
+      }
+    } catch (e) {
+      message.error(e?.response?.data?.error || 'Failed to add item type');
+    }
+  };
+
+  const handleDeleteItemType = async (typeId, typeName) => {
+    if (!canManageItems) return;
+    try {
+      await apiService.delete(`/item-types/${typeId}`);
+      setItemTypes(prev => prev.filter(t => t.id !== typeId));
+      if (form.getFieldValue('type') === typeName) {
+        form.setFieldsValue({ type: 'simple' });
+      }
+      message.success(`Item type '${typeName}' deleted`);
+    } catch (e) {
+      message.error(e?.response?.data?.error || 'Failed to delete item type');
     }
   };
 
@@ -316,10 +354,11 @@ const Items = () => {
         apiService.get('/manufacturers'),
         apiService.get('/brands'),
         apiService.get('/units'),
-        apiService.get('/vendors')
+        apiService.get('/vendors'),
+        canViewItems ? apiService.get('/item-types') : Promise.resolve({ success: true, data: [] })
       ]);
       
-      const [manufacturersRes, brandsRes, unitsRes, vendorsRes] = results;
+      const [manufacturersRes, brandsRes, unitsRes, vendorsRes, itemTypesRes] = results;
       
       if (manufacturersRes.status === 'fulfilled') {
         const manufacturers = Array.isArray(manufacturersRes.value) ? manufacturersRes.value : (manufacturersRes.value?.data || []);
@@ -339,6 +378,11 @@ const Items = () => {
       if (vendorsRes.status === 'fulfilled') {
         const vendors = Array.isArray(vendorsRes.value) ? vendorsRes.value : (vendorsRes.value?.data || []);
         setVendorOptions(vendors);
+      }
+
+      if (itemTypesRes.status === 'fulfilled') {
+        const types = Array.isArray(itemTypesRes.value) ? itemTypesRes.value : (itemTypesRes.value?.data || []);
+        setItemTypes(types);
       }
 
       // Load tax rates from new tax module
@@ -420,7 +464,7 @@ const Items = () => {
         name: values.name,
         description: values.description,
         image: imageUrl,
-        type: values.type,
+        type: values.type || itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
         category: values.category,
         unit: values.unit,
         warehouseId: values.warehouseId,
@@ -457,9 +501,12 @@ const Items = () => {
           message.success('Item created successfully');
         }
       }
-      // Clear draft on successful save
-      try { await apiService.delete('/items/draft'); } catch {}
+      // Clear only the draft being continued on successful save.
+      if (activeDraftId) {
+        try { await apiService.delete(`/items/draft/${activeDraftId}`); } catch {}
+      }
       setDraftBanner(null);
+      setActiveDraftId(null);
       setModalVisible(false);
       setEditingItem(null);
       form.resetFields();
@@ -468,6 +515,34 @@ const Items = () => {
       console.error('Submit error:', error);
       message.error(`Failed to ${editingItem ? 'update' : 'create'} item`);
     }
+  };
+
+  const handlePriceCurrencyChange = (nextCurrency) => {
+    const currentCurrency = priceCurrency;
+    if (!nextCurrency || nextCurrency === currentCurrency) return;
+
+    const currentValues = form.getFieldsValue([
+      'costPrice',
+      'sellingPrice',
+      'mrp',
+      'openingValue',
+      'openingStock'
+    ]);
+
+    const converted = {
+      costPrice: currentValues.costPrice != null ? convertPrice(currentValues.costPrice, currentCurrency, nextCurrency) : currentValues.costPrice,
+      sellingPrice: currentValues.sellingPrice != null ? convertPrice(currentValues.sellingPrice, currentCurrency, nextCurrency) : currentValues.sellingPrice,
+      mrp: currentValues.mrp != null ? convertPrice(currentValues.mrp, currentCurrency, nextCurrency) : currentValues.mrp,
+      openingValue: currentValues.openingValue != null ? convertPrice(currentValues.openingValue, currentCurrency, nextCurrency) : currentValues.openingValue,
+    };
+
+    // Prefer recomputing opening value from stock x cost after conversion.
+    if (currentValues.openingStock > 0 && converted.costPrice > 0) {
+      converted.openingValue = Math.round((currentValues.openingStock * converted.costPrice) * 100) / 100;
+    }
+
+    form.setFieldsValue(converted);
+    setPriceCurrency(nextCurrency);
   };
 
   const toggleItemStatus = async (item) => {
@@ -510,11 +585,26 @@ const viewItem = async (item) => {
     setBinsLoading(true);
     try {
       const res = await apiService.get('/warehouse-locations/bins', {
-        params: { warehouseId, status: 'active', limit: 1000 }
+        params: { warehouseId, status: 'all', limit: 1000 }
       });
-      setBinsForWarehouse(res.success ? (res.data || []) : []);
-    } catch {
+      const bins = res.success ? (res.data || []) : [];
+
+      // Fallback: some setups return sparse results on /bins filters; hierarchy is authoritative.
+      if (bins.length === 0) {
+        const hierarchyRes = await apiService.get(`/warehouse-locations/warehouses/${warehouseId}/hierarchy`);
+        const hierarchyBins = hierarchyRes.success
+          ? (hierarchyRes.data || []).flatMap(z => (z.racks || []).flatMap(r => r.bins || []))
+          : [];
+        setBinsForWarehouse(hierarchyBins);
+        if (hierarchyBins.length === 0) {
+          message.info('No bins found for selected warehouse. Please create bins in Warehouse Locations.');
+        }
+      } else {
+        setBinsForWarehouse(bins);
+      }
+    } catch (error) {
       setBinsForWarehouse([]);
+      message.error(error?.response?.data?.error || 'Failed to load bins for selected warehouse');
     } finally {
       setBinsLoading(false);
     }
@@ -683,6 +773,7 @@ const viewItem = async (item) => {
 
   const openCreateModal = async () => {
     setEditingItem(null);
+    setActiveDraftId(null);
     setPriceCurrency(currency);
     setImageUrl('');
     setImageFile(null);
@@ -691,14 +782,20 @@ const viewItem = async (item) => {
     setDuplicateBanner(null);
 
     await fetchDropdownOptions();
+    form.setFieldsValue({
+      type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
+      purchaseAccount: 'cogs',
+      purchaseTaxRate: 0,
+      purchaseDescription: 'Initial stock entry'
+    });
     setModalVisible(true);
   };
 
   const fetchDrafts = async () => {
     try {
       setDraftsLoading(true);
-      const res = await apiService.get('/items/draft');
-      setDrafts(res?.data ? [res.data] : []);
+      const res = await apiService.get('/items/drafts');
+      setDrafts(Array.isArray(res?.data) ? res.data : []);
     } catch {
       setDrafts([]);
     } finally {
@@ -708,13 +805,14 @@ const viewItem = async (item) => {
 
   const openDraft = async (draft) => {
     setEditingItem(null);
+    setActiveDraftId(draft.id);
     setPriceCurrency(currency);
     setImageUrl(draft.data?.image || '');
     setImageFile(null);
     form.resetFields();
     await fetchDropdownOptions();
     form.setFieldsValue(draft.data);
-    setDraftBanner({ savedAt: draft.savedAt });
+    setDraftBanner({ savedAt: draft.savedAt, draftId: draft.id });
     setModalVisible(true);
   };
 
@@ -725,6 +823,8 @@ const viewItem = async (item) => {
       message.success('Draft saved! You can continue later.');
       setModalVisible(false);
       setEditingItem(null);
+      setActiveDraftId(null);
+      setDraftBanner(null);
       fetchDrafts();
     } catch {
       message.error('Failed to save draft');
@@ -795,6 +895,16 @@ const viewItem = async (item) => {
       item.category?.toLowerCase().includes(searchText.toLowerCase())
     );
   });
+
+  const getSelectedUnitLabel = () => {
+    const selectedUnit = form.getFieldValue('unit');
+    if (!selectedUnit) return 'kg';
+    const unitRow = unitOptions.find((u) => u.id === selectedUnit || u.name === selectedUnit || u.symbol === selectedUnit);
+    if (unitRow?.symbol) return unitRow.symbol;
+    if (unitRow?.name) return unitRow.name;
+    // If unit lookup is stale (e.g. recently deleted), avoid showing raw UUID.
+    return 'selected unit';
+  };
   const activeCount = items.filter(i => i.status === 'active').length;
   const lowStockCount = items.filter(i => (i.current_stock || 0) <= (i.min_stock_level || 0)).length;
 
@@ -991,7 +1101,7 @@ const viewItem = async (item) => {
                             style={{ borderRadius: 6 }}
                             onClick={async () => {
                               try {
-                                await apiService.delete('/items/draft');
+                                await apiService.delete(`/items/draft/${r.id}`);
                                 message.success('Draft deleted');
                                 fetchDrafts();
                               } catch { message.error('Failed to delete draft'); }
@@ -1021,7 +1131,7 @@ const viewItem = async (item) => {
           </div>
         }
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); form.resetFields(); }}
+        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); form.resetFields(); }}
         footer={null}
         width="min(900px, 96vw)"
         style={{ top: 16 }}
@@ -1047,7 +1157,18 @@ const viewItem = async (item) => {
           {draftBanner && (
             <div style={{ background: '#e6f4ff', border: '1px solid #91caff', borderRadius: 8, padding: '8px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, color: '#1677ff' }}>📝 Draft restored from {new Date(draftBanner.savedAt).toLocaleString()}</span>
-              <Button size="small" danger onClick={async () => { try { await apiService.delete('/items/draft'); } catch {} setDraftBanner(null); form.resetFields(); setImageUrl(''); }}>Discard</Button>
+              <Button size="small" danger onClick={async () => {
+                try {
+                  if (draftBanner?.draftId) {
+                    await apiService.delete(`/items/draft/${draftBanner.draftId}`);
+                  }
+                } catch {}
+                setDraftBanner(null);
+                setActiveDraftId(null);
+                form.resetFields();
+                setImageUrl('');
+                fetchDrafts();
+              }}>Discard</Button>
             </div>
           )}
 
@@ -1090,12 +1211,70 @@ const viewItem = async (item) => {
                 </Row>
                 <Row gutter={16}>
                   <Col xs={24} sm={8}>
-                    <Form.Item name="type" label="Type" initialValue="simple">
-                      <Select allowClear>
-                        <Select.Option value="simple">Simple</Select.Option>
-                        <Select.Option value="variant">Variant</Select.Option>
-                        <Select.Option value="composite">Composite</Select.Option>
-                        <Select.Option value="service">Service</Select.Option>
+                    <Form.Item
+                      name="type"
+                      label="Item type"
+                      initialValue="simple"
+                      rules={[{ required: true, message: 'Select item type' }]}
+                      tooltip="Simple: one SKU. Variant: options (e.g. size). Composite: BOM / kit. Service: non-stock."
+                    >
+                      <Select
+                        placeholder={itemTypes.length ? 'Select type' : 'Select or add a type'}
+                        showSearch
+                        optionFilterProp="children"
+                        dropdownRender={(menu) => (
+                          <div>
+                            {menu}
+                            {canManageItems && (
+                              <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                                <Button type="link" size="small" onClick={handleInlineAddItemType}>
+                                  + Add Type
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      >
+                        {itemTypes.map(type => (
+                          <Select.Option key={type.id} value={type.name}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ textTransform: 'capitalize' }}>{type.name}</span>
+                              {canManageItems && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteItemType(type.id, type.name);
+                                  }}
+                                  style={{
+                                    marginLeft: 8,
+                                    width: '18px',
+                                    height: '18px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#ff4d4f',
+                                    color: 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.target.style.backgroundColor = '#d9363e';
+                                    e.target.style.transform = 'scale(1.1)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.target.style.backgroundColor = '#ff4d4f';
+                                    e.target.style.transform = 'scale(1)';
+                                  }}
+                                >
+                                  ×
+                                </span>
+                              )}
+                            </div>
+                          </Select.Option>
+                        ))}
                       </Select>
                     </Form.Item>
                   </Col>
@@ -1199,16 +1378,24 @@ const viewItem = async (item) => {
                       {unitOptions.map(unit => (
                         <Select.Option key={unit.id} value={unit.id}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>{unit.name} ({unit.symbol})</span>
+                            <span>
+                              {unit.name}
+                              {unit.symbol && String(unit.symbol).trim().toLowerCase() !== String(unit.name || '').trim().toLowerCase()
+                                ? ` (${unit.symbol})`
+                                : ''}
+                            </span>
                             <span
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
                                   await apiService.delete(`/units/${unit.id}`);
-                                  await fetchDropdownOptions();
+                                  setUnitOptions(prev => prev.filter(u => u.id !== unit.id));
+                                  if (form.getFieldValue('unit') === unit.id) {
+                                    form.setFieldsValue({ unit: undefined });
+                                  }
                                   message.success(`Unit '${unit.name}' deleted`);
                                 } catch (error) {
-                                  message.error('Failed to delete unit');
+                                  message.error(error?.response?.data?.error || 'Failed to delete unit');
                                 }
                               }}
                               style={{ 
@@ -1316,8 +1503,22 @@ const viewItem = async (item) => {
                 </Form.Item>
               </Col>
               <Col xs={24} sm={8}>
-                <Form.Item name="weight" label="Weight">
-                  <Input placeholder="Weight in kg" />
+                <Form.Item
+                  noStyle
+                  shouldUpdate={(prev, cur) => prev.unit !== cur.unit}
+                >
+                  {() => {
+                    const unitLabel = getSelectedUnitLabel();
+                    return (
+                      <Form.Item
+                        name="weight"
+                        label={`Weight (per unit, ${unitLabel})`}
+                        tooltip={`Enter net weight for one selling unit in ${unitLabel}.`}
+                      >
+                        <Input placeholder={`Per unit weight in ${unitLabel}`} />
+                      </Form.Item>
+                    );
+                  }}
                 </Form.Item>
               </Col>
               <Col xs={24} sm={8}>
@@ -1572,8 +1773,24 @@ const viewItem = async (item) => {
               Sales Information
             </div>
           <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item label="Price Currency">
+                <Select
+                  value={priceCurrency}
+                  onChange={handlePriceCurrencyChange}
+                  options={currencies.map(c => ({ value: c.code, label: `${c.code} - ${c.name}` }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ paddingTop: 30, color: '#595959', fontSize: 12 }}>
+                Prices are entered as <strong>per unit</strong> based on selected Unit and are converted to USD on save.
+              </div>
+            </Col>
+          </Row>
+          <Row gutter={16}>
             <Col xs={24} sm={8}>
-              <Form.Item name="sellingPrice" label="Selling Price" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="sellingPrice" label={`Selling Price (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   step={0.01} 
@@ -1585,7 +1802,7 @@ const viewItem = async (item) => {
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
-              <Form.Item name="mrp" label="MRP" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="mrp" label={`MRP (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   step={0.01} 
@@ -1643,7 +1860,7 @@ const viewItem = async (item) => {
             </div>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
-              <Form.Item name="costPrice" label="Cost Price (can be set later via Purchase Order)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="costPrice" label={`Cost Price (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   step={0.01} 

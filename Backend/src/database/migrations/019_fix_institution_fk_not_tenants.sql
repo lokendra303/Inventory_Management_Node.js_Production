@@ -3,8 +3,6 @@
 -- Legacy dumps referenced non-existent `tenants`; institution_id must reference `institutions`.
 -- =============================================================================
 
-SET @db := DATABASE();
-
 -- inventory_history.institution_id -> institutions
 SET @fk_inv := (
   SELECT kcu.CONSTRAINT_NAME
@@ -13,7 +11,7 @@ SET @fk_inv := (
     ON rc.CONSTRAINT_SCHEMA = kcu.TABLE_SCHEMA
    AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
    AND rc.TABLE_NAME = kcu.TABLE_NAME
-  WHERE kcu.TABLE_SCHEMA = @db
+  WHERE kcu.TABLE_SCHEMA = DATABASE()
     AND kcu.TABLE_NAME = 'inventory_history'
     AND kcu.COLUMN_NAME = 'institution_id'
     AND rc.REFERENCED_TABLE_NAME = 'tenants'
@@ -26,9 +24,13 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @has_inv_inst := (
   SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS
-  WHERE CONSTRAINT_SCHEMA = @db AND TABLE_NAME = 'inventory_history'
+  WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'inventory_history'
     AND REFERENCED_TABLE_NAME = 'institutions'
 );
+-- Clean up orphan rows before adding FK (legacy data may contain unknown institution_ids)
+DELETE FROM inventory_history
+WHERE institution_id IS NOT NULL
+  AND institution_id NOT IN (SELECT id FROM institutions);
 SET @sql := IF(@has_inv_inst = 0,
   'ALTER TABLE inventory_history ADD CONSTRAINT inventory_history_institution_fk FOREIGN KEY (institution_id) REFERENCES institutions(id)',
   'SELECT 1');
@@ -42,7 +44,7 @@ SET @fk_tmp := (
     ON rc.CONSTRAINT_SCHEMA = kcu.TABLE_SCHEMA
    AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
    AND rc.TABLE_NAME = kcu.TABLE_NAME
-  WHERE kcu.TABLE_SCHEMA = @db
+  WHERE kcu.TABLE_SCHEMA = DATABASE()
     AND kcu.TABLE_NAME = 'temp_access_tokens'
     AND kcu.COLUMN_NAME = 'institution_id'
     AND rc.REFERENCED_TABLE_NAME = 'tenants'
@@ -55,9 +57,12 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @has_tmp_inst := (
   SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS
-  WHERE CONSTRAINT_SCHEMA = @db AND TABLE_NAME = 'temp_access_tokens'
+  WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'temp_access_tokens'
     AND REFERENCED_TABLE_NAME = 'institutions'
 );
+-- Clean up orphan rows before adding FK (legacy data may contain unknown institution_ids)
+DELETE FROM temp_access_tokens
+WHERE institution_id NOT IN (SELECT id FROM institutions);
 SET @sql := IF(@has_tmp_inst = 0,
   'ALTER TABLE temp_access_tokens ADD CONSTRAINT temp_access_tokens_institution_fk FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE',
   'SELECT 1');

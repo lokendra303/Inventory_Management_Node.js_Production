@@ -26,8 +26,10 @@ router.post('/field-config',
 );
 
 // Draft routes
+router.get('/drafts', requirePermission('item_management'), itemController.getDrafts);
 router.get('/draft', requirePermission('item_management'), itemController.getDraft);
 router.post('/draft', requirePermission('item_management'), itemController.saveDraft);
+router.delete('/draft/:draftId', requirePermission('item_management'), itemController.deleteDraft);
 router.delete('/draft', requirePermission('item_management'), itemController.deleteDraft);
 
 // POST /api/items

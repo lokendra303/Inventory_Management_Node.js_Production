@@ -122,7 +122,7 @@ class SkuGeneratorService {
           `UPDATE sku_generator_rules
            SET name = ?, scope = ?, scope_value = ?,
                prefix_mode = ?, prefix_static = ?, prefix_source = ?, prefix_length = ?,
-               separator = ?, use_date = ?, date_format = ?,
+               \`separator\` = ?, use_date = ?, date_format = ?,
                use_counter = ?, counter_start = ?, counter_padding = ?,
                is_default = ?, updated_at = NOW()
            WHERE institution_id = ? AND id = ?`,
@@ -144,7 +144,7 @@ class SkuGeneratorService {
         `INSERT INTO sku_generator_rules
          (id, institution_id, scope, scope_value, name,
           prefix_mode, prefix_static, prefix_source, prefix_length,
-          separator, use_date, date_format,
+          \`separator\`, use_date, date_format,
           use_counter, counter_start, counter_current, counter_padding,
           is_default, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,

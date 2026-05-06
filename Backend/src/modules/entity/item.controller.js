@@ -248,9 +248,19 @@ class ItemController {
     }
   }
 
+  async getDrafts(req, res) {
+    try {
+      const drafts = await itemService.getDrafts(req.institutionId, req.user.userId);
+      res.json({ success: true, data: drafts });
+    } catch (error) {
+      logger.error('Draft list fetch failed', { error: error.message, userId: req.user.userId });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
   async deleteDraft(req, res) {
     try {
-      await itemService.deleteDraft(req.institutionId, req.user.userId);
+      await itemService.deleteDraft(req.institutionId, req.user.userId, req.params.draftId || null);
       res.json({ success: true, message: 'Draft deleted' });
     } catch (error) {
       logger.error('Draft delete failed', { error: error.message, userId: req.user.userId });
