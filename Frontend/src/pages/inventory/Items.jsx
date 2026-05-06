@@ -173,7 +173,36 @@ const Items = () => {
 
   // Check if user can manage items
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
+  const canViewCategories = user?.permissions?.category_view || user?.permissions?.all;
   const canManageItems = user?.permissions?.item_management || user?.permissions?.all;
+
+  /** Add category from the item modal: persists when user has category_management, else local pick list only */
+  const handleInlineAddCategory = async () => {
+    const raw = prompt('Enter new category:');
+    if (!raw?.trim()) return;
+    const name = raw.trim();
+    if (categories.some(c => c.name === name)) {
+      message.info('Category already in the list');
+      form.setFieldsValue({ category: name });
+      return;
+    }
+    if (canManageCategories) {
+      try {
+        const response = await apiService.post('/categories', { name });
+        if (response?.success && response.data?.categoryId) {
+          setCategories(prev => [...prev, { id: response.data.categoryId, name }]);
+          form.setFieldsValue({ category: name });
+          message.success('Category added');
+        }
+      } catch (e) {
+        message.error(e?.response?.data?.error || 'Failed to add category');
+      }
+    } else {
+      setCategories(prev => [...prev, { id: `local-${Date.now()}`, name }]);
+      form.setFieldsValue({ category: name });
+      message.success(`Using "${name}" for this item`);
+    }
+  };
 
   const columns = [
     {
@@ -1072,24 +1101,17 @@ const viewItem = async (item) => {
                   </Col>
                   <Col xs={24} sm={8}>
                     <Form.Item name="category" label="Category">
-                    {categories.length > 0 ? (
-                      <Select 
-                        placeholder="Select category"
+                    {canViewCategories ? (
+                      <Select
+                        placeholder={categories.length ? 'Select category' : 'Select or add a category'}
                         allowClear
+                        showSearch
+                        optionFilterProp="children"
                         dropdownRender={(menu) => (
                           <div>
                             {menu}
                             <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
-                              <Button 
-                                type="link" 
-                                size="small"
-                                onClick={() => {
-                                  const newOption = prompt('Enter new category:');
-                                  if (newOption && !categories.find(c => c.name === newOption)) {
-                                    setCategories([...categories, { id: Date.now(), name: newOption }]);
-                                  }
-                                }}
-                              >
+                              <Button type="link" size="small" onClick={handleInlineAddCategory}>
                                 + Add Category
                               </Button>
                             </div>
@@ -1106,7 +1128,7 @@ const viewItem = async (item) => {
                                   setCategories(categories.filter(c => c.id !== category.id));
                                   message.success(`Category '${category.name}' deleted`);
                                 }}
-                                style={{ 
+                                style={{
                                   marginLeft: 8,
                                   width: '18px',
                                   height: '18px',
