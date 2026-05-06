@@ -6,6 +6,9 @@ class UnitsController {
     try {
       const { name, symbol, type, base_unit_id, conversion_factor } = req.body;
       const institution_id = req.user.institutionId;
+      const normalizedType = type ?? null;
+      const normalizedBaseUnitId = base_unit_id ?? null;
+      const normalizedConversionFactor = conversion_factor ?? 1;
 
       if (!name || !symbol) {
         return res.status(400).json({ error: 'Name and symbol are required' });
@@ -16,7 +19,7 @@ class UnitsController {
       await database.query(`
         INSERT INTO units (id, institution_id, name, symbol, type, base_unit_id, conversion_factor) 
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [id, institution_id, name, symbol, type, base_unit_id, conversion_factor || 1]);
+      `, [id, institution_id, name, symbol, normalizedType, normalizedBaseUnitId, normalizedConversionFactor]);
 
       const unit = await database.query('SELECT * FROM units WHERE id = ?', [id]);
       res.status(201).json(unit[0]);
@@ -79,12 +82,16 @@ class UnitsController {
       const { id } = req.params;
       const institution_id = req.user.institutionId;
       const { name, symbol, type, base_unit_id, conversion_factor, status } = req.body;
+      const normalizedType = type ?? null;
+      const normalizedBaseUnitId = base_unit_id ?? null;
+      const normalizedConversionFactor = conversion_factor ?? 1;
+      const normalizedStatus = status ?? 'active';
 
       const result = await database.query(`
         UPDATE units SET name = ?, symbol = ?, type = ?, base_unit_id = ?, 
                conversion_factor = ?, status = ?
         WHERE id = ? AND institution_id = ?
-      `, [name, symbol, type, base_unit_id, conversion_factor, status, id, institution_id]);
+      `, [name, symbol, normalizedType, normalizedBaseUnitId, normalizedConversionFactor, normalizedStatus, id, institution_id]);
 
       if (result.affectedRows === 0) {
         return res.status(404).json({ error: 'Unit not found' });
