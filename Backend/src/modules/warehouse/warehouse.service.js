@@ -46,16 +46,28 @@ class WarehouseService {
     }
   }
 
+  async resolveWarehouseTypeId(institutionId, typeId) {
+    if (!typeId) return null;
+
+    const rows = await db.query(
+      'SELECT id FROM warehouse_types WHERE institution_id = ? AND id = ? LIMIT 1',
+      [institutionId, typeId]
+    );
+
+    return rows.length > 0 ? typeId : null;
+  }
+
   async createWarehouse(institutionId, warehouseData, userId) {
     const { code, name, type, address, contactPerson, phone, email } = warehouseData;
 
     const resolvedCode = await this.ensureUniqueWarehouseCode(institutionId, code, name);
+    const resolvedType = await this.resolveWarehouseTypeId(institutionId, type);
     const warehouseId = uuidv4();
 
     await db.query(
       `INSERT INTO warehouses (id, institution_id, code, name, type, address, contact_person, phone, email, status, created_by) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-      [warehouseId, institutionId, resolvedCode, name, type || 'standard', address, contactPerson, phone, email, userId || null]
+      [warehouseId, institutionId, resolvedCode, name, resolvedType, address, contactPerson, phone, email, userId || null]
     );
 
     logger.info('Warehouse created', { warehouseId, institutionId, code: resolvedCode, userId });

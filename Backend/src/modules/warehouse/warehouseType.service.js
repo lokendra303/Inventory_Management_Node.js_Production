@@ -70,6 +70,12 @@ class WarehouseTypeService {
   }
 
   async deleteWarehouseType(institutionId, typeId) {
+    // Detach warehouses using this type first to satisfy FK constraint.
+    await db.query(
+      'UPDATE warehouses SET type = NULL, updated_at = NOW() WHERE institution_id = ? AND type = ?',
+      [institutionId, typeId]
+    );
+
     const result = await db.query(
       'DELETE FROM warehouse_types WHERE institution_id = ? AND id = ?',
       [institutionId, typeId]

@@ -18,10 +18,17 @@ router.post('/',
 );
 
 // PUT /api/warehouse-types/:id
-router.put('/:id',
+router.put('/:typeId',
   requirePermission('warehouse_type_management'),
   auditLog('warehouse_type_updated'),
   warehouseTypeController.updateWarehouseType
+);
+
+// DELETE /api/warehouse-types/:typeId
+router.delete('/:typeId',
+  requirePermission('warehouse_type_management'),
+  auditLog('warehouse_type_deleted'),
+  warehouseTypeController.deleteWarehouseType
 );
 
 module.exports = router;
