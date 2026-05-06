@@ -72,21 +72,29 @@ class ItemService {
        openingStock, openingValue, asOfDate || null]
     );
 
-    // Create initial inventory projection if warehouse and opening stock provided
+    // Create initial inventory using inventory event flow so it appears in item transaction history.
     if (warehouseId && openingStock > 0) {
-      // Always auto-calculate opening value from cost price
-      const finalOpeningValue = openingStock * costPrice;
-      const averageCost = costPrice;
-      const totalValue = openingStock * averageCost;
-      
-      await db.query(
-        `INSERT INTO inventory_projections 
-         (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
-         VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
-        [institutionId, itemId, warehouseId, openingStock, openingStock, averageCost, totalValue]
+      const inventoryService = require('../inventory/inventory.service');
+      const normalizedOpeningStock = Number(openingStock) || 0;
+      const normalizedCostPrice = Number(costPrice) || 0;
+      const normalizedOpeningValue = Number(openingValue) || 0;
+      const openingUnitCost = normalizedOpeningStock > 0 && normalizedOpeningValue > 0
+        ? (normalizedOpeningValue / normalizedOpeningStock)
+        : normalizedCostPrice;
+
+      await inventoryService.receiveStock(
+        institutionId,
+        {
+          itemId,
+          warehouseId,
+          quantity: normalizedOpeningStock,
+          unitCost: openingUnitCost,
+          poId: `OPENING-${itemId}`,
+          poLineId: `${itemId}-OPENING`,
+          grnNumber: `OPENING-${Date.now()}`
+        },
+        userId
       );
-      
-      logger.info('Initial inventory created', { itemId, warehouseId, openingStock, averageCost, totalValue, institutionId });
     } else if (openingStock > 0 && !warehouseId) {
       logger.warn('Opening stock provided without warehouse', { itemId, openingStock, institutionId });
     }
@@ -294,7 +302,7 @@ class ItemService {
       );
     }
 
-    // Update or create inventory projection if opening stock or warehouse changed
+    // Update opening stock through inventory event flow so transaction history is generated.
     if (openingStock !== undefined || warehouseId !== undefined) {
       // Determine the warehouse to use
       let targetWarehouseId = warehouseId;
@@ -310,42 +318,32 @@ class ItemService {
         }
       }
       
-      // Only proceed if we have a warehouse and opening stock
-      if (targetWarehouseId && openingStock !== undefined && openingStock > 0) {
-        // Get current cost price if not provided in update
-        const finalCostPrice = costPrice !== undefined ? costPrice : (await db.query(
-          'SELECT cost_price FROM items WHERE id = ? AND institution_id = ?',
-          [itemId, institutionId]
-        ))[0].cost_price;
-
-        const averageCost = finalCostPrice;
-        const totalValue = openingStock * averageCost;
-
-        // Check if inventory projection exists for this warehouse
-        const existing = await db.query(
-          'SELECT id FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
+      // Only proceed if we have a warehouse and explicit opening stock update.
+      if (targetWarehouseId && openingStock !== undefined) {
+        const inventoryService = require('../inventory/inventory.service');
+        const targetOpeningStock = Number(openingStock) || 0;
+        const existingProjection = await db.query(
+          'SELECT quantity_on_hand FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? LIMIT 1',
           [institutionId, itemId, targetWarehouseId]
         );
+        const currentOnHand = existingProjection.length > 0 ? Number(existingProjection[0].quantity_on_hand || 0) : 0;
+        const delta = targetOpeningStock - currentOnHand;
 
-        if (existing.length > 0) {
-          // Update existing projection
-          await db.query(
-            `UPDATE inventory_projections 
-             SET quantity_on_hand = ?, quantity_available = ?, average_cost = ?, total_value = ?, updated_at = NOW()
-             WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-            [openingStock, openingStock, averageCost, totalValue, institutionId, itemId, targetWarehouseId]
-          );
-        } else {
-          // Create new projection
-          await db.query(
-            `INSERT INTO inventory_projections 
-             (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, average_cost, total_value, last_movement_date, version)
-             VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
-            [institutionId, itemId, targetWarehouseId, openingStock, openingStock, averageCost, totalValue]
+        if (delta !== 0) {
+          // Route both directions through adjustments so Transaction History always has explicit entries.
+          await inventoryService.adjustStock(
+            institutionId,
+            {
+              itemId,
+              warehouseId: targetWarehouseId,
+              quantityChange: Math.abs(delta),
+              adjustmentType: delta > 0 ? 'increase' : 'decrease',
+              reason: 'Opening stock updated from item master',
+              lossType: 'MANUAL'
+            },
+            userId
           );
         }
-        
-        logger.info('Inventory projection updated', { itemId, warehouseId: targetWarehouseId, openingStock, averageCost, totalValue, institutionId });
       }
     }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
@@ -11,7 +11,7 @@ import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
 
 const Items = () => {
-  const { user } = useAuth();
+  const { user, sessionSecondsLeft } = useAuth();
   const { currency } = useCurrency();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -55,6 +55,8 @@ const Items = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [binsForWarehouse, setBinsForWarehouse] = useState([]);
   const [binsLoading, setBinsLoading] = useState(false);
+  const autoDraftSavingRef = useRef(false);
+  const autoDraftSavedRef = useRef(false);
 
   // ---- SKU auto-generator (Zoho-style rules) ------------------------------
   const [skuRulesOpen, setSkuRulesOpen] = useState(false);
@@ -468,8 +470,8 @@ const Items = () => {
         category: values.category,
         unit: values.unit,
         warehouseId: values.warehouseId,
-        costPrice: convertPrice(values.costPrice, priceCurrency, 'USD'),
-        sellingPrice: convertPrice(values.sellingPrice, priceCurrency, 'USD'),
+        costPrice: values.costPrice != null && values.costPrice !== '' ? convertPrice(values.costPrice, priceCurrency, 'USD') : 0,
+        sellingPrice: values.sellingPrice != null && values.sellingPrice !== '' ? convertPrice(values.sellingPrice, priceCurrency, 'USD') : 0,
         mrp: values.mrp ? convertPrice(values.mrp, priceCurrency, 'USD') : null,
         taxRate: values.taxRate,
         brand: values.brand,
@@ -655,33 +657,33 @@ const viewItem = async (item) => {
     form.setFieldsValue({
       sku: fullItem.sku,
       name: fullItem.name,
-      description: fullItem.description,
+      description: normalizeOptionalText(fullItem.description),
       type: fullItem.type,
-      category: fullItem.category,
+      category: normalizeOptionalText(fullItem.category),
       unit: unitId,
       costPrice: convertPrice(fullItem.cost_price, 'USD', currency),
-      sellingPrice: convertPrice(fullItem.selling_price, 'USD', currency),
-      mrp: convertPrice(fullItem.mrp, 'USD', currency),
-      taxRate: fullItem.tax_rate,
+      sellingPrice: normalizeOptionalNumber(convertPrice(fullItem.selling_price, 'USD', currency), { allowZero: false }),
+      mrp: normalizeOptionalNumber(convertPrice(fullItem.mrp, 'USD', currency), { allowZero: false }),
+      taxRate: normalizeTaxRateForForm(fullItem.tax_rate),
       brand: brandId,
       manufacturer: manufacturerId,
-      minStockLevel: fullItem.min_stock_level,
-      maxStockLevel: fullItem.max_stock_level,
-      barcode: fullItem.barcode,
-      hsnCode: fullItem.hsn_code,
-      openingStock: fullItem.opening_stock,
-      openingValue: fullItem.opening_value,
+      minStockLevel: normalizeOptionalNumber(fullItem.min_stock_level),
+      maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
+      barcode: normalizeOptionalText(fullItem.barcode),
+      hsnCode: normalizeOptionalText(fullItem.hsn_code),
+      openingStock: normalizeOptionalNumber(fullItem.opening_stock),
+      openingValue: normalizeOptionalNumber(fullItem.opening_value, { allowZero: false }),
       valuationMethod: fullItem.valuation_method,
       warehouseId: finalWarehouseId,
       defaultBinId: fullItem.default_bin_id || null,
-      weight: fullItem.weight,
-      length: fullItem.dimensions?.length,
-      width: fullItem.dimensions?.width,
-      height: fullItem.dimensions?.height,
-      upc: fullItem.upc,
-      ean: fullItem.ean,
-      isbn: fullItem.isbn,
-      mpn: fullItem.mpn
+      weight: normalizeOptionalNumber(fullItem.weight, { allowZero: false }),
+      length: normalizeOptionalNumber(fullItem.dimensions?.length, { allowZero: false }),
+      width: normalizeOptionalNumber(fullItem.dimensions?.width, { allowZero: false }),
+      height: normalizeOptionalNumber(fullItem.dimensions?.height, { allowZero: false }),
+      upc: normalizeOptionalText(fullItem.upc),
+      ean: normalizeOptionalText(fullItem.ean),
+      isbn: normalizeOptionalText(fullItem.isbn),
+      mpn: normalizeOptionalText(fullItem.mpn)
     });
     fetchBinsForWarehouse(finalWarehouseId);
     setModalVisible(true);
@@ -721,6 +723,28 @@ const viewItem = async (item) => {
     }
   };
 
+  const normalizeTaxRateForForm = (value) => {
+    if (value == null || value === '') return undefined;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return undefined;
+    return numeric === 0 ? undefined : numeric;
+  };
+
+  const normalizeOptionalNumber = (value, { allowZero = true } = {}) => {
+    if (value == null || value === '') return undefined;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return undefined;
+    if (!allowZero && numeric === 0) return undefined;
+    return numeric;
+  };
+
+  const normalizeOptionalText = (value) => {
+    if (value == null) return undefined;
+    const text = String(value).trim();
+    if (!text || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') return undefined;
+    return text;
+  };
+
   const duplicateItem = async (item) => {
     setEditingItem(null);
     setPriceCurrency(currency);
@@ -741,31 +765,31 @@ const viewItem = async (item) => {
       // SKU and name intentionally left blank — user must fill these
       sku: '',
       name: '',
-      description: fullItem.description,
+      description: normalizeOptionalText(fullItem.description),
       type: fullItem.type,
-      category: fullItem.category,
-      unit: fullItem.unit,
+      category: normalizeOptionalText(fullItem.category),
+      unit: unitOptions.find(u => u.name === fullItem.unit)?.id ?? fullItem.unit,
       costPrice: convertPrice(fullItem.cost_price, 'USD', currency),
-      sellingPrice: convertPrice(fullItem.selling_price, 'USD', currency),
-      mrp: convertPrice(fullItem.mrp, 'USD', currency),
-      taxRate: fullItem.tax_rate,
-      brand: fullItem.brand,
-      manufacturer: fullItem.manufacturer,
-      minStockLevel: fullItem.min_stock_level,
-      maxStockLevel: fullItem.max_stock_level,
+      sellingPrice: normalizeOptionalNumber(convertPrice(fullItem.selling_price, 'USD', currency), { allowZero: false }),
+      mrp: normalizeOptionalNumber(convertPrice(fullItem.mrp, 'USD', currency), { allowZero: false }),
+      taxRate: normalizeTaxRateForForm(fullItem.tax_rate),
+      brand: brandOptions.find(b => b.name === fullItem.brand)?.id ?? fullItem.brand,
+      manufacturer: manufacturerOptions.find(m => m.name === fullItem.manufacturer)?.id ?? fullItem.manufacturer,
+      minStockLevel: normalizeOptionalNumber(fullItem.min_stock_level),
+      maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
       barcode: '',
-      hsnCode: fullItem.hsn_code,
+      hsnCode: normalizeOptionalText(fullItem.hsn_code),
       openingStock: null,
       openingValue: null,
       valuationMethod: fullItem.valuation_method,
-      weight: fullItem.weight,
-      length: fullItem.dimensions?.length,
-      width: fullItem.dimensions?.width,
-      height: fullItem.dimensions?.height,
+      weight: normalizeOptionalNumber(fullItem.weight, { allowZero: false }),
+      length: normalizeOptionalNumber(fullItem.dimensions?.length, { allowZero: false }),
+      width: normalizeOptionalNumber(fullItem.dimensions?.width, { allowZero: false }),
+      height: normalizeOptionalNumber(fullItem.dimensions?.height, { allowZero: false }),
       upc: '',
       ean: '',
       isbn: '',
-      mpn: fullItem.mpn,
+      mpn: normalizeOptionalText(fullItem.mpn),
     });
     setModalVisible(true);
     setTimeout(() => message.info('Duplicated from "' + item.name + '" — update SKU, Name & Opening Stock'), 300);
@@ -816,10 +840,52 @@ const viewItem = async (item) => {
     setModalVisible(true);
   };
 
+  const hasDraftableValues = useCallback((values = {}) => {
+    const fieldsToCheck = [
+      'sku', 'name', 'description', 'category', 'unit', 'warehouseId', 'type',
+      'brand', 'manufacturer', 'barcode', 'upc', 'ean', 'isbn', 'mpn'
+    ];
+    const hasText = fieldsToCheck.some((k) => {
+      const v = values[k];
+      return typeof v === 'string' ? v.trim().length > 0 : !!v;
+    });
+    const hasNumeric = ['costPrice', 'sellingPrice', 'mrp', 'openingStock', 'weight', 'minStockLevel', 'maxStockLevel']
+      .some((k) => Number(values[k]) > 0);
+    return hasText || hasNumeric || !!imageUrl;
+  }, [imageUrl]);
+
+  const saveDraftSilently = useCallback(async (source = 'manual') => {
+    if (editingItem) return false;
+    if (autoDraftSavingRef.current) return false;
+
+    const values = form.getFieldsValue();
+    if (!hasDraftableValues(values)) return false;
+
+    autoDraftSavingRef.current = true;
+    try {
+      await apiService.post('/items/draft', { ...values, image: imageUrl });
+      if (source === 'session-timeout') {
+        message.info('Session about to expire: item saved as draft.');
+      }
+      fetchDrafts();
+      return true;
+    } catch {
+      if (source === 'session-timeout') {
+        message.error('Could not auto-save draft before session expiry.');
+      }
+      return false;
+    } finally {
+      autoDraftSavingRef.current = false;
+    }
+  }, [editingItem, form, hasDraftableValues, imageUrl]);
+
   const handleSaveDraft = async () => {
     try {
-      const values = form.getFieldsValue();
-      await apiService.post('/items/draft', { ...values, image: imageUrl });
+      const saved = await saveDraftSilently('manual');
+      if (!saved) {
+        message.warning('Nothing to save as draft yet.');
+        return;
+      }
       message.success('Draft saved! You can continue later.');
       setModalVisible(false);
       setEditingItem(null);
@@ -830,6 +896,26 @@ const viewItem = async (item) => {
       message.error('Failed to save draft');
     }
   };
+
+  useEffect(() => {
+    // Reset auto-save latch when timer has enough buffer again.
+    if (sessionSecondsLeft == null || sessionSecondsLeft > 30) {
+      autoDraftSavedRef.current = false;
+      return;
+    }
+
+    // Auto-save once shortly before inactivity logout.
+    if (
+      modalVisible &&
+      !editingItem &&
+      sessionSecondsLeft > 0 &&
+      sessionSecondsLeft <= 20 &&
+      !autoDraftSavedRef.current
+    ) {
+      autoDraftSavedRef.current = true;
+      saveDraftSilently('session-timeout');
+    }
+  }, [sessionSecondsLeft, modalVisible, editingItem, saveDraftSilently]);
 
   useEffect(() => {
     const initializeData = async () => {

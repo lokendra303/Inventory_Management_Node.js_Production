@@ -233,7 +233,10 @@ class InventoryService {
   }
 
   async adjustStock(institutionId, data, userId) {
-    const { itemId, warehouseId, quantityChange, reason, adjustmentType, lossType = 'OTHER' } = data;
+    const { itemId, warehouseId, quantityChange, reason, adjustmentType, lossType = 'MANUAL' } = data;
+    const normalizedLossType = ['MANUAL', 'MISSING', 'DAMAGED', 'EXPIRED'].includes(String(lossType).toUpperCase())
+      ? String(lossType).toUpperCase()
+      : 'MANUAL';
     const absQty = Math.abs(quantityChange);
     const normalizedChange = adjustmentType === 'decrease' ? -absQty : absQty;
 
@@ -292,7 +295,7 @@ class InventoryService {
           `INSERT INTO inventory_adjustments
            (id, institution_id, item_id, warehouse_id, adjustment_type, quantity_change, reason, loss_type, adjusted_by, reference_number)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), institutionId, itemId, warehouseId, adjustmentType, absQty, reason || null, lossType, userId, `ADJ-${Date.now()}`]
+          [uuidv4(), institutionId, itemId, warehouseId, adjustmentType, absQty, reason || null, normalizedLossType, userId, `ADJ-${Date.now()}`]
         );
 
         logger.info('Stock adjusted', { institutionId, itemId, warehouseId, adjustmentType, absQty, userId });

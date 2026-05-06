@@ -182,7 +182,11 @@ const Header = ({ collapsed, setCollapsed, user, isMobile }) => {
               borderRadius: 8,
               background: 'linear-gradient(135deg, rgba(102,126,234,0.18), rgba(118,75,162,0.12))',
               border: '1px solid rgba(102,126,234,0.35)',
-            }}>
+              cursor: 'pointer',
+            }}
+            title="Open Company Settings"
+            onClick={() => navigate('/company-settings')}
+            >
               <BankOutlined style={{ fontSize: 12, color: '#818cf8' }} />
               <span style={{
                 fontSize: 15, fontWeight: 700,
