@@ -3,19 +3,62 @@ const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const { roundToTwo } = require('../../utils/precision');
 
+const RESERVED_WAREHOUSE_CODES = new Set([
+  'accessibleroutes'
+]);
+
 class WarehouseService {
+  normalizeWarehouseCode(value) {
+    if (value === undefined || value === null) return '';
+    return String(value)
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9_-]/g, '');
+  }
+
+  async ensureUniqueWarehouseCode(institutionId, requestedCode, warehouseName) {
+    let baseCode = this.normalizeWarehouseCode(requestedCode);
+
+    // Defensive fallback: some malformed payloads have leaked route keys as code.
+    if (!baseCode || RESERVED_WAREHOUSE_CODES.has(baseCode.toLowerCase())) {
+      const fromName = this.normalizeWarehouseCode(warehouseName)
+        .replace(/_/g, '')
+        .replace(/-/g, '')
+        .slice(0, 12);
+      baseCode = fromName || `WH${Date.now().toString().slice(-6)}`;
+    }
+
+    baseCode = baseCode.slice(0, 50);
+    let candidate = baseCode;
+    let suffix = 1;
+
+    // Keep incrementing suffix until we find a tenant-unique code.
+    while (true) {
+      const existing = await db.query(
+        'SELECT id FROM warehouses WHERE institution_id = ? AND code = ? LIMIT 1',
+        [institutionId, candidate]
+      );
+      if (existing.length === 0) return candidate;
+
+      const maxBaseLength = 50 - (`-${suffix}`.length);
+      candidate = `${baseCode.slice(0, Math.max(1, maxBaseLength))}-${suffix}`;
+      suffix += 1;
+    }
+  }
+
   async createWarehouse(institutionId, warehouseData, userId) {
     const { code, name, type, address, contactPerson, phone, email } = warehouseData;
 
+    const resolvedCode = await this.ensureUniqueWarehouseCode(institutionId, code, name);
     const warehouseId = uuidv4();
 
     await db.query(
       `INSERT INTO warehouses (id, institution_id, code, name, type, address, contact_person, phone, email, status, created_by) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-      [warehouseId, institutionId, code, name, type || 'standard', address, contactPerson, phone, email, userId || null]
+      [warehouseId, institutionId, resolvedCode, name, type || 'standard', address, contactPerson, phone, email, userId || null]
     );
 
-    logger.info('Warehouse created', { warehouseId, institutionId, code, userId });
+    logger.info('Warehouse created', { warehouseId, institutionId, code: resolvedCode, userId });
     return warehouseId;
   }
 
