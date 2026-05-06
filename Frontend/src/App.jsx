@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { ConfigProvider, Layout, message } from 'antd';
+import { ConfigProvider, Layout, Select, message } from 'antd';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { CurrencyProvider } from './contexts/CurrencyContext.jsx';
 import { withPermission } from './components/common/PermissionWrapper.jsx';
@@ -74,6 +74,24 @@ import WorkflowAutomation from './pages/workflows/WorkflowAutomation.jsx';
 import UserGuides from './pages/workflows/UserGuides.jsx';
 
 const { Content } = Layout;
+
+// Global Select defaults: searchable dropdowns across the app.
+// Explicit props on individual Select components still take precedence.
+if (!Select.__imsSearchPatched) {
+  Select.defaultProps = {
+    ...(Select.defaultProps || {}),
+    showSearch: true,
+    filterOption: (input, option) => {
+      const source =
+        option?.label ??
+        option?.children ??
+        option?.value ??
+        '';
+      return String(source).toLowerCase().includes(String(input || '').toLowerCase());
+    },
+  };
+  Select.__imsSearchPatched = true;
+}
 
 // Protected components
 const ProtectedInventory = withPermission('inventory_view')(Inventory);
