@@ -12,6 +12,37 @@ router.get('/',
   itemController.getItems
 );
 
+// GET /api/items/check-sku?sku=...&excludeItemId=...
+router.get('/check-sku',
+  requirePermission('item_view'),
+  itemController.checkSkuAvailability
+);
+
+// GET /api/items/variant-library
+router.get('/variant-library',
+  requirePermission('item_view'),
+  itemController.getVariantLibrary
+);
+
+// POST /api/items/variant-library
+router.post('/variant-library',
+  requirePermission('item_management'),
+  auditLog('variant_library_saved'),
+  itemController.saveVariantLibrary
+);
+
+router.put('/variant-library/entry',
+  requirePermission('item_management'),
+  auditLog('variant_library_entry_updated'),
+  itemController.setVariantLibraryEntry
+);
+
+router.delete('/variant-library/entry',
+  requirePermission('item_management'),
+  auditLog('variant_library_entry_deleted'),
+  itemController.deleteVariantLibraryEntryValue
+);
+
 // GET /api/items/field-config/:itemType
 router.get('/field-config/:itemType',
   requirePermission('item_view'),

@@ -93,7 +93,7 @@ class CategoryController {
 
   async updateCategory(req, res) {
     try {
-      const { categoryId } = req.params;
+      const categoryId = req.params.categoryId || req.params.id;
       await categoryService.updateCategory(req.institutionId, categoryId, req.body, req.user.userId);
       
       res.json({
@@ -115,7 +115,7 @@ class CategoryController {
 
   async deleteCategory(req, res) {
     try {
-      const { categoryId } = req.params;
+      const categoryId = req.params.categoryId || req.params.id;
       await categoryService.deleteCategory(req.institutionId, categoryId, req.user.userId);
       
       res.json({

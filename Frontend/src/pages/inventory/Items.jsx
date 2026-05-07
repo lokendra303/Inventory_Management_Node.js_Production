@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
@@ -55,6 +55,9 @@ const Items = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [binsForWarehouse, setBinsForWarehouse] = useState([]);
   const [binsLoading, setBinsLoading] = useState(false);
+  const [variantLibrary, setVariantLibrary] = useState([]);
+  const [existingCustomFields, setExistingCustomFields] = useState({});
+  const [variantMatrixEdits, setVariantMatrixEdits] = useState([]);
   const autoDraftSavingRef = useRef(false);
   const autoDraftSavedRef = useRef(false);
 
@@ -84,14 +87,69 @@ const Items = () => {
   const handleGenerateSku = async () => {
     setSkuGenerating(true);
     try {
+      const brandValue = form.getFieldValue('brand');
+      const brandRow = brandOptions.find((b) => b.id === brandValue || b.name === brandValue);
+      const brandName = brandRow?.name || brandValue || '';
+      const itemName = form.getFieldValue('name') || '';
+      const categoryName = form.getFieldValue('category') || '';
+      const variantValue = form.getFieldValue('variant') || '';
+      const colorValue = form.getFieldValue('colorCode') || '';
+      const typeName = form.getFieldValue('type') || '';
+      const sizeValue = form.getFieldValue('sizeCode') || '';
+      const packTypeValue = form.getFieldValue('packType') || '';
+      const manufacturerValue = form.getFieldValue('manufacturer');
+      const manufacturerRow = manufacturerOptions.find((m) => m.id === manufacturerValue || m.name === manufacturerValue);
+      const manufacturerName = manufacturerRow?.name || manufacturerValue || '';
+      const unitValue = form.getFieldValue('unit');
+      const unitRow = unitOptions.find((u) => u.id === unitValue || u.name === unitValue || u.symbol === unitValue);
+      const unitLabel = unitRow?.symbol || unitRow?.name || unitValue || '';
+      const warehouseId = form.getFieldValue('warehouseId');
+      const warehouseRow = warehouses.find((w) => w.id === warehouseId);
+      const warehouseLabel = warehouseRow?.code || warehouseRow?.name || warehouseId || '';
+      const hsnCode = form.getFieldValue('hsnCode') || '';
+      const mpn = form.getFieldValue('mpn') || '';
+      const barcode = form.getFieldValue('barcode') || form.getFieldValue('ean') || '';
+      const toCode = (value, len = 3) => {
+        const parts = String(value || '')
+          .trim()
+          .split(/[^A-Za-z0-9]+/g)
+          .filter(Boolean);
+        const compact = parts.length >= 2
+          ? parts.map((p) => p[0].toUpperCase()).join('')
+          : parts.join('').toUpperCase();
+        return compact.replace(/[^A-Z0-9]+/g, '').slice(0, len);
+      };
+
       const ctx = {
-        category: form.getFieldValue('category'),
-        brand: form.getFieldValue('brand'),
-        name: form.getFieldValue('name')
+        category: categoryName,
+        brand: brandName,
+        manufacturer: manufacturerName,
+        name: itemName,
+        item: itemName,
+        variant: variantValue,
+        color: colorValue,
+        type: packTypeValue || typeName,
+        unit: unitLabel,
+        warehouse: warehouseLabel,
+        hsnCode,
+        mpn,
+        barcode,
+        brandCode: toCode(brandName, 3),
+        itemCode: toCode(itemName, 4),
+        variantCode: toCode(variantValue, 4),
+        colorCode: toCode(colorValue, 4),
+        categoryCode: toCode(categoryName, 3),
+        manufacturerCode: toCode(manufacturerName, 3),
+        typeCode: toCode(packTypeValue || typeName, 3),
+        unitCode: toCode(unitLabel, 4),
+        warehouseCode: toCode(warehouseLabel, 4),
+        size: toCode(sizeValue || unitLabel, 8),
+        typeValue: packTypeValue || typeName
       };
       const sku = await skuGeneratorService.generateSku(ctx);
       if (sku) {
         form.setFieldsValue({ sku });
+        form.validateFields(['sku']).catch(() => {});
         message.success(`Generated SKU: ${sku}`);
       }
     } catch (e) {
@@ -102,6 +160,33 @@ const Items = () => {
     }
   };
 
+  const validateSkuAvailability = async (_, value) => {
+    const sku = String(value || '').trim();
+    if (!sku) return Promise.reject(new Error('Please input SKU!'));
+    try {
+      const res = await apiService.get('/items/check-sku', {
+        params: {
+          sku,
+          excludeItemId: editingItem?.id || undefined
+        }
+      });
+      const available = !!res?.data?.available;
+      if (!available) {
+        return Promise.reject(new Error('SKU already exists. Please use a unique SKU.'));
+      }
+      return Promise.resolve();
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Failed to validate SKU';
+      return Promise.reject(new Error(msg));
+    }
+  };
+
+  const insertSkuToken = (token) => {
+    const current = skuRuleForm.getFieldValue('prefixStatic') || '';
+    const next = current ? `${current}-${token}` : token;
+    skuRuleForm.setFieldsValue({ prefixStatic: next });
+  };
+
   const openSkuRulesModal = async () => {
     setEditingSkuRule(null);
     skuRuleForm.resetFields();
@@ -109,15 +194,92 @@ const Items = () => {
     await loadSkuRules();
   };
 
+  const DERIVED_TOKEN_BY_SOURCE = {
+    category: 'CATEGORY',
+    brand: 'BRAND',
+    name: 'ITEM',
+    variant: 'VARIANT',
+    color: 'COLOR',
+    size: 'SIZE',
+    type: 'TYPE',
+    manufacturer: 'MANUFACTURER',
+    unit: 'UNIT',
+    warehouse: 'WAREHOUSE',
+    hsn: 'HSN',
+    mpn: 'MPN',
+    barcode: 'BARCODE'
+  };
+  const SOURCE_BY_DERIVED_TOKEN = Object.fromEntries(
+    Object.entries(DERIVED_TOKEN_BY_SOURCE).map(([source, token]) => [token, source])
+  );
+  const DERIVED_SOURCE_LABELS = {
+    category: 'Category',
+    brand: 'Brand',
+    name: 'Item name',
+    variant: 'Variant',
+    color: 'Colour',
+    size: 'Size',
+    type: 'Pack Type',
+    manufacturer: 'Manufacturer',
+    unit: 'Unit',
+    warehouse: 'Warehouse',
+    hsn: 'HSN',
+    mpn: 'MPN',
+    barcode: 'Barcode'
+  };
+  const DERIVED_SOURCE_OPTIONS = Object.keys(DERIVED_TOKEN_BY_SOURCE).map((key) => ({
+    value: key,
+    label: DERIVED_SOURCE_LABELS[key] || key
+  }));
+  const DEFAULT_DERIVED_CFG = { len: 3, mode: 'abbr' };
+  const buildDefaultDerivedConfig = () => Object.fromEntries(
+    Object.keys(DERIVED_TOKEN_BY_SOURCE).map((src) => [src, { ...DEFAULT_DERIVED_CFG }])
+  );
+  const preserveSelectionOrder = (previous = [], current = []) => {
+    const prev = Array.isArray(previous) ? previous : [];
+    const cur = Array.isArray(current) ? current : [];
+    const inBoth = prev.filter((x) => cur.includes(x));
+    const appended = cur.filter((x) => !inBoth.includes(x));
+    return [...inBoth, ...appended];
+  };
+
+  const parseDerivedTemplateConfig = (prefixStatic = '') => {
+    const matches = String(prefixStatic || '').match(/\{[^}]+\}/g) || [];
+    if (!matches.length) return null;
+    const sources = [];
+    const config = {};
+    for (const tokenWrap of matches) {
+      const inside = tokenWrap.slice(1, -1);
+      const [tokenRaw, lenRaw, modeRaw] = inside.split('|').map((p) => String(p || '').trim());
+      const token = String(tokenRaw || '').toUpperCase();
+      const src = SOURCE_BY_DERIVED_TOKEN[token];
+      if (!src) return null;
+      sources.push(src);
+      config[src] = {
+        len: Math.max(1, Number(lenRaw) || 3),
+        mode: ['abbr', 'slice'].includes(String(modeRaw || '').toLowerCase()) ? String(modeRaw).toLowerCase() : 'abbr'
+      };
+    }
+    return { sources, config };
+  };
+
   const startEditSkuRule = (rule) => {
+    const parsedDerived = rule.prefix_mode === 'static'
+      ? parseDerivedTemplateConfig(rule.prefix_static)
+      : null;
+    const effectivePrefixMode = parsedDerived ? 'derived' : rule.prefix_mode;
+    const effectiveSources = parsedDerived
+      ? parsedDerived.sources
+      : (rule.prefix_source ? [rule.prefix_source] : []);
     setEditingSkuRule(rule);
     skuRuleForm.setFieldsValue({
       name: rule.name,
       scope: rule.scope,
       scopeValue: rule.scope_value,
-      prefixMode: rule.prefix_mode,
+      prefixMode: effectivePrefixMode,
       prefixStatic: rule.prefix_static,
-      prefixSource: rule.prefix_source,
+      prefixSources: effectiveSources,
+      prefixSourceConfig: { ...buildDefaultDerivedConfig(), ...(parsedDerived?.config || {}) },
       prefixLength: rule.prefix_length,
       separator: rule.separator,
       useDate: !!rule.use_date,
@@ -135,6 +297,8 @@ const Items = () => {
     skuRuleForm.setFieldsValue({
       scope: 'default',
       prefixMode: 'static',
+      prefixSources: ['name'],
+      prefixSourceConfig: buildDefaultDerivedConfig(),
       prefixLength: 3,
       separator: '-',
       useDate: false,
@@ -149,11 +313,41 @@ const Items = () => {
   const submitSkuRule = async () => {
     try {
       const values = await skuRuleForm.validateFields();
+      const sourceList = Array.isArray(values.prefixSources) ? values.prefixSources.filter(Boolean) : [];
+      const cfg = values.prefixSourceConfig || {};
+      const payload = {
+        ...values,
+        // Category rules cannot be marked as default.
+        isDefault: values.scope === 'default' ? !!values.isDefault : false,
+        // Keep counter start aligned with backend validation.
+        counterStart: Math.max(1, Number(values.counterStart || 1)),
+      };
+      if (values.prefixMode === 'derived') {
+        // Persist derived customization as static template tokens with modifiers:
+        // e.g. {BRAND|3|abbr}-{ITEM|4|slice}
+        payload.prefixMode = 'static';
+        payload.prefixSource = null;
+        payload.prefixStatic = sourceList
+          .map((s) => {
+            const token = DERIVED_TOKEN_BY_SOURCE[s];
+            if (!token) return null;
+            const c = cfg[s] || DEFAULT_DERIVED_CFG;
+            const len = Math.max(1, Number(c?.len) || 3);
+            const mode = String(c?.mode || 'abbr').toLowerCase() === 'slice' ? 'slice' : 'abbr';
+            return `{${token}|${len}|${mode}}`;
+          })
+          .filter(Boolean)
+          .join('-');
+      } else {
+        payload.prefixSource = null;
+      }
+      delete payload.prefixSources;
+      delete payload.prefixSourceConfig;
       if (editingSkuRule) {
-        await skuGeneratorService.updateRule(editingSkuRule.id, values);
+        await skuGeneratorService.updateRule(editingSkuRule.id, payload);
         message.success('SKU rule updated');
       } else {
-        await skuGeneratorService.createRule(values);
+        await skuGeneratorService.createRule(payload);
         message.success('SKU rule created');
       }
       setEditingSkuRule(null);
@@ -241,6 +435,20 @@ const Items = () => {
       message.success(`Item type '${typeName}' deleted`);
     } catch (e) {
       message.error(e?.response?.data?.error || 'Failed to delete item type');
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId, categoryName) => {
+    if (!canManageCategories) return;
+    try {
+      await apiService.delete(`/categories/${categoryId}`);
+      setCategories(prev => prev.filter(c => c.id !== categoryId));
+      if (form.getFieldValue('category') === categoryName) {
+        form.setFieldsValue({ category: undefined });
+      }
+      message.success(`Category '${categoryName}' deleted`);
+    } catch (e) {
+      message.error(e?.response?.data?.error || 'Failed to delete category');
     }
   };
 
@@ -357,10 +565,11 @@ const Items = () => {
         apiService.get('/brands'),
         apiService.get('/units'),
         apiService.get('/vendors'),
-        canViewItems ? apiService.get('/item-types') : Promise.resolve({ success: true, data: [] })
+        canViewItems ? apiService.get('/item-types') : Promise.resolve({ success: true, data: [] }),
+        canViewItems ? apiService.get('/items/variant-library') : Promise.resolve({ success: true, data: [] })
       ]);
       
-      const [manufacturersRes, brandsRes, unitsRes, vendorsRes, itemTypesRes] = results;
+      const [manufacturersRes, brandsRes, unitsRes, vendorsRes, itemTypesRes, variantLibraryRes] = results;
       
       if (manufacturersRes.status === 'fulfilled') {
         const manufacturers = Array.isArray(manufacturersRes.value) ? manufacturersRes.value : (manufacturersRes.value?.data || []);
@@ -385,6 +594,11 @@ const Items = () => {
       if (itemTypesRes.status === 'fulfilled') {
         const types = Array.isArray(itemTypesRes.value) ? itemTypesRes.value : (itemTypesRes.value?.data || []);
         setItemTypes(types);
+      }
+
+      if (variantLibraryRes.status === 'fulfilled') {
+        const library = Array.isArray(variantLibraryRes.value) ? variantLibraryRes.value : (variantLibraryRes.value?.data || []);
+        setVariantLibrary(Array.isArray(library) ? library : []);
       }
 
       // Load tax rates from new tax module
@@ -452,7 +666,12 @@ const Items = () => {
 
   const handleSubmit = async (values) => {
     try {
+      const isEditing = !!editingItem;
       console.log('Form values:', values);
+      if ((Number(values.openingStock) || 0) > 0 && !values.warehouseId) {
+        message.error('Please select Warehouse when opening stock is greater than 0.');
+        return;
+      }
       
       // Build dimensions object if any dimension value exists
       const dimensions = (values.length || values.width || values.height) ? {
@@ -468,6 +687,17 @@ const Items = () => {
         image: imageUrl,
         type: values.type || itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
         category: values.category,
+        customFields: {
+          ...(existingCustomFields || {}),
+          variantAttributes: normalizeVariantAttributes(values.variantAttributes),
+          variantMatrix: normalizeVariantMatrixRows(variantMatrixRows),
+          skuMeta: {
+            ...((existingCustomFields || {}).skuMeta || {}),
+            color: normalizeOptionalText(values.colorCode),
+            size: normalizeOptionalText(values.sizeCode),
+            packType: normalizeOptionalText(values.packType)
+          }
+        },
         unit: values.unit,
         warehouseId: values.warehouseId,
         costPrice: values.costPrice != null && values.costPrice !== '' ? convertPrice(values.costPrice, priceCurrency, 'USD') : 0,
@@ -476,6 +706,7 @@ const Items = () => {
         taxRate: values.taxRate,
         brand: values.brand,
         manufacturer: values.manufacturer,
+        itemGroup: values.variant || null,
         minStockLevel: values.minStockLevel,
         maxStockLevel: values.maxStockLevel,
         barcode: values.barcode,
@@ -492,7 +723,7 @@ const Items = () => {
         mpn: values.mpn
       };
       
-      if (editingItem) {
+      if (isEditing) {
         const response = await apiService.put(`/items/${editingItem.id}`, itemData);
         if (response.success) {
           message.success('Item updated successfully');
@@ -503,15 +734,41 @@ const Items = () => {
           message.success('Item created successfully');
         }
       }
+      const normalizedVariantRows = normalizeVariantAttributes(values.variantAttributes);
+      if (normalizedVariantRows.length > 0) {
+        try {
+          await apiService.post('/items/variant-library', { rows: normalizedVariantRows });
+          await fetchDropdownOptions();
+        } catch {
+          // Keep item flow successful even if library save fails.
+        }
+      }
       // Clear only the draft being continued on successful save.
       if (activeDraftId) {
         try { await apiService.delete(`/items/draft/${activeDraftId}`); } catch {}
       }
       setDraftBanner(null);
       setActiveDraftId(null);
-      setModalVisible(false);
-      setEditingItem(null);
-      form.resetFields();
+      if (isEditing) {
+        setModalVisible(false);
+        setEditingItem(null);
+        setVariantMatrixEdits([]);
+        form.resetFields();
+      } else {
+        // Keep form open for rapid multi-item entry.
+        setImageUrl('');
+        setImageFile(null);
+        setDuplicateBanner(null);
+        setExistingCustomFields({});
+        setVariantMatrixEdits([]);
+        form.resetFields();
+        form.setFieldsValue({
+          type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
+          purchaseAccount: 'cogs',
+          purchaseTaxRate: 0,
+          purchaseDescription: 'Initial stock entry'
+        });
+      }
       fetchItems();
     } catch (error) {
       console.error('Submit error:', error);
@@ -628,6 +885,12 @@ const viewItem = async (item) => {
     } catch (error) {
       console.error('Failed to fetch full item details:', error);
     }
+    setExistingCustomFields(fullItem?.custom_fields || {});
+    setVariantMatrixEdits(
+      Array.isArray(fullItem?.variant_rows) && fullItem.variant_rows.length > 0
+        ? fullItem.variant_rows
+        : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
+    );
 
     // Get warehouse from item's warehouse_ids (returned by getItem via GROUP_CONCAT)
     // Fall back to fetching all inventory and filtering by item
@@ -671,6 +934,16 @@ const viewItem = async (item) => {
       maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
       barcode: normalizeOptionalText(fullItem.barcode),
       hsnCode: normalizeOptionalText(fullItem.hsn_code),
+      variant: normalizeOptionalText(fullItem.item_group),
+      colorCode: normalizeOptionalText(fullItem?.custom_fields?.skuMeta?.color),
+      sizeCode: normalizeOptionalText(fullItem?.custom_fields?.skuMeta?.size),
+      packType: normalizeOptionalText(fullItem?.custom_fields?.skuMeta?.packType),
+      variantAttributes: Array.isArray(fullItem?.custom_fields?.variantAttributes)
+        ? fullItem.custom_fields.variantAttributes.map((a) => ({
+            name: a?.name || '',
+            values: Array.isArray(a?.values) ? a.values : []
+          }))
+        : [],
       openingStock: normalizeOptionalNumber(fullItem.opening_stock),
       openingValue: normalizeOptionalNumber(fullItem.opening_value, { allowZero: false }),
       valuationMethod: fullItem.valuation_method,
@@ -745,6 +1018,172 @@ const viewItem = async (item) => {
     return text;
   };
 
+  const normalizeVariantAttributes = (rows = []) => {
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map((row) => ({
+        name: normalizeOptionalText(row?.name),
+        values: Array.isArray(row?.values)
+          ? row.values.map((v) => normalizeOptionalText(v)).filter(Boolean)
+          : []
+      }))
+      .filter((row) => row.name && row.values.length > 0);
+  };
+
+  const normalizeVariantMatrixRows = (rows = []) => {
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row) => ({
+      key: String(row?.key || ''),
+      combinationLabel: String(row?.combinationLabel || ''),
+      attributes: row?.attributes && typeof row.attributes === 'object' ? row.attributes : {},
+      sku: normalizeOptionalText(row?.sku),
+      barcode: normalizeOptionalText(row?.barcode),
+      costPrice: normalizeOptionalNumber(row?.costPrice),
+      sellingPrice: normalizeOptionalNumber(row?.sellingPrice),
+      openingStock: normalizeOptionalNumber(row?.openingStock),
+      warehouseId: normalizeOptionalText(row?.warehouseId),
+      active: row?.active !== false
+    })).filter((row) => row.key && row.combinationLabel);
+  };
+
+  const cartesianVariantRows = (rows = []) => {
+    const normalized = normalizeVariantAttributes(rows);
+    if (normalized.length === 0) return [];
+
+    const recurse = (idx, acc, parts) => {
+      if (idx >= normalized.length) {
+        const key = Object.entries(acc).map(([k, v]) => `${k}:${v}`).join('|');
+        return [{ key, attributes: { ...acc }, combinationLabel: parts.join(' / ') }];
+      }
+      const current = normalized[idx];
+      return current.values.flatMap((value) =>
+        recurse(idx + 1, { ...acc, [current.name]: value }, [...parts, String(value)])
+      );
+    };
+
+    return recurse(0, {}, []);
+  };
+
+  const watchedVariantAttributes = Form.useWatch('variantAttributes', form);
+  const watchedItemType = Form.useWatch('type', form);
+  const watchedVariant = Form.useWatch('variant', form);
+  const watchedColor = Form.useWatch('colorCode', form);
+  const watchedSize = Form.useWatch('sizeCode', form);
+  const watchedPackType = Form.useWatch('packType', form);
+
+  const variantMatrixRows = useMemo(() => {
+    if (watchedItemType !== 'variant') return [];
+    let sourceAttributes = normalizeVariantAttributes(watchedVariantAttributes);
+    if (sourceAttributes.length === 0) {
+      const fallback = [];
+      if (normalizeOptionalText(watchedVariant)) fallback.push({ name: 'Variant', values: [normalizeOptionalText(watchedVariant)] });
+      if (normalizeOptionalText(watchedColor)) fallback.push({ name: 'Colour', values: [normalizeOptionalText(watchedColor)] });
+      if (normalizeOptionalText(watchedSize)) fallback.push({ name: 'Size', values: [normalizeOptionalText(watchedSize)] });
+      if (normalizeOptionalText(watchedPackType)) fallback.push({ name: 'Pack Type', values: [normalizeOptionalText(watchedPackType)] });
+      sourceAttributes = fallback;
+    }
+
+    const combos = cartesianVariantRows(sourceAttributes);
+    if (combos.length === 0) return [];
+
+    return combos.map((combo) => {
+      const edited = variantMatrixEdits.find((r) => r.key === combo.key) || {};
+      return {
+        ...combo,
+        sku: edited.sku,
+        barcode: edited.barcode,
+        costPrice: edited.costPrice,
+        sellingPrice: edited.sellingPrice,
+        openingStock: edited.openingStock,
+        warehouseId: edited.warehouseId,
+        active: edited.active !== false
+      };
+    });
+  }, [watchedItemType, watchedVariantAttributes, watchedVariant, watchedColor, watchedSize, watchedPackType, variantMatrixEdits]);
+
+  const updateVariantMatrixRow = (key, patch) => {
+    setVariantMatrixEdits((prev) => {
+      const idx = prev.findIndex((r) => r.key === key);
+      if (idx === -1) return [...prev, { key, ...patch }];
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+  };
+
+  const variantLibraryNames = (variantLibrary || []).map((r) => r.name).filter(Boolean);
+  const getVariantLibraryValues = (attributeName) => {
+    const key = String(attributeName || '').trim().toLowerCase();
+    if (!key) return [];
+    const row = (variantLibrary || []).find((r) => String(r?.name || '').trim().toLowerCase() === key);
+    return Array.isArray(row?.values) ? row.values : [];
+  };
+  const getVariantLibraryValuesByAliases = (aliases = []) => {
+    const aliasSet = new Set((aliases || []).map((a) => String(a || '').trim().toLowerCase()).filter(Boolean));
+    const merged = [];
+    (variantLibrary || []).forEach((row) => {
+      const name = String(row?.name || '').trim().toLowerCase();
+      if (!aliasSet.has(name)) return;
+      if (Array.isArray(row?.values)) merged.push(...row.values);
+    });
+    return Array.from(new Set(merged.map((v) => String(v || '').trim()).filter(Boolean)));
+  };
+  const findVariantLibraryNameByAliasesAndValue = (aliases = [], value = '') => {
+    const aliasSet = new Set((aliases || []).map((a) => String(a || '').trim().toLowerCase()).filter(Boolean));
+    const normalizedValue = String(value || '').trim();
+    if (!normalizedValue) return null;
+    const row = (variantLibrary || []).find((r) => {
+      const nameMatch = aliasSet.has(String(r?.name || '').trim().toLowerCase());
+      const valueMatch = Array.isArray(r?.values) && r.values.some((v) => String(v || '').trim() === normalizedValue);
+      return nameMatch && valueMatch;
+    });
+    return row?.name || null;
+  };
+
+  const addVariantMetaValue = async (attributeName, aliases, fieldName) => {
+    const raw = prompt(`Add ${attributeName} value:`);
+    const value = String(raw || '').trim();
+    if (!value) return;
+    try {
+      await apiService.put('/items/variant-library/entry', { name: aliases[0], values: [value] });
+      await fetchDropdownOptions();
+      form.setFieldsValue({ [fieldName]: value });
+      message.success(`${attributeName} added`);
+    } catch (e) {
+      message.error(e?.response?.data?.error || `Failed to add ${attributeName}`);
+    }
+  };
+
+  const deleteVariantMetaSpecificValue = async (attributeName, aliases, value, fieldName) => {
+    const sourceName = findVariantLibraryNameByAliasesAndValue(aliases, value) || aliases[0];
+    if (!window.confirm(`Delete ${attributeName} value "${value}"?`)) return;
+    try {
+      await apiService.delete('/items/variant-library/entry', { params: { name: sourceName, value } });
+      await fetchDropdownOptions();
+      if (form.getFieldValue(fieldName) === value) {
+        form.setFieldsValue({ [fieldName]: undefined });
+      }
+      message.success(`${attributeName} deleted`);
+    } catch (e) {
+      message.error(e?.response?.data?.error || `Failed to delete ${attributeName}`);
+    }
+  };
+
+  const saveVariantSetupForFuture = async () => {
+    const rows = normalizeVariantAttributes(form.getFieldValue('variantAttributes'));
+    if (!rows.length) {
+      message.warning('Add variant attributes first to save for future use.');
+      return;
+    }
+    try {
+      await apiService.post('/items/variant-library', { rows });
+      await fetchDropdownOptions();
+      message.success('Variant setup saved for future use.');
+    } catch (e) {
+      message.error(e?.response?.data?.error || 'Failed to save variant setup');
+    }
+  };
+
   const duplicateItem = async (item) => {
     setEditingItem(null);
     setPriceCurrency(currency);
@@ -760,6 +1199,12 @@ const viewItem = async (item) => {
       const res = await apiService.get(`/items/${item.id}`);
       if (res.success) fullItem = res.data;
     } catch {}
+    setExistingCustomFields(fullItem?.custom_fields || {});
+    setVariantMatrixEdits(
+      Array.isArray(fullItem?.variant_rows) && fullItem.variant_rows.length > 0
+        ? fullItem.variant_rows
+        : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
+    );
 
     form.setFieldsValue({
       // SKU and name intentionally left blank — user must fill these
@@ -779,6 +1224,16 @@ const viewItem = async (item) => {
       maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
       barcode: '',
       hsnCode: normalizeOptionalText(fullItem.hsn_code),
+      variant: normalizeOptionalText(fullItem.item_group),
+      colorCode: normalizeOptionalText(fullItem?.custom_fields?.skuMeta?.color),
+      sizeCode: normalizeOptionalText(fullItem?.custom_fields?.skuMeta?.size),
+      packType: normalizeOptionalText(fullItem?.custom_fields?.skuMeta?.packType),
+      variantAttributes: Array.isArray(fullItem?.custom_fields?.variantAttributes)
+        ? fullItem.custom_fields.variantAttributes.map((a) => ({
+            name: a?.name || '',
+            values: Array.isArray(a?.values) ? a.values : []
+          }))
+        : [],
       openingStock: null,
       openingValue: null,
       valuationMethod: fullItem.valuation_method,
@@ -804,6 +1259,8 @@ const viewItem = async (item) => {
     form.resetFields();
     setDraftBanner(null);
     setDuplicateBanner(null);
+    setExistingCustomFields({});
+    setVariantMatrixEdits([]);
 
     await fetchDropdownOptions();
     form.setFieldsValue({
@@ -833,6 +1290,8 @@ const viewItem = async (item) => {
     setPriceCurrency(currency);
     setImageUrl(draft.data?.image || '');
     setImageFile(null);
+    setExistingCustomFields(draft.data?.customFields || {});
+    setVariantMatrixEdits(Array.isArray(draft.data?.customFields?.variantMatrix) ? draft.data.customFields.variantMatrix : []);
     form.resetFields();
     await fetchDropdownOptions();
     form.setFieldsValue(draft.data);
@@ -1217,11 +1676,11 @@ const viewItem = async (item) => {
           </div>
         }
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); form.resetFields(); }}
+        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); form.resetFields(); }}
         footer={null}
-        width="min(900px, 96vw)"
-        style={{ top: 16 }}
-        styles={{ body: { background: '#fafbff', borderRadius: '0 0 12px 12px', maxHeight: '80vh', overflowY: 'auto' } }}
+        width="min(1280px, 98vw)"
+        style={{ top: 8 }}
+        styles={{ body: { background: '#fafbff', borderRadius: '0 0 12px 12px', maxHeight: '88vh', overflowY: 'auto', padding: 20 } }}
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           style={{ '--ant-input-border-radius': '8px' }}
@@ -1268,7 +1727,12 @@ const viewItem = async (item) => {
               <Col xs={24} md={16}>
                 <Row gutter={16}>
                   <Col xs={24} sm={12}>
-                    <Form.Item name="sku" label="SKU" rules={[{ required: true, message: 'Please input SKU!' }]}>
+                    <Form.Item
+                      name="sku"
+                      label="SKU"
+                      validateTrigger={['onBlur', 'onSubmit']}
+                      rules={[{ validator: validateSkuAvailability }]}
+                    >
                       <Input
                         placeholder="e.g. ITEM-001"
                         style={{ borderRadius: 8 }}
@@ -1295,6 +1759,326 @@ const viewItem = async (item) => {
                     </Form.Item>
                   </Col>
                 </Row>
+                <Row gutter={16}>
+                  <Col xs={24} sm={8}>
+                    <Form.Item
+                      name="variant"
+                      label="Variant / Packing"
+                      tooltip="Example: ALOE, 7G, PREMIUM, 100ML"
+                    >
+                      <Select
+                        showSearch
+                        allowClear
+                        optionFilterProp="title"
+                        placeholder="Select variant / packing"
+                        dropdownRender={(menu) => (
+                          <div>
+                            {menu}
+                            {canManageItems && (
+                              <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                                <Button type="link" size="small" onClick={() => addVariantMetaValue('Variant/Packing', ['variant'], 'variant')}>
+                                  + Add Variant/Packing
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      >
+                        {getVariantLibraryValuesByAliases(['variant', 'packing', 'pack']).map((v) => (
+                          <Select.Option key={v} value={v} title={v}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>{v}</span>
+                              {canManageItems && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteVariantMetaSpecificValue('Variant/Packing', ['variant', 'packing', 'pack'], v, 'variant');
+                                  }}
+                                  style={{ marginLeft: 8, color: '#ff4d4f', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  ×
+                                </span>
+                              )}
+                            </div>
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item
+                      name="colorCode"
+                      label="Colour"
+                      tooltip="Color or shade code, reusable for variant matrix/SKU context"
+                    >
+                      <Select
+                        showSearch
+                        allowClear
+                        optionFilterProp="title"
+                        placeholder="Select colour"
+                        dropdownRender={(menu) => (
+                          <div>
+                            {menu}
+                            {canManageItems && (
+                              <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                                <Button type="link" size="small" onClick={() => addVariantMetaValue('Colour', ['color'], 'colorCode')}>
+                                  + Add Colour
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      >
+                        {getVariantLibraryValuesByAliases(['color', 'colour']).map((v) => (
+                          <Select.Option key={v} value={v} title={v}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>{v}</span>
+                              {canManageItems && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteVariantMetaSpecificValue('Colour', ['color', 'colour'], v, 'colorCode');
+                                  }}
+                                  style={{ marginLeft: 8, color: '#ff4d4f', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  ×
+                                </span>
+                              )}
+                            </div>
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item
+                      name="sizeCode"
+                      label="Size"
+                      tooltip="Used by SKU {SIZE}. Example: 100ML, 7G, XL"
+                    >
+                      <Select
+                        showSearch
+                        allowClear
+                        optionFilterProp="title"
+                        placeholder="Select size"
+                        dropdownRender={(menu) => (
+                          <div>
+                            {menu}
+                            {canManageItems && (
+                              <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                                <Button type="link" size="small" onClick={() => addVariantMetaValue('Size', ['size'], 'sizeCode')}>
+                                  + Add Size
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      >
+                        {getVariantLibraryValuesByAliases(['size']).map((v) => (
+                          <Select.Option key={v} value={v} title={v}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>{v}</span>
+                              {canManageItems && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteVariantMetaSpecificValue('Size', ['size'], v, 'sizeCode');
+                                  }}
+                                  style={{ marginLeft: 8, color: '#ff4d4f', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  ×
+                                </span>
+                              )}
+                            </div>
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item
+                      name="packType"
+                      label="Pack Type"
+                      tooltip="Used by SKU {TYPE}. Example: SCH, BTL, BOX"
+                    >
+                      <Select
+                        showSearch
+                        allowClear
+                        optionFilterProp="title"
+                        placeholder="Select pack type"
+                        dropdownRender={(menu) => (
+                          <div>
+                            {menu}
+                            {canManageItems && (
+                              <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                                <Button type="link" size="small" onClick={() => addVariantMetaValue('Pack Type', ['pack type'], 'packType')}>
+                                  + Add Pack Type
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      >
+                        {getVariantLibraryValuesByAliases(['pack type', 'packtype', 'type']).map((v) => (
+                          <Select.Option key={v} value={v} title={v}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>{v}</span>
+                              {canManageItems && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteVariantMetaSpecificValue('Pack Type', ['pack type', 'packtype', 'type'], v, 'packType');
+                                  }}
+                                  style={{ marginLeft: 8, color: '#ff4d4f', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  ×
+                                </span>
+                              )}
+                            </div>
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Form.List name="variantAttributes">
+                  {(fields, { add, remove }) => (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, color: '#667eea', fontWeight: 700, textTransform: 'uppercase' }}>
+                          Variant Attribute Builder
+                        </span>
+                        <Button size="small" onClick={() => add({ name: '', values: [] })}>
+                          + Add Attribute
+                        </Button>
+                      </div>
+                      {fields.map(({ key, name, ...restField }) => (
+                        <Row key={key} gutter={8} style={{ marginBottom: 8 }}>
+                          <Col xs={24} sm={8}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'name']}
+                              rules={[{ required: true, message: 'Attribute name required' }]}
+                            >
+                              <Select
+                                showSearch
+                                allowClear
+                                placeholder="Attribute (e.g. Size, Color, Pack)"
+                                options={variantLibraryNames.map((option) => ({ value: option, label: option }))}
+                                filterOption={(inputValue, option) =>
+                                  String(option?.label || '').toLowerCase().includes(String(inputValue || '').toLowerCase())
+                                }
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={14}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'values']}
+                              rules={[{ required: true, message: 'Add at least one value' }]}
+                            >
+                              <Select
+                                mode="tags"
+                                placeholder="Values (e.g. 7G, 15G, 100ML)"
+                                tokenSeparators={[',']}
+                                options={getVariantLibraryValues(form.getFieldValue(['variantAttributes', name, 'name'])).map((value) => ({ value, label: value }))}
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={2} style={{ display: 'flex', alignItems: 'center' }}>
+                            <Button danger type="text" onClick={() => remove(name)}>
+                              Delete
+                            </Button>
+                          </Col>
+                        </Row>
+                      ))}
+                      {fields.length === 0 && (
+                        <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                          Add attributes dynamically (name + values), editable and removable like brand options.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Form.List>
+                {watchedItemType === 'variant' && (
+                  <div style={{ marginBottom: 16, border: '1px solid #e6e8f0', borderRadius: 8, background: '#fff' }}>
+                    <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, color: '#4b5563', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Variant Matrix ({variantMatrixRows.length})</span>
+                      <Button size="small" onClick={saveVariantSetupForFuture}>
+                        Save setup for future
+                      </Button>
+                    </div>
+                    {variantMatrixRows.length === 0 ? (
+                      <div style={{ padding: 12, fontSize: 12, color: '#8c8c8c' }}>
+                        Add at least one variant attribute with values to generate combinations.
+                      </div>
+                    ) : (
+                      <div style={{ maxHeight: 280, overflowY: 'auto', padding: 10 }}>
+                        {variantMatrixRows.map((row) => (
+                          <Row key={row.key} gutter={8} style={{ marginBottom: 8 }}>
+                            <Col xs={24} sm={6}>
+                              <Input value={row.combinationLabel} readOnly />
+                            </Col>
+                            <Col xs={12} sm={4}>
+                              <Input
+                                value={row.sku}
+                                onChange={(e) => updateVariantMatrixRow(row.key, { sku: e.target.value })}
+                                placeholder="Child SKU"
+                              />
+                            </Col>
+                            <Col xs={12} sm={4}>
+                              <Input
+                                value={row.barcode}
+                                onChange={(e) => updateVariantMatrixRow(row.key, { barcode: e.target.value })}
+                                placeholder="Barcode"
+                              />
+                            </Col>
+                            <Col xs={12} sm={3}>
+                              <InputNumber
+                                min={0}
+                                style={{ width: '100%' }}
+                                value={row.sellingPrice}
+                                onChange={(v) => updateVariantMatrixRow(row.key, { sellingPrice: v })}
+                                placeholder="Sell"
+                              />
+                            </Col>
+                            <Col xs={12} sm={3}>
+                              <InputNumber
+                                min={0}
+                                style={{ width: '100%' }}
+                                value={row.openingStock}
+                                onChange={(v) => updateVariantMatrixRow(row.key, { openingStock: v })}
+                                placeholder="Stock"
+                              />
+                            </Col>
+                            <Col xs={18} sm={3}>
+                              <Select
+                                allowClear
+                                showSearch
+                                optionFilterProp="children"
+                                value={row.warehouseId}
+                                onChange={(v) => updateVariantMatrixRow(row.key, { warehouseId: v })}
+                                placeholder="Warehouse"
+                              >
+                                {warehouses.map((w) => (
+                                  <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>
+                                ))}
+                              </Select>
+                            </Col>
+                            <Col xs={6} sm={1} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={row.active !== false}
+                                onChange={(e) => updateVariantMatrixRow(row.key, { active: e.target.checked })}
+                                title="Active"
+                              />
+                            </Col>
+                          </Row>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <Row gutter={16}>
                   <Col xs={24} sm={8}>
                     <Form.Item
@@ -1387,38 +2171,39 @@ const viewItem = async (item) => {
                           <Select.Option key={category.id} value={category.name}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span>{category.name}</span>
-                              <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setCategories(categories.filter(c => c.id !== category.id));
-                                  message.success(`Category '${category.name}' deleted`);
-                                }}
-                                style={{
-                                  marginLeft: 8,
-                                  width: '18px',
-                                  height: '18px',
-                                  borderRadius: '50%',
-                                  backgroundColor: '#ff4d4f',
-                                  color: 'white',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                  fontSize: '12px',
-                                  fontWeight: 'bold',
-                                  transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.backgroundColor = '#d9363e';
-                                  e.target.style.transform = 'scale(1.1)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.backgroundColor = '#ff4d4f';
-                                  e.target.style.transform = 'scale(1)';
-                                }}
-                              >
-                                ×
-                              </span>
+                              {canManageCategories && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteCategory(category.id, category.name);
+                                  }}
+                                  style={{
+                                    marginLeft: 8,
+                                    width: '18px',
+                                    height: '18px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#ff4d4f',
+                                    color: 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.target.style.backgroundColor = '#d9363e';
+                                    e.target.style.transform = 'scale(1.1)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.target.style.backgroundColor = '#ff4d4f';
+                                    e.target.style.transform = 'scale(1)';
+                                  }}
+                                >
+                                  ×
+                                </span>
+                              )}
                             </div>
                           </Select.Option>
                         ))}
@@ -2623,14 +3408,16 @@ const viewItem = async (item) => {
         open={skuRulesOpen}
         onCancel={() => { setSkuRulesOpen(false); setEditingSkuRule(null); skuRuleForm.resetFields(); }}
         footer={null}
-        width={900}
+        width="min(1200px, 98vw)"
+        style={{ top: 8 }}
+        styles={{ body: { background: '#f8f9ff', borderRadius: '0 0 12px 12px', maxHeight: '86vh', overflowY: 'auto', padding: 16 } }}
         destroyOnClose
       >
-        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           {/* --- Existing rules list --- */}
-          <div style={{ flex: '1 1 340px', minWidth: 320 }}>
+          <div style={{ flex: '1 1 360px', minWidth: 340, background: '#fff', border: '1px solid #eef0f7', borderRadius: 12, padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <b style={{ fontSize: 14 }}>Active Rules</b>
+              <b style={{ fontSize: 14, color: '#1f2937' }}>Active Rules</b>
               <Button size="small" type="primary" icon={<PlusOutlined />} onClick={startNewSkuRule} style={{ background: '#764ba2', border: 'none' }}>
                 New Rule
               </Button>
@@ -2641,6 +3428,8 @@ const viewItem = async (item) => {
               loading={skuRulesLoading}
               dataSource={skuRules}
               pagination={false}
+              bordered
+              scroll={{ y: 520 }}
               locale={{ emptyText: 'No rules yet. Create one to start auto-generating SKUs.' }}
               columns={[
                 {
@@ -2681,16 +3470,20 @@ const viewItem = async (item) => {
           </div>
 
           {/* --- Edit / create form --- */}
-          <div style={{ flex: '1 1 420px', minWidth: 380, background: '#fafafb', padding: 16, borderRadius: 10, border: '1px solid #f0f0f0' }}>
-            <div style={{ fontWeight: 600, marginBottom: 12 }}>
+          <div style={{ flex: '1 1 620px', minWidth: 420, background: '#fff', padding: 16, borderRadius: 12, border: '1px solid #eef0f7' }}>
+            <div style={{ fontWeight: 700, marginBottom: 12, color: '#1f2937' }}>
               {editingSkuRule ? `Edit: ${editingSkuRule.name}` : 'Create a new rule'}
             </div>
             <Form
               form={skuRuleForm}
               layout="vertical"
+              size="middle"
+              labelCol={{ style: { paddingBottom: 2 } }}
               initialValues={{
                 scope: 'default',
                 prefixMode: 'static',
+                prefixSources: ['name'],
+                prefixSourceConfig: buildDefaultDerivedConfig(),
                 prefixLength: 3,
                 separator: '-',
                 useDate: false,
@@ -2701,45 +3494,50 @@ const viewItem = async (item) => {
                 isDefault: false
               }}
             >
-              <Form.Item name="name" label="Rule Name" rules={[{ required: true, message: 'Name is required' }]}>
-                <Input placeholder="e.g. Default, Electronics, Apparel" />
-              </Form.Item>
+              <div style={{ background: '#fafbff', border: '1px solid #edf0ff', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                <Row gutter={12}>
+                  <Col span={12}>
+                    <Form.Item name="name" label="Rule Name" rules={[{ required: true, message: 'Name is required' }]} style={{ marginBottom: 10 }}>
+                      <Input placeholder="e.g. Default, Electronics, Apparel" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="scope" label="Applies To" rules={[{ required: true }]} style={{ marginBottom: 10 }}>
+                      <Select>
+                        <Select.Option value="default">Institution default</Select.Option>
+                        <Select.Option value="category">Specific category</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={12}>
+                  <Col span={12}>
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(prev, cur) => prev.scope !== cur.scope}
+                    >
+                      {({ getFieldValue }) => getFieldValue('scope') === 'category' ? (
+                        <Form.Item name="scopeValue" label="Category" rules={[{ required: true, message: 'Pick a category' }]} style={{ marginBottom: 0 }}>
+                          <Select
+                            placeholder="Select category"
+                            showSearch
+                            options={(categories || []).map(c => ({ value: c.name, label: c.name }))}
+                          />
+                        </Form.Item>
+                      ) : (
+                        <Form.Item name="isDefault" label="Usage" style={{ marginBottom: 0 }}>
+                          <Select>
+                            <Select.Option value={true}>Use as default</Select.Option>
+                            <Select.Option value={false}>Secondary (manual pick)</Select.Option>
+                          </Select>
+                        </Form.Item>
+                      )}
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
 
-              <Row gutter={12}>
-                <Col span={12}>
-                  <Form.Item name="scope" label="Applies To" rules={[{ required: true }]}>
-                    <Select>
-                      <Select.Option value="default">Institution default</Select.Option>
-                      <Select.Option value="category">Specific category</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    noStyle
-                    shouldUpdate={(prev, cur) => prev.scope !== cur.scope}
-                  >
-                    {({ getFieldValue }) => getFieldValue('scope') === 'category' ? (
-                      <Form.Item name="scopeValue" label="Category" rules={[{ required: true, message: 'Pick a category' }]}>
-                        <Select
-                          placeholder="Select category"
-                          showSearch
-                          options={(categories || []).map(c => ({ value: c.name, label: c.name }))}
-                        />
-                      </Form.Item>
-                    ) : (
-                      <Form.Item name="isDefault" label="Usage">
-                        <Select>
-                          <Select.Option value={true}>Use as default</Select.Option>
-                          <Select.Option value={false}>Secondary (manual pick)</Select.Option>
-                        </Select>
-                      </Form.Item>
-                    )}
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Divider style={{ margin: '4px 0 12px', fontSize: 12 }} orientation="left">Prefix</Divider>
+              <Divider style={{ margin: '10px 0 14px', fontSize: 12 }} orientation="left">Prefix</Divider>
               <Row gutter={12}>
                 <Col span={10}>
                   <Form.Item name="prefixMode" label="Mode" rules={[{ required: true }]}>
@@ -2752,32 +3550,103 @@ const viewItem = async (item) => {
                 <Col span={14}>
                   <Form.Item noStyle shouldUpdate={(p, c) => p.prefixMode !== c.prefixMode}>
                     {({ getFieldValue }) => getFieldValue('prefixMode') === 'static' ? (
-                      <Form.Item name="prefixStatic" label="Text" rules={[{ required: true, message: 'Enter a prefix' }]}>
-                        <Input placeholder="e.g. ITEM, TSHIRT, EL" maxLength={20} />
-                      </Form.Item>
+                      <>
+                        <Form.Item
+                          name="prefixStatic"
+                          label="Text"
+                          rules={[{ required: true, message: 'Enter a prefix' }]}
+                          style={{ marginBottom: 8 }}
+                        >
+                          <Input placeholder="e.g. ITEM or {BRAND}-{ITEM}-{SIZE}-{TYPE}-{SEQ}" maxLength={80} />
+                        </Form.Item>
+                        <div style={{ marginBottom: 6, fontSize: 12, color: '#6b7280' }}>Template tokens</div>
+                        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: 8 }}>
+                          {[
+                            '{BRAND}', '{ITEM}', '{VARIANT}', '{COLOR}', '{SIZE}', '{TYPE}', '{CATEGORY}',
+                            '{MANUFACTURER}', '{UNIT}', '{WAREHOUSE}', '{HSN}', '{MPN}', '{BARCODE}', '{DATE}', '{SEQ}'
+                          ].map((token) => (
+                            <Button key={token} size="small" onClick={() => insertSkuToken(token)}>
+                              {token}
+                            </Button>
+                          ))}
+                        </div>
+                      </>
                     ) : (
-                      <Row gutter={8}>
-                        <Col span={14}>
-                          <Form.Item name="prefixSource" label="Source" rules={[{ required: true }]}>
-                            <Select>
-                              <Select.Option value="category">Category name</Select.Option>
-                              <Select.Option value="brand">Brand name</Select.Option>
-                              <Select.Option value="name">Item name</Select.Option>
-                            </Select>
-                          </Form.Item>
-                        </Col>
-                        <Col span={10}>
-                          <Form.Item name="prefixLength" label="# chars">
-                            <InputNumber min={1} max={10} style={{ width: '100%' }} />
-                          </Form.Item>
-                        </Col>
-                      </Row>
+                      <Form.Item noStyle shouldUpdate={(p, c) =>
+                        p.prefixSources !== c.prefixSources || p.prefixSourceConfig !== c.prefixSourceConfig
+                      }>
+                        {({ getFieldValue }) => {
+                          const selected = Array.isArray(getFieldValue('prefixSources'))
+                            ? getFieldValue('prefixSources').filter(Boolean)
+                            : [];
+                          return (
+                            <>
+                              <Form.Item name="prefixSources" label="Source fields" rules={[{ required: true, message: 'Select at least one field' }]}>
+                                <Select
+                                  mode="multiple"
+                                  maxTagCount="responsive"
+                                  placeholder="Choose one or more fields"
+                                  options={DERIVED_SOURCE_OPTIONS}
+                                  onChange={(nextValues) => {
+                                    const prevValues = skuRuleForm.getFieldValue('prefixSources') || [];
+                                    const ordered = preserveSelectionOrder(prevValues, nextValues);
+                                    skuRuleForm.setFieldsValue({ prefixSources: ordered });
+                                  }}
+                                />
+                              </Form.Item>
+                              {selected.length > 0 && (
+                                <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 10, marginTop: -4, background: '#fcfcff' }}>
+                                  {selected.map((src) => (
+                                    <Row gutter={10} key={src} style={{ marginBottom: 10, padding: '8px 8px 2px', background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                                      <Col xs={24} sm={8}>
+                                        <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Field</div>
+                                        <div style={{ fontSize: 13, color: '#262626', textTransform: 'capitalize', fontWeight: 600 }}>
+                                          {DERIVED_SOURCE_LABELS[src] || src}
+                                        </div>
+                                      </Col>
+                                      <Col xs={12} sm={8}>
+                                        <Form.Item noStyle shouldUpdate={(p, c) =>
+                                          p?.prefixSourceConfig?.[src]?.mode !== c?.prefixSourceConfig?.[src]?.mode
+                                        }>
+                                          {({ getFieldValue }) => {
+                                            const mode = getFieldValue(['prefixSourceConfig', src, 'mode']) || 'abbr';
+                                            const disableLen = mode === 'abbr';
+                                            return (
+                                              <Form.Item
+                                                name={['prefixSourceConfig', src, 'len']}
+                                                label="Chars"
+                                                style={{ marginBottom: 0 }}
+                                                labelCol={{ style: { paddingBottom: 2 } }}
+                                                extra={disableLen ? 'Disabled for first letters' : undefined}
+                                              >
+                                                <InputNumber min={1} max={10} style={{ width: '100%' }} disabled={disableLen} />
+                                              </Form.Item>
+                                            );
+                                          }}
+                                        </Form.Item>
+                                      </Col>
+                                      <Col xs={12} sm={8}>
+                                        <Form.Item name={['prefixSourceConfig', src, 'mode']} label="Pick style" style={{ marginBottom: 0 }} labelCol={{ style: { paddingBottom: 2 } }}>
+                                          <Select>
+                                            <Select.Option value="abbr">First letters</Select.Option>
+                                            <Select.Option value="slice">First chars</Select.Option>
+                                          </Select>
+                                        </Form.Item>
+                                      </Col>
+                                    </Row>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          );
+                        }}
+                      </Form.Item>
                     )}
                   </Form.Item>
                 </Col>
               </Row>
 
-              <Form.Item name="separator" label="Separator">
+              <Form.Item name="separator" label="Separator" style={{ marginBottom: 10 }}>
                 <Select>
                   <Select.Option value="-">Dash (-)</Select.Option>
                   <Select.Option value="_">Underscore (_)</Select.Option>
@@ -2785,10 +3654,10 @@ const viewItem = async (item) => {
                 </Select>
               </Form.Item>
 
-              <Divider style={{ margin: '4px 0 12px', fontSize: 12 }} orientation="left">Date segment (optional)</Divider>
+              <Divider style={{ margin: '10px 0 14px', fontSize: 12 }} orientation="left">Date segment (optional)</Divider>
               <Row gutter={12}>
                 <Col span={10}>
-                  <Form.Item name="useDate" label="Include date">
+                  <Form.Item name="useDate" label="Include date" style={{ marginBottom: 10 }}>
                     <Select>
                       <Select.Option value={false}>No</Select.Option>
                       <Select.Option value={true}>Yes</Select.Option>
@@ -2811,7 +3680,7 @@ const viewItem = async (item) => {
                 </Col>
               </Row>
 
-              <Divider style={{ margin: '4px 0 12px', fontSize: 12 }} orientation="left">Counter</Divider>
+              <Divider style={{ margin: '10px 0 14px', fontSize: 12 }} orientation="left">Counter</Divider>
               <Row gutter={12}>
                 <Col span={8}>
                   <Form.Item name="useCounter" label="Include counter">
@@ -2823,7 +3692,7 @@ const viewItem = async (item) => {
                 </Col>
                 <Col span={8}>
                   <Form.Item name="counterStart" label="Start at">
-                    <InputNumber min={0} style={{ width: '100%' }} />
+                    <InputNumber min={1} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
                 <Col span={8}>

@@ -3,6 +3,79 @@ const itemActivityService = require('../inventory/itemActivity.service');
 const logger = require('../../utils/logger');
 
 class ItemController {
+  async getVariantLibrary(req, res) {
+    try {
+      const data = await itemService.listVariantLibrary(req.institutionId);
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Failed to fetch variant library', {
+        error: error.message,
+        institutionId: req.institutionId
+      });
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+
+  async saveVariantLibrary(req, res) {
+    try {
+      const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+      const affected = await itemService.saveVariantLibrary(req.institutionId, rows, req.user?.userId);
+      res.json({ success: true, message: 'Variant library saved', data: { affected } });
+    } catch (error) {
+      logger.error('Failed to save variant library', {
+        error: error.message,
+        institutionId: req.institutionId,
+        userId: req.user?.userId
+      });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async setVariantLibraryEntry(req, res) {
+    try {
+      const name = req.body?.name;
+      const values = req.body?.values;
+      await itemService.setVariantLibraryEntry(req.institutionId, name, values, req.user?.userId);
+      res.json({ success: true, message: 'Variant value saved' });
+    } catch (error) {
+      logger.error('Failed to set variant library entry', {
+        error: error.message,
+        institutionId: req.institutionId,
+        userId: req.user?.userId
+      });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async deleteVariantLibraryEntryValue(req, res) {
+    try {
+      const { name, value } = req.query;
+      await itemService.deleteVariantLibraryEntryValue(req.institutionId, name, value);
+      res.json({ success: true, message: 'Variant value deleted' });
+    } catch (error) {
+      logger.error('Failed to delete variant library value', {
+        error: error.message,
+        institutionId: req.institutionId
+      });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async checkSkuAvailability(req, res) {
+    try {
+      const sku = req.query.sku;
+      const excludeItemId = req.query.excludeItemId || null;
+      const result = await itemService.checkSkuAvailability(req.institutionId, sku, excludeItemId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      logger.error('Failed to check SKU availability', {
+        error: error.message,
+        institutionId: req.institutionId
+      });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
   async createItem(req, res) {
     try {
       const itemId = await itemService.createItem(

@@ -5,6 +5,86 @@ const itemFieldService = require('./itemField.service');
 const itemPriceHistoryService = require('./itemPriceHistory.service');
 
 class ItemService {
+  _normalizeVariantRows(rows = []) {
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map((row) => ({
+        key: String(row?.key || '').trim(),
+        combinationLabel: String(row?.combinationLabel || '').trim(),
+        attributes: row?.attributes && typeof row.attributes === 'object' ? row.attributes : {},
+        sku: String(row?.sku || '').trim(),
+        barcode: row?.barcode ? String(row.barcode).trim() : null,
+        costPrice: Number(row?.costPrice) || 0,
+        sellingPrice: Number(row?.sellingPrice) || 0,
+        openingStock: Number(row?.openingStock) || 0,
+        warehouseId: row?.warehouseId ? String(row.warehouseId).trim() : null,
+        active: row?.active !== false
+      }))
+      .filter((row) => row.key && row.combinationLabel);
+  }
+
+  async _syncItemVariants(institutionId, parentItemId, parentSku, customFields = {}) {
+    const rows = this._normalizeVariantRows(customFields?.variantMatrix);
+
+    await db.query(
+      'DELETE FROM item_variants WHERE institution_id = ? AND parent_item_id = ?',
+      [institutionId, parentItemId]
+    );
+
+    if (rows.length === 0) return 0;
+
+    const toAttrValue = (attrs, keys = []) => {
+      const entries = Object.entries(attrs || {});
+      const found = entries.find(([k]) => keys.includes(String(k || '').toLowerCase()));
+      return found ? String(found[1] || '').trim() || null : null;
+    };
+
+    for (let idx = 0; idx < rows.length; idx += 1) {
+      const row = rows[idx];
+      let sku = row.sku;
+      if (!sku) {
+        const seed = `${parentSku || 'VAR'}-${String(idx + 1).padStart(3, '0')}`;
+        sku = seed;
+      }
+
+      // Ensure unique SKU inside item_variants per institution.
+      let candidate = sku;
+      let suffix = 1;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const exists = await db.query(
+          'SELECT id FROM item_variants WHERE institution_id = ? AND sku = ? LIMIT 1',
+          [institutionId, candidate]
+        );
+        if (exists.length === 0) break;
+        suffix += 1;
+        candidate = `${sku}-${suffix}`;
+      }
+
+      await db.query(
+        `INSERT INTO item_variants
+         (id, institution_id, parent_item_id, variant_name, sku, barcode, cost_price, selling_price, color, size, variant_attributes, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          uuidv4(),
+          institutionId,
+          parentItemId,
+          row.combinationLabel,
+          candidate,
+          row.barcode,
+          row.costPrice,
+          row.sellingPrice,
+          toAttrValue(row.attributes, ['color', 'colour']),
+          toAttrValue(row.attributes, ['size']),
+          JSON.stringify(row.attributes || {}),
+          row.active ? 'active' : 'inactive'
+        ]
+      );
+    }
+
+    return rows.length;
+  }
+
   async createItem(institutionId, itemData, userId) {
     const {
       sku,
@@ -72,6 +152,10 @@ class ItemService {
        openingStock, openingValue, asOfDate || null]
     );
 
+    if (type === 'variant') {
+      await this._syncItemVariants(institutionId, itemId, sku, customFields || {});
+    }
+
     // Create initial inventory using inventory event flow so it appears in item transaction history.
     if (warehouseId && openingStock > 0) {
       const inventoryService = require('../inventory/inventory.service');
@@ -123,6 +207,7 @@ class ItemService {
       taxRate,
       brand,
       manufacturer,
+      itemGroup,
       minStockLevel,
       maxStockLevel,
       warehouseId,
@@ -218,6 +303,10 @@ class ItemService {
     if (manufacturer !== undefined) {
       updateFields.push('manufacturer = ?');
       updateValues.push(manufacturer);
+    }
+    if (itemGroup !== undefined) {
+      updateFields.push('item_group = ?');
+      updateValues.push(itemGroup);
     }
     if (minStockLevel !== undefined) {
       updateFields.push('min_stock_level = ?');
@@ -347,6 +436,23 @@ class ItemService {
       }
     }
 
+    if (type === 'variant' || (customFields && Object.prototype.hasOwnProperty.call(customFields, 'variantMatrix'))) {
+      const parentRow = await db.query(
+        'SELECT sku, type FROM items WHERE institution_id = ? AND id = ? LIMIT 1',
+        [institutionId, itemId]
+      );
+      const parentSku = parentRow?.[0]?.sku || sku || '';
+      const itemType = parentRow?.[0]?.type || type;
+      if (itemType === 'variant') {
+        await this._syncItemVariants(institutionId, itemId, parentSku, customFields || {});
+      } else {
+        await db.query(
+          'DELETE FROM item_variants WHERE institution_id = ? AND parent_item_id = ?',
+          [institutionId, itemId]
+        );
+      }
+    }
+
     logger.info('Item updated', { itemId, institutionId, userId });
     return itemId;
   }
@@ -387,6 +493,33 @@ class ItemService {
       try { return JSON.parse(val); } catch { return {}; }
     };
 
+    const variants = await db.query(
+      `SELECT id, parent_item_id, variant_name, sku, barcode, cost_price, selling_price, color, size, variant_attributes, status
+       FROM item_variants
+       WHERE institution_id = ? AND parent_item_id = ?
+       ORDER BY variant_name ASC`,
+      [institutionId, itemId]
+    );
+
+    const variant_rows = variants.map((row) => {
+      let attrs = {};
+      if (row.variant_attributes && typeof row.variant_attributes === 'object') attrs = row.variant_attributes;
+      else if (typeof row.variant_attributes === 'string') {
+        try { attrs = JSON.parse(row.variant_attributes || '{}'); } catch { attrs = {}; }
+      }
+      return {
+        id: row.id,
+        key: row.id,
+        combinationLabel: row.variant_name,
+        sku: row.sku,
+        barcode: row.barcode,
+        costPrice: Number(row.cost_price || 0),
+        sellingPrice: Number(row.selling_price || 0),
+        attributes: attrs,
+        active: row.status === 'active'
+      };
+    });
+
     return {
       ...item,
       brand: item.brand_name || item.brand,
@@ -394,7 +527,8 @@ class ItemService {
       unit: item.unit_name || item.unit,
       custom_fields: safeParseObj(item.custom_fields),
       dimensions: safeParse(item.dimensions),
-      warehouse_ids: item.warehouse_ids ? item.warehouse_ids.split(',') : []
+      warehouse_ids: item.warehouse_ids ? item.warehouse_ids.split(',') : [],
+      variant_rows
     };
   }
 
@@ -413,6 +547,207 @@ class ItemService {
       ...item,
       custom_fields: JSON.parse(item.custom_fields || '{}')
     };
+  }
+
+  async checkSkuAvailability(institutionId, sku, excludeItemId = null) {
+    const normalizedSku = String(sku || '').trim();
+    if (!normalizedSku) {
+      return { available: false, reason: 'SKU is required' };
+    }
+
+    const rows = await db.query(
+      `SELECT id
+       FROM items
+       WHERE institution_id = ? AND sku = ?
+         AND (? IS NULL OR id <> ?)
+       LIMIT 1`,
+      [institutionId, normalizedSku, excludeItemId, excludeItemId]
+    );
+
+    return {
+      available: rows.length === 0
+    };
+  }
+
+  async listVariantLibrary(institutionId) {
+    const rows = await db.query(
+      `SELECT id, name, values_json, usage_count, last_used_at
+       FROM variant_attribute_library
+       WHERE institution_id = ? AND status = 'active'
+       ORDER BY name ASC`,
+      [institutionId]
+    );
+
+    return rows.map((row) => {
+      let values = [];
+      if (Array.isArray(row.values_json)) {
+        values = row.values_json;
+      } else if (typeof row.values_json === 'string') {
+        try { values = JSON.parse(row.values_json || '[]'); } catch { values = []; }
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        values: Array.isArray(values) ? values : [],
+        usageCount: Number(row.usage_count || 0),
+        lastUsedAt: row.last_used_at || null
+      };
+    });
+  }
+
+  async saveVariantLibrary(institutionId, rows = [], userId) {
+    if (!Array.isArray(rows)) return 0;
+
+    const normalizeText = (value) => String(value || '').trim();
+    const normalizeValues = (values) => {
+      if (!Array.isArray(values)) return [];
+      const deduped = new Set(
+        values
+          .map((v) => normalizeText(v))
+          .filter(Boolean)
+      );
+      return Array.from(deduped);
+    };
+
+    let affected = 0;
+    for (const row of rows) {
+      const name = normalizeText(row?.name);
+      const values = normalizeValues(row?.values);
+      if (!name || values.length === 0) continue;
+
+      const existing = await db.query(
+        `SELECT id, values_json
+         FROM variant_attribute_library
+         WHERE institution_id = ? AND name = ?
+         LIMIT 1`,
+        [institutionId, name]
+      );
+
+      if (existing.length === 0) {
+        await db.query(
+          `INSERT INTO variant_attribute_library
+           (id, institution_id, name, values_json, usage_count, last_used_at, status, created_by)
+           VALUES (?, ?, ?, ?, 1, NOW(), 'active', ?)`,
+          [uuidv4(), institutionId, name, JSON.stringify(values), userId || null]
+        );
+      } else {
+        let currentValues = [];
+        const raw = existing[0].values_json;
+        if (Array.isArray(raw)) currentValues = raw;
+        else if (typeof raw === 'string') {
+          try { currentValues = JSON.parse(raw || '[]'); } catch { currentValues = []; }
+        }
+
+        const mergedValues = Array.from(new Set([
+          ...currentValues.map((v) => normalizeText(v)).filter(Boolean),
+          ...values
+        ]));
+
+        await db.query(
+          `UPDATE variant_attribute_library
+              SET values_json = ?,
+                  usage_count = usage_count + 1,
+                  last_used_at = NOW(),
+                  status = 'active',
+                  updated_at = NOW()
+            WHERE institution_id = ? AND name = ?`,
+          [JSON.stringify(mergedValues), institutionId, name]
+        );
+      }
+      affected += 1;
+    }
+
+    return affected;
+  }
+
+  async setVariantLibraryEntry(institutionId, name, values = [], userId = null) {
+    const normalizedName = String(name || '').trim();
+    const normalizedValues = Array.from(new Set(
+      (Array.isArray(values) ? values : [])
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+    ));
+    if (!normalizedName) throw new Error('Attribute name is required');
+    if (normalizedValues.length === 0) throw new Error('At least one value is required');
+
+    const existing = await db.query(
+      `SELECT id, values_json
+       FROM variant_attribute_library
+       WHERE institution_id = ? AND name = ?
+       LIMIT 1`,
+      [institutionId, normalizedName]
+    );
+
+    if (existing.length === 0) {
+      await db.query(
+        `INSERT INTO variant_attribute_library
+         (id, institution_id, name, values_json, usage_count, last_used_at, status, created_by)
+         VALUES (?, ?, ?, ?, 1, NOW(), 'active', ?)`,
+        [uuidv4(), institutionId, normalizedName, JSON.stringify(normalizedValues), userId]
+      );
+      return true;
+    }
+
+    await db.query(
+      `UPDATE variant_attribute_library
+          SET values_json = ?,
+              usage_count = usage_count + 1,
+              last_used_at = NOW(),
+              status = 'active',
+              updated_at = NOW()
+        WHERE institution_id = ? AND name = ?`,
+      [JSON.stringify(normalizedValues), institutionId, normalizedName]
+    );
+    return true;
+  }
+
+  async deleteVariantLibraryEntryValue(institutionId, name, value) {
+    const normalizedName = String(name || '').trim();
+    const normalizedValue = String(value || '').trim();
+    if (!normalizedName || !normalizedValue) {
+      throw new Error('Name and value are required');
+    }
+
+    const rows = await db.query(
+      `SELECT values_json
+       FROM variant_attribute_library
+       WHERE institution_id = ? AND name = ? AND status = 'active'
+       LIMIT 1`,
+      [institutionId, normalizedName]
+    );
+    if (rows.length === 0) return false;
+
+    let currentValues = [];
+    const raw = rows[0].values_json;
+    if (Array.isArray(raw)) currentValues = raw;
+    else if (typeof raw === 'string') {
+      try { currentValues = JSON.parse(raw || '[]'); } catch { currentValues = []; }
+    }
+
+    const filtered = currentValues
+      .map((v) => String(v || '').trim())
+      .filter((v) => v && v !== normalizedValue);
+
+    if (filtered.length === 0) {
+      await db.query(
+        `UPDATE variant_attribute_library
+            SET values_json = '[]',
+                status = 'inactive',
+                updated_at = NOW()
+          WHERE institution_id = ? AND name = ?`,
+        [institutionId, normalizedName]
+      );
+      return true;
+    }
+
+    await db.query(
+      `UPDATE variant_attribute_library
+          SET values_json = ?,
+              updated_at = NOW()
+        WHERE institution_id = ? AND name = ?`,
+      [JSON.stringify(Array.from(new Set(filtered))), institutionId, normalizedName]
+    );
+    return true;
   }
 
   async getItems(institutionId, filters = {}) {
