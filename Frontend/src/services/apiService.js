@@ -104,6 +104,9 @@ class ApiService {
         return response.data;
       },
       async (error) => {
+        const friendlyMessage = this.getFriendlyErrorMessage(error);
+        this.attachFriendlyError(error, friendlyMessage);
+
         if (error.response?.status === 401) {
           // Check if it's a session timeout error
           const isSessionTimeout = error.response?.data?.code === 'SESSION_TIMEOUT';
@@ -165,12 +168,54 @@ class ApiService {
           return Promise.reject({
             ...error,
             isPermissionError: true,
-            message: error.response?.data?.error || 'Access denied'
+            message: friendlyMessage || error.response?.data?.error || 'Access denied',
+            userMessage: friendlyMessage || error.response?.data?.error || 'Access denied'
           });
         }
         return Promise.reject(error);
       }
     );
+  }
+
+  attachFriendlyError(error, message) {
+    if (!error || !message) return;
+    error.userMessage = message;
+    error.message = message;
+    if (error.response?.data && typeof error.response.data === 'object') {
+      error.response.data.error = message;
+      error.response.data.message = message;
+    }
+  }
+
+  getFriendlyErrorMessage(error) {
+    const responseError = error?.response?.data?.error;
+    const responseMessage = error?.response?.data?.message;
+    const rawMessage = responseError || responseMessage || error?.message || '';
+    const raw = String(rawMessage || '').trim();
+    if (!raw) return 'Something went wrong. Please try again.';
+
+    const lower = raw.toLowerCase();
+    const status = error?.response?.status;
+
+    if (lower.includes('er_dup_entry') || lower.includes('duplicate entry')) {
+      if (lower.includes('sku')) return 'Duplicate SKU found. Please use a unique SKU.';
+      if (lower.includes('email')) return 'Duplicate email found. Please use a different email.';
+      if (lower.includes('code')) return 'Duplicate code found. Please use a unique code.';
+      if (lower.includes('name')) return 'Duplicate name found. Please use a unique name.';
+      return 'This record already exists. Please use unique details.';
+    }
+
+    if (lower.includes('already exists')) return raw;
+    if (lower.includes('cannot delete') && lower.includes('existing')) return raw;
+    if (lower.includes('validation failed')) return raw;
+
+    if (status === 400) return raw || 'Invalid request. Please check input and try again.';
+    if (status === 404) return raw || 'Requested resource was not found.';
+    if (status === 409) return raw || 'Conflict detected. Duplicate or conflicting data found.';
+    if (status === 422) return raw || 'Submitted data is invalid. Please review and resubmit.';
+    if (status >= 500) return 'Server error occurred. Please try again in a moment.';
+
+    return raw;
   }
 
   setAuthToken(token) {

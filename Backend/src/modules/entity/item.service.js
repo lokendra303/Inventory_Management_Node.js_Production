@@ -133,6 +133,23 @@ class ItemService {
       throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
     }
 
+    // Provide clear business error instead of raw DB duplicate key message.
+    const normalizedSku = String(sku || '').trim();
+    if (!normalizedSku) {
+      throw new Error('SKU is required');
+    }
+
+    const duplicateSkuRows = await db.query(
+      `SELECT id, name
+       FROM items
+       WHERE institution_id = ? AND sku = ?
+       LIMIT 1`,
+      [institutionId, normalizedSku]
+    );
+    if (duplicateSkuRows.length > 0) {
+      throw new Error(`Item with SKU "${normalizedSku}" already exists`);
+    }
+
     const itemId = uuidv4();
 
     await db.query(
@@ -144,7 +161,7 @@ class ItemService {
         shelf_life_days, storage_conditions, item_group, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [itemId, institutionId, userId, sku, name, description || null, image || null, type, category || null, unit, barcode || null, hsnCode || null,
+      [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, category || null, unit, barcode || null, hsnCode || null,
        JSON.stringify(customFields), defaultBinId || null, valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
@@ -153,7 +170,7 @@ class ItemService {
     );
 
     if (type === 'variant') {
-      await this._syncItemVariants(institutionId, itemId, sku, customFields || {});
+      await this._syncItemVariants(institutionId, itemId, normalizedSku, customFields || {});
     }
 
     // Create initial inventory using inventory event flow so it appears in item transaction history.
@@ -183,7 +200,7 @@ class ItemService {
       logger.warn('Opening stock provided without warehouse', { itemId, openingStock, institutionId });
     }
 
-    logger.info('Item created', { itemId, institutionId, sku, userId });
+    logger.info('Item created', { itemId, institutionId, sku: normalizedSku, userId });
     return itemId;
   }
 

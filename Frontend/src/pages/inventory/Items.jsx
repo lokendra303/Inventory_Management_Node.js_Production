@@ -772,7 +772,21 @@ const Items = () => {
       fetchItems();
     } catch (error) {
       console.error('Submit error:', error);
-      message.error(`Failed to ${editingItem ? 'update' : 'create'} item`);
+      const rawError =
+        error?.response?.data?.error ||
+        error?.message ||
+        '';
+      const normalizedError = String(rawError).toLowerCase();
+
+      let userMessage = rawError || `Failed to ${editingItem ? 'update' : 'create'} item`;
+
+      if (normalizedError.includes('duplicate') || normalizedError.includes('already exists')) {
+        userMessage = rawError || 'Duplicate item found. Please use a unique SKU.';
+      } else if (normalizedError.includes('er_dup_entry') || normalizedError.includes('unique_tenant_sku')) {
+        userMessage = 'Item with this SKU already exists. Please enter a unique SKU.';
+      }
+
+      message.error(userMessage);
     }
   };
 
