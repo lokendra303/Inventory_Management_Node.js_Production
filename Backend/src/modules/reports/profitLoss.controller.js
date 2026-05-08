@@ -1,6 +1,16 @@
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 
+async function safeSingleValue(query, params, field) {
+  try {
+    const rows = await db.query(query, params);
+    return Number(rows?.[0]?.[field] || 0);
+  } catch (error) {
+    logger.warn('P&L aggregate fallback to zero', { field, error: error.message });
+    return 0;
+  }
+}
+
 class ProfitLossController {
   async getProfitLoss(req, res) {
     try {
@@ -8,17 +18,17 @@ class ProfitLossController {
       const institutionId = req.institutionId;
 
       // Revenue from sales
-      const revenue = await db.query(`
+      const totalRevenue = await safeSingleValue(`
         SELECT COALESCE(SUM(sol.quantity_shipped * sol.unit_price), 0) as total_revenue
         FROM sales_order_lines sol
         JOIN sales_orders so ON sol.so_id = so.id
         WHERE so.institution_id = ? AND so.status = 'shipped'
         ${startDate ? 'AND so.order_date >= ?' : ''}
         ${endDate ? 'AND so.order_date <= ?' : ''}
-      `, [institutionId, startDate, endDate].filter(Boolean));
+      `, [institutionId, startDate, endDate].filter(Boolean), 'total_revenue');
 
       // Cost of Goods Sold
-      const cogs = await db.query(`
+      const totalCogs = await safeSingleValue(`
         SELECT COALESCE(SUM(sol.quantity_shipped * i.cost_price), 0) as total_cogs
         FROM sales_order_lines sol
         JOIN sales_orders so ON sol.so_id = so.id
@@ -26,43 +36,38 @@ class ProfitLossController {
         WHERE so.institution_id = ? AND so.status = 'shipped'
         ${startDate ? 'AND so.order_date >= ?' : ''}
         ${endDate ? 'AND so.order_date <= ?' : ''}
-      `, [institutionId, startDate, endDate].filter(Boolean));
+      `, [institutionId, startDate, endDate].filter(Boolean), 'total_cogs');
 
       // Purchase expenses
-      const purchases = await db.query(`
+      const totalPurchases = await safeSingleValue(`
         SELECT COALESCE(SUM(pol.quantity_received * pol.unit_cost), 0) as total_purchases
         FROM purchase_order_lines pol
         JOIN purchase_orders po ON pol.po_id = po.id
         WHERE po.institution_id = ? AND po.status IN ('received', 'partially_received')
         ${startDate ? 'AND po.order_date >= ?' : ''}
         ${endDate ? 'AND po.order_date <= ?' : ''}
-      `, [institutionId, startDate, endDate].filter(Boolean));
+      `, [institutionId, startDate, endDate].filter(Boolean), 'total_purchases');
 
       // Inventory losses (adjustments, transfers, damaged, expired)
-      const inventoryLosses = await db.query(`
+      const totalLosses = await safeSingleValue(`
         SELECT COALESCE(SUM(
           CASE 
-            WHEN es.event_data->>'$.adjustmentType' = 'decrease' THEN 
-              ABS(CAST(es.event_data->>'$.quantityChange' AS DECIMAL(10,2))) * i.cost_price
+            WHEN JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.adjustmentType')) = 'decrease' THEN 
+              ABS(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.quantityChange')), '') AS DECIMAL(10,2))) * i.cost_price
             WHEN es.event_type = 'TRANSFER_OUT' THEN 
-              CAST(es.event_data->>'$.quantity' AS DECIMAL(10,2)) * i.cost_price
+              CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.quantity')), '') AS DECIMAL(10,2)) * i.cost_price
             ELSE 0
           END
         ), 0) as total_losses
         FROM event_store es
-        JOIN items i ON es.event_data->>'$.itemId' = i.id
+        JOIN items i ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = i.id
         WHERE es.institution_id = ? 
           AND es.aggregate_type = 'inventory'
           AND (es.event_type IN ('STOCK_ADJUSTED', 'TRANSFER_OUT') 
-               OR (es.event_type = 'STOCK_ADJUSTED' AND es.event_data->>'$.adjustmentType' = 'decrease'))
+               OR (es.event_type = 'STOCK_ADJUSTED' AND JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.adjustmentType')) = 'decrease'))
         ${startDate ? 'AND DATE(es.created_at) >= ?' : ''}
         ${endDate ? 'AND DATE(es.created_at) <= ?' : ''}
-      `, [institutionId, startDate, endDate].filter(Boolean));
-
-      const totalRevenue = revenue[0]?.total_revenue || 0;
-      const totalCogs = cogs[0]?.total_cogs || 0;
-      const totalPurchases = purchases[0]?.total_purchases || 0;
-      const totalLosses = inventoryLosses[0]?.total_losses || 0;
+      `, [institutionId, startDate, endDate].filter(Boolean), 'total_losses');
       const grossProfit = totalRevenue - totalCogs;
       const netProfit = grossProfit - totalLosses; // Subtract inventory losses
 

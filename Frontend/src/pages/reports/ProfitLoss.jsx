@@ -24,14 +24,43 @@ const ProfitLoss = () => {
       if (start) params.append('startDate', start);
       if (end)   params.append('endDate', end);
 
-      const [plRes, detailsRes] = await Promise.all([
+      const [plResResult, detailsResResult] = await Promise.allSettled([
         apiService.get(`/profit-loss?${params}`),
         apiService.get(`/profit-loss/details?${params}`)
       ]);
 
-      if (plRes.success)      setPLData(plRes.data);
-      if (detailsRes.success) setSalesDetails(detailsRes.data.sales);
+      const plRes = plResResult.status === 'fulfilled' ? plResResult.value : null;
+      const detailsRes = detailsResResult.status === 'fulfilled' ? detailsResResult.value : null;
+
+      const plLoaded = !!plRes?.success;
+      const detailsLoaded = !!detailsRes?.success;
+
+      if (plLoaded) {
+        setPLData(plRes.data || {
+          revenue: 0, cogs: 0, grossProfit: 0, netProfit: 0, purchases: 0, inventoryLosses: 0
+        });
+      } else {
+        setPLData({
+          revenue: 0, cogs: 0, grossProfit: 0, netProfit: 0, purchases: 0, inventoryLosses: 0
+        });
+      }
+
+      if (detailsLoaded) {
+        setSalesDetails(Array.isArray(detailsRes?.data?.sales) ? detailsRes.data.sales : []);
+      } else {
+        setSalesDetails([]);
+      }
+
+      if (!plLoaded && !detailsLoaded) {
+        message.error('Failed to fetch P&L data');
+      } else if (!detailsLoaded) {
+        message.warning('P&L summary loaded, but sales detail rows are unavailable right now.');
+      }
     } catch {
+      setPLData({
+        revenue: 0, cogs: 0, grossProfit: 0, netProfit: 0, purchases: 0, inventoryLosses: 0
+      });
+      setSalesDetails([]);
       message.error('Failed to fetch P&L data');
     } finally {
       setLoading(false);
