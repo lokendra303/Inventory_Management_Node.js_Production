@@ -9,6 +9,7 @@ export const usePermissions = () => {
   
   const hasPermission = (permission) => {
     if (!user?.permissions) return false;
+    if (user?.role === 'admin' || user?.role === 'super_admin') return true;
     return user.permissions.all || user.permissions[permission];
   };
 

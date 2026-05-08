@@ -16,6 +16,87 @@ class AuthService {
     return value === undefined ? null : value;
   }
 
+  _parsePermissions(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+      } catch (_) {
+        return {};
+      }
+    }
+    return {};
+  }
+
+  _parseWarehouseAccess(raw) {
+    if (raw == null || raw === '') return [];
+    if (Array.isArray(raw)) return raw.map((v) => String(v)).filter(Boolean);
+
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed) return [];
+
+      if (trimmed.startsWith('[') || trimmed.startsWith('"')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) return parsed.map((v) => String(v)).filter(Boolean);
+          if (typeof parsed === 'string' && parsed) return [parsed];
+        } catch (_) {
+          // fall through to plain parsing
+        }
+      }
+
+      if (trimmed.includes(',')) {
+        return trimmed.split(',').map((v) => v.trim()).filter(Boolean);
+      }
+      return [trimmed];
+    }
+
+    return [];
+  }
+
+  async _resolveEffectivePermissions(user) {
+    if (!user) return {};
+    if (user.role === 'admin' || user.role === 'super_admin') {
+      return { all: true };
+    }
+
+    const directPermissions = this._parsePermissions(user.permissions);
+    if (Object.keys(directPermissions).length > 0) {
+      return directPermissions;
+    }
+
+    // Fallback to custom role permissions table when user-level permissions are empty.
+    if (user.institution_id && user.role) {
+      try {
+        const roleRows = await db.query(
+          `SELECT permissions
+             FROM roles
+            WHERE institution_id = ? AND name = ? AND status = 'active'
+            LIMIT 1`,
+          [user.institution_id, user.role]
+        );
+        if (roleRows.length > 0) {
+          const rolePermissions = this._parsePermissions(roleRows[0].permissions);
+          if (Object.keys(rolePermissions).length > 0) {
+            return rolePermissions;
+          }
+        }
+      } catch (error) {
+        logger.warn('Could not resolve role-based permissions', {
+          userId: user.id,
+          institutionId: user.institution_id,
+          role: user.role,
+          error: error.message
+        });
+      }
+    }
+
+    return ROLE_PERMISSIONS[user.role] || {};
+  }
+
   // Create new institution (replaces createinstitution)
   async createInstitution(institutionData) {
     const { 
@@ -142,14 +223,16 @@ class AuthService {
 
     await db.query('UPDATE institution_users SET last_login = NOW() WHERE id = ?', [user.id]);
 
+    const effectivePermissions = await this._resolveEffectivePermissions(user);
+
     const token = jwt.sign(
       {
         userId: user.id,
         institutionId: user.institution_id,
         email: user.email,
         role: user.role,
-        permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || [],
+        permissions: effectivePermissions,
+        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
         sessionTimestamp: Date.now()
       },
       config.jwt.secret,
@@ -167,8 +250,8 @@ class AuthService {
         firstName: user.first_name,
         lastName: user.last_name,
         role: user.role,
-        permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || []
+        permissions: effectivePermissions,
+        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access)
       }
     };
   }
@@ -306,6 +389,8 @@ class AuthService {
       [user.id]
     );
 
+    const effectivePermissions = await this._resolveEffectivePermissions(user);
+
     // Generate JWT token with session timestamp
     const sessionTimestamp = Date.now();
     const token = jwt.sign(
@@ -314,8 +399,8 @@ class AuthService {
         institutionId: user.institution_id,
         email: user.email,
         role: user.role,
-        permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || [],
+        permissions: effectivePermissions,
+        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
         sessionTimestamp
       },
       config.jwt.secret,
@@ -334,8 +419,8 @@ class AuthService {
         firstName: user.first_name,
         lastName: user.last_name,
         role: user.role,
-        permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || []
+        permissions: effectivePermissions,
+        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access)
       }
     };
   }
@@ -357,7 +442,15 @@ class AuthService {
         throw new Error('Invalid token');
       }
 
-      return decoded;
+      const user = users[0];
+      const effectivePermissions = await this._resolveEffectivePermissions(user);
+
+      return {
+        ...decoded,
+        role: user.role,
+        permissions: effectivePermissions,
+        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access)
+      };
     } catch (error) {
       throw new Error('Invalid token');
     }
@@ -397,14 +490,16 @@ class AuthService {
 
       const user = users[0];
       const sessionTimestamp = Date.now();
+      const effectivePermissions = await this._resolveEffectivePermissions(user);
+
       const newToken = jwt.sign(
         {
           userId: user.id,
           institutionId: user.institution_id,
           email: user.email,
           role: user.role,
-          permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-          warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || [],
+          permissions: effectivePermissions,
+          warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
           sessionTimestamp
         },
         config.jwt.secret,
@@ -420,8 +515,8 @@ class AuthService {
           firstName: user.first_name,
           lastName: user.last_name,
           role: user.role,
-          permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-          warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || []
+          permissions: effectivePermissions,
+          warehouseAccess: this._parseWarehouseAccess(user.warehouse_access)
         }
       };
     } catch (error) {
@@ -783,7 +878,7 @@ class AuthService {
         email: user.email,
         role: user.role,
         permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-        warehouseAccess: typeof user.warehouse_access === 'string' ? JSON.parse(user.warehouse_access || '[]') : user.warehouse_access || [],
+        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
         sessionTimestamp
       },
       config.jwt.secret,

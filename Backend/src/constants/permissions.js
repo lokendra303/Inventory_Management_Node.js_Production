@@ -9,6 +9,7 @@ const PERMISSIONS = {
   
   // User Management
   USER_MANAGEMENT: 'user_management',
+  API_KEY_MANAGEMENT: 'api_key_management',
   
   // Inventory Operations
   INVENTORY_VIEW: 'inventory_view',
@@ -51,7 +52,10 @@ const PERMISSIONS = {
   
   // Customer Management
   CUSTOMER_VIEW: 'customer_view',
-  CUSTOMER_MANAGEMENT: 'customer_management'
+  CUSTOMER_MANAGEMENT: 'customer_management',
+
+  // Audit
+  AUDIT_VIEW: 'audit_view'
 };
 
 /**
@@ -96,7 +100,8 @@ const ROLE_PERMISSIONS = {
     [PERMISSIONS.VENDOR_VIEW]: true,
     [PERMISSIONS.VENDOR_MANAGEMENT]: true,
     [PERMISSIONS.CUSTOMER_VIEW]: true,
-    [PERMISSIONS.CUSTOMER_MANAGEMENT]: true
+    [PERMISSIONS.CUSTOMER_MANAGEMENT]: true,
+    [PERMISSIONS.AUDIT_VIEW]: true
   },
   
   user: {
@@ -110,7 +115,8 @@ const ROLE_PERMISSIONS = {
     [PERMISSIONS.SALES_VIEW]: true,
     [PERMISSIONS.INVOICE_VIEW]: true,
     [PERMISSIONS.VENDOR_VIEW]: true,
-    [PERMISSIONS.CUSTOMER_VIEW]: true
+    [PERMISSIONS.CUSTOMER_VIEW]: true,
+    [PERMISSIONS.AUDIT_VIEW]: true
   }
 };
 
@@ -120,7 +126,10 @@ const ROLE_PERMISSIONS = {
 const PERMISSION_GROUPS = {
   'All Permissions (Admin)': [PERMISSIONS.ALL],
   
-  'User Management': [PERMISSIONS.USER_MANAGEMENT],
+  'User Management': [
+    PERMISSIONS.USER_MANAGEMENT,
+    PERMISSIONS.API_KEY_MANAGEMENT
+  ],
   
   'Inventory Operations': [
     PERMISSIONS.INVENTORY_VIEW,
@@ -166,7 +175,9 @@ const PERMISSION_GROUPS = {
   'Invoice Management': [
     PERMISSIONS.INVOICE_VIEW,
     PERMISSIONS.INVOICE_MANAGEMENT
-  ]
+  ],
+
+  'Audit': [PERMISSIONS.AUDIT_VIEW]
 };
 
 module.exports = {

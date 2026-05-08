@@ -10,6 +10,33 @@ function hasWarehouseAccess(req, warehouseId) {
 }
 
 class WarehouseController {
+  async getAccessibleWarehouses(req, res) {
+    try {
+      const warehouses = await warehouseService.getUserWarehouses(req.institutionId, req.user.userId);
+      const data = (warehouses || []).map((w) => ({
+        id: w.id,
+        name: w.name,
+        code: w.code,
+        status: w.status
+      }));
+
+      res.json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      logger.error('Failed to get accessible warehouses', {
+        error: error.message,
+        institutionId: req.institutionId,
+        userId: req.user?.userId
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
   async createWarehouse(req, res) {
     try {
       const warehouseId = await warehouseService.createWarehouse(

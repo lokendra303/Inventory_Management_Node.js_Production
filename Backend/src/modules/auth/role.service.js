@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const { ROLE_PERMISSIONS } = require('../../constants/permissions');
 
 class RoleService {
   async createRole(institutionId, name, permissions) {
@@ -102,28 +103,7 @@ class RoleService {
       
       if (existing.length === 0) {
         // Create system role first
-        const defaultPermissions = roleId === 'manager' ? {
-          inventory_view: true, 
-          inventory_receive: true, 
-          inventory_adjust: true, 
-          item_management: true, 
-          item_view: true,
-          warehouse_management: true, 
-          warehouse_view: true,
-          category_management: true,
-          category_view: true,
-          purchase_management: true,
-          purchase_view: true,
-          sales_management: true,
-          sales_view: true
-        } : {
-          inventory_view: true, 
-          item_view: true, 
-          warehouse_view: true,
-          category_view: true,
-          purchase_view: true,
-          sales_view: true
-        };
+        const defaultPermissions = ROLE_PERMISSIONS[roleId] || {};
         
         await db.query(
           'INSERT INTO roles (id, institution_id, name, permissions, status, created_at) VALUES (?, ?, ?, ?, \'active\', NOW())',

@@ -1,6 +1,7 @@
 const moduleRegistry = [
   { path: '/users', router: require('../../modules/auth/user.routes') },
   { path: '/roles', router: require('../../modules/auth/role.routes') },
+  { path: '/service-accounts', router: require('../../modules/auth/serviceAccount.routes') },
   { path: '/items', router: require('../../modules/entity/item.routes') },
   { path: '/manufacturers', router: require('../../modules/entity/manufacturer.routes') },
   { path: '/brands', router: require('../../modules/entity/brand.routes') },

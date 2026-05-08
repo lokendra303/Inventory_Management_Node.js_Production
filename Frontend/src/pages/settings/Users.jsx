@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, Tag, message, Tabs, Checkbox, Typography, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, SettingOutlined, KeyOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
+import { useLocation } from 'react-router-dom';
 
 const { TabPane } = Tabs;
 const { Text, Paragraph } = Typography;
 
 const Users = () => {
   const { user: currentUser, fetchProfile } = useAuth();
+  const location = useLocation();
   const [users, setUsers] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -23,16 +25,18 @@ const Users = () => {
   const [form] = Form.useForm();
   const [roleForm] = Form.useForm();
   const [tempAccessForm] = Form.useForm();
-
+  const fallbackRoleOptions = ['admin', 'manager', 'user'];
   const availablePermissions = [
     { key: 'all', label: 'All Permissions (Admin)' },
     { key: 'user_management', label: 'User Management' },
+    { key: 'api_key_management', label: 'API Key Management' },
     { key: 'inventory_view', label: 'View Inventory' },
     { key: 'inventory_receive', label: 'Receive Stock' },
     { key: 'inventory_reserve', label: 'Reserve Stock' },
     { key: 'inventory_ship', label: 'Ship Stock' },
     { key: 'inventory_adjust', label: 'Adjust Stock' },
     { key: 'inventory_transfer', label: 'Transfer Stock' },
+    { key: 'inventory_management', label: 'Manage Inventory Controls' },
     { key: 'item_view', label: 'View Items' },
     { key: 'item_management', label: 'Manage Items' },
     { key: 'warehouse_view', label: 'View Warehouses' },
@@ -44,8 +48,37 @@ const Users = () => {
     { key: 'purchase_view', label: 'View Purchase Orders' },
     { key: 'purchase_management', label: 'Manage Purchase Orders' },
     { key: 'sales_view', label: 'View Sales Orders' },
-    { key: 'sales_management', label: 'Manage Sales Orders' }
+    { key: 'sales_management', label: 'Manage Sales Orders' },
+    { key: 'invoice_view', label: 'View Invoices' },
+    { key: 'invoice_management', label: 'Manage Invoices' },
+    { key: 'vendor_view', label: 'View Vendors' },
+    { key: 'vendor_management', label: 'Manage Vendors' },
+    { key: 'customer_view', label: 'View Customers' },
+    { key: 'customer_management', label: 'Manage Customers' },
+    { key: 'audit_view', label: 'View Audit Trail' }
   ];
+
+  const roleOptions = useMemo(() => {
+    const fromApi = Array.isArray(roles) ? roles.map((role) => role?.name).filter(Boolean) : [];
+    if (fromApi.length > 0) return fromApi;
+    return fallbackRoleOptions;
+  }, [roles]);
+  const allPermissionKeys = useMemo(
+    () => availablePermissions.map((perm) => perm.key),
+    []
+  );
+  const selectedRolePermissions = Form.useWatch('permissions', roleForm) || [];
+  const isAllPermissionsSelected =
+    allPermissionKeys.length > 0 &&
+    allPermissionKeys.every((permKey) => selectedRolePermissions.includes(permKey));
+
+  const defaultTabKey = location.pathname === '/roles' ? 'roles' : 'users';
+  const hasPermission = (permission) => {
+    if (!currentUser?.permissions) return false;
+    if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') return true;
+    return currentUser.permissions.all || currentUser.permissions[permission];
+  };
+  const canManageUsers = hasPermission('user_management');
 
   const columns = [
     { 
@@ -99,30 +132,36 @@ const Users = () => {
       width: 250,
       render: (_, record) => (
         <Space size="small">
-          <Button 
-            icon={<EditOutlined />} 
-            size="small"
-            onClick={() => editUser(record)}
-          >
-            Edit
-          </Button>
-          <Button 
-            size="small"
-            type={record.status === 'active' ? 'default' : 'primary'}
-            onClick={() => toggleUserStatus(record)}
-            disabled={record.role === 'admin' && record.status === 'active'}
-          >
-            {record.status === 'active' ? 'Deactivate' : 'Activate'}
-          </Button>
-          <Button 
-            icon={<KeyOutlined />}
-            size="small"
-            onClick={() => generateTempAccess(record)}
-            disabled={record.role === 'admin'}
-            type="dashed"
-          >
-            Access
-          </Button>
+          {canManageUsers && (
+            <Button 
+              icon={<EditOutlined />} 
+              size="small"
+              onClick={() => editUser(record)}
+            >
+              Edit
+            </Button>
+          )}
+          {canManageUsers && (
+            <Button 
+              size="small"
+              type={record.status === 'active' ? 'default' : 'primary'}
+              onClick={() => toggleUserStatus(record)}
+              disabled={record.role === 'admin' && record.status === 'active'}
+            >
+              {record.status === 'active' ? 'Deactivate' : 'Activate'}
+            </Button>
+          )}
+          {canManageUsers && (
+            <Button 
+              icon={<KeyOutlined />}
+              size="small"
+              onClick={() => generateTempAccess(record)}
+              disabled={record.role === 'admin'}
+              type="dashed"
+            >
+              Access
+            </Button>
+          )}
         </Space>
       )
     }
@@ -350,17 +389,19 @@ const Users = () => {
     <div style={{ padding: '24px' }}>
       <h1>User & Role Management</h1>
       
-      <Tabs defaultActiveKey="users">
+      <Tabs defaultActiveKey={defaultTabKey}>
         <TabPane tab="Users" key="users">
           <Card>
             <Space style={{ marginBottom: 16 }}>
-              <Button 
-                type="primary" 
-                icon={<PlusOutlined />}
-                onClick={openCreateModal}
-              >
-                Add User
-              </Button>
+              {canManageUsers && (
+                <Button 
+                  type="primary" 
+                  icon={<PlusOutlined />}
+                  onClick={openCreateModal}
+                >
+                  Add User
+                </Button>
+              )}
             </Space>
             <Table 
               columns={columns} 
@@ -381,13 +422,15 @@ const Users = () => {
         <TabPane tab="Roles" key="roles">
           <Card>
             <Space style={{ marginBottom: 16 }}>
-              <Button 
-                type="primary" 
-                icon={<PlusOutlined />}
-                onClick={() => setRoleModalVisible(true)}
-              >
-                Create Role
-              </Button>
+              {canManageUsers && (
+                <Button 
+                  type="primary" 
+                  icon={<PlusOutlined />}
+                  onClick={() => setRoleModalVisible(true)}
+                >
+                  Create Role
+                </Button>
+              )}
             </Space>
             <Table 
               columns={[
@@ -417,7 +460,7 @@ const Users = () => {
                         icon={<EditOutlined />} 
                         size="small"
                         onClick={() => editRole(record)}
-                        disabled={record.name === 'admin'}
+                        disabled={!canManageUsers || record.name === 'admin'}
                       >
                         Edit
                       </Button>
@@ -426,6 +469,7 @@ const Users = () => {
                           type={record.status === 'active' ? 'default' : 'primary'}
                           size="small"
                           onClick={() => toggleRoleStatus(record)}
+                          disabled={!canManageUsers}
                         >
                           {record.status === 'active' ? 'Disable' : 'Enable'}
                         </Button>
@@ -451,6 +495,14 @@ const Users = () => {
         }}
         footer={null}
       >
+        {!canManageUsers ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Permission required"
+            description="You do not have permission to manage users."
+          />
+        ) : (
         <Form
           form={form}
           layout="vertical"
@@ -504,9 +556,9 @@ const Users = () => {
             rules={[{ required: true, message: 'Please select role!' }]}
           >
             <Select placeholder="Select role">
-              {roles.map(role => (
-                <Select.Option key={role.name} value={role.name}>
-                  {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+              {roleOptions.map((roleName) => (
+                <Select.Option key={roleName} value={roleName}>
+                  {roleName.charAt(0).toUpperCase() + roleName.slice(1)}
                 </Select.Option>
               ))}
             </Select>
@@ -541,6 +593,7 @@ const Users = () => {
             </Space>
           </Form.Item>
         </Form>
+        )}
       </Modal>
 
       {/* Role Management Modal */}
@@ -555,6 +608,14 @@ const Users = () => {
         footer={null}
         width={800}
       >
+        {!canManageUsers ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Permission required"
+            description="You do not have permission to manage roles."
+          />
+        ) : (
         <Form
           form={roleForm}
           layout="vertical"
@@ -568,58 +629,75 @@ const Users = () => {
             <Input placeholder="Enter role name" disabled={editingRole?.name === 'admin'} />
           </Form.Item>
           
-          <Form.Item
-            name="permissions"
-            label="Permissions"
-            rules={[{ required: true, message: 'Please select permissions!' }]}
-          >
-            <Checkbox.Group style={{ width: '100%' }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '12px',
-                padding: '16px',
-                backgroundColor: '#f8f9fa',
-                borderRadius: '8px',
-                border: '1px solid #e9ecef',
-                maxHeight: '400px',
-                overflowY: 'auto'
-              }}>
-                {availablePermissions.map(perm => (
-                  <div key={perm.key} style={{
-                    padding: '12px 16px',
-                    backgroundColor: 'white',
-                    borderRadius: '8px',
-                    border: '1px solid #e1e5e9',
-                    transition: 'all 0.2s ease',
-                    cursor: 'pointer',
-                    ':hover': {
-                      borderColor: '#1890ff',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                    }
-                  }}>
-                    <Checkbox value={perm.key} style={{ width: '100%' }}>
-                      <div style={{ marginLeft: '8px' }}>
-                        <div style={{ 
-                          fontSize: '14px', 
-                          fontWeight: '600',
-                          color: '#262626',
-                          marginBottom: '2px'
-                        }}>
-                          {perm.label}
+          <Form.Item label="Permissions" required>
+            <Space style={{ marginBottom: 12 }}>
+              <Button
+                size="small"
+                type={isAllPermissionsSelected ? 'default' : 'primary'}
+                onClick={() => roleForm.setFieldsValue({ permissions: allPermissionKeys })}
+              >
+                Select All
+              </Button>
+              <Button
+                size="small"
+                onClick={() => roleForm.setFieldsValue({ permissions: [] })}
+              >
+                Clear All
+              </Button>
+            </Space>
+            <Form.Item
+              name="permissions"
+              rules={[{ required: true, message: 'Please select permissions!' }]}
+              style={{ marginBottom: 0 }}
+            >
+              <Checkbox.Group style={{ width: '100%' }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '12px',
+                  padding: '16px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px',
+                  border: '1px solid #e9ecef',
+                  maxHeight: '400px',
+                  overflowY: 'auto'
+                }}>
+                  {availablePermissions.map(perm => (
+                    <div key={perm.key} style={{
+                      padding: '12px 16px',
+                      backgroundColor: 'white',
+                      borderRadius: '8px',
+                      border: '1px solid #e1e5e9',
+                      transition: 'all 0.2s ease',
+                      cursor: 'pointer',
+                      ':hover': {
+                        borderColor: '#1890ff',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      }
+                    }}>
+                      <Checkbox value={perm.key} style={{ width: '100%' }}>
+                        <div style={{ marginLeft: '8px' }}>
+                          <div style={{ 
+                            fontSize: '14px', 
+                            fontWeight: '600',
+                            color: '#262626',
+                            marginBottom: '2px'
+                          }}>
+                            {perm.label}
+                          </div>
+                          <div style={{
+                            fontSize: '12px',
+                            color: '#8c8c8c'
+                          }}>
+                            {perm.key}
+                          </div>
                         </div>
-                        <div style={{
-                          fontSize: '12px',
-                          color: '#8c8c8c'
-                        }}>
-                          {perm.key}
-                        </div>
-                      </div>
-                    </Checkbox>
-                  </div>
-                ))}
-              </div>
-            </Checkbox.Group>
+                      </Checkbox>
+                    </div>
+                  ))}
+                </div>
+              </Checkbox.Group>
+            </Form.Item>
           </Form.Item>
           
           <Form.Item>
@@ -637,6 +715,7 @@ const Users = () => {
             </Space>
           </Form.Item>
         </Form>
+        )}
       </Modal>
 
       {/* Temporary Access Modal */}
@@ -652,7 +731,14 @@ const Users = () => {
         footer={null}
         width={600}
       >
-        {!tempAccessData ? (
+        {!canManageUsers ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Permission required"
+            description="You do not have permission to generate temporary access."
+          />
+        ) : !tempAccessData ? (
           <Form
             form={tempAccessForm}
             layout="vertical"

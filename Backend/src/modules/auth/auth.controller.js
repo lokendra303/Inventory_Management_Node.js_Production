@@ -315,6 +315,56 @@ class AuthController {
         });
       }
 
+      const parsePermissions = (raw) => {
+        if (!raw) return {};
+        if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+        if (typeof raw === 'string') {
+          try {
+            const parsed = JSON.parse(raw || '{}');
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+          } catch (_) {
+            return {};
+          }
+        }
+        return {};
+      };
+
+      // Keep profile permissions aligned with auth token permission resolution.
+      let effectivePermissions = {};
+      if (userProfile.role === 'admin' || userProfile.role === 'super_admin') {
+        effectivePermissions = { all: true };
+      } else {
+        const directPermissions = parsePermissions(userProfile.permissions);
+        if (Object.keys(directPermissions).length > 0) {
+          effectivePermissions = directPermissions;
+        } else {
+          try {
+            const roleRows = await db.query(
+              `SELECT permissions
+                 FROM roles
+                WHERE institution_id = ? AND name = ? AND status = 'active'
+                LIMIT 1`,
+              [req.institutionId, userProfile.role]
+            );
+            if (roleRows.length > 0) {
+              effectivePermissions = parsePermissions(roleRows[0].permissions);
+            }
+          } catch (error) {
+            logger.warn('Failed to resolve role permissions in profile', {
+              userId: req.user.userId,
+              institutionId: req.institutionId,
+              role: userProfile.role,
+              error: error.message
+            });
+          }
+
+          if (!effectivePermissions || Object.keys(effectivePermissions).length === 0) {
+            const { ROLE_PERMISSIONS } = require('../../constants/permissions');
+            effectivePermissions = ROLE_PERMISSIONS[userProfile.role] || {};
+          }
+        }
+      }
+
       res.json({
         success: true,
         data: {
@@ -329,7 +379,7 @@ class AuthController {
           department: userProfile.department,
           designation: userProfile.designation,
           employeeId: userProfile.employee_id,
-          permissions: typeof userProfile.permissions === 'string' ? JSON.parse(userProfile.permissions || '{}') : userProfile.permissions || {}
+          permissions: effectivePermissions
         }
       });
     } catch (error) {

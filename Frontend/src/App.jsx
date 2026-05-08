@@ -100,19 +100,19 @@ const ProtectedItems = withPermission('item_view')(Items);
 const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
 const ProtectedWarehouseLocations = withPermission('warehouse_view')(WarehouseLocations);
 const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(InventoryAdjustments);
-const ProtectedInventoryShipments = withPermission('inventory_shipment')(Shipments);
-const ProtectedPutaways = withPermission('inventory_putaway')(Putaways);
+const ProtectedInventoryShipments = withPermission('inventory_ship')(Shipments);
+const ProtectedPutaways = withPermission('inventory_receive')(Putaways);
 const ProtectedMoveOrders = withPermission('inventory_transfer')(MoveOrders);
 const ProtectedPurchaseOrders = withPermission('purchase_view')(PurchaseOrders);
 const ProtectedSalesOrders = withPermission('sales_view')(SalesOrders);
 const ProtectedUsers = withPermission('user_management')(Users);
-const ProtectedVendors = withPermission('purchase_view')(Vendors);
-const ProtectedNewVendor = withPermission('purchase_view')(NewVendor);
-const ProtectedViewVendor = withPermission('purchase_view')(ViewVendor);
+const ProtectedVendors = withPermission(null, ['vendor_view', 'vendor_management'])(Vendors);
+const ProtectedNewVendor = withPermission('vendor_management')(NewVendor);
+const ProtectedViewVendor = withPermission(null, ['vendor_view', 'vendor_management'])(ViewVendor);
 const ProtectedEditVendor = withPermission('vendor_management')(EditVendor);
-const ProtectedCustomers = withPermission('sales_view')(Customers);
-const ProtectedNewCustomer = withPermission('sales_view')(NewCustomer);
-const ProtectedViewCustomer = withPermission('sales_view')(ViewCustomer);
+const ProtectedCustomers = withPermission(null, ['customer_view', 'customer_management'])(Customers);
+const ProtectedNewCustomer = withPermission('customer_management')(NewCustomer);
+const ProtectedViewCustomer = withPermission(null, ['customer_view', 'customer_management'])(ViewCustomer);
 const ProtectedEditCustomer = withPermission('customer_management')(EditCustomer);
 const ProtectedInvoiceDashboard = withPermission('invoice_view')(InvoiceDashboard);
 const ProtectedPurchaseInvoices = withPermission('invoice_view')(PurchaseInvoices);
@@ -123,6 +123,8 @@ const ProtectedBatchTracking = withPermission('inventory_view')(BatchTracking);
 const ProtectedPurchaseReturns = withPermission('purchase_view')(PurchaseReturns);
 const ProtectedAccounting = withPermission('invoice_view')(Accounting);
 const ProtectedAuditDashboard = withPermission('audit_view')(AuditDashboard);
+const ProtectedReports = withPermission(null, ['inventory_view', 'sales_view', 'purchase_view', 'invoice_view'])(Reports);
+const ProtectedProfitLoss = withPermission('inventory_view')(ProfitLoss);
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -203,9 +205,10 @@ function AppContent() {
             <Route path="/purchase-orders" element={<ProtectedPurchaseOrders />} />
             <Route path="/sales-orders" element={<ProtectedSalesOrders />} />
             <Route path="/users" element={<ProtectedUsers />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/reports/*" element={<Reports />} />
-            <Route path="/profit-loss" element={<ProfitLoss />} />
+            <Route path="/roles" element={<ProtectedUsers />} />
+            <Route path="/reports" element={<ProtectedReports />} />
+            <Route path="/reports/*" element={<ProtectedReports />} />
+            <Route path="/profit-loss" element={<ProtectedProfitLoss />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/settings/exchange-rate" element={<ExchangeRateSettings />} />
             <Route path="/account-settings" element={<AccountSettings />} />

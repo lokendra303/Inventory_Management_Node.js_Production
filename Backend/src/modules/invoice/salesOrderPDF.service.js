@@ -10,7 +10,11 @@ class SalesOrderPDFService {
     if (institutionId) {
       try {
         const [settings] = await db.query(
-          'SELECT * FROM company_settings WHERE institution_id = ?',
+          `SELECT ip.*, i.city, i.state
+             FROM institution_profiles ip
+             LEFT JOIN institutions i ON i.id = ip.institution_id
+            WHERE ip.institution_id = ?
+            LIMIT 1`,
           [institutionId]
         );
         companySettings = settings;

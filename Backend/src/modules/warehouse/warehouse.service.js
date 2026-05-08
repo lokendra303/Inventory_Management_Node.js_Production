@@ -8,6 +8,50 @@ const RESERVED_WAREHOUSE_CODES = new Set([
 ]);
 
 class WarehouseService {
+  parseJsonObject(raw, fallback = {}) {
+    if (raw == null || raw === '') return fallback;
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed) return fallback;
+      if (!trimmed.startsWith('{')) return fallback;
+      try {
+        const parsed = JSON.parse(trimmed);
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+    return fallback;
+  }
+
+  parseWarehouseAccess(raw) {
+    if (raw == null || raw === '') return [];
+    if (Array.isArray(raw)) return raw.map((v) => String(v)).filter(Boolean);
+
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed) return [];
+
+      if (trimmed.startsWith('[') || trimmed.startsWith('"')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) return parsed.map((v) => String(v)).filter(Boolean);
+          if (typeof parsed === 'string' && parsed) return [parsed];
+        } catch (_) {
+          // fall through to legacy parsing
+        }
+      }
+
+      if (trimmed.includes(',')) {
+        return trimmed.split(',').map((v) => v.trim()).filter(Boolean);
+      }
+      return [trimmed];
+    }
+
+    return [];
+  }
+
   normalizeWarehouseCode(value) {
     if (value === undefined || value === null) return '';
     return String(value)
@@ -160,7 +204,7 @@ class WarehouseService {
     const warehouse = warehouses[0];
     return {
       ...warehouse,
-      capacity_constraints: JSON.parse(warehouse.capacity_constraints || '{}')
+      capacity_constraints: this.parseJsonObject(warehouse.capacity_constraints, {})
     };
   }
 
@@ -270,7 +314,7 @@ class WarehouseService {
 
       return {
         ...warehouse,
-        capacity_constraints: JSON.parse(warehouse.capacity_constraints || '{}'),
+        capacity_constraints: this.parseJsonObject(warehouse.capacity_constraints, {}),
         created_by_name: createdByName || null,
         updated_by_name: updatedByName || null,
         summary,
@@ -357,7 +401,7 @@ class WarehouseService {
       return true;
     }
 
-    const warehouseAccess = JSON.parse(user.warehouse_access || '[]');
+    const warehouseAccess = this.parseWarehouseAccess(user.warehouse_access);
     
     // Empty array means access to all warehouses
     if (warehouseAccess.length === 0) {
@@ -384,7 +428,7 @@ class WarehouseService {
       return await this.getWarehouses(institutionId, { status: 'active' });
     }
 
-    const warehouseAccess = JSON.parse(user.warehouse_access || '[]');
+    const warehouseAccess = this.parseWarehouseAccess(user.warehouse_access);
     
     // Empty array means access to all active warehouses
     if (warehouseAccess.length === 0) {
@@ -403,7 +447,7 @@ class WarehouseService {
 
       return warehouses.map(warehouse => ({
         ...warehouse,
-        capacity_constraints: JSON.parse(warehouse.capacity_constraints || '{}')
+        capacity_constraints: this.parseJsonObject(warehouse.capacity_constraints, {})
       }));
     }
 
@@ -450,8 +494,8 @@ class WarehouseService {
 
     return events.map(event => ({
       ...event,
-      event_data: JSON.parse(event.event_data),
-      metadata: JSON.parse(event.metadata || '{}')
+      event_data: this.parseJsonObject(event.event_data, {}),
+      metadata: this.parseJsonObject(event.metadata, {})
     }));
   }
 }

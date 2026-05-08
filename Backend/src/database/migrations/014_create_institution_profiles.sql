@@ -27,22 +27,38 @@ CREATE TABLE IF NOT EXISTS institution_profiles (
   KEY idx_inst_profile_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO institution_profiles
-  (institution_id, company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, logo_path, authorized_signatory_name, authorized_signatory_designation)
-SELECT
-  cs.institution_id COLLATE utf8mb4_unicode_ci,
-  cs.company_name,
-  cs.address,
-  cs.phone,
-  cs.email,
-  cs.bank_name,
-  cs.account_number,
-  cs.ifsc_code,
-  cs.swift_code,
-  cs.logo_path,
-  cs.authorized_signatory_name,
-  cs.authorized_signatory_designation
-FROM company_settings cs
-LEFT JOIN institution_profiles p
-  ON p.institution_id = (cs.institution_id COLLATE utf8mb4_unicode_ci)
-WHERE p.id IS NULL;
+-- Backfill from legacy table only when it exists.
+SET @company_settings_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.tables
+  WHERE table_schema = DATABASE()
+    AND table_name = 'company_settings'
+);
+
+SET @backfill_sql := IF(
+  @company_settings_exists = 1,
+  'INSERT INTO institution_profiles
+    (institution_id, company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, logo_path, authorized_signatory_name, authorized_signatory_designation)
+   SELECT
+    cs.institution_id COLLATE utf8mb4_unicode_ci,
+    cs.company_name,
+    cs.address,
+    cs.phone,
+    cs.email,
+    cs.bank_name,
+    cs.account_number,
+    cs.ifsc_code,
+    cs.swift_code,
+    cs.logo_path,
+    cs.authorized_signatory_name,
+    cs.authorized_signatory_designation
+   FROM company_settings cs
+   LEFT JOIN institution_profiles p
+    ON p.institution_id = (cs.institution_id COLLATE utf8mb4_unicode_ci)
+   WHERE p.id IS NULL',
+  'SELECT 1'
+);
+
+PREPARE stmt_backfill_profiles FROM @backfill_sql;
+EXECUTE stmt_backfill_profiles;
+DEALLOCATE PREPARE stmt_backfill_profiles;

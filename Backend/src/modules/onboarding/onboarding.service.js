@@ -74,17 +74,19 @@ class OnboardingService {
       db.query('SELECT COUNT(*) as c FROM vendors WHERE institution_id=?', [institutionId]),
       db.query('SELECT COUNT(*) as c FROM institution_users WHERE institution_id=? AND role!="super_admin"', [institutionId]),
       db.query('SELECT COUNT(*) as c FROM sales_invoices WHERE institution_id=?', [institutionId]).catch(() => [{ c: 0 }]),
-      // company_profile: check if company_settings has at least 3 core fields filled
+      // company_profile: check normalized institution profile + addresses.
       db.query(
-        `SELECT COUNT(*) as c FROM company_settings cs
-         WHERE BINARY cs.institution_id=?
-           AND cs.company_name IS NOT NULL AND cs.company_name != ""
-           AND cs.phone IS NOT NULL AND cs.phone != ""
+        `SELECT COUNT(*) as c FROM institution_profiles ip
+         WHERE BINARY ip.institution_id=?
+           AND ip.company_name IS NOT NULL AND TRIM(ip.company_name) != ""
+           AND ip.phone IS NOT NULL AND TRIM(ip.phone) != ""
            AND (
-             (cs.address IS NOT NULL AND TRIM(cs.address) != "")
+            (ip.address IS NOT NULL AND TRIM(ip.address) != "")
              OR EXISTS (
-               SELECT 1 FROM company_addresses ca
-               WHERE BINARY ca.institution_id = BINARY cs.institution_id AND ca.address IS NOT NULL AND TRIM(ca.address) != ""
+              SELECT 1 FROM institution_addresses ia
+              WHERE BINARY ia.institution_id = BINARY ip.institution_id
+                AND ia.address IS NOT NULL
+                AND TRIM(ia.address) != ""
              )
            )`,
         [institutionId]

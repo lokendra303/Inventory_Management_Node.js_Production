@@ -621,23 +621,43 @@ const Items = () => {
   };
 
   const fetchItems = async () => {
+    let itemsLoaded = false;
     try {
       setLoading(true);
       
       // Stagger API calls to prevent 429 errors
-      const itemsResponse = await apiService.get('/items', { params: { status: 'all' } });
-      
-      if (itemsResponse.success) {
-        setItems(itemsResponse.data);
+      try {
+        const itemsResponse = await apiService.get('/items', { params: { status: 'all' } });
+        if (itemsResponse.success) {
+          setItems(itemsResponse.data);
+          itemsLoaded = true;
+        }
+      } catch (error) {
+        if (error?.isPermissionError) {
+          message.error('You do not have permission to view items');
+          return;
+        }
+        throw error;
       }
       
       // Add small delay before next request
       await new Promise(resolve => setTimeout(resolve, 100));
-      
-      const warehousesResponse = await apiService.get('/warehouses', { params: { status: 'all' } });
-      
-      if (warehousesResponse.success) {
-        setWarehouses(warehousesResponse.data);
+
+      try {
+        const warehousesResponse = await apiService.get('/warehouses', { params: { status: 'all' } });
+        if (warehousesResponse.success) {
+          setWarehouses(warehousesResponse.data);
+        }
+      } catch (error) {
+        // Fallback: item users may not have warehouse_view but still need selectable warehouse list.
+        try {
+          const accessibleWarehousesResponse = await apiService.get('/warehouses/accessible');
+          if (accessibleWarehousesResponse.success) {
+            setWarehouses(accessibleWarehousesResponse.data || []);
+          }
+        } catch {
+          console.log('Warehouse list unavailable for this user, continuing without warehouses');
+        }
       }
       
       // Only fetch categories if user has permission
@@ -654,9 +674,7 @@ const Items = () => {
       }
     } catch (error) {
       console.error('Fetch items error:', error);
-      if (error.isPermissionError) {
-        message.error('You do not have permission to view items');
-      } else {
+      if (!itemsLoaded) {
         message.error('Failed to fetch data');
       }
     } finally {
