@@ -40,7 +40,7 @@ class SkuGeneratorService {
 
   async generateSku(ctx = {}) {
     const res = await apiService.post('/sku-rules/generate', ctx);
-    return res?.data?.sku || '';
+    return res?.data || {};
   }
 }
 

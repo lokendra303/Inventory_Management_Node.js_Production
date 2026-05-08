@@ -68,12 +68,19 @@ const Items = () => {
   const [skuRuleForm] = Form.useForm();
   const [editingSkuRule, setEditingSkuRule] = useState(null);
   const [skuGenerating, setSkuGenerating] = useState(false);
+  const [selectedSkuRuleId, setSelectedSkuRuleId] = useState(null);
+  const [lastAppliedSkuRule, setLastAppliedSkuRule] = useState(null);
 
   const loadSkuRules = async () => {
     setSkuRulesLoading(true);
     try {
       const rules = await skuGeneratorService.listRules();
-      setSkuRules(Array.isArray(rules) ? rules : []);
+      const list = Array.isArray(rules) ? rules : [];
+      setSkuRules(list);
+      if (!selectedSkuRuleId) {
+        const defaultRule = list.find((r) => !!r.is_default);
+        if (defaultRule?.id) setSelectedSkuRuleId(defaultRule.id);
+      }
     } catch (e) {
       message.error(e?.response?.data?.error || 'Failed to load SKU rules');
     } finally {
@@ -87,6 +94,72 @@ const Items = () => {
   const handleGenerateSku = async () => {
     setSkuGenerating(true);
     try {
+      const selectedRule = selectedSkuRuleId
+        ? skuRules.find((r) => r.id === selectedSkuRuleId) || null
+        : null;
+
+      const extractTemplateTokens = (template = '') =>
+        (String(template || '').match(/\{([^}]+)\}/g) || [])
+          .map((wrap) => String(wrap).slice(1, -1).split('|')[0]?.trim()?.toUpperCase())
+          .filter(Boolean);
+
+      const tokenRequirements = {
+        BRAND: { label: 'Brand', check: () => !!form.getFieldValue('brand') },
+        ITEM: { label: 'Item Name', check: () => !!String(form.getFieldValue('name') || '').trim() },
+        NAME: { label: 'Item Name', check: () => !!String(form.getFieldValue('name') || '').trim() },
+        VARIANT: { label: 'Variant / Packing', check: () => !!String(form.getFieldValue('variant') || '').trim() },
+        COLOR: { label: 'Colour', check: () => !!String(form.getFieldValue('colorCode') || '').trim() },
+        SIZE: {
+          label: 'Size (or Unit)',
+          check: () => !!String(form.getFieldValue('sizeCode') || '').trim() || !!form.getFieldValue('unit')
+        },
+        TYPE: {
+          label: 'Pack Type',
+          check: () => !!String(form.getFieldValue('packType') || '').trim() || !!String(form.getFieldValue('type') || '').trim()
+        },
+        CATEGORY: { label: 'Category', check: () => !!String(form.getFieldValue('category') || '').trim() },
+        MANUFACTURER: { label: 'Manufacturer', check: () => !!form.getFieldValue('manufacturer') },
+        UNIT: { label: 'Unit', check: () => !!form.getFieldValue('unit') },
+        WAREHOUSE: { label: 'Warehouse', check: () => !!form.getFieldValue('warehouseId') },
+        HSN: { label: 'HSN Code', check: () => !!String(form.getFieldValue('hsnCode') || '').trim() },
+        MPN: { label: 'MPN', check: () => !!String(form.getFieldValue('mpn') || '').trim() },
+        BARCODE: {
+          label: 'Barcode / EAN',
+          check: () => !!String(form.getFieldValue('barcode') || '').trim() || !!String(form.getFieldValue('ean') || '').trim()
+        }
+      };
+
+      if (selectedRule?.prefix_mode === 'static' && String(selectedRule?.prefix_static || '').includes('{')) {
+        const tokens = extractTemplateTokens(selectedRule.prefix_static);
+        const missingFields = [];
+        for (const token of tokens) {
+          const requirement = tokenRequirements[token];
+          if (requirement && !requirement.check()) {
+            missingFields.push(requirement.label);
+          }
+        }
+        const uniqueMissing = Array.from(new Set(missingFields));
+        if (uniqueMissing.length > 0) {
+          Modal.warning({
+            title: 'Required fields missing for selected SKU rule',
+            content: (
+              <div style={{ marginTop: 8 }}>
+                <p style={{ marginBottom: 8 }}>
+                  Fill these fields first, then click Generate SKU:
+                </p>
+                <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
+                  {uniqueMissing.map((field) => (
+                    <li key={field}>{field}</li>
+                  ))}
+                </ul>
+              </div>
+            ),
+            okText: 'Understood'
+          });
+          return;
+        }
+      }
+
       const brandValue = form.getFieldValue('brand');
       const brandRow = brandOptions.find((b) => b.id === brandValue || b.name === brandValue);
       const brandName = brandRow?.name || brandValue || '';
@@ -121,6 +194,7 @@ const Items = () => {
       };
 
       const ctx = {
+        ruleId: selectedSkuRuleId || undefined,
         category: categoryName,
         brand: brandName,
         manufacturer: manufacturerName,
@@ -146,15 +220,49 @@ const Items = () => {
         size: toCode(sizeValue || unitLabel, 8),
         typeValue: packTypeValue || typeName
       };
-      const sku = await skuGeneratorService.generateSku(ctx);
+      const generated = await skuGeneratorService.generateSku(ctx);
+      const sku = generated?.sku || '';
       if (sku) {
         form.setFieldsValue({ sku });
         form.validateFields(['sku']).catch(() => {});
-        message.success(`Generated SKU: ${sku}`);
+        const appliedRule = generated?.ruleId
+          ? skuRules.find((r) => r.id === generated.ruleId)
+          : null;
+        setLastAppliedSkuRule(
+          appliedRule
+            ? { id: appliedRule.id, name: appliedRule.name, scope: appliedRule.scope, scopeValue: appliedRule.scope_value }
+            : null
+        );
+        message.success(`Generated SKU: ${sku}${generated?.ruleName ? ` (Rule: ${generated.ruleName})` : ''}`);
       }
     } catch (e) {
       const err = e?.response?.data?.error || e?.message || 'Failed to generate SKU';
-      message.error(err);
+      const normalizedErr = String(err || '').toLowerCase();
+      if (normalizedErr.includes('failed to allocate unique sku after multiple attempts')) {
+        Modal.warning({
+          title: 'SKU generation needs attention',
+          width: 560,
+          content: (
+            <div style={{ marginTop: 8 }}>
+              <p style={{ marginBottom: 8 }}>
+                Could not generate a unique SKU with the current rule after several retries.
+              </p>
+              <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
+                <li>Try selecting another SKU rule from the dropdown.</li>
+                <li>Increase counter padding or change prefix tokens in Manage SKU Rules.</li>
+                <li>If urgent, enter SKU manually and save.</li>
+              </ul>
+            </div>
+          ),
+          okText: 'Got it'
+        });
+      } else {
+        Modal.error({
+          title: 'SKU generation failed',
+          content: err,
+          okText: 'Close'
+        });
+      }
     } finally {
       setSkuGenerating(false);
     }
@@ -771,6 +879,8 @@ const Items = () => {
         setModalVisible(false);
         setEditingItem(null);
         setVariantMatrixEdits([]);
+        setSelectedSkuRuleId(null);
+        setLastAppliedSkuRule(null);
         form.resetFields();
       } else {
         // Keep form open for rapid multi-item entry.
@@ -779,6 +889,8 @@ const Items = () => {
         setDuplicateBanner(null);
         setExistingCustomFields({});
         setVariantMatrixEdits([]);
+        setSelectedSkuRuleId(null);
+        setLastAppliedSkuRule(null);
         form.resetFields();
         form.setFieldsValue({
           type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
@@ -905,8 +1017,11 @@ const viewItem = async (item) => {
     setEditingItem(item);
     setPriceCurrency(currency);
     setImageUrl(item.image || '');
+    setLastAppliedSkuRule(null);
+    setSelectedSkuRuleId(null);
     
     await fetchDropdownOptions();
+    await loadSkuRules();
     
     let fullItem = item;
     try {
@@ -1223,8 +1338,11 @@ const viewItem = async (item) => {
     setImageFile(null);
     setDraftBanner(null);
     setDuplicateBanner({ sourceName: item.name });
+    setLastAppliedSkuRule(null);
+    setSelectedSkuRuleId(null);
     form.resetFields();
     await fetchDropdownOptions();
+    await loadSkuRules();
 
     let fullItem = item;
     try {
@@ -1291,10 +1409,13 @@ const viewItem = async (item) => {
     form.resetFields();
     setDraftBanner(null);
     setDuplicateBanner(null);
+    setLastAppliedSkuRule(null);
+    setSelectedSkuRuleId(null);
     setExistingCustomFields({});
     setVariantMatrixEdits([]);
 
     await fetchDropdownOptions();
+    await loadSkuRules();
     form.setFieldsValue({
       type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
       purchaseAccount: 'cogs',
@@ -1324,8 +1445,11 @@ const viewItem = async (item) => {
     setImageFile(null);
     setExistingCustomFields(draft.data?.customFields || {});
     setVariantMatrixEdits(Array.isArray(draft.data?.customFields?.variantMatrix) ? draft.data.customFields.variantMatrix : []);
+    setLastAppliedSkuRule(null);
+    setSelectedSkuRuleId(null);
     form.resetFields();
     await fetchDropdownOptions();
+    await loadSkuRules();
     form.setFieldsValue(draft.data);
     setDraftBanner({ savedAt: draft.savedAt, draftId: draft.id });
     setModalVisible(true);
@@ -1708,7 +1832,7 @@ const viewItem = async (item) => {
           </div>
         }
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); form.resetFields(); }}
+        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
         footer={null}
         width="min(1280px, 98vw)"
         style={{ top: 8 }}
@@ -1764,26 +1888,68 @@ const viewItem = async (item) => {
                       label="SKU"
                       validateTrigger={['onBlur', 'onSubmit']}
                       rules={[{ validator: validateSkuAvailability }]}
+                      style={{ marginBottom: 10 }}
                     >
                       <Input
                         placeholder="e.g. ITEM-001"
                         style={{ borderRadius: 8 }}
-                        addonAfter={(
-                          <Tooltip title="Generate SKU from your SKU rule (uses Category/Brand if configured)">
-                            <Button
-                              type="link"
-                              size="small"
-                              loading={skuGenerating}
-                              icon={<ThunderboltOutlined />}
-                              onClick={handleGenerateSku}
-                              style={{ padding: 0, height: 'auto', color: '#764ba2', fontWeight: 600 }}
-                            >
-                              Generate
-                            </Button>
-                          </Tooltip>
-                        )}
                       />
                     </Form.Item>
+                    <div
+                      style={{
+                        marginBottom: 8,
+                        padding: '10px 10px',
+                        borderRadius: 12,
+                        border: '1px solid #edf0ff',
+                        background: 'linear-gradient(180deg, #fbfbff 0%, #f7f7ff 100%)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Select
+                          placeholder="Pick SKU rule (optional)"
+                          value={selectedSkuRuleId}
+                          allowClear
+                          loading={skuRulesLoading}
+                          onChange={(value) => {
+                            setSelectedSkuRuleId(value || null);
+                            setLastAppliedSkuRule(null);
+                          }}
+                          style={{ width: '100%' }}
+                          options={skuRules.map((r) => ({
+                            value: r.id,
+                            label: `${r.name}${r.scope === 'category' ? ` (Category: ${r.scope_value})` : ' (Institution)'}${r.is_default ? ' [Default]' : ''}`
+                          }))}
+                        />
+                        {lastAppliedSkuRule ? (
+                          <Tag color="purple" style={{ marginInlineEnd: 0, whiteSpace: 'nowrap' }}>
+                            Applied: {lastAppliedSkuRule.name}
+                          </Tag>
+                        ) : null}
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280' }}>
+                        Leave empty to auto-pick (category rule → default → secondary)
+                      </div>
+                      <Tooltip title="Generate SKU using the selected rule (or auto-pick if none)">
+                        <Button
+                          block
+                          type="primary"
+                          loading={skuGenerating}
+                          icon={<ThunderboltOutlined />}
+                          onClick={handleGenerateSku}
+                          style={{
+                            marginTop: 10,
+                            height: 40,
+                            borderRadius: 12,
+                            border: 'none',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            boxShadow: '0 10px 22px rgba(118, 75, 162, 0.22)',
+                            fontWeight: 700
+                          }}
+                        >
+                          Generate SKU
+                        </Button>
+                      </Tooltip>
+                    </div>
                   </Col>
                   <Col xs={24} sm={12}>
                     <Form.Item name="name" label="Item Name" rules={[{ required: true, message: 'Please input name!' }]}>

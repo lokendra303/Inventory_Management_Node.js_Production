@@ -47,11 +47,27 @@ class SkuGeneratorService {
 
   /**
    * Resolve which rule applies for a given generation context.
+   *   0. If ctx.ruleId is provided, use that exact active rule.
    *   1. Prefer a 'category' override matching ctx.category (case-insensitive).
    *   2. Fall back to the institution's 'default' rule.
-   *   3. Return null if no rule exists yet.
+   *   3. Fall back to a non-default institution-level rule (manual/secondary).
+   *   4. Return null if no active rule exists yet.
    */
   async resolveRule(institutionId, ctx = {}) {
+    if (ctx?.ruleId) {
+      const byId = await db.query(
+        `SELECT * FROM sku_generator_rules
+         WHERE institution_id = ?
+           AND id = ?
+           AND status = 'active'
+         LIMIT 1`,
+        [institutionId, ctx.ruleId]
+      );
+      if (byId.length > 0) return byId[0];
+      // Do not silently fall back when user explicitly picked a rule.
+      throw new Error('Selected SKU rule is unavailable. Please reselect a rule and try again.');
+    }
+
     if (ctx?.category) {
       const byCat = await db.query(
         `SELECT * FROM sku_generator_rules
@@ -70,7 +86,21 @@ class SkuGeneratorService {
        LIMIT 1`,
       [institutionId]
     );
-    return def[0] || null;
+    if (def[0]) return def[0];
+
+    // Backward-compatible fallback:
+    // if a tenant has only "secondary/manual pick" rules, use the most recently
+    // updated institution-level rule instead of failing with "No SKU rule configured".
+    const secondary = await db.query(
+      `SELECT * FROM sku_generator_rules
+       WHERE institution_id = ?
+         AND status = 'active'
+         AND scope = 'default'
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 1`,
+      [institutionId]
+    );
+    return secondary[0] || null;
   }
 
   /**

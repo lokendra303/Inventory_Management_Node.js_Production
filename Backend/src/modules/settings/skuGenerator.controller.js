@@ -1,6 +1,46 @@
 const skuGeneratorService = require('./skuGenerator.service');
 const logger = require('../../utils/logger');
 
+const SKU_CTX_FIELDS = [
+  'ruleId',
+  'category',
+  'brand',
+  'manufacturer',
+  'name',
+  'item',
+  'variant',
+  'color',
+  'type',
+  'unit',
+  'warehouse',
+  'hsn',
+  'hsnCode',
+  'mpn',
+  'barcode',
+  'brandCode',
+  'itemCode',
+  'variantCode',
+  'colorCode',
+  'categoryCode',
+  'manufacturerCode',
+  'typeCode',
+  'unitCode',
+  'warehouseCode',
+  'size',
+  'typeValue'
+];
+
+function buildSkuContext(primary = {}, fallback = {}) {
+  const ctx = {};
+  for (const key of SKU_CTX_FIELDS) {
+    const value = primary?.[key] ?? fallback?.[key];
+    if (value !== undefined && value !== null && value !== '') {
+      ctx[key] = value;
+    }
+  }
+  return ctx;
+}
+
 class SkuGeneratorController {
   async listRules(req, res) {
     try {
@@ -49,11 +89,7 @@ class SkuGeneratorController {
 
   async previewSku(req, res) {
     try {
-      const ctx = {
-        category: req.query.category || req.body?.category,
-        brand: req.query.brand || req.body?.brand,
-        name: req.query.name || req.body?.name
-      };
+      const ctx = buildSkuContext(req.query, req.body);
       const result = await skuGeneratorService.previewSku(req.institutionId, ctx);
       res.json({ success: true, data: result });
     } catch (error) {
@@ -64,11 +100,7 @@ class SkuGeneratorController {
 
   async generateSku(req, res) {
     try {
-      const ctx = {
-        category: req.body?.category,
-        brand: req.body?.brand,
-        name: req.body?.name
-      };
+      const ctx = buildSkuContext(req.body, req.query);
       const result = await skuGeneratorService.generateSku(req.institutionId, ctx);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
