@@ -84,6 +84,12 @@ router.get('/:id/price-history',
   itemPriceHistoryController.getPriceHistory
 );
 
+// GET /api/items/:id/components
+router.get('/:id/components',
+  requirePermission('item_view'),
+  itemController.getCompositeComponents
+);
+
 // GET /api/items/:id
 router.get('/:id',
   requirePermission('item_view'),
@@ -96,6 +102,13 @@ router.put('/:id',
   checkLimit('items'),
   auditLog('item_updated'),
   itemController.updateItem
+);
+
+// PUT /api/items/:id/components
+router.put('/:id/components',
+  requirePermission('item_management'),
+  auditLog('item_components_updated'),
+  itemController.updateCompositeComponents
 );
 
 // DELETE /api/items/:id

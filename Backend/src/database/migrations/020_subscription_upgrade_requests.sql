@@ -20,4 +20,4 @@ CREATE TABLE IF NOT EXISTS subscription_upgrade_requests (
   KEY idx_sub_upg_status (status),
   CONSTRAINT fk_sub_upg_institution FOREIGN KEY (institution_id) REFERENCES institutions (id) ON DELETE CASCADE,
   CONSTRAINT fk_sub_upg_plan FOREIGN KEY (requested_plan_id) REFERENCES subscription_plans (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

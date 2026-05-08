@@ -58,6 +58,7 @@ const Items = () => {
   const [variantLibrary, setVariantLibrary] = useState([]);
   const [existingCustomFields, setExistingCustomFields] = useState({});
   const [variantMatrixEdits, setVariantMatrixEdits] = useState([]);
+  const [compositeComponents, setCompositeComponents] = useState([]);
   const autoDraftSavingRef = useRef(false);
   const autoDraftSavedRef = useRef(false);
 
@@ -848,6 +849,23 @@ const Items = () => {
         isbn: values.isbn,
         mpn: values.mpn
       };
+      if (itemData.type === 'composite') {
+        const normalizedComponents = normalizeCompositeComponents(compositeComponents);
+        if (normalizedComponents.length === 0) {
+          message.error('Add at least one BOM component for composite item.');
+          return;
+        }
+        const duplicateSet = new Set(normalizedComponents.map((row) => row.itemId));
+        if (duplicateSet.size !== normalizedComponents.length) {
+          message.error('Duplicate component item is not allowed in BOM.');
+          return;
+        }
+        if (editingItem?.id && normalizedComponents.some((row) => row.itemId === editingItem.id)) {
+          message.error('Composite item cannot be added as its own component.');
+          return;
+        }
+        itemData.components = normalizedComponents;
+      }
       
       if (isEditing) {
         const response = await apiService.put(`/items/${editingItem.id}`, itemData);
@@ -889,6 +907,7 @@ const Items = () => {
         setDuplicateBanner(null);
         setExistingCustomFields({});
         setVariantMatrixEdits([]);
+        setCompositeComponents([]);
         setSelectedSkuRuleId(null);
         setLastAppliedSkuRule(null);
         form.resetFields();
@@ -1038,6 +1057,7 @@ const viewItem = async (item) => {
         ? fullItem.variant_rows
         : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
     );
+    setCompositeComponents(normalizeCompositeComponents(fullItem?.composite_components || []));
 
     // Get warehouse from item's warehouse_ids (returned by getItem via GROUP_CONCAT)
     // Fall back to fetching all inventory and filtering by item
@@ -1193,6 +1213,21 @@ const viewItem = async (item) => {
     })).filter((row) => row.key && row.combinationLabel);
   };
 
+  const normalizeCompositeComponents = (rows = []) => {
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map((row) => ({
+        itemId: String(row?.itemId || row?.component_item_id || '').trim(),
+        quantityRequired: Number(row?.quantityRequired ?? row?.quantity_required),
+        consumptionTiming: String(row?.consumptionTiming || row?.consumption_timing || 'shipment').toLowerCase()
+      }))
+      .filter((row) => row.itemId && Number.isFinite(row.quantityRequired) && row.quantityRequired > 0)
+      .map((row) => ({
+        ...row,
+        consumptionTiming: ['order', 'shipment'].includes(row.consumptionTiming) ? row.consumptionTiming : 'shipment'
+      }));
+  };
+
   const cartesianVariantRows = (rows = []) => {
     const normalized = normalizeVariantAttributes(rows);
     if (normalized.length === 0) return [];
@@ -1217,6 +1252,12 @@ const viewItem = async (item) => {
   const watchedColor = Form.useWatch('colorCode', form);
   const watchedSize = Form.useWatch('sizeCode', form);
   const watchedPackType = Form.useWatch('packType', form);
+
+  useEffect(() => {
+    if (watchedItemType !== 'composite' && compositeComponents.length > 0) {
+      setCompositeComponents([]);
+    }
+  }, [watchedItemType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const variantMatrixRows = useMemo(() => {
     if (watchedItemType !== 'variant') return [];
@@ -1413,6 +1454,7 @@ const viewItem = async (item) => {
     setSelectedSkuRuleId(null);
     setExistingCustomFields({});
     setVariantMatrixEdits([]);
+    setCompositeComponents([]);
 
     await fetchDropdownOptions();
     await loadSkuRules();
@@ -1445,6 +1487,7 @@ const viewItem = async (item) => {
     setImageFile(null);
     setExistingCustomFields(draft.data?.customFields || {});
     setVariantMatrixEdits(Array.isArray(draft.data?.customFields?.variantMatrix) ? draft.data.customFields.variantMatrix : []);
+    setCompositeComponents(normalizeCompositeComponents(draft.data?.components || []));
     setLastAppliedSkuRule(null);
     setSelectedSkuRuleId(null);
     form.resetFields();
@@ -1478,7 +1521,7 @@ const viewItem = async (item) => {
 
     autoDraftSavingRef.current = true;
     try {
-      await apiService.post('/items/draft', { ...values, image: imageUrl });
+      await apiService.post('/items/draft', { ...values, image: imageUrl, components: compositeComponents });
       if (source === 'session-timeout') {
         message.info('Session about to expire: item saved as draft.');
       }
@@ -1492,7 +1535,7 @@ const viewItem = async (item) => {
     } finally {
       autoDraftSavingRef.current = false;
     }
-  }, [editingItem, form, hasDraftableValues, imageUrl]);
+  }, [compositeComponents, editingItem, form, hasDraftableValues, imageUrl]);
 
   const handleSaveDraft = async () => {
     try {
@@ -1506,6 +1549,7 @@ const viewItem = async (item) => {
       setEditingItem(null);
       setActiveDraftId(null);
       setDraftBanner(null);
+      setCompositeComponents([]);
       fetchDrafts();
     } catch {
       message.error('Failed to save draft');
@@ -1832,7 +1876,7 @@ const viewItem = async (item) => {
           </div>
         }
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
+        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setCompositeComponents([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
         footer={null}
         width="min(1280px, 98vw)"
         style={{ top: 8 }}
@@ -2500,6 +2544,82 @@ const viewItem = async (item) => {
                     </Form.Item>
                   </Col>
                 </Row>
+                {watchedItemType === 'composite' && (
+                  <div style={{ marginBottom: 16, border: '1px solid #e6e8f0', borderRadius: 8, background: '#fff' }}>
+                    <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, color: '#4b5563', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>BOM Components ({compositeComponents.length})</span>
+                      <Button
+                        size="small"
+                        onClick={() => setCompositeComponents((prev) => [...prev, { itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }])}
+                      >
+                        + Add Component
+                      </Button>
+                    </div>
+                    {compositeComponents.length === 0 ? (
+                      <div style={{ padding: 12, fontSize: 12, color: '#8c8c8c' }}>
+                        Add at least one component item for this kit/BOM.
+                      </div>
+                    ) : (
+                      <div style={{ maxHeight: 300, overflowY: 'auto', padding: 10 }}>
+                        {compositeComponents.map((row, idx) => (
+                          <Row key={`bom-${idx}`} gutter={8} style={{ marginBottom: 8 }}>
+                            <Col xs={24} sm={13}>
+                              <Select
+                                showSearch
+                                optionFilterProp="children"
+                                value={row.itemId || undefined}
+                                placeholder="Select component item"
+                                onChange={(value) =>
+                                  setCompositeComponents((prev) => prev.map((x, i) => (i === idx ? { ...x, itemId: value } : x)))
+                                }
+                              >
+                                {items
+                                  .filter((itemRow) => itemRow.id !== editingItem?.id && itemRow.status === 'active')
+                                  .map((itemRow) => (
+                                    <Select.Option key={itemRow.id} value={itemRow.id}>
+                                      {itemRow.sku} - {itemRow.name}
+                                    </Select.Option>
+                                  ))}
+                              </Select>
+                            </Col>
+                            <Col xs={24} sm={5}>
+                              <InputNumber
+                                min={0.0001}
+                                step={0.0001}
+                                style={{ width: '100%' }}
+                                value={row.quantityRequired}
+                                placeholder="Qty required"
+                                onChange={(value) =>
+                                  setCompositeComponents((prev) => prev.map((x, i) => (i === idx ? { ...x, quantityRequired: value } : x)))
+                                }
+                              />
+                            </Col>
+                            <Col xs={24} sm={4}>
+                              <Select
+                                value={row.consumptionTiming || 'shipment'}
+                                onChange={(value) =>
+                                  setCompositeComponents((prev) => prev.map((x, i) => (i === idx ? { ...x, consumptionTiming: value } : x)))
+                                }
+                                options={[
+                                  { value: 'shipment', label: 'Shipment' },
+                                  { value: 'order', label: 'Order' }
+                                ]}
+                              />
+                            </Col>
+                            <Col xs={24} sm={2} style={{ display: 'flex', alignItems: 'center' }}>
+                              <Button
+                                danger
+                                type="text"
+                                icon={<DeleteOutlined />}
+                                onClick={() => setCompositeComponents((prev) => prev.filter((_, i) => i !== idx))}
+                              />
+                            </Col>
+                          </Row>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <Row gutter={16}>
                   <Col span={24}>
                     <Form.Item name="returnableItem" valuePropName="checked" style={{ marginBottom: 8 }}>
@@ -3197,7 +3317,7 @@ const viewItem = async (item) => {
                   Save as Draft
                 </Button>
               )}
-              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); setDuplicateBanner(null); form.resetFields(); }}>
+              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); setDuplicateBanner(null); setCompositeComponents([]); form.resetFields(); }}>
                 Cancel
               </Button>
             </Space>

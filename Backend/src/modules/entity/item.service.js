@@ -5,6 +5,71 @@ const itemFieldService = require('./itemField.service');
 const itemPriceHistoryService = require('./itemPriceHistory.service');
 
 class ItemService {
+  _normalizeCompositeComponents(components = []) {
+    if (!Array.isArray(components)) return [];
+    return components
+      .map((component) => ({
+        itemId: String(component?.itemId || component?.componentItemId || '').trim(),
+        quantityRequired: Number(component?.quantityRequired),
+        consumptionTiming: String(component?.consumptionTiming || 'shipment').trim().toLowerCase()
+      }))
+      .filter((component) => component.itemId && Number.isFinite(component.quantityRequired) && component.quantityRequired > 0)
+      .map((component) => ({
+        ...component,
+        consumptionTiming: ['order', 'shipment'].includes(component.consumptionTiming) ? component.consumptionTiming : 'shipment'
+      }));
+  }
+
+  async _replaceCompositeComponents(institutionId, compositeItemId, components = []) {
+    const normalizedComponents = this._normalizeCompositeComponents(components);
+    if (normalizedComponents.length === 0) {
+      throw new Error('Composite item must have at least one component');
+    }
+
+    const uniqueComponentIds = new Set(normalizedComponents.map((component) => component.itemId));
+    if (uniqueComponentIds.size !== normalizedComponents.length) {
+      throw new Error('Duplicate component is not allowed for the same composite item');
+    }
+    if (uniqueComponentIds.has(compositeItemId)) {
+      throw new Error('Composite item cannot reference itself as component');
+    }
+
+    const availableComponents = await db.query(
+      `SELECT id
+         FROM items
+        WHERE institution_id = ?
+          AND status = 'active'
+          AND id IN (?)`,
+      [institutionId, Array.from(uniqueComponentIds)]
+    );
+    if (availableComponents.length !== uniqueComponentIds.size) {
+      throw new Error('One or more component items are invalid or inactive');
+    }
+
+    await db.query(
+      'DELETE FROM composite_components WHERE institution_id = ? AND composite_item_id = ?',
+      [institutionId, compositeItemId]
+    );
+
+    for (const component of normalizedComponents) {
+      await db.query(
+        `INSERT INTO composite_components
+         (id, institution_id, composite_item_id, component_item_id, quantity_required, consumption_timing)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          uuidv4(),
+          institutionId,
+          compositeItemId,
+          component.itemId,
+          component.quantityRequired,
+          component.consumptionTiming
+        ]
+      );
+    }
+
+    return normalizedComponents.length;
+  }
+
   _normalizeVariantRows(rows = []) {
     if (!Array.isArray(rows)) return [];
     return rows
@@ -171,6 +236,9 @@ class ItemService {
 
     if (type === 'variant') {
       await this._syncItemVariants(institutionId, itemId, normalizedSku, customFields || {});
+    }
+    if (type === 'composite') {
+      await this._replaceCompositeComponents(institutionId, itemId, itemData.components || []);
     }
 
     // Create initial inventory using inventory event flow so it appears in item transaction history.
@@ -469,6 +537,12 @@ class ItemService {
         );
       }
     }
+    const nextType = type !== undefined
+      ? type
+      : (await db.query('SELECT type FROM items WHERE institution_id = ? AND id = ? LIMIT 1', [institutionId, itemId]))?.[0]?.type;
+    if (nextType === 'composite' || updateData.components !== undefined) {
+      await this._replaceCompositeComponents(institutionId, itemId, updateData.components || []);
+    }
 
     logger.info('Item updated', { itemId, institutionId, userId });
     return itemId;
@@ -537,7 +611,7 @@ class ItemService {
       };
     });
 
-    return {
+    const response = {
       ...item,
       brand: item.brand_name || item.brand,
       manufacturer: item.manufacturer_name || item.manufacturer,
@@ -547,6 +621,10 @@ class ItemService {
       warehouse_ids: item.warehouse_ids ? item.warehouse_ids.split(',') : [],
       variant_rows
     };
+    if (String(item.type || '').toLowerCase() === 'composite') {
+      response.composite_components = await this.getCompositeComponents(institutionId, itemId);
+    }
+    return response;
   }
 
   async getItemBySku(institutionId, sku) {
@@ -837,40 +915,20 @@ class ItemService {
   async createCompositeItem(institutionId, compositeData, userId) {
     const { itemData, components } = compositeData;
 
-    if (!components || components.length === 0) {
-      throw new Error('Composite item must have at least one component');
-    }
+    const itemId = await this.createItem(institutionId, {
+      ...itemData,
+      type: 'composite',
+      components
+    }, userId);
 
-    const itemId = await db.transaction(async (connection) => {
-      // Create the composite item
-      const compositeItemId = await this.createItem(institutionId, {
-        ...itemData,
-        type: 'composite'
-      }, userId);
-
-      // Add components
-      for (const component of components) {
-        const componentId = uuidv4();
-        await connection.execute(
-          `INSERT INTO composite_components 
-           (id, institution_id, composite_item_id, component_item_id, quantity_required, consumption_timing) 
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            componentId,
-            institutionId,
-            compositeItemId,
-            component.itemId,
-            component.quantityRequired,
-            component.consumptionTiming || 'shipment'
-          ]
-        );
-      }
-
-      return compositeItemId;
-    });
-
-    logger.info('Composite item created', { itemId, institutionId, userId, componentCount: components.length });
+    logger.info('Composite item created', { itemId, institutionId, userId, componentCount: Array.isArray(components) ? components.length : 0 });
     return itemId;
+  }
+
+  async updateCompositeComponents(institutionId, compositeItemId, components, userId) {
+    const updatedCount = await this._replaceCompositeComponents(institutionId, compositeItemId, components || []);
+    logger.info('Composite components updated', { compositeItemId, institutionId, userId, updatedCount });
+    return updatedCount;
   }
 
   async getCompositeComponents(institutionId, compositeItemId) {

@@ -12,6 +12,12 @@ const razorpay = new Razorpay({
 
 let tablesReady = false;
 
+function isMissingTableError(error, tableName = 'subscription_upgrade_requests') {
+  const code = String(error?.code || '').toUpperCase();
+  const msg = String(error?.message || '').toLowerCase();
+  return code === 'ER_NO_SUCH_TABLE' || msg.includes(`.${tableName.toLowerCase()}`) || msg.includes(`'${tableName.toLowerCase()}' doesn't exist`);
+}
+
 /**
  * Idempotent seed for default subscription tiers. Table DDL lives in migrations
  * (000_initial_schema / full_install), not in application code.
@@ -571,14 +577,22 @@ class SubscriptionService {
 
   async listMyUpgradeRequests(institutionId) {
     await ensureTables();
-    return db.query(
-      `SELECT r.*, p.name AS requested_plan_name
-       FROM subscription_upgrade_requests r
-       JOIN subscription_plans p ON p.id = r.requested_plan_id
-       WHERE r.institution_id=?
-       ORDER BY r.created_at DESC`,
-      [institutionId]
-    );
+    try {
+      return await db.query(
+        `SELECT r.*, p.name AS requested_plan_name
+         FROM subscription_upgrade_requests r
+         JOIN subscription_plans p ON p.id = r.requested_plan_id
+         WHERE r.institution_id=?
+         ORDER BY r.created_at DESC`,
+        [institutionId]
+      );
+    } catch (error) {
+      if (isMissingTableError(error)) {
+        logger.warn('subscription_upgrade_requests table missing; returning empty request list', { institutionId });
+        return [];
+      }
+      throw error;
+    }
   }
 
   async listUpgradeRequestsForPlatform({ status = '', page = 1, limit = 20 }) {

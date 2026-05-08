@@ -78,11 +78,18 @@ class ItemController {
 
   async createItem(req, res) {
     try {
-      const itemId = await itemService.createItem(
-        req.institutionId,
-        req.body,
-        req.user.userId
-      );
+      const body = req.body || {};
+      const itemId = body.type === 'composite'
+        ? await itemService.createCompositeItem(
+          req.institutionId,
+          { itemData: body, components: body.components || [] },
+          req.user.userId
+        )
+        : await itemService.createItem(
+          req.institutionId,
+          body,
+          req.user.userId
+        );
       
       res.status(201).json({
         success: true,
@@ -246,6 +253,46 @@ class ItemController {
         success: false,
         error: error.message
       });
+    }
+  }
+
+  async getCompositeComponents(req, res) {
+    try {
+      const { id: itemId } = req.params;
+      const components = await itemService.getCompositeComponents(req.institutionId, itemId);
+      res.json({ success: true, data: components });
+    } catch (error) {
+      logger.error('Failed to get composite components', {
+        error: error.message,
+        institutionId: req.institutionId,
+        itemId: req.params.id
+      });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async updateCompositeComponents(req, res) {
+    try {
+      const { id: itemId } = req.params;
+      const updatedCount = await itemService.updateCompositeComponents(
+        req.institutionId,
+        itemId,
+        req.body?.components || [],
+        req.user.userId
+      );
+      res.json({
+        success: true,
+        message: 'Composite components updated successfully',
+        data: { updatedCount }
+      });
+    } catch (error) {
+      logger.error('Failed to update composite components', {
+        error: error.message,
+        institutionId: req.institutionId,
+        itemId: req.params.id,
+        userId: req.user?.userId
+      });
+      res.status(400).json({ success: false, error: error.message });
     }
   }
 
