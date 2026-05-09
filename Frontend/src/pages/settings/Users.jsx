@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, Tag, message, Tabs, Checkbox, Typography, Alert } from 'antd';
+import { Card, Table, Button, Space, Modal, Form, Input, Select, Tag, message, Tabs, Checkbox, Typography, Alert, Radio } from 'antd';
 import { PlusOutlined, EditOutlined, SettingOutlined, KeyOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
@@ -26,6 +26,12 @@ const Users = () => {
   const [roleForm] = Form.useForm();
   const [tempAccessForm] = Form.useForm();
   const fallbackRoleOptions = ['admin', 'manager', 'user'];
+  const WAREHOUSE_PERMISSION_KEYS = [
+    'warehouse_view',
+    'warehouse_management',
+    'warehouse_type_view',
+    'warehouse_type_management'
+  ];
   const availablePermissions = [
     { key: 'all', label: 'All Permissions (Admin)' },
     { key: 'user_management', label: 'User Management' },
@@ -58,6 +64,14 @@ const Users = () => {
     { key: 'audit_view', label: 'View Audit Trail' }
   ];
 
+  const roleHasWarehouseAccess = (role) => {
+    if (!role) return false;
+    if (role.name === 'admin' || role.name === 'super_admin') return true;
+    const perms = role.permissions || {};
+    if (perms.all === true) return true;
+    return WAREHOUSE_PERMISSION_KEYS.some((key) => perms[key] === true);
+  };
+
   const roleOptions = useMemo(() => {
     const fromApi = Array.isArray(roles) ? roles.map((role) => role?.name).filter(Boolean) : [];
     if (fromApi.length > 0) return fromApi;
@@ -71,6 +85,27 @@ const Users = () => {
   const isAllPermissionsSelected =
     allPermissionKeys.length > 0 &&
     allPermissionKeys.every((permKey) => selectedRolePermissions.includes(permKey));
+  const warehouseAccessType = Form.useWatch('warehouseAccessType', form) || 'normal';
+  const selectedRole = Form.useWatch('role', form);
+
+  const visibleRoleOptions = useMemo(() => {
+    if (warehouseAccessType !== 'none') return roleOptions;
+    const apiRoles = Array.isArray(roles) ? roles : [];
+    if (apiRoles.length === 0) {
+      return roleOptions.filter((name) => name !== 'admin' && name !== 'super_admin');
+    }
+    const allowed = apiRoles
+      .filter((role) => !roleHasWarehouseAccess(role))
+      .map((role) => role.name)
+      .filter(Boolean);
+    return allowed;
+  }, [warehouseAccessType, roleOptions, roles]);
+
+  useEffect(() => {
+    if (warehouseAccessType === 'none' && selectedRole && !visibleRoleOptions.includes(selectedRole)) {
+      form.setFieldsValue({ role: undefined });
+    }
+  }, [warehouseAccessType, selectedRole, visibleRoleOptions, form]);
 
   const defaultTabKey = location.pathname === '/roles' ? 'roles' : 'users';
   const hasPermission = (permission) => {
@@ -194,7 +229,26 @@ const Users = () => {
 
   const handleCreateUser = async (values) => {
     try {
-      const response = await apiService.post('/users', values);
+      const { warehouseAccessType: accessType, warehouseAccess, ...rest } = values;
+      const payload = {
+        ...rest,
+        warehouseAccess: accessType === 'specific' ? (warehouseAccess || []) : []
+      };
+
+      if (accessType === 'specific' && payload.warehouseAccess.length === 0) {
+        message.error('Please select at least one warehouse for specific access.');
+        return;
+      }
+
+      if (accessType === 'none') {
+        const blockedPermissions = WAREHOUSE_PERMISSION_KEYS.reduce((acc, key) => {
+          acc[key] = false;
+          return acc;
+        }, {});
+        payload.permissions = blockedPermissions;
+      }
+
+      const response = await apiService.post('/users', payload);
       if (response.success) {
         message.success('User created successfully');
         setModalVisible(false);
@@ -217,14 +271,32 @@ const Users = () => {
         Object.assign(permissions, rolePermissions);
       }
 
+      const accessType = values.warehouseAccessType || 'normal';
+      const warehouseAccess = accessType === 'specific' ? (values.warehouseAccess || []) : [];
+
+      if (accessType === 'specific' && warehouseAccess.length === 0) {
+        message.error('Please select at least one warehouse for specific access.');
+        return;
+      }
+
+      if (accessType === 'none') {
+        WAREHOUSE_PERMISSION_KEYS.forEach((key) => {
+          permissions[key] = false;
+        });
+        if (permissions.all === true && values.role !== 'admin') {
+          delete permissions.all;
+        }
+      }
+
       console.log('Updating user:', editingUser.id);
       console.log('New role:', values.role);
       console.log('Permissions:', permissions);
-      console.log('Warehouse access:', values.warehouseAccess);
+      console.log('Warehouse access type:', accessType);
+      console.log('Warehouse access:', warehouseAccess);
 
       const response = await apiService.put(`/users/${editingUser.id}/permissions`, {
         permissions,
-        warehouseAccess: values.warehouseAccess || [],
+        warehouseAccess,
         role: values.role
       });
       
@@ -367,9 +439,30 @@ const Users = () => {
     } catch (e) {
       warehouseAccess = [];
     }
-    
+
+    let userPermissions = {};
+    try {
+      userPermissions = user.permissions
+        ? (typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions)
+        : {};
+    } catch (e) {
+      userPermissions = {};
+    }
+
+    const isNoneMode =
+      Array.isArray(warehouseAccess) && warehouseAccess.length === 0 &&
+      WAREHOUSE_PERMISSION_KEYS.some((key) => userPermissions[key] === false);
+
+    let accessType = 'normal';
+    if (isNoneMode) {
+      accessType = 'none';
+    } else if (Array.isArray(warehouseAccess) && warehouseAccess.length > 0) {
+      accessType = 'specific';
+    }
+
     form.setFieldsValue({
       role: user.role,
+      warehouseAccessType: accessType,
       warehouseAccess: warehouseAccess
     });
     setModalVisible(true);
@@ -378,6 +471,7 @@ const Users = () => {
   const openCreateModal = () => {
     setEditingUser(null);
     form.resetFields();
+    form.setFieldsValue({ warehouseAccessType: 'normal', warehouseAccess: [] });
     setModalVisible(true);
   };
 
@@ -554,9 +648,25 @@ const Users = () => {
             name="role"
             label="Role"
             rules={[{ required: true, message: 'Please select role!' }]}
+            extra={
+              warehouseAccessType === 'none'
+                ? 'Only roles without warehouse access are listed.'
+                : undefined
+            }
           >
-            <Select placeholder="Select role">
-              {roleOptions.map((roleName) => (
+            <Select
+              placeholder={
+                warehouseAccessType === 'none' && visibleRoleOptions.length === 0
+                  ? 'No roles available without warehouse access'
+                  : 'Select role'
+              }
+              notFoundContent={
+                warehouseAccessType === 'none'
+                  ? 'No roles without warehouse access. Create a role with warehouse permissions disabled, or change the warehouse access option.'
+                  : 'No roles found'
+              }
+            >
+              {visibleRoleOptions.map((roleName) => (
                 <Select.Option key={roleName} value={roleName}>
                   {roleName.charAt(0).toUpperCase() + roleName.slice(1)}
                 </Select.Option>
@@ -564,19 +674,59 @@ const Users = () => {
             </Select>
           </Form.Item>
           
-          <Form.Item name="warehouseAccess" label="Warehouse Access">
-            <Select 
-              mode="multiple" 
-              placeholder="Select warehouses (empty = all warehouses)"
-              allowClear
-            >
-              {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
-                <Select.Option key={warehouse.id} value={warehouse.id}>
-                  {warehouse.name}
-                </Select.Option>
-              ))}
-            </Select>
+          <Form.Item
+            name="warehouseAccessType"
+            label="Warehouse Access"
+            initialValue="normal"
+            tooltip="Choose whether this user can access all warehouses, only specific ones, or none."
+          >
+            <Radio.Group>
+              <Space direction="vertical">
+                <Radio value="normal">Normal user (all warehouses)</Radio>
+                <Radio value="specific">Specific warehouses</Radio>
+                <Radio value="none">None (no warehouse access)</Radio>
+              </Space>
+            </Radio.Group>
           </Form.Item>
+
+          {warehouseAccessType === 'specific' && (
+            <Form.Item
+              name="warehouseAccess"
+              label="Allowed Warehouses"
+              rules={[
+                {
+                  validator: (_, value) =>
+                    Array.isArray(value) && value.length > 0
+                      ? Promise.resolve()
+                      : Promise.reject(new Error('Select at least one warehouse'))
+                }
+              ]}
+            >
+              <Select
+                mode="multiple"
+                placeholder="Select one or more warehouses"
+                allowClear
+                showSearch
+                optionFilterProp="children"
+              >
+                {warehouses.filter(warehouse => warehouse.status === 'active').map(warehouse => (
+                  <Select.Option key={warehouse.id} value={warehouse.id}>
+                    {warehouse.name}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          )}
+
+          {warehouseAccessType === 'none' && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="Warehouse access disabled"
+              description="This user will not be able to access any warehouse. Warehouse-related permissions (View Warehouses, Manage Warehouses, View / Manage Warehouse Types) will be revoked."
+            />
+          )}
           
           <Form.Item>
             <Space>
