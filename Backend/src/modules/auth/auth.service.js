@@ -890,10 +890,42 @@ class AuthService {
   }
 
   async generateTempAccess(institutionId, targetUserId, adminUserId, expiresInHours) {
-    // For now, return a simple temp access token
-    const tempToken = uuidv4();
-    logger.info('Temp access generated', { institutionId, targetUserId, adminUserId });
-    return { tempToken, expiresInHours };
+    const users = await db.query(
+      `SELECT id, email, role
+         FROM institution_users
+        WHERE institution_id = ? AND id = ? AND status = 'active'
+        LIMIT 1`,
+      [institutionId, targetUserId]
+    );
+    if (users.length === 0) {
+      throw new Error('Target user not found or inactive');
+    }
+    if (users[0].role === 'super_admin') {
+      throw new Error('Cannot generate temporary access for super admin');
+    }
+
+    // Human-friendly but strong enough temporary password.
+    const tempPassword = `Tmp@${uuidv4().replace(/-/g, '').slice(0, 10)}!`;
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+    await db.query(
+      'UPDATE institution_users SET password_hash = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [passwordHash, institutionId, targetUserId]
+    );
+
+    // Email send is best-effort; UI still receives the generated password.
+    try {
+      await emailService.sendEmail({
+        to: users[0].email,
+        subject: 'Temporary Access Password',
+        text: `Your temporary password is: ${tempPassword}\nThis password should be changed immediately after login.`,
+        html: `<p>Your temporary password is: <strong>${tempPassword}</strong></p><p>Please change it immediately after login.</p>`
+      });
+    } catch (emailErr) {
+      logger.warn('Temp access email failed', { institutionId, targetUserId, error: emailErr.message });
+    }
+
+    logger.info('Temp access generated', { institutionId, targetUserId, adminUserId, expiresInHours });
+    return { tempPassword, expiresInHours };
   }
 
   async loginWithTempAccess(email, tempPassword, institutionId) {
