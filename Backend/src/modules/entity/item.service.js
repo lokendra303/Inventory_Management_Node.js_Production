@@ -21,6 +21,21 @@ class ItemService {
   }
 
   async _replaceCompositeComponents(institutionId, compositeItemId, components = []) {
+    const compositeRows = await db.query(
+      `SELECT id, type
+         FROM items
+        WHERE institution_id = ? AND id = ?
+        LIMIT 1`,
+      [institutionId, compositeItemId]
+    );
+    if (compositeRows.length === 0) {
+      throw new Error('Composite item not found');
+    }
+    const compositeType = String(compositeRows[0].type || '').toLowerCase();
+    if (compositeType !== 'composite') {
+      throw new Error('Components can only be managed for composite items');
+    }
+
     const normalizedComponents = this._normalizeCompositeComponents(components);
     if (normalizedComponents.length === 0) {
       throw new Error('Composite item must have at least one component');
@@ -34,16 +49,31 @@ class ItemService {
       throw new Error('Composite item cannot reference itself as component');
     }
 
-    const availableComponents = await db.query(
-      `SELECT id
+    const componentIds = Array.from(uniqueComponentIds);
+    const placeholders = componentIds.map(() => '?').join(',');
+    const candidateComponents = await db.query(
+      `SELECT id, status, type
          FROM items
         WHERE institution_id = ?
-          AND status = 'active'
-          AND id IN (?)`,
-      [institutionId, Array.from(uniqueComponentIds)]
+          AND id IN (${placeholders})`,
+      [institutionId, ...componentIds]
     );
-    if (availableComponents.length !== uniqueComponentIds.size) {
-      throw new Error('One or more component items are invalid or inactive');
+    if (candidateComponents.length !== uniqueComponentIds.size) {
+      const foundIds = new Set(candidateComponents.map((row) => String(row.id)));
+      const missingIds = Array.from(uniqueComponentIds).filter((id) => !foundIds.has(String(id)));
+      throw new Error(`Invalid component item IDs: ${missingIds.join(', ')}`);
+    }
+    const inactiveIds = candidateComponents
+      .filter((row) => String(row.status || '').toLowerCase() !== 'active')
+      .map((row) => String(row.id));
+    if (inactiveIds.length > 0) {
+      throw new Error(`Inactive component items: ${inactiveIds.join(', ')}`);
+    }
+    const unsupportedTypeIds = candidateComponents
+      .filter((row) => ['service', 'composite'].includes(String(row.type || '').toLowerCase()))
+      .map((row) => String(row.id));
+    if (unsupportedTypeIds.length > 0) {
+      throw new Error(`Unsupported component item types for IDs: ${unsupportedTypeIds.join(', ')}`);
     }
 
     await db.query(
@@ -74,6 +104,7 @@ class ItemService {
     if (!Array.isArray(rows)) return [];
     return rows
       .map((row) => ({
+        id: row?.id ? String(row.id).trim() : null,
         key: String(row?.key || '').trim(),
         combinationLabel: String(row?.combinationLabel || '').trim(),
         attributes: row?.attributes && typeof row.attributes === 'object' ? row.attributes : {},
@@ -91,59 +122,148 @@ class ItemService {
   async _syncItemVariants(institutionId, parentItemId, parentSku, customFields = {}) {
     const rows = this._normalizeVariantRows(customFields?.variantMatrix);
 
-    await db.query(
-      'DELETE FROM item_variants WHERE institution_id = ? AND parent_item_id = ?',
-      [institutionId, parentItemId]
-    );
-
-    if (rows.length === 0) return 0;
-
     const toAttrValue = (attrs, keys = []) => {
       const entries = Object.entries(attrs || {});
       const found = entries.find(([k]) => keys.includes(String(k || '').toLowerCase()));
       return found ? String(found[1] || '').trim() || null : null;
     };
 
-    for (let idx = 0; idx < rows.length; idx += 1) {
-      const row = rows[idx];
-      let sku = row.sku;
-      if (!sku) {
-        const seed = `${parentSku || 'VAR'}-${String(idx + 1).padStart(3, '0')}`;
-        sku = seed;
-      }
+    const parseAttrs = (raw) => {
+      if (!raw) return {};
+      if (typeof raw === 'object') return raw;
+      try { return JSON.parse(raw || '{}'); } catch { return {}; }
+    };
 
-      // Ensure unique SKU inside item_variants per institution.
-      let candidate = sku;
-      let suffix = 1;
+    const imsKeyFromStored = (variantAttributes) => {
+      const a = parseAttrs(variantAttributes);
+      return a._imsKey ? String(a._imsKey) : null;
+    };
+
+    const existing = await db.query(
+      'SELECT id, variant_attributes, sku FROM item_variants WHERE institution_id = ? AND parent_item_id = ?',
+      [institutionId, parentItemId]
+    );
+    const byId = new Map(existing.map((r) => [r.id, r]));
+    const byImsKey = new Map();
+    for (const r of existing) {
+      const k = imsKeyFromStored(r.variant_attributes);
+      if (k) byImsKey.set(k, r.id);
+    }
+
+    if (rows.length === 0) {
+      if (existing.length) {
+        await db.query(
+          'DELETE FROM item_variants WHERE institution_id = ? AND parent_item_id = ?',
+          [institutionId, parentItemId]
+        );
+      }
+      return 0;
+    }
+
+    const resolveVariantSku = async (seedSku, excludeVariantId) => {
+      let suffix = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const exists = await db.query(
-          'SELECT id FROM item_variants WHERE institution_id = ? AND sku = ? LIMIT 1',
+        const candidate = suffix === 0 ? seedSku : `${seedSku}-${suffix}`;
+        const dupItem = await db.query(
+          'SELECT id FROM items WHERE institution_id = ? AND sku = ? LIMIT 1',
           [institutionId, candidate]
         );
-        if (exists.length === 0) break;
+        if (dupItem.length > 0) {
+          suffix += 1;
+          continue;
+        }
+        const existsV = await db.query(
+          'SELECT id, parent_item_id FROM item_variants WHERE institution_id = ? AND sku = ? LIMIT 1',
+          [institutionId, candidate]
+        );
+        if (existsV.length === 0) return candidate;
+        if (excludeVariantId && existsV[0].id === excludeVariantId) return candidate;
         suffix += 1;
-        candidate = `${sku}-${suffix}`;
+      }
+    };
+
+    const keptIds = new Set();
+
+    for (let idx = 0; idx < rows.length; idx += 1) {
+      const row = rows[idx];
+      const attrsWithKey = { ...(row.attributes || {}), _imsKey: row.key };
+
+      let baseSku = row.sku;
+      if (!baseSku) {
+        baseSku = `${parentSku || 'VAR'}-${String(idx + 1).padStart(3, '0')}`;
       }
 
+      let variantId = null;
+      if (row.id && byId.has(row.id)) {
+        // Guard against accidental overwrite: if key changed, treat as a new variant row.
+        const storedKey = imsKeyFromStored(byId.get(row.id)?.variant_attributes);
+        if (!storedKey || storedKey === row.key) {
+          variantId = row.id;
+        }
+      }
+      if (!variantId && byImsKey.has(row.key)) {
+        variantId = byImsKey.get(row.key);
+      }
+
+      const candidateSku = await resolveVariantSku(baseSku, variantId);
+      const variantAttribsJson = JSON.stringify(attrsWithKey);
+
+      if (variantId && byId.has(variantId)) {
+        await db.query(
+          `UPDATE item_variants
+           SET variant_name = ?, sku = ?, barcode = ?, cost_price = ?, selling_price = ?,
+               color = ?, size = ?, variant_attributes = ?, status = ?, updated_at = NOW()
+           WHERE id = ? AND institution_id = ? AND parent_item_id = ?`,
+          [
+            row.combinationLabel,
+            candidateSku,
+            row.barcode,
+            row.costPrice,
+            row.sellingPrice,
+            toAttrValue(row.attributes, ['color', 'colour']),
+            toAttrValue(row.attributes, ['size']),
+            variantAttribsJson,
+            row.active ? 'active' : 'inactive',
+            variantId,
+            institutionId,
+            parentItemId
+          ]
+        );
+        keptIds.add(variantId);
+      } else {
+        const newId = uuidv4();
+        await db.query(
+          `INSERT INTO item_variants
+           (id, institution_id, parent_item_id, variant_name, sku, barcode, cost_price, selling_price, color, size, variant_attributes, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newId,
+            institutionId,
+            parentItemId,
+            row.combinationLabel,
+            candidateSku,
+            row.barcode,
+            row.costPrice,
+            row.sellingPrice,
+            toAttrValue(row.attributes, ['color', 'colour']),
+            toAttrValue(row.attributes, ['size']),
+            variantAttribsJson,
+            row.active ? 'active' : 'inactive'
+          ]
+        );
+        keptIds.add(newId);
+        byImsKey.set(row.key, newId);
+        byId.set(newId, { id: newId });
+      }
+    }
+
+    const toDelete = existing.filter((r) => !keptIds.has(r.id)).map((r) => r.id);
+    if (toDelete.length) {
+      const ph = toDelete.map(() => '?').join(',');
       await db.query(
-        `INSERT INTO item_variants
-         (id, institution_id, parent_item_id, variant_name, sku, barcode, cost_price, selling_price, color, size, variant_attributes, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          uuidv4(),
-          institutionId,
-          parentItemId,
-          row.combinationLabel,
-          candidate,
-          row.barcode,
-          row.costPrice,
-          row.sellingPrice,
-          toAttrValue(row.attributes, ['color', 'colour']),
-          toAttrValue(row.attributes, ['size']),
-          JSON.stringify(row.attributes || {}),
-          row.active ? 'active' : 'inactive'
-        ]
+        `DELETE FROM item_variants WHERE institution_id = ? AND parent_item_id = ? AND id IN (${ph})`,
+        [institutionId, parentItemId, ...toDelete]
       );
     }
 
@@ -241,9 +361,48 @@ class ItemService {
       await this._replaceCompositeComponents(institutionId, itemId, itemData.components || []);
     }
 
-    // Create initial inventory using inventory event flow so it appears in item transaction history.
-    if (warehouseId && openingStock > 0) {
-      const inventoryService = require('../inventory/inventory.service');
+    const inventoryService = require('../inventory/inventory.service');
+
+    if (type === 'variant' && warehouseId) {
+      const variantRows = this._normalizeVariantRows(customFields?.variantMatrix);
+      const dbVariants = await db.query(
+        'SELECT id, variant_attributes FROM item_variants WHERE institution_id = ? AND parent_item_id = ?',
+        [institutionId, itemId]
+      );
+      const keyToId = new Map();
+      for (const v of dbVariants) {
+        let a = {};
+        if (v.variant_attributes && typeof v.variant_attributes === 'object') a = v.variant_attributes;
+        else if (typeof v.variant_attributes === 'string') {
+          try { a = JSON.parse(v.variant_attributes || '{}'); } catch { a = {}; }
+        }
+        if (a._imsKey) keyToId.set(String(a._imsKey), v.id);
+      }
+      const normalizedCostPrice = Number(costPrice) || 0;
+      for (const vr of variantRows) {
+        const qty = Number(vr.openingStock) || 0;
+        if (qty <= 0) continue;
+        const vid = keyToId.get(vr.key);
+        if (!vid) continue;
+        const wh = vr.warehouseId || warehouseId;
+        const rowCost = Number(vr.costPrice) || 0;
+        const openingUnitCost = rowCost > 0 ? rowCost : normalizedCostPrice;
+        await inventoryService.receiveStock(
+          institutionId,
+          {
+            itemId,
+            warehouseId: wh,
+            quantity: qty,
+            unitCost: openingUnitCost,
+            poId: `OPENING-${itemId}`,
+            poLineId: `${itemId}-OPENING-${vid}`,
+            grnNumber: `OPENING-${Date.now()}`,
+            itemVariantId: vid
+          },
+          userId
+        );
+      }
+    } else if (warehouseId && openingStock > 0) {
       const normalizedOpeningStock = Number(openingStock) || 0;
       const normalizedCostPrice = Number(costPrice) || 0;
       const normalizedOpeningValue = Number(openingValue) || 0;
@@ -313,7 +472,7 @@ class ItemService {
 
     // Fetch current prices before update for price history tracking
     const [oldItem] = await db.query(
-      'SELECT cost_price, selling_price, mrp FROM items WHERE institution_id = ? AND id = ?',
+      'SELECT cost_price, selling_price, mrp, type FROM items WHERE institution_id = ? AND id = ?',
       [institutionId, itemId]
     );
 
@@ -476,8 +635,10 @@ class ItemService {
       );
     }
 
+    const effectiveItemType = type !== undefined ? type : oldItem?.type;
+
     // Update opening stock through inventory event flow so transaction history is generated.
-    if (openingStock !== undefined || warehouseId !== undefined) {
+    if ((openingStock !== undefined || warehouseId !== undefined) && effectiveItemType !== 'variant') {
       // Determine the warehouse to use
       let targetWarehouseId = warehouseId;
       
@@ -537,11 +698,21 @@ class ItemService {
         );
       }
     }
+    const currentType = String(oldItem?.type || '').toLowerCase();
     const nextType = type !== undefined
       ? type
       : (await db.query('SELECT type FROM items WHERE institution_id = ? AND id = ? LIMIT 1', [institutionId, itemId]))?.[0]?.type;
-    if (nextType === 'composite' || updateData.components !== undefined) {
+    const nextTypeNormalized = String(nextType || '').toLowerCase();
+    if (updateData.components !== undefined && nextTypeNormalized !== 'composite') {
+      throw new Error('Components can only be updated for composite items');
+    }
+    if (nextTypeNormalized === 'composite' || updateData.components !== undefined) {
       await this._replaceCompositeComponents(institutionId, itemId, updateData.components || []);
+    } else if (currentType === 'composite' && nextTypeNormalized !== 'composite') {
+      await db.query(
+        'DELETE FROM composite_components WHERE institution_id = ? AND composite_item_id = ?',
+        [institutionId, itemId]
+      );
     }
 
     logger.info('Item updated', { itemId, institutionId, userId });
@@ -763,7 +934,6 @@ class ItemService {
         .filter(Boolean)
     ));
     if (!normalizedName) throw new Error('Attribute name is required');
-    if (normalizedValues.length === 0) throw new Error('At least one value is required');
 
     const existing = await db.query(
       `SELECT id, values_json
@@ -783,15 +953,28 @@ class ItemService {
       return true;
     }
 
+    let currentValues = [];
+    const raw = existing[0].values_json;
+    if (Array.isArray(raw)) currentValues = raw;
+    else if (typeof raw === 'string') {
+      try { currentValues = JSON.parse(raw || '[]'); } catch { currentValues = []; }
+    }
+
+    const mergedValues = Array.from(new Set([
+      ...currentValues.map((v) => String(v || '').trim()).filter(Boolean),
+      ...normalizedValues
+    ]));
+    const usageIncrement = normalizedValues.length > 0 ? 1 : 0;
+
     await db.query(
       `UPDATE variant_attribute_library
           SET values_json = ?,
-              usage_count = usage_count + 1,
+              usage_count = usage_count + ?,
               last_used_at = NOW(),
               status = 'active',
               updated_at = NOW()
         WHERE institution_id = ? AND name = ?`,
-      [JSON.stringify(normalizedValues), institutionId, normalizedName]
+      [JSON.stringify(mergedValues), usageIncrement, institutionId, normalizedName]
     );
     return true;
   }
@@ -876,13 +1059,42 @@ class ItemService {
       try { return JSON.parse(val); } catch { return {}; }
     };
 
-    return items.map(item => ({
+    const mapped = items.map(item => ({
       ...item,
       brand: item.brand_name || item.brand,
       manufacturer: item.manufacturer_name || item.manufacturer,
       unit: item.unit_name || item.unit,
       custom_fields: safeParseObj(item.custom_fields),
     }));
+
+    if (filters.includeVariants) {
+      const parentIds = mapped.filter((i) => i.type === 'variant').map((i) => i.id);
+      if (parentIds.length > 0) {
+        const ph = parentIds.map(() => '?').join(',');
+        const variants = await db.query(
+          `SELECT id, parent_item_id, variant_name, sku, status
+           FROM item_variants
+           WHERE institution_id = ? AND parent_item_id IN (${ph}) AND status = 'active'
+           ORDER BY parent_item_id ASC, variant_name ASC`,
+          [institutionId, ...parentIds]
+        );
+        const byParent = new Map();
+        for (const v of variants) {
+          if (!byParent.has(v.parent_item_id)) byParent.set(v.parent_item_id, []);
+          byParent.get(v.parent_item_id).push({
+            id: v.id,
+            combinationLabel: v.variant_name,
+            sku: v.sku
+          });
+        }
+        return mapped.map((item) => ({
+          ...item,
+          variant_options: item.type === 'variant' ? (byParent.get(item.id) || []) : []
+        }));
+      }
+    }
+
+    return mapped;
   }
 
   async getItemFieldConfig(institutionId, itemType) {

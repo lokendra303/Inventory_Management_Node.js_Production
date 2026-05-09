@@ -1,9 +1,14 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const eventStore = require('../../events/eventStore');
-const { INVENTORY_EVENTS, validateEventData, createAggregateId } = require('../../events/inventoryEvents');
+const { INVENTORY_EVENTS, validateEventData, createAggregateId, normalizeItemVariantId } = require('../../events/inventoryEvents');
 const projectionService = require('../../projections/inventoryProjections');
 const logger = require('../../utils/logger');
+
+function variantPayload(itemVariantId) {
+  const v = normalizeItemVariantId(itemVariantId);
+  return v ? { itemVariantId: v } : {};
+}
 
 class InventoryService {
   async applyProjectionForNewEvent(eventId, institutionId, eventType, eventData) {
@@ -31,6 +36,8 @@ class InventoryService {
       poLineId = uuidv4(), 
       grnNumber = `GRN-${Date.now()}` 
     } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
     
     validateEventData(INVENTORY_EVENTS.PURCHASE_RECEIVED, {
       itemId,
@@ -43,7 +50,7 @@ class InventoryService {
       receivedDate: new Date().toISOString()
     });
 
-    const aggregateId = createAggregateId(itemId, warehouseId);
+    const aggregateId = createAggregateId(itemId, warehouseId, itemVariantId);
     // FIX #4: Use deterministic key so retries don't create duplicate events
     // grnLineId (passed as poLineId from GRN flow) is stable across retries
     const idempotencyKey = `receive-${poLineId}`;
@@ -62,7 +69,8 @@ class InventoryService {
           poId,
           poLineId,
           grnNumber,
-          receivedDate: new Date().toISOString()
+          receivedDate: new Date().toISOString(),
+          ...vOpt
         },
         { userId },
         idempotencyKey
@@ -72,7 +80,8 @@ class InventoryService {
         itemId,
         warehouseId,
         quantity,
-        unitCost
+        unitCost,
+        ...vOpt
       });
 
       // Fire workflow trigger for stock_received event (non-fatal)
@@ -90,6 +99,8 @@ class InventoryService {
 
   async reserveStock(institutionId, data, userId) {
     const { itemId, warehouseId, quantity, unitPrice, soId, soLineId } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
     
     validateEventData(INVENTORY_EVENTS.SALE_RESERVED, {
       itemId,
@@ -101,12 +112,12 @@ class InventoryService {
       reservedDate: new Date().toISOString()
     });
 
-    const aggregateId = createAggregateId(itemId, warehouseId);
+    const aggregateId = createAggregateId(itemId, warehouseId, itemVariantId);
     const idempotencyKey = `reserve-${soLineId}`;
 
     try {
       // Check available stock before reservation
-      const currentStock = await projectionService.getInventoryProjection(institutionId, itemId, warehouseId);
+      const currentStock = await projectionService.getInventoryProjection(institutionId, itemId, warehouseId, itemVariantId);
       const availableQty = currentStock ? Number(currentStock.quantity_available) : 0;
       const requestedQty = Number(quantity);
       
@@ -126,7 +137,8 @@ class InventoryService {
           unitPrice,
           soId,
           soLineId,
-          reservedDate: new Date().toISOString()
+          reservedDate: new Date().toISOString(),
+          ...vOpt
         },
         { userId },
         idempotencyKey
@@ -135,7 +147,8 @@ class InventoryService {
       await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.SALE_RESERVED, {
         itemId,
         warehouseId,
-        quantity
+        quantity,
+        ...vOpt
       });
 
       return eventId;
@@ -147,6 +160,8 @@ class InventoryService {
 
   async shipStock(institutionId, data, userId) {
     const { itemId, warehouseId, quantity, unitPrice, soId, soLineId, shipmentNumber } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
     
     validateEventData(INVENTORY_EVENTS.SALE_SHIPPED, {
       itemId,
@@ -159,11 +174,11 @@ class InventoryService {
       shipmentNumber
     });
 
-    const aggregateId = createAggregateId(itemId, warehouseId);
+    const aggregateId = createAggregateId(itemId, warehouseId, itemVariantId);
     const idempotencyKey = `ship-${soLineId}-${shipmentNumber}`;
 
     try {
-      const projection = await projectionService.getInventoryProjection(institutionId, itemId, warehouseId);
+      const projection = await projectionService.getInventoryProjection(institutionId, itemId, warehouseId, itemVariantId);
       const reservedQty = projection ? Number(projection.quantity_reserved || 0) : 0;
       const availableQty = projection ? Number(projection.quantity_available || 0) : 0;
       const shipQty = Number(quantity);
@@ -213,7 +228,8 @@ class InventoryService {
           soId,
           soLineId,
           shipmentNumber,
-          shippedDate: new Date().toISOString()
+          shippedDate: new Date().toISOString(),
+          ...vOpt
         },
         { userId },
         idempotencyKey
@@ -222,7 +238,8 @@ class InventoryService {
       await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.SALE_SHIPPED, {
         itemId,
         warehouseId,
-        quantity
+        quantity,
+        ...vOpt
       });
 
       return eventId;
@@ -234,6 +251,9 @@ class InventoryService {
 
   async adjustStock(institutionId, data, userId) {
     const { itemId, warehouseId, quantityChange, reason, adjustmentType, lossType = 'MANUAL' } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vSql = itemVariantId ? ' AND item_variant_id = ? ' : ' AND item_variant_id IS NULL ';
+    const vParams = itemVariantId ? [itemVariantId] : [];
     const normalizedLossType = ['MANUAL', 'MISSING', 'DAMAGED', 'EXPIRED'].includes(String(lossType).toUpperCase())
       ? String(lossType).toUpperCase()
       : 'MANUAL';
@@ -244,8 +264,8 @@ class InventoryService {
       return await db.transaction(async (connection) => {
         // Fetch current projection
         const [rows] = await connection.execute(
-          'SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-          [institutionId, itemId, warehouseId]
+          `SELECT * FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?${vSql}`,
+          [institutionId, itemId, warehouseId, ...vParams]
         );
 
         if (rows.length === 0 && normalizedChange < 0) {
@@ -277,16 +297,16 @@ class InventoryService {
           await connection.execute(
             `UPDATE inventory_projections
              SET quantity_on_hand = ?, quantity_available = ?, total_value = ?, last_movement_date = NOW()
-             WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
-            [newOnHand, newAvailable, newTotalValue, institutionId, itemId, warehouseId]
+             WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?${vSql}`,
+            [newOnHand, newAvailable, newTotalValue, institutionId, itemId, warehouseId, ...vParams]
           );
         } else {
           // No existing record — create one (increase only, already guarded above)
           await connection.execute(
             `INSERT INTO inventory_projections
-             (id, institution_id, item_id, warehouse_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
-             VALUES (UUID(), ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
-            [institutionId, itemId, warehouseId, absQty, absQty]
+             (id, institution_id, item_id, warehouse_id, item_variant_id, quantity_on_hand, quantity_available, quantity_reserved, average_cost, total_value, last_movement_date, version)
+             VALUES (UUID(), ?, ?, ?, ?, ?, ?, 0, 0, 0, NOW(), 1)`,
+            [institutionId, itemId, warehouseId, itemVariantId, absQty, absQty]
           );
         }
 
@@ -304,8 +324,8 @@ class InventoryService {
         try {
           const workflowSvc = require('../workflows/workflow.service');
           const proj = await db.query(
-            'SELECT quantity_available, quantity_on_hand FROM inventory_projections WHERE institution_id=? AND item_id=? AND warehouse_id=?',
-            [institutionId, itemId, warehouseId]
+            `SELECT quantity_available, quantity_on_hand FROM inventory_projections WHERE institution_id=? AND item_id=? AND warehouse_id=?${vSql}`,
+            [institutionId, itemId, warehouseId, ...vParams]
           );
           const qty = proj[0]?.quantity_available || 0;
           await workflowSvc.trigger(institutionId, 'stock_adjusted', { itemId, warehouseId, quantity: qty, adjustmentType });
@@ -321,6 +341,10 @@ class InventoryService {
 
   async transferStock(institutionId, data, userId) {
     const { itemId, fromWarehouseId, toWarehouseId, quantity, transferId = uuidv4() } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
+    const vSql = itemVariantId ? ' AND item_variant_id = ? ' : ' AND item_variant_id IS NULL ';
+    const vParams = itemVariantId ? [itemVariantId] : [];
     
     if (fromWarehouseId === toWarehouseId) {
       throw new Error('Source and destination warehouses cannot be the same');
@@ -329,8 +353,8 @@ class InventoryService {
     try {
       // Get source projection to validate stock and carry over average_cost
       const sourceProjection = await db.query(
-        'SELECT quantity_available, average_cost FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-        [institutionId, itemId, fromWarehouseId]
+        `SELECT quantity_available, average_cost FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?${vSql}`,
+        [institutionId, itemId, fromWarehouseId, ...vParams]
       );
 
       if (sourceProjection.length === 0) {
@@ -349,17 +373,17 @@ class InventoryService {
       const idempotencyKey = `transfer-${transferId}`;
       const outEventId = await eventStore.appendEvent(
         institutionId, 'inventory',
-        createAggregateId(itemId, fromWarehouseId),
+        createAggregateId(itemId, fromWarehouseId, itemVariantId),
         INVENTORY_EVENTS.TRANSFER_OUT,
-        { itemId, fromWarehouseId, toWarehouseId, quantity: requestedQty, transferId, transferDate },
+        { itemId, fromWarehouseId, toWarehouseId, quantity: requestedQty, transferId, transferDate, ...vOpt },
         { userId },
         idempotencyKey
       );
       const inEventId = await eventStore.appendEvent(
         institutionId, 'inventory',
-        createAggregateId(itemId, toWarehouseId),
+        createAggregateId(itemId, toWarehouseId, itemVariantId),
         INVENTORY_EVENTS.TRANSFER_IN,
-        { itemId, fromWarehouseId, toWarehouseId, quantity: requestedQty, transferId, transferDate },
+        { itemId, fromWarehouseId, toWarehouseId, quantity: requestedQty, transferId, transferDate, ...vOpt },
         { userId },
         `${idempotencyKey}-in`
       );
@@ -368,13 +392,15 @@ class InventoryService {
         itemId,
         fromWarehouseId,
         toWarehouseId,
-        quantity: requestedQty
+        quantity: requestedQty,
+        ...vOpt
       });
       await this.applyProjectionForNewEvent(inEventId, institutionId, INVENTORY_EVENTS.TRANSFER_IN, {
         itemId,
         fromWarehouseId,
         toWarehouseId,
-        quantity: requestedQty
+        quantity: requestedQty,
+        ...vOpt
       });
 
       return transferId;
@@ -398,10 +424,14 @@ class InventoryService {
     const raw = rows[0].event_data;
     const ed = (raw && typeof raw === 'object') ? raw : JSON.parse(raw || '{}');
     const { itemId, fromWarehouseId, toWarehouseId, quantity } = ed;
+    const itemVariantId = normalizeItemVariantId(ed.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
+    const vSql = itemVariantId ? ' AND item_variant_id = ? ' : ' AND item_variant_id IS NULL ';
+    const vParams = itemVariantId ? [itemVariantId] : [];
 
     const destProjection = await db.query(
-      'SELECT quantity_available, average_cost FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-      [institutionId, itemId, toWarehouseId]
+      `SELECT quantity_available, average_cost FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?${vSql}`,
+      [institutionId, itemId, toWarehouseId, ...vParams]
     );
 
     if (destProjection.length === 0) throw new Error('Destination warehouse inventory not found');
@@ -416,17 +446,17 @@ class InventoryService {
     const idempotencyKey = `revert-${transferId}`;
     await eventStore.appendEvent(
       institutionId, 'inventory',
-      createAggregateId(itemId, toWarehouseId),
+      createAggregateId(itemId, toWarehouseId, itemVariantId),
       INVENTORY_EVENTS.TRANSFER_OUT,
-      { itemId, fromWarehouseId: toWarehouseId, toWarehouseId: fromWarehouseId, quantity, transferId: revertId, transferDate: revertDate },
+      { itemId, fromWarehouseId: toWarehouseId, toWarehouseId: fromWarehouseId, quantity, transferId: revertId, transferDate: revertDate, ...vOpt },
       { userId },
       idempotencyKey
     );
     await eventStore.appendEvent(
       institutionId, 'inventory',
-      createAggregateId(itemId, fromWarehouseId),
+      createAggregateId(itemId, fromWarehouseId, itemVariantId),
       INVENTORY_EVENTS.TRANSFER_IN,
-      { itemId, fromWarehouseId: toWarehouseId, toWarehouseId: fromWarehouseId, quantity, transferId: revertId, transferDate: revertDate },
+      { itemId, fromWarehouseId: toWarehouseId, toWarehouseId: fromWarehouseId, quantity, transferId: revertId, transferDate: revertDate, ...vOpt },
       { userId },
       `${idempotencyKey}-in`
     );
@@ -435,13 +465,15 @@ class InventoryService {
       itemId,
       fromWarehouseId: toWarehouseId,
       toWarehouseId: fromWarehouseId,
-      quantity
+      quantity,
+      ...vOpt
     });
     await projectionService.handleInventoryEvent(institutionId, INVENTORY_EVENTS.TRANSFER_IN, {
       itemId,
       fromWarehouseId: toWarehouseId,
       toWarehouseId: fromWarehouseId,
-      quantity
+      quantity,
+      ...vOpt
     });
 
     logger.info('Transfer reverted', { transferId, revertId, institutionId, userId });
@@ -489,17 +521,19 @@ class InventoryService {
     });
   }
 
-  async getInventoryHistory(institutionId, itemId, warehouseId) {
-    const aggregateId = createAggregateId(itemId, warehouseId);
+  async getInventoryHistory(institutionId, itemId, warehouseId, itemVariantId = null) {
+    const aggregateId = createAggregateId(itemId, warehouseId, normalizeItemVariantId(itemVariantId));
     return await eventStore.getEvents(institutionId, 'inventory', aggregateId);
   }
 
-  async getCurrentStock(institutionId, itemId, warehouseId) {
-    return await projectionService.getInventoryProjection(institutionId, itemId, warehouseId);
+  async getCurrentStock(institutionId, itemId, warehouseId, itemVariantId = null) {
+    return await projectionService.getInventoryProjection(institutionId, itemId, warehouseId, itemVariantId);
   }
 
   async returnSale(institutionId, data, userId) {
     const { itemId, warehouseId, quantity, unitPrice, soId, soLineId, returnReason } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
     
     validateEventData(INVENTORY_EVENTS.SALE_RETURNED, {
       itemId,
@@ -511,7 +545,7 @@ class InventoryService {
       returnedDate: new Date().toISOString()
     });
 
-    const aggregateId = createAggregateId(itemId, warehouseId);
+    const aggregateId = createAggregateId(itemId, warehouseId, itemVariantId);
     const idempotencyKey = `return-sale-${soLineId}-${Date.now()}`;
 
     try {
@@ -528,7 +562,8 @@ class InventoryService {
           soId,
           soLineId,
           returnReason,
-          returnedDate: new Date().toISOString()
+          returnedDate: new Date().toISOString(),
+          ...vOpt
         },
         { userId },
         idempotencyKey
@@ -537,7 +572,8 @@ class InventoryService {
       await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.SALE_RETURNED, {
         itemId,
         warehouseId,
-        quantity
+        quantity,
+        ...vOpt
       });
 
       return eventId;
@@ -549,6 +585,8 @@ class InventoryService {
 
   async returnPurchase(institutionId, data, userId) {
     const { itemId, warehouseId, quantity, unitCost, poId, poLineId, returnReason } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
     
     validateEventData(INVENTORY_EVENTS.PURCHASE_RETURNED, {
       itemId,
@@ -560,7 +598,7 @@ class InventoryService {
       returnedDate: new Date().toISOString()
     });
 
-    const aggregateId = createAggregateId(itemId, warehouseId);
+    const aggregateId = createAggregateId(itemId, warehouseId, itemVariantId);
     const idempotencyKey = `return-purchase-${poLineId}-${Date.now()}`;
 
     try {
@@ -577,7 +615,8 @@ class InventoryService {
           poId,
           poLineId,
           returnReason,
-          returnedDate: new Date().toISOString()
+          returnedDate: new Date().toISOString(),
+          ...vOpt
         },
         { userId },
         idempotencyKey
@@ -586,7 +625,8 @@ class InventoryService {
       await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.PURCHASE_RETURNED, {
         itemId,
         warehouseId,
-        quantity
+        quantity,
+        ...vOpt
       });
 
       return eventId;
@@ -598,8 +638,10 @@ class InventoryService {
 
   async markDamaged(institutionId, data, userId) {
     const { itemId, warehouseId, quantity, reason } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
     
-    const aggregateId = createAggregateId(itemId, warehouseId);
+    const aggregateId = createAggregateId(itemId, warehouseId, itemVariantId);
     const idempotencyKey = `damaged-${itemId}-${warehouseId}-${Date.now()}`;
 
     try {
@@ -613,7 +655,8 @@ class InventoryService {
           warehouseId,
           quantity,
           reason,
-          damagedDate: new Date().toISOString()
+          damagedDate: new Date().toISOString(),
+          ...vOpt
         },
         { userId },
         idempotencyKey
@@ -622,7 +665,8 @@ class InventoryService {
       await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.STOCK_DAMAGED, {
         itemId,
         warehouseId,
-        quantity
+        quantity,
+        ...vOpt
       });
 
       return eventId;
@@ -634,8 +678,10 @@ class InventoryService {
 
   async markExpired(institutionId, data, userId) {
     const { itemId, warehouseId, quantity, expiryDate } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
     
-    const aggregateId = createAggregateId(itemId, warehouseId);
+    const aggregateId = createAggregateId(itemId, warehouseId, itemVariantId);
     const idempotencyKey = `expired-${itemId}-${warehouseId}-${Date.now()}`;
 
     try {
@@ -649,7 +695,8 @@ class InventoryService {
           warehouseId,
           quantity,
           expiryDate,
-          expiredDate: new Date().toISOString()
+          expiredDate: new Date().toISOString(),
+          ...vOpt
         },
         { userId },
         idempotencyKey
@@ -658,7 +705,8 @@ class InventoryService {
       await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.STOCK_EXPIRED, {
         itemId,
         warehouseId,
-        quantity
+        quantity,
+        ...vOpt
       });
 
       return eventId;
@@ -699,6 +747,8 @@ class InventoryService {
 
   async releaseReservedStock(institutionId, data, userId) {
     const { itemId, warehouseId, quantity, soId, soLineId } = data;
+    const itemVariantId = normalizeItemVariantId(data.itemVariantId);
+    const vOpt = variantPayload(itemVariantId);
     
     validateEventData(INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED, {
       itemId,
@@ -709,7 +759,7 @@ class InventoryService {
       cancelledDate: new Date().toISOString()
     });
 
-    const aggregateId = createAggregateId(itemId, warehouseId);
+    const aggregateId = createAggregateId(itemId, warehouseId, itemVariantId);
     const idempotencyKey = `release-${soLineId}`;
 
     try {
@@ -724,7 +774,8 @@ class InventoryService {
           quantity,
           soId,
           soLineId,
-          cancelledDate: new Date().toISOString()
+          cancelledDate: new Date().toISOString(),
+          ...vOpt
         },
         { userId },
         idempotencyKey
@@ -733,7 +784,8 @@ class InventoryService {
       await this.applyProjectionForNewEvent(eventId, institutionId, INVENTORY_EVENTS.SALE_RESERVATION_CANCELLED, {
         itemId,
         warehouseId,
-        quantity
+        quantity,
+        ...vOpt
       });
 
       return eventId;
@@ -743,11 +795,14 @@ class InventoryService {
     }
   }
 
-  async deleteInventory(institutionId, itemId, warehouseId, userId) {
+  async deleteInventory(institutionId, itemId, warehouseId, userId, itemVariantId = null) {
     try {
+      const vid = normalizeItemVariantId(itemVariantId);
+      const vSql = vid ? ' AND item_variant_id = ? ' : ' AND item_variant_id IS NULL ';
+      const vParams = vid ? [vid] : [];
       const current = await db.query(
-        'SELECT quantity_on_hand, quantity_reserved FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-        [institutionId, itemId, warehouseId]
+        `SELECT quantity_on_hand, quantity_reserved FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?${vSql}`,
+        [institutionId, itemId, warehouseId, ...vParams]
       );
       if (!current.length) {
         throw new Error('Inventory record not found');
@@ -759,7 +814,7 @@ class InventoryService {
         `SELECT COUNT(*) as count
          FROM event_store
          WHERE institution_id = ? AND aggregate_type = 'inventory' AND aggregate_id = ?`,
-        [institutionId, createAggregateId(itemId, warehouseId)]
+        [institutionId, createAggregateId(itemId, warehouseId, vid)]
       );
       if (Number(history[0]?.count || 0) > 0) {
         throw new Error('Cannot delete inventory with event history; use stock adjustment workflow');
@@ -767,8 +822,8 @@ class InventoryService {
 
       // Delete inventory projection
       const result = await db.query(
-        'DELETE FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?',
-        [institutionId, itemId, warehouseId]
+        `DELETE FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?${vSql}`,
+        [institutionId, itemId, warehouseId, ...vParams]
       );
 
       logger.info('Inventory deleted', { itemId, warehouseId, institutionId, userId });

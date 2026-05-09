@@ -178,7 +178,8 @@ class InventoryController {
   async getInventoryHistory(req, res) {
     try {
       const { itemId, warehouseId } = req.params;
-      const history = await inventoryService.getInventoryHistory(req.institutionId, itemId, warehouseId);
+      const itemVariantId = req.query.itemVariantId || null;
+      const history = await inventoryService.getInventoryHistory(req.institutionId, itemId, warehouseId, itemVariantId);
       
       res.json({
         success: true,
@@ -201,7 +202,8 @@ class InventoryController {
   async getCurrentStock(req, res) {
     try {
       const { itemId, warehouseId } = req.params;
-      const stock = await inventoryService.getCurrentStock(req.institutionId, itemId, warehouseId);
+      const itemVariantId = req.query.itemVariantId || null;
+      const stock = await inventoryService.getCurrentStock(req.institutionId, itemId, warehouseId, itemVariantId);
       
       if (!stock) {
         return res.status(404).json({
@@ -354,7 +356,8 @@ class InventoryController {
   async deleteInventory(req, res) {
     try {
       const { itemId, warehouseId } = req.params;
-      await inventoryService.deleteInventory(req.institutionId, itemId, warehouseId, req.user.userId);
+      const itemVariantId = req.query.itemVariantId || null;
+      await inventoryService.deleteInventory(req.institutionId, itemId, warehouseId, req.user.userId, itemVariantId);
       
       res.json({
         success: true,

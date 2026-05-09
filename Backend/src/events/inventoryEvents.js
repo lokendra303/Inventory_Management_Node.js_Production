@@ -176,14 +176,22 @@ function validateEventData(eventType, eventData) {
   return true;
 }
 
-// Helper function to create aggregate ID
-function createAggregateId(itemId, warehouseId) {
+// Helper: base stock keeps legacy two-segment id (existing event_store rows); variants use a third segment.
+function createAggregateId(itemId, warehouseId, itemVariantId = null) {
+  const v = normalizeItemVariantId(itemVariantId);
+  if (v) return `${itemId}:${warehouseId}:${v}`;
   return `${itemId}:${warehouseId}`;
+}
+
+function normalizeItemVariantId(itemVariantId) {
+  if (itemVariantId === undefined || itemVariantId === null || itemVariantId === '') return null;
+  return String(itemVariantId);
 }
 
 module.exports = {
   INVENTORY_EVENTS,
   EVENT_SCHEMAS,
   validateEventData,
-  createAggregateId
+  createAggregateId,
+  normalizeItemVariantId
 };

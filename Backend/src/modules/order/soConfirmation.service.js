@@ -43,7 +43,12 @@ class SOConfirmationService {
         // Check stock availability per line's warehouse
         // Stock was already reserved at SO creation — check quantity_reserved not quantity_available
         for (const line of lines) {
-          const stock = await inventoryService.getCurrentStock(institutionId, line.item_id, line.warehouse_id);
+          const stock = await inventoryService.getCurrentStock(
+            institutionId,
+            line.item_id,
+            line.warehouse_id,
+            line.item_variant_id || null
+          );
           const reservedQty  = stock ? Number(stock.quantity_reserved)  : 0;
           const onHandQty    = stock ? Number(stock.quantity_on_hand)    : 0;
           const requiredQty  = Number(line.quantity_ordered);
@@ -67,7 +72,8 @@ class SOConfirmationService {
             unitPrice: line.unit_price,
             soId: soId,
             soLineId: line.id,
-            shipmentNumber: shipmentNumber
+            shipmentNumber: shipmentNumber,
+            itemVariantId: line.item_variant_id || undefined
           }, userId);
 
           // Update SO line status
@@ -203,10 +209,18 @@ class SOConfirmationService {
                 ip.quantity_available as available_stock
          FROM sales_order_lines sol
          JOIN items i ON sol.item_id = i.id
-         LEFT JOIN inventory_projections ip ON (ip.item_id = sol.item_id AND ip.warehouse_id = ?)
+         LEFT JOIN inventory_projections ip ON (
+              ip.institution_id = sol.institution_id
+          AND ip.item_id = sol.item_id
+          AND ip.warehouse_id = sol.warehouse_id
+          AND (
+               (sol.item_variant_id IS NULL AND ip.item_variant_id IS NULL)
+            OR (sol.item_variant_id IS NOT NULL AND ip.item_variant_id = sol.item_variant_id)
+          )
+         )
          WHERE sol.institution_id = ? AND sol.so_id = ?
          ORDER BY sol.line_number`,
-        [so.warehouse_id, institutionId, soId]
+        [institutionId, soId]
       );
 
       return {

@@ -117,7 +117,8 @@ class ItemController {
         type: req.query.type,
         category: req.query.category,
         status: req.query.status,
-        search: req.query.search
+        search: req.query.search,
+        includeVariants: req.query.includeVariants === '1' || req.query.includeVariants === 'true'
       };
       
       const items = await itemService.getItems(req.institutionId, filters, limit, offset);

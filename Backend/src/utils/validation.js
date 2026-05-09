@@ -112,13 +112,16 @@ const receiveStockSchema = Joi.object({
   grnNumber: Joi.string().max(100).optional()
 }).unknown(true);
 
+const itemVariantIdOpt = Joi.string().uuid().optional().allow(null, '');
+
 const reserveStockSchema = Joi.object({
   itemId,
   warehouseId,
   quantity,
   unitPrice,
   soId: Joi.string().uuid().optional(),
-  soLineId: Joi.string().uuid().optional()
+  soLineId: Joi.string().uuid().optional(),
+  itemVariantId: itemVariantIdOpt
 });
 
 const shipStockSchema = Joi.object({
@@ -128,7 +131,8 @@ const shipStockSchema = Joi.object({
   unitPrice,
   soId: Joi.string().uuid().optional(),
   soLineId: Joi.string().uuid().optional(),
-  shipmentNumber: Joi.string().max(100).optional()
+  shipmentNumber: Joi.string().max(100).optional(),
+  itemVariantId: itemVariantIdOpt
 });
 
 const adjustStockSchema = Joi.object({
@@ -139,7 +143,8 @@ const adjustStockSchema = Joi.object({
     'any.invalid': 'Quantity change cannot be zero'
   }),
   reason: Joi.string().min(1).max(255).required(),
-  adjustmentType: Joi.string().valid('increase', 'decrease').required()
+  adjustmentType: Joi.string().valid('increase', 'decrease').required(),
+  itemVariantId: itemVariantIdOpt
 }).unknown(true);
 
 const transferStockSchema = Joi.object({
@@ -147,7 +152,8 @@ const transferStockSchema = Joi.object({
   fromWarehouseId: Joi.string().uuid().required(),
   toWarehouseId: Joi.string().uuid().required(),
   quantity,
-  transferId: Joi.string().uuid().optional()
+  transferId: Joi.string().uuid().optional(),
+  itemVariantId: itemVariantIdOpt
 }).unknown(true);
 
 // Purchase Order schemas

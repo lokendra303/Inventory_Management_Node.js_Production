@@ -29,7 +29,7 @@ class SalesOrderService {
       }
 
       const [soLines] = await connection.execute(
-        `SELECT id, item_id, warehouse_id, unit_price, quantity_ordered, quantity_shipped
+        `SELECT id, item_id, item_variant_id, warehouse_id, unit_price, quantity_ordered, quantity_shipped
          FROM sales_order_lines
          WHERE institution_id = ? AND so_id = ?`,
         [institutionId, soId]
@@ -65,7 +65,8 @@ class SalesOrderService {
           unitPrice: Number(soLine.unit_price || 0),
           soId,
           soLineId: soLine.id,
-          shipmentNumber
+          shipmentNumber,
+          itemVariantId: soLine.item_variant_id || undefined
         }, userId);
 
         const newShipped = alreadyShipped + qty;
@@ -175,14 +176,15 @@ class SalesOrderService {
 
           await connection.execute(
             `INSERT INTO sales_order_lines 
-             (id, institution_id, so_id, item_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total, tax_rate, tax_amount, discount_rate, discount_amount) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [lineId, institutionId, soId, line.itemId, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineFinal, taxRate, taxAmount, discountRate, discountAmt]
+             (id, institution_id, so_id, item_id, item_variant_id, warehouse_id, line_number, quantity_ordered, unit_price, line_total, tax_rate, tax_amount, discount_rate, discount_amount) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [lineId, institutionId, soId, line.itemId, line.itemVariantId || null, line.warehouseId, i + 1, line.quantity, line.unitPrice, lineFinal, taxRate, taxAmount, discountRate, discountAmt]
           );
 
           createdLines.push({
             lineId,
             itemId: line.itemId,
+            itemVariantId: line.itemVariantId || null,
             warehouseId: line.warehouseId,
             quantity: line.quantity,
             unitPrice: line.unitPrice
@@ -203,7 +205,8 @@ class SalesOrderService {
             quantity: line.quantity,
             unitPrice: line.unitPrice,
             soId: soId,
-            soLineId: line.lineId
+            soLineId: line.lineId,
+            itemVariantId: line.itemVariantId || undefined
           }, userId);
         }
       });
@@ -256,9 +259,11 @@ class SalesOrderService {
 
     // Get SO lines
     const lines = await db.query(
-      `SELECT sol.*, i.hsn_code, i.name as item_name, i.unit, w.name as warehouse_name
+      `SELECT sol.*, i.hsn_code, i.name as item_name, i.unit, w.name as warehouse_name,
+              iv.variant_name as variant_name, iv.sku as variant_sku
        FROM sales_order_lines sol
        JOIN items i ON sol.item_id = i.id
+       LEFT JOIN item_variants iv ON sol.item_variant_id = iv.id
        LEFT JOIN warehouses w ON sol.warehouse_id = w.id
        WHERE sol.institution_id = ? AND sol.so_id = ?
        ORDER BY sol.line_number`,
@@ -273,13 +278,17 @@ class SalesOrderService {
     try {
       await db.transaction(async (connection) => {
         for (const line of lines) {
+          const resolvedItemId = line.itemId || line.item_id;
+          const resolvedWarehouseId = line.warehouseId || line.warehouse_id;
+          const resolvedVariantId = line.itemVariantId || line.item_variant_id || undefined;
           await inventoryService.reserveStock(institutionId, {
-            itemId: line.itemId,
-            warehouseId: line.warehouseId,
+            itemId: resolvedItemId,
+            warehouseId: resolvedWarehouseId,
             quantity: line.quantity,
             unitPrice: line.unitPrice,
             soId,
-            soLineId: line.id
+            soLineId: line.id,
+            itemVariantId: resolvedVariantId
           }, userId);
 
           await connection.execute(
@@ -302,14 +311,18 @@ class SalesOrderService {
     try {
       await db.transaction(async (connection) => {
         for (const line of lines) {
+          const resolvedItemId = line.itemId || line.item_id;
+          const resolvedWarehouseId = line.warehouseId || line.warehouse_id;
+          const resolvedVariantId = line.itemVariantId || line.item_variant_id || undefined;
           await inventoryService.shipStock(institutionId, {
-            itemId: line.itemId,
-            warehouseId: line.warehouseId,
+            itemId: resolvedItemId,
+            warehouseId: resolvedWarehouseId,
             quantity: line.quantityShipped,
             unitPrice: line.unitPrice,
             soId,
             soLineId: line.id,
-            shipmentNumber
+            shipmentNumber,
+            itemVariantId: resolvedVariantId
           }, userId);
 
           await connection.execute(
@@ -357,7 +370,7 @@ class SalesOrderService {
 
         // Get SO lines to release reserved stock
         const lines = await connection.execute(
-          'SELECT id, item_id, warehouse_id, quantity_ordered FROM sales_order_lines WHERE institution_id = ? AND so_id = ?',
+          'SELECT id, item_id, item_variant_id, warehouse_id, quantity_ordered FROM sales_order_lines WHERE institution_id = ? AND so_id = ?',
           [institutionId, soId]
         );
 
@@ -368,7 +381,8 @@ class SalesOrderService {
             warehouseId: line.warehouse_id,
             quantity: line.quantity_ordered,
             soId: soId,
-            soLineId: line.id
+            soLineId: line.id,
+            itemVariantId: line.item_variant_id || undefined
           }, userId);
         }
 

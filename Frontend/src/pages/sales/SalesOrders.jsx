@@ -99,7 +99,11 @@ const SalesOrders = () => {
           if (!stockByItemAndWarehouse[inv.item_id]) {
             stockByItemAndWarehouse[inv.item_id] = {};
           }
-          stockByItemAndWarehouse[inv.item_id][inv.warehouse_id] =
+          const vKey = inv.item_variant_id || "base";
+          if (!stockByItemAndWarehouse[inv.item_id][vKey]) {
+            stockByItemAndWarehouse[inv.item_id][vKey] = {};
+          }
+          stockByItemAndWarehouse[inv.item_id][vKey][inv.warehouse_id] =
             inv.quantity_available || 0;
         });
         setAllItemStocks(stockByItemAndWarehouse);
@@ -146,7 +150,7 @@ const SalesOrders = () => {
             .get("/customers")
             .catch(() => ({ success: false, data: [] })),
           apiService.get("/warehouses"),
-          apiService.get("/items"),
+          apiService.get("/items?includeVariants=1"),
         ],
       );
 
@@ -528,14 +532,23 @@ const SalesOrders = () => {
                     name,
                     "itemId",
                   ]);
+                  const selectedVariantId = form.getFieldValue([
+                    "lines",
+                    name,
+                    "itemVariantId",
+                  ]);
                   const selectedWarehouseId = form.getFieldValue([
                     "lines",
                     name,
                     "warehouseId",
                   ]);
                   const allLines = form.getFieldValue("lines") || [];
+                  const selectedLineItem = items.find((i) => i.id === selectedItemId);
 
-                  // Calculate already allocated quantities per item-warehouse combination
+                  const lineAllocKey = (line) =>
+                    `${line.itemId}_${line.itemVariantId || "base"}_${line.warehouseId}`;
+
+                  // Calculate already allocated quantities per item / variant / warehouse
                   const allocatedStock = {};
                   allLines.forEach((line, idx) => {
                     if (
@@ -544,9 +557,9 @@ const SalesOrders = () => {
                       line?.warehouseId &&
                       line?.quantity
                     ) {
-                      const key = `${line.itemId}_${line.warehouseId}`;
-                      allocatedStock[key] =
-                        (allocatedStock[key] || 0) + line.quantity;
+                      const ak = lineAllocKey(line);
+                      allocatedStock[ak] =
+                        (allocatedStock[ak] || 0) + line.quantity;
                     }
                   });
 
@@ -557,15 +570,19 @@ const SalesOrders = () => {
                   const availableItems = items.filter(item => item.status === 'active');
 
                   // Calculate available stock for current selection
+                  const vKey = selectedVariantId || "base";
+                  const whStockMap =
+                    selectedItemId && allItemStocks[selectedItemId]
+                      ? allItemStocks[selectedItemId][vKey]
+                      : null;
                   const currentTotalStock =
                     selectedItemId && selectedWarehouseId
-                      ? allItemStocks[selectedItemId]?.[selectedWarehouseId] ||
-                        0
+                      ? whStockMap?.[selectedWarehouseId] || 0
                       : 0;
                   const currentAllocated =
                     selectedItemId && selectedWarehouseId
                       ? allocatedStock[
-                          `${selectedItemId}_${selectedWarehouseId}`
+                          `${selectedItemId}_${vKey}_${selectedWarehouseId}`
                         ] || 0
                       : 0;
                   const currentAvailable = currentTotalStock - currentAllocated;
@@ -607,13 +624,18 @@ const SalesOrders = () => {
                               }}
                               dropdownStyle={{ minWidth: 350 }}
                               onChange={(itemId) => {
-                                const selectedItem = items.find((i) => i.id === itemId);
-                                if (selectedItem) {
+                                const sel = items.find((i) => i.id === itemId);
+                                if (sel) {
                                   const lines = form.getFieldValue("lines") || [];
                                   const plEntry = priceListItemMap[itemId];
+                                  const opts = sel.variant_options || [];
                                   lines[name] = {
                                     ...lines[name],
-                                    unitPrice:    plEntry != null ? plEntry.unitPrice    : (selectedItem.selling_price || 0),
+                                    itemVariantId:
+                                      sel.type === "variant" && opts.length === 1
+                                        ? opts[0].id
+                                        : undefined,
+                                    unitPrice:    plEntry != null ? plEntry.unitPrice    : (sel.selling_price || 0),
                                     discountRate: plEntry != null ? plEntry.discountRate : 0,
                                   };
                                   form.setFieldsValue({ lines });
@@ -621,9 +643,19 @@ const SalesOrders = () => {
                               }}
                             >
                               {availableItems.map((item) => {
-                                const totalStock = Object.values(allItemStocks[item.id] || {}).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
-                                const allocated  = Object.keys(allItemStocks[item.id] || {}).reduce((sum, whId) => sum + (allocatedStock[`${item.id}_${whId}`] || 0), 0);
-                                const available  = totalStock - allocated;
+                                const byVar = allItemStocks[item.id] || {};
+                                let totalStock = 0;
+                                Object.values(byVar).forEach((whMap) => {
+                                  Object.values(whMap || {}).forEach((qty) => {
+                                    totalStock += Number(qty) || 0;
+                                  });
+                                });
+                                let allocated = 0;
+                                allLines.forEach((line, idx) => {
+                                  if (line?.itemId !== item.id || !line?.warehouseId) return;
+                                  allocated += allocatedStock[lineAllocKey(line)] || 0;
+                                });
+                                const available = totalStock - allocated;
 
                                 return (
                                   <Select.Option
@@ -644,6 +676,34 @@ const SalesOrders = () => {
                             </Select>
                           </Form.Item>
 
+                          {selectedLineItem?.type === "variant" && (
+                            <Form.Item
+                              {...restField}
+                              name={[name, "itemVariantId"]}
+                              label="Variant"
+                              rules={[
+                                {
+                                  required: true,
+                                  message: "Select variant",
+                                },
+                              ]}
+                              style={{ marginBottom: 0, minWidth: 220, flex: 1 }}
+                            >
+                              <Select
+                                placeholder="Select variant"
+                                showSearch
+                                optionFilterProp="children"
+                                onChange={() => form.setFieldsValue({})}
+                              >
+                                {(selectedLineItem.variant_options || []).map((vo) => (
+                                  <Select.Option key={vo.id} value={vo.id}>
+                                    {vo.combinationLabel} ({vo.sku})
+                                  </Select.Option>
+                                ))}
+                              </Select>
+                            </Form.Item>
+                          )}
+
                           <Form.Item
                             {...restField}
                             name={[name, "warehouseId"]}
@@ -662,11 +722,13 @@ const SalesOrders = () => {
                             >
                               {availableWarehouses.map((wh) => {
                                 const totalStock =
-                                  allItemStocks[selectedItemId]?.[wh.id] || 0;
+                                  selectedItemId && whStockMap
+                                    ? whStockMap[wh.id] || 0
+                                    : 0;
 
                                 const allocated =
                                   allocatedStock[
-                                    `${selectedItemId}_${wh.id}`
+                                    `${selectedItemId}_${vKey}_${wh.id}`
                                   ] || 0;
 
                                 const available = totalStock - allocated;
@@ -772,7 +834,8 @@ const SalesOrders = () => {
                           const afterDiscount = lineTotal - discountAmt;
                           const taxAmount     = afterDiscount * taxPct / 100;
                           const grandTotal    = afterDiscount + taxAmount;
-                          const available     = (allItemStocks[selectedItemId]?.[selectedWarehouseId] || 0);
+                          // Must match variant-aware stock map: itemId → variantKey → warehouseId
+                          const available     = currentAvailable;
                           const isInsufficient = qty > 0 && available < qty;
                           return (
                             <>
