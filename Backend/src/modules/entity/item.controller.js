@@ -235,9 +235,12 @@ class ItemController {
           error: 'Item ID is required'
         });
       }
-      
+
+      const before = await itemService.getItemAuditSnapshot(req.institutionId, itemId);
       await itemService.updateItem(req.institutionId, itemId, req.body, req.user.userId);
-      
+      const after = await itemService.getItemAuditSnapshot(req.institutionId, itemId);
+      res.locals.auditExtra = { before, after, submitted: req.body };
+
       res.json({
         success: true,
         message: 'Item updated successfully'
@@ -275,12 +278,15 @@ class ItemController {
   async updateCompositeComponents(req, res) {
     try {
       const { id: itemId } = req.params;
+      const before = await itemService.getItemAuditSnapshot(req.institutionId, itemId);
       const updatedCount = await itemService.updateCompositeComponents(
         req.institutionId,
         itemId,
         req.body?.components || [],
         req.user.userId
       );
+      const after = await itemService.getItemAuditSnapshot(req.institutionId, itemId);
+      res.locals.auditExtra = { before, after, submitted: req.body };
       res.json({
         success: true,
         message: 'Composite components updated successfully',

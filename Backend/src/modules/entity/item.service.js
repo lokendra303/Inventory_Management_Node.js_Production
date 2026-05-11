@@ -119,6 +119,92 @@ class ItemService {
       .filter((row) => row.key && row.combinationLabel);
   }
 
+  _safeParseJson(value, fallback = null) {
+    if (value == null) return fallback;
+    if (typeof value === 'object') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  async getItemAuditSnapshot(institutionId, itemId) {
+    const rows = await db.query(
+      `SELECT i.id, i.sku, i.name, i.description, i.type, i.category, i.unit, i.barcode, i.hsn_code,
+              i.custom_fields, i.valuation_method, i.allow_negative_stock, i.status, i.cost_price,
+              i.selling_price, i.mrp, i.tax_rate, i.brand, i.manufacturer, i.item_group,
+              i.min_stock_level, i.max_stock_level, i.weight, i.dimensions, i.upc, i.ean, i.isbn,
+              i.mpn, i.opening_stock, i.opening_value, i.default_bin_id,
+              (
+                SELECT ip.warehouse_id
+                FROM inventory_projections ip
+                WHERE ip.institution_id = i.institution_id AND ip.item_id = i.id
+                ORDER BY ip.updated_at DESC, ip.id DESC
+                LIMIT 1
+              ) AS warehouse_id
+         FROM items i
+         WHERE i.institution_id = ? AND i.id = ?
+         LIMIT 1`,
+      [institutionId, itemId]
+    );
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const row = rows[0];
+    const customFields = this._safeParseJson(row.custom_fields, {});
+    const dimensions = this._safeParseJson(row.dimensions, null);
+    const normalizedType = String(row.type || '').toLowerCase();
+    const snapshot = {
+      id: row.id,
+      sku: row.sku,
+      name: row.name,
+      description: row.description,
+      type: row.type,
+      category: row.category,
+      unit: row.unit,
+      barcode: row.barcode,
+      hsnCode: row.hsn_code,
+      customFields,
+      valuationMethod: row.valuation_method,
+      allowNegativeStock: Boolean(row.allow_negative_stock),
+      status: row.status,
+      costPrice: row.cost_price != null ? Number(row.cost_price) : null,
+      sellingPrice: row.selling_price != null ? Number(row.selling_price) : null,
+      mrp: row.mrp != null ? Number(row.mrp) : null,
+      taxRate: row.tax_rate != null ? Number(row.tax_rate) : null,
+      brand: row.brand,
+      manufacturer: row.manufacturer,
+      itemGroup: row.item_group,
+      minStockLevel: row.min_stock_level != null ? Number(row.min_stock_level) : null,
+      maxStockLevel: row.max_stock_level != null ? Number(row.max_stock_level) : null,
+      warehouseId: row.warehouse_id || null,
+      weight: row.weight != null ? Number(row.weight) : null,
+      dimensions,
+      upc: row.upc,
+      ean: row.ean,
+      isbn: row.isbn,
+      mpn: row.mpn,
+      openingStock: row.opening_stock != null ? Number(row.opening_stock) : null,
+      openingValue: row.opening_value != null ? Number(row.opening_value) : null,
+      defaultBinId: row.default_bin_id || null,
+      components: [],
+    };
+
+    if (normalizedType === 'composite') {
+      const components = await this.getCompositeComponents(institutionId, itemId);
+      snapshot.components = components.map((component) => ({
+        itemId: component.component_item_id,
+        quantityRequired: Number(component.quantity_required || 0),
+        consumptionTiming: component.consumption_timing || 'shipment'
+      }));
+    }
+
+    return snapshot;
+  }
+
   async _syncItemVariants(institutionId, parentItemId, parentSku, customFields = {}) {
     const rows = this._normalizeVariantRows(customFields?.variantMatrix);
 

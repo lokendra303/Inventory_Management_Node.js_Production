@@ -55,6 +55,7 @@ const Items = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [binsForWarehouse, setBinsForWarehouse] = useState([]);
   const [binsLoading, setBinsLoading] = useState(false);
+  const [editingWarehouseSummaries, setEditingWarehouseSummaries] = useState([]);
   const [variantLibrary, setVariantLibrary] = useState([]);
   const [existingCustomFields, setExistingCustomFields] = useState({});
   const [variantMatrixEdits, setVariantMatrixEdits] = useState([]);
@@ -86,6 +87,12 @@ const Items = () => {
     return one ? [one] : [];
   };
   const formScalarMeta = (value) => normalizeOptionalTextArray(value)[0];
+  const formatStockQty = (value) => {
+    const numeric = Number(value) || 0;
+    return Number.isInteger(numeric)
+      ? numeric.toLocaleString()
+      : numeric.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  };
 
   const loadSkuRules = async () => {
     setSkuRulesLoading(true);
@@ -744,6 +751,62 @@ const Items = () => {
     }
   };
 
+  const fetchItemWarehouseSummaries = useCallback(async (itemId) => {
+    if (!itemId) {
+      setEditingWarehouseSummaries([]);
+      return [];
+    }
+
+    try {
+      const response = await apiService.get(`/inventory/item-activity/${itemId}`);
+      const summaries = response.success && Array.isArray(response.data) ? response.data : [];
+      setEditingWarehouseSummaries(summaries);
+      return summaries;
+    } catch (error) {
+      console.log('Warehouse stock summary unavailable for item edit', error);
+      setEditingWarehouseSummaries([]);
+      return [];
+    }
+  }, []);
+
+  const warehouseSelectOptions = useMemo(() => {
+    const merged = new Map();
+
+    warehouses.forEach((warehouse) => {
+      merged.set(warehouse.id, {
+        ...warehouse,
+        stock: null
+      });
+    });
+
+    editingWarehouseSummaries.forEach((summary) => {
+      const existing = merged.get(summary.warehouse_id) || {
+        id: summary.warehouse_id,
+        name: summary.warehouse_name || summary.warehouse_id,
+        code: null,
+        status: 'active'
+      };
+
+      merged.set(summary.warehouse_id, {
+        ...existing,
+        name: existing.name || summary.warehouse_name || summary.warehouse_id,
+        stock: {
+          available: Number(summary?.current_stock?.quantity_available || 0),
+          onHand: Number(summary?.current_stock?.quantity_on_hand || 0),
+          reserved: Number(summary?.current_stock?.quantity_reserved || 0)
+        }
+      });
+    });
+
+    return Array.from(merged.values())
+      .filter((warehouse) => warehouse.status === 'active' || warehouse.stock)
+      .sort((left, right) => {
+        const stockDiff = (Number(right.stock?.available || 0) - Number(left.stock?.available || 0));
+        if (stockDiff !== 0) return stockDiff;
+        return String(left.name || '').localeCompare(String(right.name || ''));
+      });
+  }, [warehouses, editingWarehouseSummaries]);
+
   const fetchItems = async () => {
     let itemsLoaded = false;
     try {
@@ -1049,6 +1112,7 @@ const viewItem = async (item) => {
 
   const editItem = async (item) => {
     setEditingItem(item);
+    setEditingWarehouseSummaries([]);
     setPriceCurrency(currency);
     setImageUrl(item.image || '');
     setLastAppliedSkuRule(null);
@@ -1058,13 +1122,18 @@ const viewItem = async (item) => {
     await loadSkuRules();
     
     let fullItem = item;
-    try {
-      const itemResponse = await apiService.get(`/items/${item.id}`);
-      if (itemResponse.success) {
-        fullItem = itemResponse.data;
-      }
-    } catch (error) {
-      console.error('Failed to fetch full item details:', error);
+    let warehouseSummaries = [];
+    const [itemResponse, warehouseSummaryResponse] = await Promise.allSettled([
+      apiService.get(`/items/${item.id}`),
+      fetchItemWarehouseSummaries(item.id)
+    ]);
+    if (itemResponse.status === 'fulfilled' && itemResponse.value.success) {
+      fullItem = itemResponse.value.data;
+    } else if (itemResponse.status === 'rejected') {
+      console.error('Failed to fetch full item details:', itemResponse.reason);
+    }
+    if (warehouseSummaryResponse.status === 'fulfilled' && Array.isArray(warehouseSummaryResponse.value)) {
+      warehouseSummaries = warehouseSummaryResponse.value;
     }
     setExistingCustomFields(fullItem?.custom_fields || {});
     setVariantMatrixEdits(
@@ -1074,11 +1143,26 @@ const viewItem = async (item) => {
     );
     setCompositeComponents(normalizeCompositeComponents(fullItem?.composite_components || []));
 
-    // Get warehouse from item's warehouse_ids (returned by getItem via GROUP_CONCAT)
-    // Fall back to fetching all inventory and filtering by item
+    // Get warehouse from item's inventory projections first.
+    // If the item has no stock projection yet, fall back to the warehouse owning
+    // the saved default bin so the edit form still pre-fills correctly.
     let finalWarehouseId = null;
     if (fullItem.warehouse_ids?.length > 0) {
       finalWarehouseId = fullItem.warehouse_ids[0] || null;
+    } else if (fullItem.default_bin_id) {
+      try {
+        const binResponse = await apiService.get(`/warehouse-locations/bins/${fullItem.default_bin_id}`);
+        if (binResponse.success) {
+          finalWarehouseId = binResponse.data?.warehouse_id || null;
+        }
+      } catch { /* no warehouse found from default bin */ }
+    } else if (warehouseSummaries.length > 0) {
+      const best = warehouseSummaries.reduce((currentBest, row) => (
+        Number(row?.current_stock?.quantity_available || 0) > Number(currentBest?.current_stock?.quantity_available || 0)
+          ? row
+          : currentBest
+      ), warehouseSummaries[0]);
+      finalWarehouseId = best?.warehouse_id || null;
     } else {
       try {
         const invResponse = await apiService.get('/inventory');
@@ -1433,6 +1517,7 @@ const viewItem = async (item) => {
 
   const duplicateItem = async (item) => {
     setEditingItem(null);
+    setEditingWarehouseSummaries([]);
     setPriceCurrency(currency);
     setImageUrl(item.image || '');
     setImageFile(null);
@@ -1497,6 +1582,7 @@ const viewItem = async (item) => {
 
   const openCreateModal = async () => {
     setEditingItem(null);
+    setEditingWarehouseSummaries([]);
     setActiveDraftId(null);
     setPriceCurrency(currency);
     setImageUrl('');
@@ -1930,7 +2016,7 @@ const viewItem = async (item) => {
           </div>
         }
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setCompositeComponents([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
+        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setCompositeComponents([]); setEditingWarehouseSummaries([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
         footer={null}
         width="min(1280px, 98vw)"
         style={{ top: 8 }}
@@ -3334,6 +3420,10 @@ const viewItem = async (item) => {
                 <Select
                   placeholder="Select warehouse"
                   allowClear
+                  showSearch
+                  optionLabelProp="label"
+                  optionFilterProp="label"
+                  dropdownStyle={{ minWidth: 320 }}
                   onChange={(value) => {
                     form.setFieldsValue({ defaultBinId: null });
                     fetchBinsForWarehouse(value);
@@ -3367,11 +3457,40 @@ const viewItem = async (item) => {
                     </div>
                   )}
                 >
-                  {warehouses.filter(w => w.status === 'active' || (editingItem && w.id === form.getFieldValue('warehouseId'))).map(warehouse => (
-                    <Select.Option key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}{warehouse.status !== 'active' ? ' (inactive)' : ''}
-                    </Select.Option>
-                  ))}
+                  {warehouseSelectOptions.map((warehouse) => {
+                    const stock = warehouse.stock;
+                    return (
+                      <Select.Option
+                        key={warehouse.id}
+                        value={warehouse.id}
+                        label={`${warehouse.name}${warehouse.status !== 'active' ? ' (inactive)' : ''}`}
+                      >
+                        <div>
+                          <strong>
+                            {warehouse.name}
+                            {warehouse.status !== 'active' ? ' (inactive)' : ''}
+                          </strong>
+                          {(warehouse.code || stock) && <br />}
+                          {warehouse.code && (
+                            <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+                              Code: {warehouse.code}
+                            </span>
+                          )}
+                          {warehouse.code && stock && <br />}
+                          {stock && (
+                            <span
+                              style={{
+                                fontSize: 12,
+                                color: stock.available > 0 ? '#52c41a' : '#8c8c8c'
+                              }}
+                            >
+                              Available: {formatStockQty(stock.available)} | On hand: {formatStockQty(stock.onHand)} | Reserved: {formatStockQty(stock.reserved)}
+                            </span>
+                          )}
+                        </div>
+                      </Select.Option>
+                    );
+                  })}
                 </Select>
               </Form.Item>
             </Col>
@@ -3445,7 +3564,7 @@ const viewItem = async (item) => {
                   Save as Draft
                 </Button>
               )}
-              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); setDuplicateBanner(null); setCompositeComponents([]); form.resetFields(); }}>
+              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); setDuplicateBanner(null); setCompositeComponents([]); setEditingWarehouseSummaries([]); form.resetFields(); }}>
                 Cancel
               </Button>
             </Space>
@@ -3612,12 +3731,18 @@ const viewItem = async (item) => {
                         <Timeline>
                           {itemHistory.map((log, index) => {
                             const eventType = log.type || log.event_type || '';
+                            const fieldChanges = Array.isArray(log.field_changes) ? log.field_changes : [];
+                            const summaryText = log.summary || log.description;
                             const getEventColor = (type) => {
                               if (['PurchaseReceived', 'SaleReturned', 'SaleReservationCancelled'].includes(type)) return 'green';
                               if (['SaleShipped', 'PurchaseReturned', 'StockDamaged', 'StockExpired'].includes(type)) return 'red';
                               if (['SaleReserved'].includes(type)) return 'orange';
                               if (type === 'ADJUSTMENT') return 'blue';
                               if (['TransferIn', 'TransferOut'].includes(type)) return 'purple';
+                              if (type === 'ITEM_CREATED') return 'green';
+                              if (type === 'ITEM_UPDATED') return 'cyan';
+                              if (type === 'ITEM_COMPONENTS_UPDATED') return 'purple';
+                              if (type === 'ITEM_DELETED') return 'red';
                               return 'gray';
                             };
                             const getEventLabel = (type) => {
@@ -3633,6 +3758,10 @@ const viewItem = async (item) => {
                                 StockDamaged: 'Stock Damaged',
                                 StockExpired: 'Stock Expired',
                                 ADJUSTMENT: 'Stock Adjusted',
+                                ITEM_CREATED: 'Item Created',
+                                ITEM_UPDATED: 'Item Updated',
+                                ITEM_COMPONENTS_UPDATED: 'BOM Updated',
+                                ITEM_DELETED: 'Item Deleted',
                               };
                               return labels[type] || type;
                             };
@@ -3659,8 +3788,23 @@ const viewItem = async (item) => {
                                     </strong></div>
                                   )}
                                   {unitCost != null && <div>Unit Cost: <strong>{formatPrice(unitCost, currency, 'USD')}</strong></div>}
+                                  {fieldChanges.length > 0 && (
+                                    <div style={{ marginTop: 8 }}>
+                                      {fieldChanges.slice(0, 8).map((change, changeIndex) => (
+                                        <div key={`${log.id || index}-field-${changeIndex}`}>
+                                          {change.label}: <strong>{change.from_display}</strong>{' -> '}<strong>{change.to_display}</strong>
+                                        </div>
+                                      ))}
+                                      {fieldChanges.length > 8 && (
+                                        <div style={{ color: '#8c8c8c', fontSize: 12 }}>
+                                          +{fieldChanges.length - 8} more field changes
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                   {log.performed_by?.trim() && <div style={{ color: '#8c8c8c', fontSize: 12 }}>By: {log.performed_by}</div>}
                                   {ref && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Ref: {ref}</div>}
+                                  {summaryText && <div style={{ color: '#8c8c8c', fontSize: 12 }}>{summaryText}</div>}
                                   {notes && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Notes: {notes}</div>}
                                 </div>
                               </Timeline.Item>

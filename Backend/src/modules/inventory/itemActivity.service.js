@@ -1,6 +1,143 @@
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 
+const ITEM_AUDIT_EVENT_TYPES = {
+  item_created: 'ITEM_CREATED',
+  item_updated: 'ITEM_UPDATED',
+  item_deleted: 'ITEM_DELETED',
+  item_components_updated: 'ITEM_COMPONENTS_UPDATED'
+};
+
+const ITEM_AUDIT_FIELD_LABELS = {
+  sku: 'SKU',
+  name: 'Name',
+  description: 'Description',
+  type: 'Type',
+  category: 'Category',
+  unit: 'Unit',
+  barcode: 'Barcode',
+  hsnCode: 'HSN Code',
+  customFields: 'Custom Fields',
+  valuationMethod: 'Valuation Method',
+  allowNegativeStock: 'Allow Negative Stock',
+  status: 'Status',
+  costPrice: 'Cost Price',
+  sellingPrice: 'Selling Price',
+  mrp: 'MRP',
+  taxRate: 'Tax Rate',
+  brand: 'Brand',
+  manufacturer: 'Manufacturer',
+  itemGroup: 'Item Group',
+  minStockLevel: 'Min Stock',
+  maxStockLevel: 'Max Stock',
+  warehouseId: 'Warehouse',
+  weight: 'Weight',
+  dimensions: 'Dimensions',
+  upc: 'UPC',
+  ean: 'EAN',
+  isbn: 'ISBN',
+  mpn: 'MPN',
+  openingStock: 'Opening Stock',
+  openingValue: 'Opening Value',
+  defaultBinId: 'Default Bin',
+  components: 'Components'
+};
+
+const parseJsonColumn = (value, fallback = null) => {
+  if (value == null) return fallback;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeAuditValue = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeAuditValue(entry));
+  }
+  if (typeof value === 'object') {
+    return Object.keys(value).sort().reduce((acc, key) => {
+      acc[key] = normalizeAuditValue(value[key]);
+      return acc;
+    }, {});
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? Number(value) : null;
+  }
+  return value;
+};
+
+const stableAuditStringify = (value) => JSON.stringify(normalizeAuditValue(value));
+
+const areAuditValuesEqual = (left, right) => stableAuditStringify(left) === stableAuditStringify(right);
+
+const summarizeAuditValue = (value) => {
+  const normalized = normalizeAuditValue(value);
+  if (normalized == null) return 'Empty';
+  if (Array.isArray(normalized)) {
+    if (normalized.length === 0) return 'Empty';
+    if (normalized.every((entry) => entry == null || typeof entry !== 'object')) {
+      const joined = normalized.map((entry) => entry == null ? 'Empty' : String(entry)).join(', ');
+      return joined.length > 80 ? `${joined.slice(0, 77)}...` : joined;
+    }
+    return `${normalized.length} item${normalized.length === 1 ? '' : 's'}`;
+  }
+  if (typeof normalized === 'object') {
+    const json = JSON.stringify(normalized);
+    return json.length > 80 ? `${json.slice(0, 77)}...` : json;
+  }
+  return String(normalized);
+};
+
+const buildItemAuditFieldChanges = (action, before = null, after = null) => {
+  if (!['item_updated', 'item_components_updated'].includes(action)) {
+    return [];
+  }
+  if (!before || !after || typeof before !== 'object' || typeof after !== 'object') {
+    return [];
+  }
+
+  const previous = before;
+  const current = after;
+
+  return Object.entries(ITEM_AUDIT_FIELD_LABELS).reduce((changes, [field, label]) => {
+    if (areAuditValuesEqual(previous[field], current[field])) {
+      return changes;
+    }
+
+    changes.push({
+      field,
+      label,
+      from: normalizeAuditValue(previous[field]),
+      to: normalizeAuditValue(current[field]),
+      from_display: summarizeAuditValue(previous[field]),
+      to_display: summarizeAuditValue(current[field])
+    });
+    return changes;
+  }, []);
+};
+
+const buildItemAuditSummary = (action, fieldChanges = []) => {
+  if (action === 'item_created') return 'Item master created';
+  if (action === 'item_deleted') return 'Item marked inactive';
+  if (action === 'item_components_updated') {
+    return fieldChanges.length > 0
+      ? `Updated ${fieldChanges.map((change) => change.label).join(', ')}`
+      : 'Composite components updated';
+  }
+  if (fieldChanges.length > 0) {
+    return `Updated ${fieldChanges.map((change) => change.label).join(', ')}`;
+  }
+  return 'Item master updated';
+};
+
 class ItemActivityService {
   async getItemActivitySummary(institutionId, itemId, warehouseId = null) {
     try {
@@ -292,6 +429,26 @@ class ItemActivityService {
         adjParams
       );
 
+      const auditLogs = await db.query(
+        `SELECT
+          al.id,
+          al.action,
+          al.changes,
+          al.request_body,
+          al.description,
+          al.created_at,
+          CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as performed_by
+         FROM audit_logs al
+         LEFT JOIN institution_users u ON al.user_id = u.id AND u.institution_id = al.institution_id
+         WHERE al.institution_id = ?
+           AND al.entity_type = 'item'
+           AND al.entity_id = ?
+           AND al.action IN ('item_created', 'item_updated', 'item_deleted', 'item_components_updated')
+         ORDER BY al.created_at DESC
+         LIMIT 1000`,
+        [institutionId, itemId]
+      );
+
       // Combine and format logs
       const allLogs = [
         ...logs.map(log => ({
@@ -315,7 +472,33 @@ class ItemActivityService {
           warehouse: log.warehouse_name,
           performed_by: log.performed_by,
           timestamp: log.created_at
-        }))
+        })),
+        ...auditLogs.map((log) => {
+          const changes = parseJsonColumn(log.changes, {});
+          const requestBody = parseJsonColumn(log.request_body, {});
+          const serverSnapshot = changes?.serverSnapshot && typeof changes.serverSnapshot === 'object'
+            ? changes.serverSnapshot
+            : {};
+          const before = serverSnapshot.before || null;
+          const after = serverSnapshot.after || requestBody || null;
+          const fieldChanges = buildItemAuditFieldChanges(log.action, before, after);
+
+          return {
+            id: `audit-${log.id}`,
+            type: ITEM_AUDIT_EVENT_TYPES[log.action] || 'ITEM_UPDATED',
+            audit_action: log.action,
+            performed_by: (log.performed_by || '').trim(),
+            timestamp: log.created_at,
+            details: {
+              before,
+              after,
+              requestBody
+            },
+            description: log.description,
+            summary: buildItemAuditSummary(log.action, fieldChanges),
+            field_changes: fieldChanges
+          };
+        })
       ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
       return allLogs;
