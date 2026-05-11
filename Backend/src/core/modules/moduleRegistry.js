@@ -9,6 +9,7 @@ const moduleRegistry = [
   { path: '/dropdown-options', router: require('../../modules/master-data/dropdownOptions.routes') },
   { path: '/categories', router: require('../../modules/entity/category.routes') },
   { path: '/item-types', router: require('../../modules/entity/itemType.routes') },
+  { path: '/item-groups', router: require('../../modules/entity/itemGroup.routes') },
   { path: '/warehouses', router: require('../../modules/warehouse/warehouse.routes') },
   { path: '/warehouse-types', router: require('../../modules/warehouse/warehouseType.routes') },
   { path: '/warehouse-locations', router: require('../../modules/warehouse/warehouseLocation.routes') },

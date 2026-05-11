@@ -9,13 +9,16 @@ import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
+import { useLocation } from 'react-router-dom';
 
 const Items = () => {
+  const location = useLocation();
   const { user, sessionSecondsLeft } = useAuth();
   const { currency } = useCurrency();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [itemTypes, setItemTypes] = useState([]);
+  const [itemGroups, setItemGroups] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [priceCurrency, setPriceCurrency] = useState('USD');
   const [currencies] = useState(getCurrencies());
@@ -38,6 +41,7 @@ const Items = () => {
   const [priceHistory, setPriceHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [itemGroupFilter, setItemGroupFilter] = useState('all');
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
@@ -153,6 +157,7 @@ const Items = () => {
     brand: payload.brand,
     manufacturer: payload.manufacturer,
     itemGroup: payload.itemGroup,
+    itemGroupId: payload.itemGroupId,
     minStockLevel: payload.minStockLevel,
     maxStockLevel: payload.maxStockLevel,
     barcode: payload.barcode,
@@ -679,6 +684,7 @@ const Items = () => {
     },
     { title: 'Type', dataIndex: 'type', key: 'type', render: v => v ? <Tag color="blue" style={{ borderRadius: 20, textTransform: 'capitalize' }}>{v}</Tag> : '-' },
     { title: 'Category', dataIndex: 'category', key: 'category', render: v => v ? <Tag color="orange" style={{ borderRadius: 20 }}>{v}</Tag> : '-' },
+    { title: 'Item Group', dataIndex: 'item_group_name', key: 'item_group_name', render: v => v ? <Tag color="purple" style={{ borderRadius: 20 }}>{v}</Tag> : '-' },
     { title: 'Unit', dataIndex: 'unit', key: 'unit', render: v => v || '-' },
     {
       title: 'On Hand',
@@ -773,10 +779,11 @@ const Items = () => {
         apiService.get('/units'),
         apiService.get('/vendors'),
         canViewItems ? apiService.get('/item-types') : Promise.resolve({ success: true, data: [] }),
+        canViewItems ? apiService.get('/item-groups') : Promise.resolve({ success: true, data: [] }),
         canViewItems ? apiService.get('/items/variant-library') : Promise.resolve({ success: true, data: [] })
       ]);
       
-      const [manufacturersRes, brandsRes, unitsRes, vendorsRes, itemTypesRes, variantLibraryRes] = results;
+      const [manufacturersRes, brandsRes, unitsRes, vendorsRes, itemTypesRes, itemGroupsRes, variantLibraryRes] = results;
       
       if (manufacturersRes.status === 'fulfilled') {
         const manufacturers = Array.isArray(manufacturersRes.value) ? manufacturersRes.value : (manufacturersRes.value?.data || []);
@@ -801,6 +808,11 @@ const Items = () => {
       if (itemTypesRes.status === 'fulfilled') {
         const types = Array.isArray(itemTypesRes.value) ? itemTypesRes.value : (itemTypesRes.value?.data || []);
         setItemTypes(types);
+      }
+
+      if (itemGroupsRes.status === 'fulfilled') {
+        const groups = Array.isArray(itemGroupsRes.value) ? itemGroupsRes.value : (itemGroupsRes.value?.data || []);
+        setItemGroups(groups);
       }
 
       if (variantLibraryRes.status === 'fulfilled') {
@@ -987,7 +999,8 @@ const Items = () => {
         taxRate: values.taxRate,
         brand: values.brand,
         manufacturer: values.manufacturer,
-        itemGroup: formScalarMeta(values.variant) || null,
+        itemGroupId: values.itemGroupId || null,
+        itemGroup: itemGroups.find((group) => group.id === values.itemGroupId)?.name || null,
         minStockLevel: values.minStockLevel,
         maxStockLevel: values.maxStockLevel,
         barcode: values.barcode,
@@ -1077,6 +1090,7 @@ const Items = () => {
         form.resetFields();
         form.setFieldsValue({
           type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
+          itemGroupId: null,
           purchaseAccount: 'cogs',
           purchaseTaxRate: 0,
           purchaseDescription: 'Initial stock entry'
@@ -1289,7 +1303,7 @@ const viewItem = async (item) => {
       maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
       barcode: normalizeOptionalText(fullItem.barcode),
       hsnCode: normalizeOptionalText(fullItem.hsn_code),
-      variant: formScalarMeta(fullItem.item_group),
+      itemGroupId: fullItem.item_group_id || null,
       colorCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.color),
       sizeCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.size),
       packType: formScalarMeta(fullItem?.custom_fields?.skuMeta?.packType),
@@ -1474,11 +1488,18 @@ const viewItem = async (item) => {
 
   const watchedVariantAttributes = Form.useWatch('variantAttributes', form);
   const watchedItemType = Form.useWatch('type', form);
+  const watchedItemGroupId = Form.useWatch('itemGroupId', form);
   const watchedVariant = Form.useWatch('variant', form);
   const watchedColor = Form.useWatch('colorCode', form);
   const watchedSize = Form.useWatch('sizeCode', form);
   const watchedPackType = Form.useWatch('packType', form);
   const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
+
+  const selectableItemGroups = useMemo(() => (
+    (itemGroups || [])
+      .filter((group) => group?.is_active || group?.id === watchedItemGroupId)
+      .sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || '')))
+  ), [itemGroups, watchedItemGroupId]);
 
   useEffect(() => {
     if (watchedItemType !== 'composite' && compositeComponents.length > 0) {
@@ -1706,7 +1727,7 @@ const viewItem = async (item) => {
       maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
       barcode: normalizeOptionalText(fullItem.barcode),
       hsnCode: normalizeOptionalText(fullItem.hsn_code),
-      variant: formScalarMeta(fullItem.item_group),
+      itemGroupId: fullItem.item_group_id || null,
       colorCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.color),
       sizeCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.size),
       packType: formScalarMeta(fullItem?.custom_fields?.skuMeta?.packType),
@@ -1756,7 +1777,8 @@ const viewItem = async (item) => {
       taxRate: duplicateFormValues.taxRate,
       brand: duplicateFormValues.brand,
       manufacturer: duplicateFormValues.manufacturer,
-      itemGroup: formScalarMeta(duplicateFormValues.variant) || null,
+      itemGroupId: duplicateFormValues.itemGroupId || null,
+      itemGroup: itemGroups.find((group) => group.id === duplicateFormValues.itemGroupId)?.name || fullItem.item_group_name || fullItem.item_group || null,
       minStockLevel: duplicateFormValues.minStockLevel,
       maxStockLevel: duplicateFormValues.maxStockLevel,
       barcode: duplicateFormValues.barcode,
@@ -1808,6 +1830,7 @@ const viewItem = async (item) => {
     form.setFieldsValue({
       type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
       trackInventory: false,
+      itemGroupId: null,
       purchaseAccount: 'cogs',
       purchaseTaxRate: 0,
       purchaseDescription: 'Initial stock entry'
@@ -1849,7 +1872,7 @@ const viewItem = async (item) => {
   const hasDraftableValues = useCallback((values = {}) => {
     const fieldsToCheck = [
       'sku', 'name', 'description', 'category', 'unit', 'warehouseId', 'type',
-      'brand', 'manufacturer', 'barcode', 'upc', 'ean', 'isbn', 'mpn'
+      'brand', 'manufacturer', 'barcode', 'upc', 'ean', 'isbn', 'mpn', 'itemGroupId'
     ];
     const hasText = fieldsToCheck.some((k) => {
       const v = values[k];
@@ -1947,6 +1970,12 @@ const viewItem = async (item) => {
     };
   }, [modalVisible]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const requestedItemGroupId = params.get('itemGroupId') || 'all';
+    setItemGroupFilter((current) => (current === requestedItemGroupId ? current : requestedItemGroupId));
+  }, [location.search]);
+
   const sectionStyle = {
     background: '#fff',
     border: '1px solid #ebebf5',
@@ -1981,11 +2010,13 @@ const viewItem = async (item) => {
 
   const filteredItems = items.filter(item => {
     if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+    if (itemGroupFilter !== 'all' && item.item_group_id !== itemGroupFilter) return false;
     if (!searchText) return true;
     return (
       item.name?.toLowerCase().includes(searchText.toLowerCase()) ||
       item.sku?.toLowerCase().includes(searchText.toLowerCase()) ||
-      item.category?.toLowerCase().includes(searchText.toLowerCase())
+      item.category?.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.item_group_name?.toLowerCase().includes(searchText.toLowerCase())
     );
   });
 
@@ -2084,12 +2115,24 @@ const viewItem = async (item) => {
           </Space>
           <Space wrap>
             <Input
-              placeholder="Search by name, SKU or category..."
+              placeholder="Search by name, SKU, category or group..."
               prefix={<SearchOutlined style={{ color: '#bbb' }} />}
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               style={{ width: 260, borderRadius: 10 }}
               allowClear
+            />
+            <Select
+              value={itemGroupFilter}
+              onChange={setItemGroupFilter}
+              style={{ width: 220 }}
+              options={[
+                { value: 'all', label: 'All Item Groups' },
+                ...itemGroups.map((group) => ({
+                  value: group.id,
+                  label: group.name
+                }))
+              ]}
             />
             {canManageItems && (
               <Tooltip title="Configure SKU auto-generator rules (prefix, counter, date, per-category overrides)">
@@ -3040,6 +3083,33 @@ const viewItem = async (item) => {
                     </Form.Item>
                   </Col>
                 </Row>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      name="itemGroupId"
+                      label="Item Group"
+                      tooltip="Use item groups to organize related items for reporting, filtering, and master-data consistency."
+                    >
+                      <Select
+                        allowClear
+                        placeholder={itemGroups.length ? 'Select item group' : 'No item groups available'}
+                        optionFilterProp="label"
+                        options={selectableItemGroups.map((group) => ({
+                          value: group.id,
+                          label: group.name
+                        }))}
+                        dropdownRender={(menu) => (
+                          <div>
+                            {menu}
+                            <div style={{ padding: '8px 12px', borderTop: '1px solid #f0f0f0', fontSize: 12, color: '#6b7280' }}>
+                              Manage item groups from the <strong>Item Groups</strong> page in the Items menu.
+                            </div>
+                          </div>
+                        )}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
                 {watchedItemType === 'composite' && (
                   <div style={{ marginBottom: 16, border: '1px solid #e6e8f0', borderRadius: 8, background: '#fff' }}>
                     <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, color: '#4b5563', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3890,6 +3960,7 @@ const viewItem = async (item) => {
                   <Tag color={viewingItem.status === 'active' ? 'success' : 'error'} style={{ borderRadius: 20 }}>{viewingItem.status}</Tag>
                   {viewingItem.type && <Tag color="blue" style={{ borderRadius: 20 }}>{viewingItem.type}</Tag>}
                   {viewingItem.category && <Tag color="orange" style={{ borderRadius: 20 }}>{viewingItem.category}</Tag>}
+                  {viewingItem.item_group_name && <Tag color="purple" style={{ borderRadius: 20 }}>{viewingItem.item_group_name}</Tag>}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -3910,6 +3981,7 @@ const viewItem = async (item) => {
                 ['MRP', viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'],
                 ['Tax Rate', viewingItem.tax_rate ? `${viewingItem.tax_rate}%` : 'N/A'],
                 ['Unit', viewingItem.unit || 'N/A'],
+                ['Item Group', viewingItem.item_group_name || 'N/A'],
                 ['Brand', viewingItem.brand || 'N/A'],
                 ['Manufacturer', viewingItem.manufacturer || 'N/A'],
               ], [

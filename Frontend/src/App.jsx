@@ -97,6 +97,7 @@ if (!Select.__imsSearchPatched) {
 const ProtectedInventory = withPermission('inventory_view')(Inventory);
 const ProtectedPackages = withPermission('inventory_view')(Packages);
 const ProtectedItems = withPermission('item_view')(Items);
+const ProtectedItemGroups = withPermission(null, ['item_view', 'item_management'])(ItemGroups);
 const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
 const ProtectedWarehouseLocations = withPermission('warehouse_view')(WarehouseLocations);
 const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(InventoryAdjustments);
@@ -187,7 +188,7 @@ function AppContent() {
             <Route path="/inventory/batch-tracking" element={<ProtectedBatchTracking />} />
             <Route path="/inventory/reorder-levels" element={<ReorderLevels />} />
             <Route path="/items" element={<ProtectedItems />} />
-            <Route path="/item-groups" element={<ItemGroups />} />
+            <Route path="/item-groups" element={<ProtectedItemGroups />} />
             <Route path="/sales/delivery-challans" element={<DeliveryChallans />} />
             <Route path="/sales/payments-received" element={<PaymentReceived />} />
             <Route path="/sales/returns" element={<SalesReturns />} />

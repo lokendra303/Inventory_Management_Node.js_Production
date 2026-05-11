@@ -116,6 +116,7 @@ class ItemController {
       const filters = {
         type: req.query.type,
         category: req.query.category,
+        itemGroupId: req.query.itemGroupId,
         status: req.query.status,
         search: req.query.search,
         includeVariants: req.query.includeVariants === '1' || req.query.includeVariants === 'true'

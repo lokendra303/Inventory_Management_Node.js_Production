@@ -488,7 +488,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       key: 'items', icon: <TagsOutlined />, label: 'Items',
       children: [
         hasPermission('item_view') && { key: '/items',       label: 'Items' },
-        hasPermission('item_view') && { key: '/item-groups', label: 'Item Groups' },
+        hasAnyPermission('item_view', 'item_management') && { key: '/item-groups', label: 'Item Groups' },
       ].filter(Boolean),
     },
     hasAnyPermission('warehouse_view','warehouse_management','warehouse_type_view','warehouse_type_management') && {

@@ -3,6 +3,7 @@ const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const itemFieldService = require('./itemField.service');
 const itemPriceHistoryService = require('./itemPriceHistory.service');
+const itemGroupService = require('./itemGroup.service');
 
 class ItemService {
   _normalizeCompositeComponents(components = []) {
@@ -129,11 +130,16 @@ class ItemService {
     }
   }
 
+  async _resolveItemGroup(institutionId, payload = {}) {
+    return itemGroupService.resolveItemGroupRef(institutionId, payload);
+  }
+
   async getItemAuditSnapshot(institutionId, itemId) {
     const rows = await db.query(
       `SELECT i.id, i.sku, i.name, i.description, i.type, i.category, i.unit, i.barcode, i.hsn_code,
               i.custom_fields, i.valuation_method, i.allow_negative_stock, i.status, i.cost_price,
-              i.selling_price, i.mrp, i.tax_rate, i.brand, i.manufacturer, i.item_group,
+              i.selling_price, i.mrp, i.tax_rate, i.brand, i.manufacturer, i.item_group_id,
+              COALESCE(ig.name, i.item_group) AS item_group_name,
               i.min_stock_level, i.max_stock_level, i.weight, i.dimensions, i.upc, i.ean, i.isbn,
               i.mpn, i.opening_stock, i.opening_value, i.default_bin_id,
               (
@@ -144,6 +150,7 @@ class ItemService {
                 LIMIT 1
               ) AS warehouse_id
          FROM items i
+         LEFT JOIN item_groups ig ON ig.id = i.item_group_id AND ig.institution_id = i.institution_id
          WHERE i.institution_id = ? AND i.id = ?
          LIMIT 1`,
       [institutionId, itemId]
@@ -177,7 +184,8 @@ class ItemService {
       taxRate: row.tax_rate != null ? Number(row.tax_rate) : null,
       brand: row.brand,
       manufacturer: row.manufacturer,
-      itemGroup: row.item_group,
+      itemGroupId: row.item_group_id || null,
+      itemGroup: row.item_group_name || null,
       minStockLevel: row.min_stock_level != null ? Number(row.min_stock_level) : null,
       maxStockLevel: row.max_stock_level != null ? Number(row.max_stock_level) : null,
       warehouseId: row.warehouse_id || null,
@@ -389,6 +397,7 @@ class ItemService {
       shelfLifeDays,
       storageConditions,
       itemGroup,
+      itemGroupId,
       purchaseAccount,
       salesAccount,
       openingStock = 0,
@@ -421,6 +430,7 @@ class ItemService {
       throw new Error(`Item with SKU "${normalizedSku}" already exists`);
     }
 
+    const resolvedItemGroup = await this._resolveItemGroup(institutionId, { itemGroupId, itemGroup });
     const itemId = uuidv4();
 
     await db.query(
@@ -429,14 +439,14 @@ class ItemService {
         custom_fields, default_bin_id, valuation_method, allow_negative_stock, cost_price, selling_price, mrp, 
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
-        shelf_life_days, storage_conditions, item_group, purchase_account, sales_account,
+        shelf_life_days, storage_conditions, item_group, item_group_id, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
       [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, category || null, unit, barcode || null, hsnCode || null,
        JSON.stringify(customFields), defaultBinId || null, valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
-       shelfLifeDays || null, storageConditions || null, itemGroup || null, purchaseAccount || null, salesAccount || null,
+       shelfLifeDays || null, storageConditions || null, resolvedItemGroup?.itemGroupName || null, resolvedItemGroup?.itemGroupId || null, purchaseAccount || null, salesAccount || null,
        openingStock, openingValue, asOfDate || null]
     );
 
@@ -538,6 +548,7 @@ class ItemService {
       brand,
       manufacturer,
       itemGroup,
+      itemGroupId,
       minStockLevel,
       maxStockLevel,
       warehouseId,
@@ -634,9 +645,12 @@ class ItemService {
       updateFields.push('manufacturer = ?');
       updateValues.push(manufacturer);
     }
-    if (itemGroup !== undefined) {
+    if (itemGroup !== undefined || itemGroupId !== undefined) {
+      const resolvedItemGroup = await this._resolveItemGroup(institutionId, { itemGroupId, itemGroup });
       updateFields.push('item_group = ?');
-      updateValues.push(itemGroup);
+      updateValues.push(resolvedItemGroup?.itemGroupName || null);
+      updateFields.push('item_group_id = ?');
+      updateValues.push(resolvedItemGroup?.itemGroupId || null);
     }
     if (minStockLevel !== undefined) {
       updateFields.push('min_stock_level = ?');
@@ -812,12 +826,15 @@ class ItemService {
        b.name as brand_name,
        m.name as manufacturer_name,
        u.name as unit_name,
+       ig.id as item_group_ref_id,
+       COALESCE(ig.name, i.item_group) as item_group_name,
        GROUP_CONCAT(DISTINCT ip.warehouse_id) as warehouse_ids
        FROM items i
        LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
        LEFT JOIN brands b ON i.brand = b.id
        LEFT JOIN manufacturers m ON i.manufacturer = m.id
        LEFT JOIN units u ON i.unit = u.id
+       LEFT JOIN item_groups ig ON ig.id = i.item_group_id AND ig.institution_id = i.institution_id
        WHERE i.institution_id = ? AND i.id = ?
        GROUP BY i.id`,
       [institutionId, itemId]
@@ -873,6 +890,9 @@ class ItemService {
       brand: item.brand_name || item.brand,
       manufacturer: item.manufacturer_name || item.manufacturer,
       unit: item.unit_name || item.unit,
+      item_group_id: item.item_group_ref_id || item.item_group_id || null,
+      item_group_name: item.item_group_name || item.item_group || null,
+      item_group: item.item_group_name || item.item_group || null,
       custom_fields: safeParseObj(item.custom_fields),
       dimensions: safeParse(item.dimensions),
       warehouse_ids: item.warehouse_ids ? item.warehouse_ids.split(',') : [],
@@ -1119,12 +1139,15 @@ class ItemService {
                  COALESCE(SUM(ip.quantity_on_hand), 0) as current_stock,
                  b.name as brand_name,
                  m.name as manufacturer_name,
-                 u.name as unit_name
+                 u.name as unit_name,
+                 ig.id as item_group_ref_id,
+                 COALESCE(ig.name, i.item_group) as item_group_name
                  FROM items i
                  LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
                  LEFT JOIN brands b ON i.brand = b.id
                  LEFT JOIN manufacturers m ON i.manufacturer = m.id
                  LEFT JOIN units u ON i.unit = u.id
+                 LEFT JOIN item_groups ig ON ig.id = i.item_group_id AND ig.institution_id = i.institution_id
                  WHERE i.institution_id = ?`;
     const params = [institutionId];
 
@@ -1133,6 +1156,27 @@ class ItemService {
     } else {
       query += ' AND i.status = ?';
       params.push(filters.status || 'active');
+    }
+
+    if (filters.type) {
+      query += ' AND i.type = ?';
+      params.push(filters.type);
+    }
+
+    if (filters.category) {
+      query += ' AND i.category = ?';
+      params.push(filters.category);
+    }
+
+    if (filters.itemGroupId) {
+      query += ' AND i.item_group_id = ?';
+      params.push(filters.itemGroupId);
+    }
+
+    if (filters.search) {
+      query += ' AND (i.name LIKE ? OR i.sku LIKE ? OR COALESCE(i.category, \'\') LIKE ? OR COALESCE(ig.name, i.item_group, \'\') LIKE ?)';
+      const searchTerm = `%${String(filters.search).trim()}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     query += ' GROUP BY i.id ORDER BY i.name';
@@ -1150,6 +1194,9 @@ class ItemService {
       brand: item.brand_name || item.brand,
       manufacturer: item.manufacturer_name || item.manufacturer,
       unit: item.unit_name || item.unit,
+      item_group_id: item.item_group_ref_id || item.item_group_id || null,
+      item_group_name: item.item_group_name || item.item_group || null,
+      item_group: item.item_group_name || item.item_group || null,
       custom_fields: safeParseObj(item.custom_fields),
     }));
 
