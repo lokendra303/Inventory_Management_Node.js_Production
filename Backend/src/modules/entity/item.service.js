@@ -1205,7 +1205,7 @@ class ItemService {
       if (parentIds.length > 0) {
         const ph = parentIds.map(() => '?').join(',');
         const variants = await db.query(
-          `SELECT id, parent_item_id, variant_name, sku, status
+          `SELECT id, parent_item_id, variant_name, sku, selling_price, status
            FROM item_variants
            WHERE institution_id = ? AND parent_item_id IN (${ph}) AND status = 'active'
            ORDER BY parent_item_id ASC, variant_name ASC`,
@@ -1217,7 +1217,8 @@ class ItemService {
           byParent.get(v.parent_item_id).push({
             id: v.id,
             combinationLabel: v.variant_name,
-            sku: v.sku
+            sku: v.sku,
+            sellingPrice: Number(v.selling_price || 0)
           });
         }
         return mapped.map((item) => ({

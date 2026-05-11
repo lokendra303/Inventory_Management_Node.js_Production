@@ -36,6 +36,25 @@ const SalesOrders = () => {
   const [selectedPriceListId, setSelectedPriceListId] = useState(null);
   const [priceListItemMap, setPriceListItemMap] = useState({});
 
+  const getLineDiscountRate = (itemId) => {
+    const priceListEntry = priceListItemMap[itemId];
+    return priceListEntry != null ? priceListEntry.discountRate : 0;
+  };
+
+  const getLineUnitPrice = (item, variantId = null) => {
+    if (!item) return 0;
+    const priceListEntry = priceListItemMap[item.id];
+    if (priceListEntry != null) return priceListEntry.unitPrice;
+
+    if (variantId && Array.isArray(item.variant_options)) {
+      const variantOption = item.variant_options.find((option) => option.id === variantId);
+      const variantSellingPrice = Number(variantOption?.sellingPrice || 0);
+      if (variantSellingPrice > 0) return variantSellingPrice;
+    }
+
+    return Number(item.selling_price || 0);
+  };
+
   const fetchPriceLists = async () => {
     try {
       const res = await apiService.get('/price-lists');
@@ -627,16 +646,16 @@ const SalesOrders = () => {
                                 const sel = items.find((i) => i.id === itemId);
                                 if (sel) {
                                   const lines = form.getFieldValue("lines") || [];
-                                  const plEntry = priceListItemMap[itemId];
                                   const opts = sel.variant_options || [];
+                                  const defaultVariantId =
+                                    sel.type === "variant" && opts.length === 1
+                                      ? opts[0].id
+                                      : undefined;
                                   lines[name] = {
                                     ...lines[name],
-                                    itemVariantId:
-                                      sel.type === "variant" && opts.length === 1
-                                        ? opts[0].id
-                                        : undefined,
-                                    unitPrice:    plEntry != null ? plEntry.unitPrice    : (sel.selling_price || 0),
-                                    discountRate: plEntry != null ? plEntry.discountRate : 0,
+                                    itemVariantId: defaultVariantId,
+                                    unitPrice: getLineUnitPrice(sel, defaultVariantId),
+                                    discountRate: getLineDiscountRate(itemId),
                                   };
                                   form.setFieldsValue({ lines });
                                 }
@@ -693,13 +712,30 @@ const SalesOrders = () => {
                                 placeholder="Select variant"
                                 showSearch
                                 optionFilterProp="children"
-                                onChange={() => form.setFieldsValue({})}
+                                onChange={(variantId) => {
+                                  const lines = form.getFieldValue("lines") || [];
+                                  const currentLine = lines[name] || {};
+                                  const item = items.find((i) => i.id === currentLine.itemId);
+                                  lines[name] = {
+                                    ...currentLine,
+                                    itemVariantId: variantId,
+                                    unitPrice: getLineUnitPrice(item, variantId),
+                                  };
+                                  form.setFieldsValue({ lines });
+                                }}
                               >
-                                {(selectedLineItem.variant_options || []).map((vo) => (
-                                  <Select.Option key={vo.id} value={vo.id}>
-                                    {vo.combinationLabel} ({vo.sku})
-                                  </Select.Option>
-                                ))}
+                                {(selectedLineItem.variant_options || []).map((vo) => {
+                                  const variantWarehouseMap = (allItemStocks[selectedItemId] || {})[vo.id] || {};
+                                  const totalVariantStock = Object.values(variantWarehouseMap).reduce(
+                                    (sum, qty) => sum + (Number(qty) || 0),
+                                    0
+                                  );
+                                  return (
+                                    <Select.Option key={vo.id} value={vo.id}>
+                                      {vo.combinationLabel} ({vo.sku}) - {totalVariantStock} available
+                                    </Select.Option>
+                                  );
+                                })}
                               </Select>
                             </Form.Item>
                           )}
@@ -848,7 +884,11 @@ const SalesOrders = () => {
                               )}
                               <div style={{ padding: '8px 12px', backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 4 }}>
                                 <span style={{ fontSize: '13px', color: '#0050b3' }}>
-                                  ℹ️ <strong>{items.find(i => i.id === selectedItemId)?.name}</strong> at <strong>{warehouses.find(w => w.id === selectedWarehouseId)?.name}</strong>:
+                                  ℹ️ <strong>{items.find(i => i.id === selectedItemId)?.name}</strong>
+                                  {selectedVariantId && selectedLineItem?.variant_options?.find((vo) => vo.id === selectedVariantId)?.combinationLabel
+                                    ? <> / <strong>{selectedLineItem.variant_options.find((vo) => vo.id === selectedVariantId)?.combinationLabel}</strong></>
+                                    : null}
+                                  {' '}at <strong>{warehouses.find(w => w.id === selectedWarehouseId)?.name}</strong>:
                                   <strong style={{ color: available > 0 ? '#52c41a' : '#ff4d4f', marginLeft: 4 }}>{available} in stock</strong>
                                   {qty > 0 && (
                                     <span style={{ marginLeft: 8 }}>

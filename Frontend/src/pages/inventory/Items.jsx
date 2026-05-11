@@ -11,6 +11,42 @@ import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
 import { useLocation } from 'react-router-dom';
 
+const VARIANT_MATRIX_GRID_TEMPLATE = 'minmax(0, 2.2fr) minmax(0, 1.5fr) minmax(0, 1.35fr) minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(64px, 0.6fr)';
+const VARIANT_MATRIX_MIN_WIDTH = '100%';
+const VARIANT_MATRIX_LABEL_STYLE = {
+  marginBottom: 6,
+  fontSize: 11,
+  fontWeight: 700,
+  color: '#64748b',
+  textTransform: 'uppercase',
+  letterSpacing: 0.4
+};
+const VARIANT_MATRIX_ACTION_STYLE = {
+  padding: 0,
+  height: 'auto',
+  fontSize: 11,
+  fontWeight: 600
+};
+const extractSkuTemplateTokens = (template = '') =>
+  (String(template || '').match(/\{([^}]+)\}/g) || [])
+    .map((wrap) => String(wrap).slice(1, -1).split('|')[0]?.trim()?.toUpperCase())
+    .filter(Boolean);
+const toSkuCode = (value, len = 3) => {
+  const parts = String(value || '')
+    .trim()
+    .split(/[^A-Za-z0-9]+/g)
+    .filter(Boolean);
+  const compact = parts.length >= 2
+    ? parts.map((part) => part[0].toUpperCase()).join('')
+    : parts.join('').toUpperCase();
+  return compact.replace(/[^A-Z0-9]+/g, '').slice(0, len);
+};
+const isBlankVariantMatrixValue = (value) => (
+  value === undefined ||
+  value === null ||
+  (typeof value === 'string' && !value.trim())
+);
+
 const Items = () => {
   const location = useLocation();
   const { user, sessionSecondsLeft } = useAuth();
@@ -114,12 +150,14 @@ const Items = () => {
     colorCode,
     sizeCode,
     packType
-  } = {}) => ([
-    ...normalizeOptionalTextArray(variant).map((value) => ({ name: 'Variant', values: value })),
-    ...normalizeOptionalTextArray(colorCode).map((value) => ({ name: 'Colour', values: value })),
-    ...normalizeOptionalTextArray(sizeCode).map((value) => ({ name: 'Size', values: value })),
-    ...normalizeOptionalTextArray(packType).map((value) => ({ name: 'Pack Type', values: value }))
-  ]);
+  } = {}) => (
+    [
+      { name: 'Variant', values: normalizeOptionalTextArray(variant) },
+      { name: 'Colour', values: normalizeOptionalTextArray(colorCode) },
+      { name: 'Size', values: normalizeOptionalTextArray(sizeCode) },
+      { name: 'Pack Type', values: normalizeOptionalTextArray(packType) }
+    ].filter((row) => row.values.length > 0)
+  );
   const normalizeComparableValue = (value) => {
     if (value === undefined || value === null || value === '') return null;
     if (Array.isArray(value)) {
@@ -192,6 +230,157 @@ const Items = () => {
     }
   };
 
+  const showSkuGenerationError = (error) => {
+    const err = error?.response?.data?.error || error?.message || 'Failed to generate SKU';
+    const normalizedErr = String(err || '').toLowerCase();
+    if (normalizedErr.includes('failed to allocate unique sku after multiple attempts')) {
+      Modal.warning({
+        title: 'SKU generation needs attention',
+        width: 560,
+        content: (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ marginBottom: 8 }}>
+              Could not generate a unique SKU with the current rule after several retries.
+            </p>
+            <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
+              <li>Try selecting another SKU rule from the dropdown.</li>
+              <li>Increase counter padding or change prefix tokens in Manage SKU Rules.</li>
+              <li>If urgent, enter SKU manually and save.</li>
+            </ul>
+          </div>
+        ),
+        okText: 'Got it'
+      });
+      return;
+    }
+
+    Modal.error({
+      title: 'SKU generation failed',
+      content: err,
+      okText: 'Close'
+    });
+  };
+
+  const getVariantRowAttributeValue = (row = {}, aliases = []) => {
+    const aliasSet = new Set((aliases || []).map((alias) => String(alias || '').trim().toLowerCase()).filter(Boolean));
+    const attrs = row?.attributes && typeof row.attributes === 'object' ? row.attributes : {};
+    const match = Object.entries(attrs).find(([key, value]) => (
+      aliasSet.has(String(key || '').trim().toLowerCase()) &&
+      String(value || '').trim()
+    ));
+    return match ? String(match[1]).trim() : '';
+  };
+
+  const buildSkuGenerationContext = (variantRow = null) => {
+    const brandValue = form.getFieldValue('brand');
+    const brandRow = brandOptions.find((b) => b.id === brandValue || b.name === brandValue);
+    const brandName = brandRow?.name || brandValue || '';
+    const itemName = form.getFieldValue('name') || '';
+    const categoryName = form.getFieldValue('category') || '';
+    const variantValue = getVariantRowAttributeValue(variantRow, ['variant', 'variant / packing', 'packing'])
+      || formScalarMeta(form.getFieldValue('variant'))
+      || '';
+    const colorValue = getVariantRowAttributeValue(variantRow, ['colour', 'color', 'color code'])
+      || formScalarMeta(form.getFieldValue('colorCode'))
+      || '';
+    const typeName = form.getFieldValue('type') || '';
+    const sizeValue = getVariantRowAttributeValue(variantRow, ['size'])
+      || formScalarMeta(form.getFieldValue('sizeCode'))
+      || '';
+    const packTypeValue = getVariantRowAttributeValue(variantRow, ['pack type', 'type'])
+      || formScalarMeta(form.getFieldValue('packType'))
+      || '';
+    const manufacturerValue = form.getFieldValue('manufacturer');
+    const manufacturerRow = manufacturerOptions.find((m) => m.id === manufacturerValue || m.name === manufacturerValue);
+    const manufacturerName = manufacturerRow?.name || manufacturerValue || '';
+    const unitValue = form.getFieldValue('unit');
+    const unitRow = unitOptions.find((u) => u.id === unitValue || u.name === unitValue || u.symbol === unitValue);
+    const unitLabel = unitRow?.symbol || unitRow?.name || unitValue || '';
+    const warehouseId = variantRow?.warehouseId ?? form.getFieldValue('warehouseId');
+    const warehouseRow = warehouses.find((w) => String(w.id) === String(warehouseId));
+    const warehouseLabel = warehouseRow?.code || warehouseRow?.name || warehouseId || '';
+    const hsnCode = form.getFieldValue('hsnCode') || '';
+    const mpn = form.getFieldValue('mpn') || '';
+    const barcode = variantRow?.barcode || form.getFieldValue('barcode') || form.getFieldValue('ean') || '';
+
+    return {
+      ruleId: selectedSkuRuleId || undefined,
+      category: categoryName,
+      brand: brandName,
+      manufacturer: manufacturerName,
+      name: itemName,
+      item: itemName,
+      variant: variantValue,
+      color: colorValue,
+      type: packTypeValue || typeName,
+      unit: unitLabel,
+      warehouse: warehouseLabel,
+      hsnCode,
+      mpn,
+      barcode,
+      brandCode: toSkuCode(brandName, 3),
+      itemCode: toSkuCode(itemName, 4),
+      variantCode: toSkuCode(variantValue, 4),
+      colorCode: toSkuCode(colorValue, 4),
+      categoryCode: toSkuCode(categoryName, 3),
+      manufacturerCode: toSkuCode(manufacturerName, 3),
+      typeCode: toSkuCode(packTypeValue || typeName, 3),
+      unitCode: toSkuCode(unitLabel, 4),
+      warehouseCode: toSkuCode(warehouseLabel, 4),
+      size: toSkuCode(sizeValue || unitLabel, 8),
+      typeValue: packTypeValue || typeName
+    };
+  };
+
+  const ensureSkuRuleRequirements = (selectedRule, ctx, actionLabel = 'Generate SKU') => {
+    if (!(selectedRule?.prefix_mode === 'static' && String(selectedRule?.prefix_static || '').includes('{'))) {
+      return true;
+    }
+
+    const tokenRequirements = {
+      BRAND: { label: 'Brand', value: ctx.brand },
+      ITEM: { label: 'Item Name', value: ctx.name || ctx.item },
+      NAME: { label: 'Item Name', value: ctx.name || ctx.item },
+      VARIANT: { label: 'Variant / Packing', value: ctx.variant },
+      COLOR: { label: 'Colour', value: ctx.color },
+      SIZE: { label: 'Size (or Unit)', value: ctx.size || ctx.unit },
+      TYPE: { label: 'Pack Type', value: ctx.typeValue || ctx.type },
+      CATEGORY: { label: 'Category', value: ctx.category },
+      MANUFACTURER: { label: 'Manufacturer', value: ctx.manufacturer },
+      UNIT: { label: 'Unit', value: ctx.unit },
+      WAREHOUSE: { label: 'Warehouse', value: ctx.warehouse },
+      HSN: { label: 'HSN Code', value: ctx.hsnCode },
+      MPN: { label: 'MPN', value: ctx.mpn },
+      BARCODE: { label: 'Barcode / EAN', value: ctx.barcode }
+    };
+
+    const missingFields = extractSkuTemplateTokens(selectedRule.prefix_static)
+      .map((token) => tokenRequirements[token])
+      .filter((requirement) => requirement && !String(requirement.value || '').trim())
+      .map((requirement) => requirement.label);
+
+    const uniqueMissing = Array.from(new Set(missingFields));
+    if (uniqueMissing.length === 0) return true;
+
+    Modal.warning({
+      title: 'Required fields missing for selected SKU rule',
+      content: (
+        <div style={{ marginTop: 8 }}>
+          <p style={{ marginBottom: 8 }}>
+            Fill these fields first, then click {actionLabel}:
+          </p>
+          <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
+            {uniqueMissing.map((field) => (
+              <li key={field}>{field}</li>
+            ))}
+          </ul>
+        </div>
+      ),
+      okText: 'Understood'
+    });
+    return false;
+  };
+
   // Handler for the "Generate" button next to the SKU field. Pulls the
   // current category/brand/name off the form so the resolver can pick the
   // correct category-scoped rule if one exists.
@@ -201,129 +390,10 @@ const Items = () => {
       const selectedRule = selectedSkuRuleId
         ? skuRules.find((r) => r.id === selectedSkuRuleId) || null
         : null;
+      const ctx = buildSkuGenerationContext();
 
-      const extractTemplateTokens = (template = '') =>
-        (String(template || '').match(/\{([^}]+)\}/g) || [])
-          .map((wrap) => String(wrap).slice(1, -1).split('|')[0]?.trim()?.toUpperCase())
-          .filter(Boolean);
+      if (!ensureSkuRuleRequirements(selectedRule, ctx, 'Generate SKU')) return;
 
-      const tokenRequirements = {
-        BRAND: { label: 'Brand', check: () => !!form.getFieldValue('brand') },
-        ITEM: { label: 'Item Name', check: () => !!String(form.getFieldValue('name') || '').trim() },
-        NAME: { label: 'Item Name', check: () => !!String(form.getFieldValue('name') || '').trim() },
-        VARIANT: { label: 'Variant / Packing', check: () => !!String(formScalarMeta(form.getFieldValue('variant')) || '').trim() },
-        COLOR: { label: 'Colour', check: () => !!String(formScalarMeta(form.getFieldValue('colorCode')) || '').trim() },
-        SIZE: {
-          label: 'Size (or Unit)',
-          check: () => !!String(formScalarMeta(form.getFieldValue('sizeCode')) || '').trim() || !!form.getFieldValue('unit')
-        },
-        TYPE: {
-          label: 'Pack Type',
-          check: () => !!String(formScalarMeta(form.getFieldValue('packType')) || '').trim() || !!String(form.getFieldValue('type') || '').trim()
-        },
-        CATEGORY: { label: 'Category', check: () => !!String(form.getFieldValue('category') || '').trim() },
-        MANUFACTURER: { label: 'Manufacturer', check: () => !!form.getFieldValue('manufacturer') },
-        UNIT: { label: 'Unit', check: () => !!form.getFieldValue('unit') },
-        WAREHOUSE: { label: 'Warehouse', check: () => !!form.getFieldValue('warehouseId') },
-        HSN: { label: 'HSN Code', check: () => !!String(form.getFieldValue('hsnCode') || '').trim() },
-        MPN: { label: 'MPN', check: () => !!String(form.getFieldValue('mpn') || '').trim() },
-        BARCODE: {
-          label: 'Barcode / EAN',
-          check: () => !!String(form.getFieldValue('barcode') || '').trim() || !!String(form.getFieldValue('ean') || '').trim()
-        }
-      };
-
-      if (selectedRule?.prefix_mode === 'static' && String(selectedRule?.prefix_static || '').includes('{')) {
-        const tokens = extractTemplateTokens(selectedRule.prefix_static);
-        const missingFields = [];
-        for (const token of tokens) {
-          const requirement = tokenRequirements[token];
-          if (requirement && !requirement.check()) {
-            missingFields.push(requirement.label);
-          }
-        }
-        const uniqueMissing = Array.from(new Set(missingFields));
-        if (uniqueMissing.length > 0) {
-          Modal.warning({
-            title: 'Required fields missing for selected SKU rule',
-            content: (
-              <div style={{ marginTop: 8 }}>
-                <p style={{ marginBottom: 8 }}>
-                  Fill these fields first, then click Generate SKU:
-                </p>
-                <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
-                  {uniqueMissing.map((field) => (
-                    <li key={field}>{field}</li>
-                  ))}
-                </ul>
-              </div>
-            ),
-            okText: 'Understood'
-          });
-          return;
-        }
-      }
-
-      const brandValue = form.getFieldValue('brand');
-      const brandRow = brandOptions.find((b) => b.id === brandValue || b.name === brandValue);
-      const brandName = brandRow?.name || brandValue || '';
-      const itemName = form.getFieldValue('name') || '';
-      const categoryName = form.getFieldValue('category') || '';
-      const variantValue = formScalarMeta(form.getFieldValue('variant')) || '';
-      const colorValue = formScalarMeta(form.getFieldValue('colorCode')) || '';
-      const typeName = form.getFieldValue('type') || '';
-      const sizeValue = formScalarMeta(form.getFieldValue('sizeCode')) || '';
-      const packTypeValue = formScalarMeta(form.getFieldValue('packType')) || '';
-      const manufacturerValue = form.getFieldValue('manufacturer');
-      const manufacturerRow = manufacturerOptions.find((m) => m.id === manufacturerValue || m.name === manufacturerValue);
-      const manufacturerName = manufacturerRow?.name || manufacturerValue || '';
-      const unitValue = form.getFieldValue('unit');
-      const unitRow = unitOptions.find((u) => u.id === unitValue || u.name === unitValue || u.symbol === unitValue);
-      const unitLabel = unitRow?.symbol || unitRow?.name || unitValue || '';
-      const warehouseId = form.getFieldValue('warehouseId');
-      const warehouseRow = warehouses.find((w) => w.id === warehouseId);
-      const warehouseLabel = warehouseRow?.code || warehouseRow?.name || warehouseId || '';
-      const hsnCode = form.getFieldValue('hsnCode') || '';
-      const mpn = form.getFieldValue('mpn') || '';
-      const barcode = form.getFieldValue('barcode') || form.getFieldValue('ean') || '';
-      const toCode = (value, len = 3) => {
-        const parts = String(value || '')
-          .trim()
-          .split(/[^A-Za-z0-9]+/g)
-          .filter(Boolean);
-        const compact = parts.length >= 2
-          ? parts.map((p) => p[0].toUpperCase()).join('')
-          : parts.join('').toUpperCase();
-        return compact.replace(/[^A-Z0-9]+/g, '').slice(0, len);
-      };
-
-      const ctx = {
-        ruleId: selectedSkuRuleId || undefined,
-        category: categoryName,
-        brand: brandName,
-        manufacturer: manufacturerName,
-        name: itemName,
-        item: itemName,
-        variant: variantValue,
-        color: colorValue,
-        type: packTypeValue || typeName,
-        unit: unitLabel,
-        warehouse: warehouseLabel,
-        hsnCode,
-        mpn,
-        barcode,
-        brandCode: toCode(brandName, 3),
-        itemCode: toCode(itemName, 4),
-        variantCode: toCode(variantValue, 4),
-        colorCode: toCode(colorValue, 4),
-        categoryCode: toCode(categoryName, 3),
-        manufacturerCode: toCode(manufacturerName, 3),
-        typeCode: toCode(packTypeValue || typeName, 3),
-        unitCode: toCode(unitLabel, 4),
-        warehouseCode: toCode(warehouseLabel, 4),
-        size: toCode(sizeValue || unitLabel, 8),
-        typeValue: packTypeValue || typeName
-      };
       const generated = await skuGeneratorService.generateSku(ctx);
       const sku = generated?.sku || '';
       if (sku) {
@@ -340,33 +410,7 @@ const Items = () => {
         message.success(`Generated SKU: ${sku}${generated?.ruleName ? ` (Rule: ${generated.ruleName})` : ''}`);
       }
     } catch (e) {
-      const err = e?.response?.data?.error || e?.message || 'Failed to generate SKU';
-      const normalizedErr = String(err || '').toLowerCase();
-      if (normalizedErr.includes('failed to allocate unique sku after multiple attempts')) {
-        Modal.warning({
-          title: 'SKU generation needs attention',
-          width: 560,
-          content: (
-            <div style={{ marginTop: 8 }}>
-              <p style={{ marginBottom: 8 }}>
-                Could not generate a unique SKU with the current rule after several retries.
-              </p>
-              <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
-                <li>Try selecting another SKU rule from the dropdown.</li>
-                <li>Increase counter padding or change prefix tokens in Manage SKU Rules.</li>
-                <li>If urgent, enter SKU manually and save.</li>
-              </ul>
-            </div>
-          ),
-          okText: 'Got it'
-        });
-      } else {
-        Modal.error({
-          title: 'SKU generation failed',
-          content: err,
-          okText: 'Close'
-        });
-      }
+      showSkuGenerationError(e);
     } finally {
       setSkuGenerating(false);
     }
@@ -961,9 +1005,24 @@ const Items = () => {
     try {
       const isEditing = !!editingItem;
       console.log('Form values:', values);
-      if ((Number(values.openingStock) || 0) > 0 && !values.warehouseId) {
+      const itemType = values.type || itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple';
+      const normalizedVariantAttributes = normalizeVariantAttributes(values.variantAttributes);
+      const normalizedVariantMatrix = normalizeVariantMatrixRows(variantMatrixRows);
+      const isVariantType = itemType === 'variant';
+      const defaultVariantWarehouseId = normalizedVariantMatrix.find((row) => row.warehouseId)?.warehouseId || null;
+
+      if (!isVariantType && (Number(values.openingStock) || 0) > 0 && !values.warehouseId) {
         message.error('Please select Warehouse when opening stock is greater than 0.');
         return;
+      }
+      if (isVariantType) {
+        const stockRowMissingWarehouse = normalizedVariantMatrix.find(
+          (row) => (Number(row.openingStock) || 0) > 0 && !row.warehouseId
+        );
+        if (stockRowMissingWarehouse) {
+          message.error(`Select a warehouse for variant "${stockRowMissingWarehouse.combinationLabel}" before saving stock.`);
+          return;
+        }
       }
       
       // Build dimensions object if any dimension value exists
@@ -978,12 +1037,12 @@ const Items = () => {
         name: values.name,
         description: values.description,
         image: imageUrl,
-        type: values.type || itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
+        type: itemType,
         category: values.category,
         customFields: {
           ...(existingCustomFields || {}),
-          variantAttributes: normalizeVariantAttributes(values.variantAttributes),
-          variantMatrix: normalizeVariantMatrixRows(variantMatrixRows),
+          variantAttributes: normalizedVariantAttributes,
+          variantMatrix: normalizedVariantMatrix,
           skuMeta: {
             ...((existingCustomFields || {}).skuMeta || {}),
             color: normalizeOptionalTextArray(values.colorCode),
@@ -992,7 +1051,7 @@ const Items = () => {
           }
         },
         unit: values.unit,
-        warehouseId: values.warehouseId,
+        warehouseId: isVariantType ? defaultVariantWarehouseId : values.warehouseId,
         costPrice: values.costPrice != null && values.costPrice !== '' ? convertPrice(values.costPrice, priceCurrency, 'USD') : 0,
         sellingPrice: values.sellingPrice != null && values.sellingPrice !== '' ? convertPrice(values.sellingPrice, priceCurrency, 'USD') : 0,
         mrp: values.mrp ? convertPrice(values.mrp, priceCurrency, 'USD') : null,
@@ -1004,9 +1063,9 @@ const Items = () => {
         minStockLevel: values.minStockLevel,
         maxStockLevel: values.maxStockLevel,
         barcode: values.barcode,
-        openingStock: values.openingStock || 0,
-        openingValue: values.openingValue || 0,
-        defaultBinId: values.defaultBinId || null,
+        openingStock: isVariantType ? 0 : (values.openingStock || 0),
+        openingValue: isVariantType ? 0 : (values.openingValue || 0),
+        defaultBinId: isVariantType ? null : (values.defaultBinId || null),
         valuationMethod: values.valuationMethod,
         weight: values.weight,
         dimensions: dimensions,
@@ -1387,7 +1446,7 @@ const viewItem = async (item) => {
         if (one) vals = [one];
       }
       if (!name || !vals.length) return [];
-      return vals.map((v) => ({ name, values: v }));
+      return [{ name, values: vals }];
     });
   };
 
@@ -1426,6 +1485,44 @@ const viewItem = async (item) => {
       warehouseId: normalizeOptionalText(row?.warehouseId),
       active: row?.active !== false
     })).filter((row) => row.key && row.combinationLabel);
+  };
+
+  const toTitleText = (value) => String(value || '')
+    .split(' ')
+    .map((part) => {
+      const trimmed = String(part || '').trim();
+      return trimmed ? `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}` : '';
+    })
+    .filter(Boolean)
+    .join(' ');
+
+  const getVariantAttributeTokens = (row = {}) => {
+    const attrs = row?.attributes && typeof row.attributes === 'object' ? row.attributes : {};
+    const entries = Object.entries(attrs)
+      .filter(([key, value]) => key && key !== '_imsKey' && String(value || '').trim());
+
+    if (entries.length > 0) {
+      return entries.map(([key, value]) => ({
+        label: toTitleText(key),
+        value: String(value).trim()
+      }));
+    }
+
+    const label = String(row?.combinationLabel || row?.variant_name || '').trim();
+    if (!label) return [];
+
+    return label
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .map((segment) => {
+        const [left, ...rest] = segment.split(':');
+        if (rest.length === 0) return { label: 'Variant', value: left.trim() };
+        return {
+          label: toTitleText(left),
+          value: rest.join(':').trim()
+        };
+      });
   };
 
   const buildVariantMatrixKeyFromAttributes = (attributes = {}) => {
@@ -1472,14 +1569,18 @@ const viewItem = async (item) => {
     const normalized = normalizeVariantAttributes(rows);
     if (normalized.length === 0) return [];
 
-    const recurse = (idx, acc, parts) => {
+    const recurse = (idx, acc, labels) => {
       if (idx >= normalized.length) {
         const key = Object.entries(acc).map(([k, v]) => `${k}:${v}`).join('|');
-        return [{ key, attributes: { ...acc }, combinationLabel: parts.join(' / ') }];
+        return [{ key, attributes: { ...acc }, combinationLabel: labels.join(' / ') }];
       }
       const current = normalized[idx];
       return current.values.flatMap((value) =>
-        recurse(idx + 1, { ...acc, [current.name]: value }, [...parts, String(value)])
+        recurse(
+          idx + 1,
+          { ...acc, [current.name]: value },
+          [...labels, `${String(current.name || '').trim()}: ${String(value)}`]
+        )
       );
     };
 
@@ -1494,6 +1595,7 @@ const viewItem = async (item) => {
   const watchedSize = Form.useWatch('sizeCode', form);
   const watchedPackType = Form.useWatch('packType', form);
   const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
+  const isVariantItem = watchedItemType === 'variant';
 
   const selectableItemGroups = useMemo(() => (
     (itemGroups || [])
@@ -1579,6 +1681,99 @@ const viewItem = async (item) => {
       next[idx] = { ...next[idx], ...patch };
       return next;
     });
+  };
+
+  const updateAllVariantMatrixRows = (patchOrFactory) => {
+    if (!variantMatrixRows.length) return false;
+    setVariantMatrixEdits((prev) => {
+      const byKey = new Map(prev.map((row) => [row.key, { ...row }]));
+      variantMatrixRows.forEach((row) => {
+        const patch = typeof patchOrFactory === 'function' ? patchOrFactory(row) : patchOrFactory;
+        if (!patch || Object.keys(patch).length === 0) return;
+        byKey.set(row.key, { ...(byKey.get(row.key) || { key: row.key }), ...patch });
+      });
+      return Array.from(byKey.values());
+    });
+    return true;
+  };
+
+  const copyVariantFieldFromFirstRow = (field, label, options = {}) => {
+    const firstRow = variantMatrixRows[0];
+    if (!firstRow) {
+      message.warning('Add at least one variant row first.');
+      return;
+    }
+
+    const value = firstRow[field];
+    if (!options.allowBlank && isBlankVariantMatrixValue(value)) {
+      message.warning(`Enter ${label} in the first row first.`);
+      return;
+    }
+
+    if (updateAllVariantMatrixRows({ [field]: value })) {
+      message.success(`${label} copied to all variants.`);
+    }
+  };
+
+  const handleGenerateAllVariantSkus = async () => {
+    if (!variantMatrixRows.length) {
+      message.warning('Add at least one variant row first.');
+      return;
+    }
+
+    setSkuGenerating(true);
+    try {
+      const selectedRule = selectedSkuRuleId
+        ? skuRules.find((r) => r.id === selectedSkuRuleId) || null
+        : null;
+      const generatedRows = [];
+      let appliedRuleMeta = null;
+
+      for (const row of variantMatrixRows) {
+        const ctx = buildSkuGenerationContext(row);
+        if (!ensureSkuRuleRequirements(selectedRule, ctx, 'Generate all SKUs')) return;
+
+        const generated = await skuGeneratorService.generateSku(ctx);
+        const sku = generated?.sku || '';
+        if (sku) {
+          generatedRows.push({ key: row.key, sku });
+        }
+
+        if (!appliedRuleMeta && generated?.ruleId) {
+          const appliedRule = skuRules.find((rule) => rule.id === generated.ruleId);
+          if (appliedRule) {
+            appliedRuleMeta = {
+              id: appliedRule.id,
+              name: appliedRule.name,
+              scope: appliedRule.scope,
+              scopeValue: appliedRule.scope_value
+            };
+          }
+        }
+      }
+
+      if (!generatedRows.length) {
+        message.warning('No SKUs were generated for the current variants.');
+        return;
+      }
+
+      setVariantMatrixEdits((prev) => {
+        const byKey = new Map(prev.map((row) => [row.key, { ...row }]));
+        generatedRows.forEach((row) => {
+          byKey.set(row.key, { ...(byKey.get(row.key) || { key: row.key }), sku: row.sku });
+        });
+        return Array.from(byKey.values());
+      });
+
+      if (appliedRuleMeta) {
+        setLastAppliedSkuRule(appliedRuleMeta);
+      }
+      message.success(`Generated SKUs for ${generatedRows.length} variants.`);
+    } catch (e) {
+      showSkuGenerationError(e);
+    } finally {
+      setSkuGenerating(false);
+    }
   };
 
   const variantLibraryNames = (variantLibrary || []).map((r) => r.name).filter(Boolean);
@@ -2269,7 +2464,7 @@ const viewItem = async (item) => {
         open={modalVisible}
         onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDuplicateSourcePayload(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setCompositeComponents([]); setEditingWarehouseSummaries([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
         footer={null}
-        width="min(1280px, 98vw)"
+        width="min(1440px, 99vw)"
         style={{ top: 8 }}
         styles={{ body: { background: '#fafbff', borderRadius: '0 0 12px 12px', maxHeight: '88vh', overflowY: 'auto', padding: 20 } }}
       >
@@ -2662,11 +2857,10 @@ const viewItem = async (item) => {
                           Build Variant Dimensions (Professional Setup)
                         </div>
                         <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
-                          Each row is one attribute name and <strong>one</strong> value. For multiple values (for example several sizes), add another row with the same attribute name.
-                          The matrix combines all values per attribute name.
+                          Each row is one attribute name with <strong>one or more</strong> values. Select multiple values in the same row, and the matrix combines all selected values across attributes.
                         </div>
                         <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
-                          Example: two rows <strong>Size</strong> {'=>'} 7G and 15G, plus two rows <strong>Colour</strong> {'=>'} Red and Blue {'=>'} 4 variants
+                          Example: one row <strong>Size</strong> {'=>'} 7G, 15G and one row <strong>Colour</strong> {'=>'} Red, Blue {'=>'} 4 variants
                         </div>
                       </div>
                       {fields.map(({ key, name, ...restField }) => (
@@ -2685,6 +2879,9 @@ const viewItem = async (item) => {
                                 filterOption={(inputValue, option) =>
                                   String(option?.label || '').toLowerCase().includes(String(inputValue || '').toLowerCase())
                                 }
+                                onChange={() => {
+                                  form.setFieldValue(['variantAttributes', name, 'values'], []);
+                                }}
                                 dropdownRender={(menu) => (
                                   <div>
                                     {menu}
@@ -2720,12 +2917,20 @@ const viewItem = async (item) => {
                             <Form.Item
                               {...restField}
                               name={[name, 'values']}
-                              rules={[{ required: true, message: 'Select or add a value' }]}
+                              rules={[{
+                                validator: (_, value) => (
+                                  normalizeOptionalTextArray(value).length > 0
+                                    ? Promise.resolve()
+                                    : Promise.reject(new Error('Select or add at least one value'))
+                                )
+                              }]}
                             >
                               <Select
+                                mode="multiple"
                                 showSearch
                                 allowClear
-                                placeholder="Attribute value"
+                                maxTagCount="responsive"
+                                placeholder="Attribute values"
                                 options={getVariantLibraryValues(form.getFieldValue(['variantAttributes', name, 'name'])).map((value) => ({ value, label: value }))}
                                 dropdownRender={(menu) => (
                                   <div>
@@ -2747,7 +2952,11 @@ const viewItem = async (item) => {
                                             try {
                                               await apiService.put('/items/variant-library/entry', { name: attrName, values: [v] });
                                               await fetchDropdownOptions();
-                                              form.setFieldValue(['variantAttributes', name, 'values'], v);
+                                              const currentValues = normalizeOptionalTextArray(form.getFieldValue(['variantAttributes', name, 'values']));
+                                              form.setFieldValue(
+                                                ['variantAttributes', name, 'values'],
+                                                Array.from(new Set([...currentValues, v]))
+                                              );
                                               message.success(`Value "${v}" saved to library`);
                                             } catch (e) {
                                               message.error(e?.response?.data?.error || 'Failed to save attribute value');
@@ -2772,7 +2981,7 @@ const viewItem = async (item) => {
                       ))}
                       {fields.length === 0 && (
                         <div style={{ fontSize: 12, color: '#8c8c8c', lineHeight: 1.5 }}>
-                          No attributes added yet. Start with one dimension like <strong>Size</strong> or <strong>Colour</strong>, then add multiple values.
+                          No attributes added yet. Start with one dimension like <strong>Size</strong> or <strong>Colour</strong>, then select multiple values in the same row.
                           Use clear business names to keep SKU generation and variant matrix consistent.
                         </div>
                       )}
@@ -2782,58 +2991,195 @@ const viewItem = async (item) => {
                 </>
                 )}
                 {watchedItemType === 'variant' && (
-                  <div style={{ marginBottom: 16, border: '1px solid #e6e8f0', borderRadius: 8, background: '#fff' }}>
-                    <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, color: '#4b5563', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Variant Matrix ({variantMatrixRows.length})</span>
-                      <Button size="small" onClick={saveVariantSetupForFuture}>
+                  <div
+                    style={{
+                      marginBottom: 18,
+                      border: '1px solid #dbe3f2',
+                      borderRadius: 14,
+                      background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
+                      boxShadow: '0 10px 24px rgba(15, 23, 42, 0.04)',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: '14px 16px',
+                        borderBottom: '1px solid #edf2f7',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        background: 'linear-gradient(180deg, #fcfdff 0%, #f6f8fc 100%)'
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#334155' }}>Variant Matrix ({variantMatrixRows.length})</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
+                          Use the first row as your template, then apply repeated values across every variant in one click.
+                        </div>
+                      </div>
+                      <Button onClick={saveVariantSetupForFuture}>
                         Save setup for future
                       </Button>
                     </div>
                     {variantMatrixRows.length === 0 ? (
-                      <div style={{ padding: 12, fontSize: 12, color: '#8c8c8c' }}>
+                      <div style={{ padding: 14, fontSize: 12, color: '#8c8c8c' }}>
                         Add at least one variant attribute with values to generate combinations.
                       </div>
                     ) : (
-                      <div style={{ maxHeight: 280, overflowY: 'auto', padding: 10 }}>
-                        {variantMatrixRows.map((row) => (
-                          <Row key={row.key} gutter={8} style={{ marginBottom: 8 }}>
-                            <Col xs={24} sm={6}>
-                              <Input value={row.combinationLabel} readOnly />
-                            </Col>
-                            <Col xs={12} sm={4}>
+                      <div style={{ maxHeight: 360, overflowY: 'auto', padding: 14 }}>
+                        <div style={{ minWidth: VARIANT_MATRIX_MIN_WIDTH }}>
+                          <div
+                            style={{
+                              marginBottom: 12,
+                              padding: '10px 12px',
+                              borderRadius: 12,
+                              border: '1px solid #e2e8f0',
+                              background: '#f8fbff',
+                              fontSize: 12,
+                              color: '#64748b'
+                            }}
+                          >
+                            Enter repeated values in the first row, then use <strong>Copy to all</strong> in the header for price, stock, warehouse, or active status.
+                          </div>
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: VARIANT_MATRIX_GRID_TEMPLATE,
+                              columnGap: 12,
+                              alignItems: 'end',
+                              padding: '0 10px 10px',
+                              borderBottom: '1px solid #e8eef8',
+                              marginBottom: 12
+                            }}
+                          >
+                            <div style={VARIANT_MATRIX_LABEL_STYLE}>Combination</div>
+                            <div>
+                              <div style={VARIANT_MATRIX_LABEL_STYLE}>Child SKU</div>
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={handleGenerateAllVariantSkus}
+                                loading={skuGenerating}
+                                style={VARIANT_MATRIX_ACTION_STYLE}
+                              >
+                                Generate all
+                              </Button>
+                            </div>
+                            <div style={VARIANT_MATRIX_LABEL_STYLE}>Barcode</div>
+                            <div>
+                              <div style={VARIANT_MATRIX_LABEL_STYLE}>Sell</div>
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={() => copyVariantFieldFromFirstRow('sellingPrice', 'selling price')}
+                                style={VARIANT_MATRIX_ACTION_STYLE}
+                              >
+                                Copy to all
+                              </Button>
+                            </div>
+                            <div>
+                              <div style={VARIANT_MATRIX_LABEL_STYLE}>Stock</div>
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={() => {
+                                  if (window.confirm('Copy opening stock from the first row to all variants?')) {
+                                    copyVariantFieldFromFirstRow('openingStock', 'opening stock');
+                                  }
+                                }}
+                                style={VARIANT_MATRIX_ACTION_STYLE}
+                              >
+                                Copy to all
+                              </Button>
+                            </div>
+                            <div>
+                              <div style={VARIANT_MATRIX_LABEL_STYLE}>Warehouse</div>
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={() => copyVariantFieldFromFirstRow('warehouseId', 'warehouse')}
+                                style={VARIANT_MATRIX_ACTION_STYLE}
+                              >
+                                Copy to all
+                              </Button>
+                            </div>
+                            <div style={{ textAlign: 'center' }}>
+                              <div style={{ ...VARIANT_MATRIX_LABEL_STYLE, textAlign: 'center' }}>On</div>
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={() => copyVariantFieldFromFirstRow('active', 'active status', { allowBlank: true })}
+                                style={VARIANT_MATRIX_ACTION_STYLE}
+                              >
+                                Copy to all
+                              </Button>
+                            </div>
+                          </div>
+                          {variantMatrixRows.map((row) => (
+                            <div
+                              key={row.key}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: VARIANT_MATRIX_GRID_TEMPLATE,
+                                columnGap: 12,
+                                alignItems: 'center',
+                                marginBottom: 12,
+                                padding: 12,
+                                border: '1px solid #dde7f5',
+                                borderRadius: 14,
+                                background: '#ffffff',
+                                boxShadow: '0 6px 18px rgba(148, 163, 184, 0.12)'
+                              }}
+                            >
+                              <div>
+                                <div
+                                  style={{
+                                    minHeight: 40,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: '0 12px',
+                                    border: '1px solid #d9e2f1',
+                                    borderRadius: 10,
+                                    background: '#f8fbff',
+                                    fontWeight: 600,
+                                    color: '#1f2937'
+                                  }}
+                                >
+                                  {row.combinationLabel}
+                                </div>
+                              </div>
                               <Input
+                                size="large"
                                 value={row.sku}
                                 onChange={(e) => updateVariantMatrixRow(row.key, { sku: e.target.value })}
                                 placeholder="Child SKU"
                               />
-                            </Col>
-                            <Col xs={12} sm={4}>
                               <Input
+                                size="large"
                                 value={row.barcode}
                                 onChange={(e) => updateVariantMatrixRow(row.key, { barcode: e.target.value })}
                                 placeholder="Barcode"
                               />
-                            </Col>
-                            <Col xs={12} sm={3}>
                               <InputNumber
+                                size="large"
                                 min={0}
                                 style={{ width: '100%' }}
                                 value={row.sellingPrice}
                                 onChange={(v) => updateVariantMatrixRow(row.key, { sellingPrice: v })}
                                 placeholder="Sell"
                               />
-                            </Col>
-                            <Col xs={12} sm={3}>
                               <InputNumber
+                                size="large"
                                 min={0}
                                 style={{ width: '100%' }}
                                 value={row.openingStock}
                                 onChange={(v) => updateVariantMatrixRow(row.key, { openingStock: v })}
                                 placeholder="Stock"
                               />
-                            </Col>
-                            <Col xs={18} sm={3}>
                               <Select
+                                size="large"
                                 allowClear
                                 showSearch
                                 optionFilterProp="children"
@@ -2845,17 +3191,18 @@ const viewItem = async (item) => {
                                   <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>
                                 ))}
                               </Select>
-                            </Col>
-                            <Col xs={6} sm={1} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <input
-                                type="checkbox"
-                                checked={row.active !== false}
-                                onChange={(e) => updateVariantMatrixRow(row.key, { active: e.target.checked })}
-                                title="Active"
-                              />
-                            </Col>
-                          </Row>
-                        ))}
+                              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={row.active !== false}
+                                  onChange={(e) => updateVariantMatrixRow(row.key, { active: e.target.checked })}
+                                  title="Active"
+                                  style={{ width: 16, height: 16, cursor: 'pointer' }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -3527,6 +3874,11 @@ const viewItem = async (item) => {
               <span style={sectionIconStyle}><DollarOutlined /></span>
               Sales Information
             </div>
+          {isVariantItem && (
+            <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: '#f7faff', border: '1px solid #d6e4ff', fontSize: 12, color: '#1d39c4' }}>
+              Variant item detected. Child variants use the prices entered in the Variant Matrix above. The fields below act as shared defaults only when a variant row price is left blank.
+            </div>
+          )}
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item label="Price Currency">
@@ -3545,19 +3897,19 @@ const viewItem = async (item) => {
           </Row>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
-              <Form.Item name="sellingPrice" label={`Selling Price (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="sellingPrice" label={`${isVariantItem ? 'Default Selling Price' : 'Selling Price'} (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   step={0.01} 
                   precision={2}
                   style={{ width: '100%' }} 
-                  placeholder="Enter selling price"
+                  placeholder={isVariantItem ? 'Optional fallback for variants' : 'Enter selling price'}
                   parser={value => value.replace(/[^0-9.]/g, '')}
                 />
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
-              <Form.Item name="mrp" label={`MRP (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="mrp" label={`${isVariantItem ? 'Default MRP' : 'MRP'} (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   step={0.01} 
@@ -3613,9 +3965,14 @@ const viewItem = async (item) => {
               <span style={sectionIconStyle}><ShopOutlined /></span>
               Purchase Information
             </div>
+          {isVariantItem && (
+            <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: '#faf8ff', border: '1px solid #e6d8ff', fontSize: 12, color: '#531dab' }}>
+              Shared purchase settings stay here. If you use child-level costs later, this default cost is the fallback for variants without their own cost.
+            </div>
+          )}
           <Row gutter={16}>
             <Col xs={24} sm={8}>
-              <Form.Item name="costPrice" label={`Cost Price (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item name="costPrice" label={`${isVariantItem ? 'Default Cost Price' : 'Cost Price'} (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
                 <InputNumber 
                   min={0} 
                   step={0.01} 
@@ -3691,15 +4048,21 @@ const viewItem = async (item) => {
               <span style={sectionIconStyle}><InboxOutlined /></span>
               Inventory Tracking
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <Form.Item name="trackInventory" valuePropName="checked" style={{ marginBottom: 0 }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff', fontSize: 13, color: '#595959', userSelect: 'none' }}>
-                  <input type="checkbox" style={{ accentColor: '#667eea', width: 15, height: 15 }} />
-                  <span>Track Inventory for this Item</span>
-                </label>
-              </Form.Item>
-            </div>
-          {watchedTrackInventory && (
+            {isVariantItem ? (
+              <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, background: '#f6ffed', border: '1px solid #b7eb8f', fontSize: 12, color: '#135200' }}>
+                Variant stock is tracked per combination. Use the <strong>Stock</strong> and <strong>Warehouse</strong> columns in the Variant Matrix above. In sales, users will choose the parent item, then the exact variant, and stock will be checked for that specific variant only.
+              </div>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
+                <Form.Item name="trackInventory" valuePropName="checked" style={{ marginBottom: 0 }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff', fontSize: 13, color: '#595959', userSelect: 'none' }}>
+                    <input type="checkbox" style={{ accentColor: '#667eea', width: 15, height: 15 }} />
+                    <span>Track Inventory for this Item</span>
+                  </label>
+                </Form.Item>
+              </div>
+            )}
+          {(isVariantItem || watchedTrackInventory) && (
           <>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
@@ -3731,6 +4094,7 @@ const viewItem = async (item) => {
               </Form.Item>
             </Col>
           </Row>
+          {!isVariantItem && (
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="openingStock" label="Opening Stock">
@@ -3849,8 +4213,10 @@ const viewItem = async (item) => {
               </Form.Item>
             </Col>
           </Row>
+          )}
           </>
           )}
+          {!isVariantItem && (
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item
@@ -3883,6 +4249,7 @@ const viewItem = async (item) => {
               </Form.Item>
             </Col>
           </Row>
+          )}
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="valuationMethod" label="Inventory Valuation Method">
@@ -4020,8 +4387,18 @@ const viewItem = async (item) => {
             {String(viewingItem.type || '').toLowerCase() === 'variant' && (
               <Card
                 size="small"
-                title="Variant Details"
-                style={{ marginBottom: 12, borderRadius: 12 }}
+                title={(
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <span>Variant Details</span>
+                    <Tag color="blue" style={{ borderRadius: 999, marginInlineEnd: 0 }}>
+                      {(Array.isArray(viewingItem.variant_rows) && viewingItem.variant_rows.length > 0
+                        ? viewingItem.variant_rows.length
+                        : (Array.isArray(viewingItem?.custom_fields?.variantMatrix) ? viewingItem.custom_fields.variantMatrix.length : 0)
+                      ) || 0} variants
+                    </Tag>
+                  </div>
+                )}
+                style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden' }}
                 bodyStyle={{ paddingTop: 8 }}
               >
                 {(() => {
@@ -4033,40 +4410,111 @@ const viewItem = async (item) => {
                   }
                   return (
                     <Table
-                      size="small"
+                      size="middle"
                       rowKey={(row, idx) => row.id || row.key || `${row.sku || 'variant'}-${idx}`}
                       dataSource={rows}
-                      pagination={{ pageSize: 6, size: 'small' }}
+                      bordered={false}
+                      scroll={{ x: 760 }}
+                      style={{ border: '1px solid #f0f3f8', borderRadius: 12, overflow: 'hidden' }}
+                      rowClassName={(_, idx) => (idx % 2 === 0 ? 'table-row-light' : 'table-row-dark')}
+                      pagination={{
+                        pageSize: 6,
+                        size: 'small',
+                        hideOnSinglePage: true,
+                        position: ['bottomRight'],
+                        style: { margin: '12px 12px 0 0' }
+                      }}
                       columns={[
                         {
                           title: 'Variant',
                           key: 'variant',
-                          render: (_, row) => row.combinationLabel || row.variant_name || '-'
+                          width: 360,
+                          render: (_, row) => {
+                            const tokens = getVariantAttributeTokens(row);
+                            const primaryLabel = String(row.combinationLabel || row.variant_name || '').trim();
+                            return (
+                              <div>
+                                {tokens.length > 0 && (
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    {tokens.map((token, tokenIdx) => (
+                                      <Tag
+                                        key={`${token.label}-${token.value}-${tokenIdx}`}
+                                        color="blue"
+                                        style={{
+                                          borderRadius: 999,
+                                          marginInlineEnd: 0,
+                                          paddingInline: 10,
+                                          borderColor: '#d6e4ff',
+                                          background: '#f5f9ff',
+                                          color: '#1d39c4'
+                                        }}
+                                      >
+                                        <span style={{ fontWeight: 600 }}>{token.label}</span>: {token.value}
+                                      </Tag>
+                                    ))}
+                                  </div>
+                                )}
+                                {tokens.length === 0 && (
+                                  <div style={{ fontWeight: 600, color: '#1f2937' }}>
+                                    {primaryLabel || 'Unnamed variant'}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
                         },
                         {
                           title: 'Child SKU',
                           key: 'sku',
-                          render: (_, row) => row.sku || '-'
+                          width: 120,
+                          render: (_, row) => row.sku ? (
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '4px 10px',
+                              borderRadius: 999,
+                              background: '#f3f4f6',
+                              border: '1px solid #e5e7eb',
+                              fontFamily: 'Consolas, monospace',
+                              fontSize: 12,
+                              color: '#111827'
+                            }}>
+                              {row.sku}
+                            </span>
+                          ) : <span style={{ color: '#9ca3af' }}>-</span>
                         },
                         {
                           title: 'Barcode',
                           key: 'barcode',
-                          render: (_, row) => row.barcode || '-'
+                          width: 120,
+                          render: (_, row) => row.barcode || <span style={{ color: '#9ca3af' }}>-</span>
                         },
                         {
                           title: 'Sell Price',
                           key: 'selling',
+                          width: 120,
                           render: (_, row) => {
                             const val = row.sellingPrice ?? row.selling_price;
-                            return val != null ? formatPrice(Number(val) || 0, currency, 'USD') : '-';
+                            return val != null ? (
+                              <span style={{ fontWeight: 700, color: '#1677ff' }}>
+                                {formatPrice(Number(val) || 0, currency, 'USD')}
+                              </span>
+                            ) : <span style={{ color: '#9ca3af' }}>-</span>;
                           }
                         },
                         {
                           title: 'Status',
                           key: 'status',
+                          width: 100,
                           render: (_, row) => {
                             const active = row.active !== undefined ? !!row.active : String(row.status || '').toLowerCase() === 'active';
-                            return <Tag color={active ? 'success' : 'default'}>{active ? 'active' : 'inactive'}</Tag>;
+                            return (
+                              <Tag
+                                color={active ? 'success' : 'default'}
+                                style={{ borderRadius: 999, marginInlineEnd: 0, textTransform: 'capitalize', fontWeight: 600 }}
+                              >
+                                {active ? 'active' : 'inactive'}
+                              </Tag>
+                            );
                           }
                         }
                       ]}
