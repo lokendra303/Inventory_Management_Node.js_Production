@@ -244,13 +244,15 @@ const MoveOrders = () => {
                               }}
                             >
                               {items.map(item => {
-                                const totalStock = Object.values(allItemStocks[item.id] || {}).reduce((s, q) => s + q, 0);
+                                const totalAvailable = Object.values(allItemStocks[item.id] || {}).reduce((s, q) => s + q, 0);
                                 return (
                                   <Select.Option key={item.id} value={item.id} label={`${item.name} (${item.sku})`}>
                                     <div>
                                       <strong>{item.name}</strong> ({item.sku})
                                       <br />
-                                      <span style={{ fontSize: 12, color: '#1890ff' }}>Total stock: {totalStock}</span>
+                                      <span style={{ fontSize: 12, color: totalAvailable > 0 ? '#52c41a' : '#ff4d4f' }}>
+                                        Available: {formatQuantity(totalAvailable)} (all warehouses)
+                                      </span>
                                     </div>
                                   </Select.Option>
                                 );
