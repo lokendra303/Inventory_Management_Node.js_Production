@@ -63,6 +63,7 @@ const Items = () => {
   const [compositeComponents, setCompositeComponents] = useState([]);
   const autoDraftSavingRef = useRef(false);
   const autoDraftSavedRef = useRef(false);
+  const variantBuilderSeededRef = useRef(false);
 
   // ---- SKU auto-generator (Zoho-style rules) ------------------------------
   const [skuRulesOpen, setSkuRulesOpen] = useState(false);
@@ -104,6 +105,17 @@ const Items = () => {
       Number(item?.max_stock_level) > 0
     )
   );
+  const buildVariantAttributeSeedRows = ({
+    variant,
+    colorCode,
+    sizeCode,
+    packType
+  } = {}) => ([
+    ...normalizeOptionalTextArray(variant).map((value) => ({ name: 'Variant', values: value })),
+    ...normalizeOptionalTextArray(colorCode).map((value) => ({ name: 'Colour', values: value })),
+    ...normalizeOptionalTextArray(sizeCode).map((value) => ({ name: 'Size', values: value })),
+    ...normalizeOptionalTextArray(packType).map((value) => ({ name: 'Pack Type', values: value }))
+  ]);
   const normalizeComparableValue = (value) => {
     if (value === undefined || value === null || value === '') return null;
     if (Array.isArray(value)) {
@@ -1188,6 +1200,7 @@ const viewItem = async (item) => {
     setEditingItem(item);
     setEditingWarehouseSummaries([]);
     setDuplicateSourcePayload(null);
+    variantBuilderSeededRef.current = false;
     setPriceCurrency(currency);
     setImageUrl(item.image || '');
     setLastAppliedSkuRule(null);
@@ -1473,6 +1486,35 @@ const viewItem = async (item) => {
     }
   }, [watchedItemType]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!modalVisible) {
+      variantBuilderSeededRef.current = false;
+      return;
+    }
+    if (watchedItemType !== 'variant') {
+      variantBuilderSeededRef.current = false;
+      return;
+    }
+    const currentRows = normalizeVariantAttributes(form.getFieldValue('variantAttributes'));
+    if (currentRows.length > 0) {
+      variantBuilderSeededRef.current = true;
+      return;
+    }
+    if (variantBuilderSeededRef.current) return;
+
+    const seedRows = buildVariantAttributeSeedRows({
+      variant: form.getFieldValue('variant'),
+      colorCode: form.getFieldValue('colorCode'),
+      sizeCode: form.getFieldValue('sizeCode'),
+      packType: form.getFieldValue('packType')
+    });
+
+    if (seedRows.length === 0) return;
+
+    form.setFieldsValue({ variantAttributes: seedRows });
+    variantBuilderSeededRef.current = true;
+  }, [modalVisible, watchedItemType, watchedVariant, watchedColor, watchedSize, watchedPackType]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const variantMatrixRows = useMemo(() => {
     if (watchedItemType !== 'variant') return [];
     let sourceAttributes = normalizeVariantAttributes(watchedVariantAttributes);
@@ -1596,6 +1638,7 @@ const viewItem = async (item) => {
     setEditingItem(null);
     setEditingWarehouseSummaries([]);
     setDuplicateSourcePayload(null);
+    variantBuilderSeededRef.current = false;
     setPriceCurrency(currency);
     setImageUrl(item.image || '');
     setImageFile(null);
@@ -1746,6 +1789,7 @@ const viewItem = async (item) => {
     setEditingItem(null);
     setEditingWarehouseSummaries([]);
     setDuplicateSourcePayload(null);
+    variantBuilderSeededRef.current = false;
     setActiveDraftId(null);
     setPriceCurrency(currency);
     setImageUrl('');
@@ -2331,6 +2375,24 @@ const viewItem = async (item) => {
                     </Form.Item>
                   </Col>
                 </Row>
+                {watchedItemType !== 'variant' && (
+                <>
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    border: '1px solid #e6ecff',
+                    background: 'linear-gradient(180deg, #fbfcff 0%, #f7f9ff 100%)'
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#3659c9', marginBottom: 4 }}>
+                    Quick Variant Tags
+                  </div>
+                  <div style={{ fontSize: 12, color: '#5b6475', lineHeight: 1.6 }}>
+                    Use these optional fields for a single descriptor such as colour, size, or packing. They help with SKU generation and search, but they are not meant for multi-combination variants.
+                  </div>
+                </div>
                 <Row gutter={16}>
                   <Col xs={24} sm={8}>
                     <Form.Item
@@ -2513,12 +2575,40 @@ const viewItem = async (item) => {
                     </Form.Item>
                   </Col>
                 </Row>
+                </>
+                )}
+                {watchedItemType === 'variant' && (
+                <>
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: '14px 16px',
+                    borderRadius: 14,
+                    border: '1px solid #d8e4ff',
+                    background: 'linear-gradient(135deg, #f7f9ff 0%, #eef4ff 100%)',
+                    boxShadow: '0 8px 24px rgba(102, 126, 234, 0.08)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#2343a7' }}>
+                      Variant Configuration
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <Tag color="blue" style={{ marginInlineEnd: 0 }}>Single source of truth</Tag>
+                      <Tag color="purple" style={{ marginInlineEnd: 0 }}>Auto-generate combinations</Tag>
+                      <Tag color="geekblue" style={{ marginInlineEnd: 0 }}>Child SKU ready</Tag>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.6 }}>
+                    This item is in <strong>Variant</strong> mode, so use the builder below to define attributes like Size, Colour, and Pack Type. The old quick fields are hidden here to avoid duplicate entry and confusion.
+                  </div>
+                </div>
                 <Form.List name="variantAttributes">
                   {(fields, { add, remove }) => (
                     <div style={{ marginBottom: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <span style={{ fontSize: 12, color: '#667eea', fontWeight: 700, textTransform: 'uppercase' }}>
-                          Variant Attribute Builder
+                          Multi-Variant Builder
                         </span>
                         <Button size="small" onClick={() => add({ name: '', values: undefined })}>
                           + Add Attribute
@@ -2646,6 +2736,8 @@ const viewItem = async (item) => {
                     </div>
                   )}
                 </Form.List>
+                </>
+                )}
                 {watchedItemType === 'variant' && (
                   <div style={{ marginBottom: 16, border: '1px solid #e6e8f0', borderRadius: 8, background: '#fff' }}>
                     <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, color: '#4b5563', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
