@@ -94,6 +94,16 @@ const Items = () => {
       ? numeric.toLocaleString()
       : numeric.toLocaleString(undefined, { maximumFractionDigits: 3 });
   };
+  const deriveTrackInventoryValue = (item = {}, warehouseId = null) => (
+    Boolean(
+      warehouseId ||
+      item?.default_bin_id ||
+      Number(item?.opening_stock) > 0 ||
+      Number(item?.opening_value) > 0 ||
+      Number(item?.min_stock_level) > 0 ||
+      Number(item?.max_stock_level) > 0
+    )
+  );
   const normalizeComparableValue = (value) => {
     if (value === undefined || value === null || value === '') return null;
     if (Array.isArray(value)) {
@@ -1253,6 +1263,7 @@ const viewItem = async (item) => {
       name: fullItem.name,
       description: normalizeOptionalText(fullItem.description),
       type: fullItem.type,
+      trackInventory: deriveTrackInventoryValue(fullItem, finalWarehouseId),
       category: normalizeOptionalText(fullItem.category),
       unit: unitId,
       costPrice: convertPrice(fullItem.cost_price, 'USD', currency),
@@ -1454,6 +1465,7 @@ const viewItem = async (item) => {
   const watchedColor = Form.useWatch('colorCode', form);
   const watchedSize = Form.useWatch('sizeCode', form);
   const watchedPackType = Form.useWatch('packType', form);
+  const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
 
   useEffect(() => {
     if (watchedItemType !== 'composite' && compositeComponents.length > 0) {
@@ -1638,6 +1650,7 @@ const viewItem = async (item) => {
       name: normalizeOptionalText(fullItem.name),
       description: normalizeOptionalText(fullItem.description),
       type: fullItem.type,
+      trackInventory: deriveTrackInventoryValue(fullItem, finalWarehouseId),
       category: normalizeOptionalText(fullItem.category),
       unit: unitOptions.find(u => u.name === fullItem.unit)?.id ?? fullItem.unit,
       costPrice: convertPrice(fullItem.cost_price, 'USD', currency),
@@ -1750,6 +1763,7 @@ const viewItem = async (item) => {
     await loadSkuRules();
     form.setFieldsValue({
       type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
+      trackInventory: false,
       purchaseAccount: 'cogs',
       purchaseTaxRate: 0,
       purchaseDescription: 'Initial stock entry'
@@ -2219,7 +2233,33 @@ const viewItem = async (item) => {
                   <Col xs={24} sm={12}>
                     <Form.Item
                       name="sku"
-                      label="SKU"
+                      label={
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <span>SKU</span>
+                          {canManageItems && (
+                            <Tooltip title="Open SKU rule settings">
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={<SettingOutlined />}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  openSkuRulesModal();
+                                }}
+                                style={{
+                                  width: 22,
+                                  height: 22,
+                                  minWidth: 22,
+                                  padding: 0,
+                                  borderRadius: '50%',
+                                  color: '#764ba2'
+                                }}
+                              />
+                            </Tooltip>
+                          )}
+                        </span>
+                      }
                       validateTrigger={['onBlur', 'onSubmit']}
                       rules={[{ validator: validateSkuAvailability }]}
                       style={{ marginBottom: 10 }}
@@ -3497,6 +3537,8 @@ const viewItem = async (item) => {
                 </label>
               </Form.Item>
             </div>
+          {watchedTrackInventory && (
+          <>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="inventoryAccount" label="Inventory Account">
@@ -3645,6 +3687,8 @@ const viewItem = async (item) => {
               </Form.Item>
             </Col>
           </Row>
+          </>
+          )}
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item
