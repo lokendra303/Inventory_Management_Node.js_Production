@@ -56,6 +56,7 @@ const Items = () => {
   const [binsForWarehouse, setBinsForWarehouse] = useState([]);
   const [binsLoading, setBinsLoading] = useState(false);
   const [editingWarehouseSummaries, setEditingWarehouseSummaries] = useState([]);
+  const [duplicateSourcePayload, setDuplicateSourcePayload] = useState(null);
   const [variantLibrary, setVariantLibrary] = useState([]);
   const [existingCustomFields, setExistingCustomFields] = useState({});
   const [variantMatrixEdits, setVariantMatrixEdits] = useState([]);
@@ -93,6 +94,59 @@ const Items = () => {
       ? numeric.toLocaleString()
       : numeric.toLocaleString(undefined, { maximumFractionDigits: 3 });
   };
+  const normalizeComparableValue = (value) => {
+    if (value === undefined || value === null || value === '') return null;
+    if (Array.isArray(value)) {
+      return value.map((entry) => normalizeComparableValue(entry));
+    }
+    if (typeof value === 'object') {
+      return Object.keys(value).sort().reduce((acc, key) => {
+        acc[key] = normalizeComparableValue(value[key]);
+        return acc;
+      }, {});
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed || null;
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? Number(value) : null;
+    }
+    return value;
+  };
+  const buildComparableItemPayload = (payload = {}) => normalizeComparableValue({
+    sku: payload.sku,
+    name: payload.name,
+    description: payload.description,
+    image: payload.image,
+    type: payload.type,
+    category: payload.category,
+    customFields: payload.customFields || {},
+    unit: payload.unit,
+    warehouseId: payload.warehouseId,
+    costPrice: payload.costPrice,
+    sellingPrice: payload.sellingPrice,
+    mrp: payload.mrp,
+    taxRate: payload.taxRate,
+    brand: payload.brand,
+    manufacturer: payload.manufacturer,
+    itemGroup: payload.itemGroup,
+    minStockLevel: payload.minStockLevel,
+    maxStockLevel: payload.maxStockLevel,
+    barcode: payload.barcode,
+    openingStock: payload.openingStock,
+    openingValue: payload.openingValue,
+    defaultBinId: payload.defaultBinId,
+    valuationMethod: payload.valuationMethod,
+    weight: payload.weight,
+    dimensions: payload.dimensions,
+    hsnCode: payload.hsnCode,
+    upc: payload.upc,
+    ean: payload.ean,
+    isbn: payload.isbn,
+    mpn: payload.mpn,
+    components: payload.components || []
+  });
 
   const loadSkuRules = async () => {
     setSkuRulesLoading(true);
@@ -944,6 +998,15 @@ const Items = () => {
         }
         itemData.components = normalizedComponents;
       }
+
+      if (!isEditing && duplicateSourcePayload) {
+        const comparableCurrent = JSON.stringify(buildComparableItemPayload(itemData));
+        const comparableSource = JSON.stringify(duplicateSourcePayload);
+        if (comparableCurrent === comparableSource) {
+          message.error('This is an exact duplicate of the source item. Change at least one field before saving.');
+          return;
+        }
+      }
       
       if (isEditing) {
         const response = await apiService.put(`/items/${editingItem.id}`, itemData);
@@ -983,6 +1046,7 @@ const Items = () => {
         setImageUrl('');
         setImageFile(null);
         setDuplicateBanner(null);
+        setDuplicateSourcePayload(null);
         setExistingCustomFields({});
         setVariantMatrixEdits([]);
         setCompositeComponents([]);
@@ -1113,6 +1177,7 @@ const viewItem = async (item) => {
   const editItem = async (item) => {
     setEditingItem(item);
     setEditingWarehouseSummaries([]);
+    setDuplicateSourcePayload(null);
     setPriceCurrency(currency);
     setImageUrl(item.image || '');
     setLastAppliedSkuRule(null);
@@ -1518,6 +1583,7 @@ const viewItem = async (item) => {
   const duplicateItem = async (item) => {
     setEditingItem(null);
     setEditingWarehouseSummaries([]);
+    setDuplicateSourcePayload(null);
     setPriceCurrency(currency);
     setImageUrl(item.image || '');
     setImageFile(null);
@@ -1540,11 +1606,36 @@ const viewItem = async (item) => {
         ? normalizeVariantRowsForEdit(fullItem.variant_rows)
         : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
     );
+    setCompositeComponents(normalizeCompositeComponents(fullItem?.composite_components || []));
 
-    form.setFieldsValue({
-      // SKU and name intentionally left blank — user must fill these
-      sku: '',
-      name: '',
+    let finalWarehouseId = null;
+    if (fullItem.warehouse_ids?.length > 0) {
+      finalWarehouseId = fullItem.warehouse_ids[0] || null;
+    } else if (fullItem.default_bin_id) {
+      try {
+        const binResponse = await apiService.get(`/warehouse-locations/bins/${fullItem.default_bin_id}`);
+        if (binResponse.success) {
+          finalWarehouseId = binResponse.data?.warehouse_id || null;
+        }
+      } catch { /* no warehouse found from default bin */ }
+    } else {
+      try {
+        const invResponse = await apiService.get('/inventory');
+        if (invResponse.success && invResponse.data?.length > 0) {
+          const itemStocks = invResponse.data.filter(inv => inv.item_id === fullItem.id);
+          if (itemStocks.length > 0) {
+            const best = itemStocks.reduce((a, b) =>
+              (Number(b.quantity_available) || 0) > (Number(a.quantity_available) || 0) ? b : a
+            );
+            finalWarehouseId = best.warehouse_id || null;
+          }
+        }
+      } catch { /* no warehouse found */ }
+    }
+
+    const duplicateFormValues = {
+      sku: normalizeOptionalText(fullItem.sku),
+      name: normalizeOptionalText(fullItem.name),
       description: normalizeOptionalText(fullItem.description),
       type: fullItem.type,
       category: normalizeOptionalText(fullItem.category),
@@ -1557,32 +1648,91 @@ const viewItem = async (item) => {
       manufacturer: manufacturerOptions.find(m => m.name === fullItem.manufacturer)?.id ?? fullItem.manufacturer,
       minStockLevel: normalizeOptionalNumber(fullItem.min_stock_level),
       maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
-      barcode: '',
+      barcode: normalizeOptionalText(fullItem.barcode),
       hsnCode: normalizeOptionalText(fullItem.hsn_code),
       variant: formScalarMeta(fullItem.item_group),
       colorCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.color),
       sizeCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.size),
       packType: formScalarMeta(fullItem?.custom_fields?.skuMeta?.packType),
       variantAttributes: expandVariantAttributesForForm(fullItem?.custom_fields?.variantAttributes),
-      openingStock: null,
-      openingValue: null,
+      openingStock: normalizeOptionalNumber(fullItem.opening_stock),
+      openingValue: normalizeOptionalNumber(fullItem.opening_value, { allowZero: false }),
       valuationMethod: fullItem.valuation_method,
+      warehouseId: finalWarehouseId,
+      defaultBinId: fullItem.default_bin_id || null,
       weight: normalizeOptionalNumber(fullItem.weight, { allowZero: false }),
       length: normalizeOptionalNumber(fullItem.dimensions?.length, { allowZero: false }),
       width: normalizeOptionalNumber(fullItem.dimensions?.width, { allowZero: false }),
       height: normalizeOptionalNumber(fullItem.dimensions?.height, { allowZero: false }),
-      upc: '',
-      ean: '',
-      isbn: '',
+      upc: normalizeOptionalText(fullItem.upc),
+      ean: normalizeOptionalText(fullItem.ean),
+      isbn: normalizeOptionalText(fullItem.isbn),
       mpn: normalizeOptionalText(fullItem.mpn),
+    };
+
+    const duplicateComparablePayload = buildComparableItemPayload({
+      sku: duplicateFormValues.sku,
+      name: duplicateFormValues.name,
+      description: duplicateFormValues.description,
+      image: fullItem.image || '',
+      type: duplicateFormValues.type,
+      category: duplicateFormValues.category,
+      customFields: {
+        ...(fullItem?.custom_fields || {}),
+        variantAttributes: normalizeVariantAttributes(duplicateFormValues.variantAttributes),
+        variantMatrix: normalizeVariantMatrixRows(
+          Array.isArray(fullItem?.variant_rows) && fullItem.variant_rows.length > 0
+            ? normalizeVariantRowsForEdit(fullItem.variant_rows)
+            : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
+        ),
+        skuMeta: {
+          ...((fullItem?.custom_fields || {}).skuMeta || {}),
+          color: normalizeOptionalTextArray(duplicateFormValues.colorCode),
+          size: normalizeOptionalTextArray(duplicateFormValues.sizeCode),
+          packType: normalizeOptionalTextArray(duplicateFormValues.packType)
+        }
+      },
+      unit: duplicateFormValues.unit,
+      warehouseId: duplicateFormValues.warehouseId,
+      costPrice: duplicateFormValues.costPrice != null && duplicateFormValues.costPrice !== '' ? convertPrice(duplicateFormValues.costPrice, priceCurrency, 'USD') : 0,
+      sellingPrice: duplicateFormValues.sellingPrice != null && duplicateFormValues.sellingPrice !== '' ? convertPrice(duplicateFormValues.sellingPrice, priceCurrency, 'USD') : 0,
+      mrp: duplicateFormValues.mrp != null && duplicateFormValues.mrp !== '' ? convertPrice(duplicateFormValues.mrp, priceCurrency, 'USD') : null,
+      taxRate: duplicateFormValues.taxRate,
+      brand: duplicateFormValues.brand,
+      manufacturer: duplicateFormValues.manufacturer,
+      itemGroup: formScalarMeta(duplicateFormValues.variant) || null,
+      minStockLevel: duplicateFormValues.minStockLevel,
+      maxStockLevel: duplicateFormValues.maxStockLevel,
+      barcode: duplicateFormValues.barcode,
+      openingStock: duplicateFormValues.openingStock || 0,
+      openingValue: duplicateFormValues.openingValue || 0,
+      defaultBinId: duplicateFormValues.defaultBinId || null,
+      valuationMethod: duplicateFormValues.valuationMethod,
+      weight: duplicateFormValues.weight,
+      dimensions: (duplicateFormValues.length || duplicateFormValues.width || duplicateFormValues.height) ? {
+        length: duplicateFormValues.length || 0,
+        width: duplicateFormValues.width || 0,
+        height: duplicateFormValues.height || 0
+      } : null,
+      hsnCode: duplicateFormValues.hsnCode,
+      upc: duplicateFormValues.upc,
+      ean: duplicateFormValues.ean,
+      isbn: duplicateFormValues.isbn,
+      mpn: duplicateFormValues.mpn,
+      components: normalizeCompositeComponents(fullItem?.composite_components || [])
     });
+    setDuplicateSourcePayload(duplicateComparablePayload);
+
+    form.setFieldsValue(duplicateFormValues);
+    fetchBinsForWarehouse(finalWarehouseId);
     setModalVisible(true);
-    setTimeout(() => message.info('Duplicated from "' + item.name + '" — update SKU, Name & Opening Stock'), 300);
+    setTimeout(() => message.info(`Duplicated from "${item.name}" — all values copied. Change at least one field before saving.`), 300);
   };
 
   const openCreateModal = async () => {
     setEditingItem(null);
     setEditingWarehouseSummaries([]);
+    setDuplicateSourcePayload(null);
     setActiveDraftId(null);
     setPriceCurrency(currency);
     setImageUrl('');
@@ -2016,7 +2166,7 @@ const viewItem = async (item) => {
           </div>
         }
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setCompositeComponents([]); setEditingWarehouseSummaries([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
+        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDuplicateSourcePayload(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setCompositeComponents([]); setEditingWarehouseSummaries([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
         footer={null}
         width="min(1280px, 98vw)"
         style={{ top: 8 }}
@@ -2032,7 +2182,7 @@ const viewItem = async (item) => {
               <CopyOutlined style={{ color: '#fa8c16', fontSize: 18 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: '#d46b08', fontSize: 13 }}>Duplicated from "{duplicateBanner.sourceName}"</div>
-                <div style={{ fontSize: 12, color: '#ad6800', marginTop: 2 }}>All details copied — just update <strong>SKU</strong>, <strong>Item Name</strong> and <strong>Opening Stock</strong> before saving.</div>
+                <div style={{ fontSize: 12, color: '#ad6800', marginTop: 2 }}>All values are copied. Update at least one field before saving so this does not remain an exact duplicate.</div>
               </div>
               <Button size="small" style={{ borderRadius: 6, borderColor: '#ffa940', color: '#fa8c16' }} onClick={() => setDuplicateBanner(null)}>Dismiss</Button>
             </div>
@@ -3564,7 +3714,7 @@ const viewItem = async (item) => {
                   Save as Draft
                 </Button>
               )}
-              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); setDuplicateBanner(null); setCompositeComponents([]); setEditingWarehouseSummaries([]); form.resetFields(); }}>
+              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); setDuplicateBanner(null); setDuplicateSourcePayload(null); setCompositeComponents([]); setEditingWarehouseSummaries([]); form.resetFields(); }}>
                 Cancel
               </Button>
             </Space>
