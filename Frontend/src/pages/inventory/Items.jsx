@@ -3584,9 +3584,9 @@ const viewItem = async (item) => {
         open={viewModalVisible}
         onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}
         footer={[<Button key="close" style={{ borderRadius: 10 }} onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}>Close</Button>]}
-        width="min(960px, 96vw)"
+        width="min(1280px, 98vw)"
         style={{ top: 16 }}
-        styles={{ body: { background: '#fafbff' } }}
+        styles={{ body: { background: '#fafbff', maxHeight: '82vh', overflowY: 'auto', padding: '20px 24px' } }}
       >
         {viewingItem && (
           <div>
@@ -3727,7 +3727,7 @@ const viewItem = async (item) => {
                     key: 'transactions',
                     label: <span><HistoryOutlined /> Transaction History</span>,
                     children: itemHistory.length > 0 ? (
-                      <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                      <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                         <Timeline>
                           {itemHistory.map((log, index) => {
                             const eventType = log.type || log.event_type || '';
