@@ -490,11 +490,14 @@ class InventoryService {
          es.id, es.event_data, es.created_at, es.created_by,
          i.name as item_name, i.sku,
          fw.name as from_warehouse_name,
-         tw.name as to_warehouse_name
+         tw.name as to_warehouse_name,
+         CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as created_by_name,
+         u.email as created_by_email
        FROM event_store es
        JOIN items i ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = i.id
        JOIN warehouses fw ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.fromWarehouseId')) = fw.id
        JOIN warehouses tw ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.toWarehouseId')) = tw.id
+       LEFT JOIN institution_users u ON es.created_by = u.id AND u.institution_id = es.institution_id
        WHERE es.institution_id = ? AND es.event_type = 'TransferOut'
        ORDER BY es.created_at DESC
        LIMIT ${lim} OFFSET ${off}`,
@@ -516,7 +519,8 @@ class InventoryService {
         from_warehouse_name: r.from_warehouse_name,
         to_warehouse_name: r.to_warehouse_name,
         created_at: r.created_at,
-        created_by: r.created_by
+        created_by: r.created_by,
+        performed_by: String(r.created_by_name || '').trim() || r.created_by_email || r.created_by || '-'
       };
     });
   }

@@ -110,10 +110,32 @@ const MoveOrders = () => {
   };
 
   const columns = [
-    { title: 'Item', dataIndex: 'item_name', key: 'item_name', ellipsis: true, width: 160, render: (v, r) => v ? `${v} (${r.sku})` : r.itemId },
+    {
+      title: 'Item',
+      dataIndex: 'item_name',
+      key: 'item_name',
+      ellipsis: true,
+      width: 180,
+      render: (v, r) => (
+        <div>
+          <div style={{ fontWeight: 600, color: '#1f2937' }}>{v ? `${v} (${r.sku})` : r.itemId}</div>
+          {r.transferId && <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>Ref: {r.transferId}</div>}
+        </div>
+      )
+    },
     { title: 'From', dataIndex: 'from_warehouse_name', key: 'from_warehouse_name', ellipsis: true, width: 130, render: (v, r) => v || r.fromWarehouseId },
     { title: 'To', dataIndex: 'to_warehouse_name', key: 'to_warehouse_name', ellipsis: true, width: 130, render: (v, r) => v || r.toWarehouseId },
     { title: 'Qty', dataIndex: 'quantity', key: 'quantity', width: 70 },
+    {
+      title: 'Performed By',
+      dataIndex: 'performed_by',
+      key: 'performed_by',
+      ellipsis: true,
+      width: 160,
+      render: (v) => (
+        <span style={{ fontWeight: 500, color: '#334155' }}>{v || '-'}</span>
+      )
+    },
     { title: 'Date', dataIndex: 'created_at', key: 'created_at', width: 150, render: (v) => v ? new Date(v).toLocaleString() : '-' }
   ];
 
@@ -124,7 +146,9 @@ const MoveOrders = () => {
       r.item_name?.toLowerCase().includes(s) ||
       r.from_warehouse_name?.toLowerCase().includes(s) ||
       r.to_warehouse_name?.toLowerCase().includes(s) ||
-      r.sku?.toLowerCase().includes(s)
+      r.sku?.toLowerCase().includes(s) ||
+      r.performed_by?.toLowerCase().includes(s) ||
+      r.transferId?.toLowerCase().includes(s)
     );
   });
 
