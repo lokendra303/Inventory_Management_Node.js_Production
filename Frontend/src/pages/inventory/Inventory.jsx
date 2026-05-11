@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Statistic, Row, Col, Empty, Tag, Timeline, Spin, Badge } from 'antd';
-import { PlusOutlined, EyeOutlined, SearchOutlined, InboxOutlined, WarningOutlined, HistoryOutlined, DollarOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, SearchOutlined, InboxOutlined, WarningOutlined, HistoryOutlined, DollarOutlined, ReloadOutlined, FilterOutlined, CheckCircleOutlined, LockOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { formatNumber } from '../../utils/currency.js';
@@ -218,7 +218,12 @@ const Inventory = () => {
     setModalVisible(true);
     setLoadingHistory(true);
     try {
-      const response = await apiService.get(`/inventory/${record.item_id}/${record.warehouse_id}/history`);
+      const response = await apiService.get(`/inventory/item-logs/${record.item_id}`, {
+        params: {
+          warehouseId: record.warehouse_id,
+          ...(record.item_variant_id ? { itemVariantId: record.item_variant_id } : {})
+        }
+      });
       setHistoryData(response.success ? (response.data || []) : []);
     } catch {
       setHistoryData([]);
@@ -236,22 +241,28 @@ const Inventory = () => {
   useEffect(() => { fetchData(); }, []);
 
   const getEventColor = (eventType) => {
-    if (eventType?.includes('RECEIVED')) return 'green';
-    if (eventType?.includes('SHIPPED')) return 'red';
-    if (eventType?.includes('RESERVED')) return 'orange';
-    if (eventType?.includes('ADJUSTED')) return 'blue';
-    if (eventType?.includes('TRANSFER')) return 'purple';
+    const type = String(eventType || '').toUpperCase();
+    if (type.includes('RECEIVED') || type.includes('PURCHASERECEIVED')) return 'green';
+    if (type.includes('SHIPPED') || type.includes('PURCHASERETURNED') || type.includes('DAMAGED') || type.includes('EXPIRED')) return 'red';
+    if (type.includes('RESERVED')) return 'orange';
+    if (type.includes('ADJUSTMENT') || type.includes('ADJUSTED')) return 'blue';
+    if (type.includes('TRANSFER')) return 'purple';
     return 'gray';
   };
 
   const getEventLabel = (eventType) => {
-    if (eventType?.includes('RECEIVED')) return 'Stock Received';
-    if (eventType?.includes('SHIPPED')) return 'Stock Shipped';
-    if (eventType?.includes('RESERVED')) return 'Stock Reserved';
-    if (eventType?.includes('CANCELLED')) return 'Reservation Cancelled';
-    if (eventType?.includes('ADJUSTED')) return 'Stock Adjusted';
-    if (eventType?.includes('TRANSFER_IN')) return 'Transfer In';
-    if (eventType?.includes('TRANSFER_OUT')) return 'Transfer Out';
+    const type = String(eventType || '').toUpperCase();
+    if (type.includes('PURCHASERECEIVED') || type.includes('RECEIVED')) return 'Stock Received';
+    if (type.includes('SALESHIPPED') || type.includes('SHIPPED')) return 'Stock Shipped';
+    if (type.includes('SALERESERVED') || type.includes('RESERVED')) return 'Stock Reserved';
+    if (type.includes('CANCELLED')) return 'Reservation Cancelled';
+    if (type.includes('ADJUSTMENT') || type.includes('ADJUSTED')) return 'Stock Adjusted';
+    if (type.includes('TRANSFERIN')) return 'Transfer In';
+    if (type.includes('TRANSFEROUT')) return 'Transfer Out';
+    if (type.includes('PURCHASERETURNED')) return 'Purchase Returned';
+    if (type.includes('SALERETURNED')) return 'Sale Returned';
+    if (type.includes('DAMAGED')) return 'Stock Damaged';
+    if (type.includes('EXPIRED')) return 'Stock Expired';
     return eventType;
   };
 
@@ -291,87 +302,266 @@ const Inventory = () => {
 
     if (modalType === 'view' && viewingRecord) {
       const totalValue = (parseFloat(viewingRecord.quantity_on_hand) || 0) * (parseFloat(viewingRecord.average_cost) || 0);
+      const stockCards = [
+        {
+          label: 'On Hand',
+          value: viewingRecord.quantity_on_hand || 0,
+          icon: <InboxOutlined style={{ fontSize: 22 }} />,
+          gradient: 'linear-gradient(135deg, #1677ff 0%, #2f54eb 100%)',
+          shadow: '0 14px 30px rgba(22,119,255,0.22)'
+        },
+        {
+          label: 'Available',
+          value: viewingRecord.quantity_available || 0,
+          icon: <CheckCircleOutlined style={{ fontSize: 22 }} />,
+          gradient: 'linear-gradient(135deg, #52c41a 0%, #389e0d 100%)',
+          shadow: '0 14px 30px rgba(82,196,26,0.22)'
+        },
+        {
+          label: 'Reserved',
+          value: viewingRecord.quantity_reserved || 0,
+          icon: <LockOutlined style={{ fontSize: 22 }} />,
+          gradient: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)',
+          shadow: '0 14px 30px rgba(250,140,22,0.22)'
+        }
+      ];
+
       return (
-        <div>
-          {/* Item Header */}
-          <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, padding: '20px 24px', marginBottom: 20, color: '#fff' }}>
-            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{viewingRecord.item_name}</div>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', opacity: 0.9, fontSize: 13 }}>
-              <span>SKU: <strong>{viewingRecord.sku}</strong></span>
-              <span>Unit: <strong>{viewingRecord.unit}</strong></span>
-              <span>Warehouse: <strong>{viewingRecord.warehouse_name}</strong></span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #1d4ed8 0%, #5b21b6 55%, #7c3aed 100%)',
+              borderRadius: 24,
+              padding: '24px 24px 22px',
+              color: '#fff',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 18px 40px rgba(91,33,182,0.24)'
+            }}
+          >
+            <div style={{ position: 'absolute', right: -40, top: -40, width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,0.10)' }} />
+            <div style={{ position: 'absolute', left: -50, bottom: -70, width: 170, height: 170, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center', flex: '1 1 420px', minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'rgba(255,255,255,0.16)',
+                    border: '1px solid rgba(255,255,255,0.24)',
+                    backdropFilter: 'blur(8px)'
+                  }}
+                >
+                  <InboxOutlined style={{ fontSize: 30, color: '#fff' }} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.78, fontWeight: 600 }}>
+                    Inventory Line Detail
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.15, marginTop: 4, wordBreak: 'break-word' }}>
+                    {viewingRecord.item_name}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                    <Tag color="blue" style={{ borderRadius: 999, margin: 0 }}>SKU: {viewingRecord.sku}</Tag>
+                    <Tag color="cyan" style={{ borderRadius: 999, margin: 0 }}>Unit: {viewingRecord.unit}</Tag>
+                    <Tag color="purple" style={{ borderRadius: 999, margin: 0 }}>
+                      <EnvironmentOutlined style={{ marginRight: 6 }} />
+                      {viewingRecord.warehouse_name}
+                    </Tag>
+                    {viewingRecord.variant_name && (
+                      <Tag color="geekblue" style={{ borderRadius: 999, margin: 0 }}>
+                        Variant: {viewingRecord.variant_name}
+                      </Tag>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  minWidth: 220,
+                  flex: '0 1 260px',
+                  background: 'rgba(255,255,255,0.12)',
+                  borderRadius: 20,
+                  padding: '16px 18px',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  backdropFilter: 'blur(8px)'
+                }}
+              >
+                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6, fontWeight: 600 }}>Current Inventory Value</div>
+                <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1 }}>
+                  {totalValue > 0 ? formatCurrency(totalValue) : '—'}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.78, marginTop: 8 }}>
+                  Avg cost {viewingRecord.average_cost && !isNaN(Number(viewingRecord.average_cost))
+                    ? formatCurrency(viewingRecord.average_cost)
+                    : '—'}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Stock Metrics */}
-          <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-            {[
-              { label: 'On Hand', value: viewingRecord.quantity_on_hand || 0, bg: 'linear-gradient(135deg, #1890ff, #096dd9)', icon: '📦' },
-              { label: 'Available', value: viewingRecord.quantity_available || 0, bg: 'linear-gradient(135deg, #52c41a, #389e0d)', icon: '✅' },
-              { label: 'Reserved', value: viewingRecord.quantity_reserved || 0, bg: 'linear-gradient(135deg, #fa8c16, #d46b08)', icon: '🔒' },
-            ].map(({ label, value, bg, icon }) => (
-              <Col xs={8} key={label}>
-                <div style={{ background: bg, borderRadius: 12, padding: '14px 12px', color: '#fff', textAlign: 'center' }}>
-                  <div style={{ fontSize: 20 }}>{icon}</div>
-                  <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>{formatNumber(value)}</div>
-                  <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{label}</div>
+          <Row gutter={[16, 16]}>
+            {stockCards.map((card) => (
+              <Col xs={24} md={8} key={card.label}>
+                <div
+                  style={{
+                    background: card.gradient,
+                    borderRadius: 20,
+                    padding: '18px 20px',
+                    color: '#fff',
+                    boxShadow: card.shadow,
+                    minHeight: 140,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <div
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 14,
+                        background: 'rgba(255,255,255,0.16)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      {card.icon}
+                    </div>
+                    <Tag style={{ borderRadius: 999, margin: 0, border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+                      Live
+                    </Tag>
+                  </div>
+                  <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1 }}>{formatNumber(card.value)}</div>
+                  <div style={{ fontSize: 13, opacity: 0.88, marginTop: 8 }}>{card.label}</div>
                 </div>
               </Col>
             ))}
           </Row>
 
-          {/* Cost Info */}
-          <Row gutter={12} style={{ marginBottom: 20 }}>
-            <Col span={12}>
-              <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 16px' }}>
-                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4 }}>Average Cost</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#1890ff' }}>
-                  {viewingRecord.average_cost && !isNaN(Number(viewingRecord.average_cost)) ? formatCurrency(viewingRecord.average_cost) : '—'}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
+              <Card bordered={false} style={{ borderRadius: 18, boxShadow: '0 10px 26px rgba(15,23,42,0.08)' }} bodyStyle={{ padding: '18px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Average Cost</div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: '#1677ff', marginTop: 4 }}>
+                      {viewingRecord.average_cost && !isNaN(Number(viewingRecord.average_cost)) ? formatCurrency(viewingRecord.average_cost) : '—'}
+                    </div>
+                  </div>
+                  <div style={{ width: 48, height: 48, borderRadius: 16, background: '#e6f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <DollarOutlined style={{ fontSize: 22, color: '#1677ff' }} />
+                  </div>
                 </div>
-              </div>
+                <div style={{ fontSize: 13, color: '#8c8c8c' }}>Weighted cost currently applied to this warehouse line.</div>
+              </Card>
             </Col>
-            <Col span={12}>
-              <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 16px' }}>
-                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 4 }}>Total Value</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#52c41a' }}>
-                  {totalValue > 0 ? formatCurrency(totalValue) : '—'}
+            <Col xs={24} md={12}>
+              <Card bordered={false} style={{ borderRadius: 18, boxShadow: '0 10px 26px rgba(15,23,42,0.08)' }} bodyStyle={{ padding: '18px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Total Value</div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: '#52c41a', marginTop: 4 }}>
+                      {totalValue > 0 ? formatCurrency(totalValue) : '—'}
+                    </div>
+                  </div>
+                  <div style={{ width: 48, height: 48, borderRadius: 16, background: '#f6ffed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <DollarOutlined style={{ fontSize: 22, color: '#52c41a' }} />
+                  </div>
                 </div>
-              </div>
+                <div style={{ fontSize: 13, color: '#8c8c8c' }}>Calculated from on-hand quantity multiplied by current average cost.</div>
+              </Card>
             </Col>
           </Row>
 
-          {/* Transaction History */}
-          <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <HistoryOutlined style={{ color: '#1890ff' }} />
-              <span style={{ fontWeight: 600, fontSize: 14, color: '#1a1a2e' }}>Transaction History</span>
-              {historyData.length > 0 && <Badge count={historyData.length} style={{ background: '#1890ff' }} />}
+          <Card bordered={false} style={{ borderRadius: 22, boxShadow: '0 14px 32px rgba(15,23,42,0.08)' }} bodyStyle={{ padding: '18px 20px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 14, background: '#e6f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <HistoryOutlined style={{ color: '#1677ff', fontSize: 20 }} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: '#1f2937' }}>Transaction History</div>
+                  <div style={{ fontSize: 12, color: '#8c8c8c' }}>Stock movements and inventory actions for this warehouse line</div>
+                </div>
+              </div>
+              {historyData.length > 0 && <Badge count={historyData.length} style={{ background: '#1677ff' }} />}
             </div>
+
             {loadingHistory ? (
-              <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
+              <div style={{ textAlign: 'center', padding: 32 }}><Spin /></div>
             ) : historyData.length > 0 ? (
-              <div style={{ maxHeight: 280, overflowY: 'auto', paddingRight: 4 }}>
+              <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 6 }}>
                 <Timeline>
-                  {historyData.map((event, index) => (
-                    <Timeline.Item key={index} color={getEventColor(event.event_type)}>
-                      <div style={{ marginBottom: 4 }}>
-                        <Tag color={getEventColor(event.event_type)} style={{ borderRadius: 10, fontSize: 11 }}>{getEventLabel(event.event_type)}</Tag>
-                        <span style={{ fontSize: 11, color: '#8c8c8c', marginLeft: 6 }}>{new Date(event.created_at).toLocaleString()}</span>
-                      </div>
-                      <div style={{ fontSize: 12, color: '#595959' }}>
-                        {event.event_data?.quantity && <span>Qty: <strong>{event.event_data.quantity}</strong></span>}
-                        {event.event_data?.quantityChange && <span style={{ marginLeft: 8 }}>Change: <strong style={{ color: event.event_data.quantityChange > 0 ? '#52c41a' : '#ff4d4f' }}>{event.event_data.quantityChange > 0 ? '+' : ''}{event.event_data.quantityChange}</strong></span>}
-                        {event.event_data?.unitCost && <span style={{ marginLeft: 8 }}>Cost: <strong>{formatCurrency(event.event_data.unitCost)}</strong></span>}
-                        {event.event_data?.reason && <div style={{ color: '#8c8c8c', marginTop: 2 }}>{event.event_data.reason}</div>}
-                      </div>
-                    </Timeline.Item>
-                  ))}
+                  {historyData.map((event, index) => {
+                    const eventType = event.type || event.event_type;
+                    const eventData = event.details || event.event_data || {};
+                    const quantity = event.quantity ?? eventData.quantity;
+                    const quantityChange = event.quantity_change ?? eventData.quantityChange;
+                    const unitCost = eventData.unitCost || eventData.unitPrice || event.unit_cost;
+                    const reason = event.reason || event.notes || eventData.reason;
+                    const timestamp = event.timestamp || event.created_at;
+
+                    return (
+                      <Timeline.Item key={event.id || index} color={getEventColor(eventType)}>
+                        <div style={{ background: '#fafbff', border: '1px solid #edf2ff', borderRadius: 16, padding: '12px 14px', boxShadow: '0 4px 14px rgba(15,23,42,0.04)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                            <Tag color={getEventColor(eventType)} style={{ borderRadius: 999, margin: 0, fontSize: 11, fontWeight: 600 }}>
+                              {getEventLabel(eventType)}
+                            </Tag>
+                            <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+                              {timestamp ? new Date(timestamp).toLocaleString() : '-'}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: reason ? 10 : 0 }}>
+                            {quantity != null && (
+                              <Tag style={{ borderRadius: 999, margin: 0, background: '#f0f5ff', color: '#1d39c4', border: '1px solid #adc6ff' }}>
+                                Qty: {formatNumber(quantity)}
+                              </Tag>
+                            )}
+                            {quantityChange != null && (
+                              <Tag
+                                style={{
+                                  borderRadius: 999,
+                                  margin: 0,
+                                  background: quantityChange > 0 ? '#f6ffed' : '#fff1f0',
+                                  color: quantityChange > 0 ? '#389e0d' : '#cf1322',
+                                  border: `1px solid ${quantityChange > 0 ? '#b7eb8f' : '#ffa39e'}`
+                                }}
+                              >
+                                Change: {quantityChange > 0 ? '+' : ''}{formatNumber(quantityChange)}
+                              </Tag>
+                            )}
+                            {unitCost != null && (
+                              <Tag style={{ borderRadius: 999, margin: 0, background: '#fff7e6', color: '#d46b08', border: '1px solid #ffd591' }}>
+                                Cost: {formatCurrency(unitCost)}
+                              </Tag>
+                            )}
+                          </div>
+
+                          {reason && (
+                            <div style={{ fontSize: 13, color: '#595959', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '10px 12px' }}>
+                              {reason}
+                            </div>
+                          )}
+                        </div>
+                      </Timeline.Item>
+                    );
+                  })}
                 </Timeline>
               </div>
             ) : (
               <Empty description="No transaction history" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
-          </div>
+          </Card>
         </div>
       );
     }
@@ -572,9 +762,9 @@ const Inventory = () => {
             Close
           </Button>
         ]}
-        width="min(680px, 96vw)"
+        width="min(940px, 96vw)"
         style={{ top: 20 }}
-        styles={{ body: { padding: '20px 24px' } }}
+        styles={{ body: { padding: '20px 24px', background: 'linear-gradient(180deg, #f8faff 0%, #eef3ff 100%)' } }}
       >
         {renderModalContent()}
       </Modal>

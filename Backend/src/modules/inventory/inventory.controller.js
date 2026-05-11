@@ -427,13 +427,13 @@ class InventoryController {
   async getDetailedItemLogs(req, res) {
     try {
       const { itemId } = req.params;
-      const { warehouseId, startDate, endDate, operationType } = req.query;
+      const { warehouseId, startDate, endDate, operationType, itemVariantId } = req.query;
       
       const logs = await itemActivityService.getDetailedItemLogs(
         req.institutionId, 
         itemId, 
         warehouseId || null,
-        { startDate, endDate, operationType }
+        { startDate, endDate, operationType, itemVariantId: itemVariantId || null }
       );
       
       res.json({

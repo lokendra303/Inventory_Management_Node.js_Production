@@ -340,7 +340,7 @@ class ItemActivityService {
 
   async getDetailedItemLogs(institutionId, itemId, warehouseId = null, filters = {}) {
     try {
-      const { startDate, endDate, operationType } = filters;
+      const { startDate, endDate, operationType, itemVariantId } = filters;
       
       let whereConditions = ['es.institution_id = ?', "JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = ?"];
       let params = [institutionId, itemId];
@@ -365,6 +365,11 @@ class ItemActivityService {
         params.push(`%${operationType}%`);
       }
 
+      if (itemVariantId) {
+        whereConditions.push("JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemVariantId')) = ?");
+        params.push(itemVariantId);
+      }
+
       const logs = await db.query(
         `SELECT 
           es.id,
@@ -387,47 +392,50 @@ class ItemActivityService {
       );
 
       // Also get adjustment logs
-      let adjWhereConditions = ['ia.institution_id = ?', 'ia.item_id = ?'];
-      let adjParams = [institutionId, itemId];
+      let adjustmentLogs = [];
+      if (!itemVariantId) {
+        let adjWhereConditions = ['ia.institution_id = ?', 'ia.item_id = ?'];
+        let adjParams = [institutionId, itemId];
 
-      if (warehouseId) {
-        adjWhereConditions.push('ia.warehouse_id = ?');
-        adjParams.push(warehouseId);
+        if (warehouseId) {
+          adjWhereConditions.push('ia.warehouse_id = ?');
+          adjParams.push(warehouseId);
+        }
+
+        if (startDate) {
+          adjWhereConditions.push('ia.created_at >= ?');
+          adjParams.push(startDate);
+        }
+
+        if (endDate) {
+          adjWhereConditions.push('ia.created_at <= ?');
+          adjParams.push(endDate);
+        }
+
+        adjustmentLogs = await db.query(
+          `SELECT 
+            ia.id,
+            'ADJUSTMENT' as event_type,
+            ia.adjustment_type,
+            ia.quantity_change,
+            ia.reason,
+            ia.loss_type,
+            ia.reference_number,
+            ia.created_at,
+            i.sku,
+            i.name as item_name,
+            w.name as warehouse_name,
+            CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as performed_by
+          FROM inventory_adjustments ia
+          JOIN items i ON ia.item_id = i.id
+          LEFT JOIN warehouses w ON ia.warehouse_id = w.id
+          LEFT JOIN institution_users u ON ia.adjusted_by = u.id
+          WHERE ${adjWhereConditions.join(' AND ')}
+          ORDER BY ia.created_at DESC
+          LIMIT 1000`,
+          adjParams
+        );
       }
-
-      if (startDate) {
-        adjWhereConditions.push('ia.created_at >= ?');
-        adjParams.push(startDate);
-      }
-
-      if (endDate) {
-        adjWhereConditions.push('ia.created_at <= ?');
-        adjParams.push(endDate);
-      }
-
-      const adjustmentLogs = await db.query(
-        `SELECT 
-          ia.id,
-          'ADJUSTMENT' as event_type,
-          ia.adjustment_type,
-          ia.quantity_change,
-          ia.reason,
-          ia.loss_type,
-          ia.reference_number,
-          ia.created_at,
-          i.sku,
-          i.name as item_name,
-          w.name as warehouse_name,
-          CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as performed_by
-        FROM inventory_adjustments ia
-        JOIN items i ON ia.item_id = i.id
-        LEFT JOIN warehouses w ON ia.warehouse_id = w.id
-        LEFT JOIN institution_users u ON ia.adjusted_by = u.id
-        WHERE ${adjWhereConditions.join(' AND ')}
-        ORDER BY ia.created_at DESC
-        LIMIT 1000`,
-        adjParams
-      );
 
       const auditLogs = await db.query(
         `SELECT
