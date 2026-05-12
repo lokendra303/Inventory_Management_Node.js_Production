@@ -93,6 +93,7 @@ const Items = () => {
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [editingWarehouseId, setEditingWarehouseId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('name_asc');
   const [binsForWarehouse, setBinsForWarehouse] = useState([]);
   const [binsLoading, setBinsLoading] = useState(false);
   const [editingWarehouseSummaries, setEditingWarehouseSummaries] = useState([]);
@@ -199,6 +200,7 @@ const Items = () => {
     minStockLevel: payload.minStockLevel,
     maxStockLevel: payload.maxStockLevel,
     barcode: payload.barcode,
+    batchNumber: payload.batchNumber,
     openingStock: payload.openingStock,
     openingValue: payload.openingValue,
     defaultBinId: payload.defaultBinId,
@@ -727,7 +729,6 @@ const Items = () => {
       )
     },
     { title: 'Type', dataIndex: 'type', key: 'type', render: v => v ? <Tag color="blue" style={{ borderRadius: 20, textTransform: 'capitalize' }}>{v}</Tag> : '-' },
-    { title: 'Category', dataIndex: 'category', key: 'category', render: v => v ? <Tag color="orange" style={{ borderRadius: 20 }}>{v}</Tag> : '-' },
     { title: 'Item Group', dataIndex: 'item_group_name', key: 'item_group_name', render: v => v ? <Tag color="purple" style={{ borderRadius: 20 }}>{v}</Tag> : '-' },
     { title: 'Unit', dataIndex: 'unit', key: 'unit', render: v => v || '-' },
     {
@@ -747,12 +748,6 @@ const Items = () => {
     },
     { title: 'Cost Price', dataIndex: 'cost_price', key: 'cost_price', render: val => val ? <span style={{ fontWeight: 600, color: '#595959' }}>{formatPrice(val, currency, 'USD')}</span> : '-' },
     { title: 'Selling Price', dataIndex: 'selling_price', key: 'selling_price', render: val => val ? <span style={{ fontWeight: 700, color: '#667eea' }}>{formatPrice(val, currency, 'USD')}</span> : '-' },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: status => <Badge status={status === 'active' ? 'success' : 'error'} text={<span style={{ fontWeight: 500, textTransform: 'capitalize' }}>{status}</span>} />
-    },
     {
       title: 'Actions',
       key: 'actions',
@@ -1063,6 +1058,7 @@ const Items = () => {
         minStockLevel: values.minStockLevel,
         maxStockLevel: values.maxStockLevel,
         barcode: values.barcode,
+        batchNumber: values.batchNumber?.trim().toUpperCase() || null,
         openingStock: isVariantType ? 0 : (values.openingStock || 0),
         openingValue: isVariantType ? 0 : (values.openingValue || 0),
         defaultBinId: isVariantType ? null : (values.defaultBinId || null),
@@ -1361,6 +1357,7 @@ const viewItem = async (item) => {
       minStockLevel: normalizeOptionalNumber(fullItem.min_stock_level),
       maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
       barcode: normalizeOptionalText(fullItem.barcode),
+      batchNumber: normalizeOptionalText(fullItem.batch_number)?.toUpperCase(),
       hsnCode: normalizeOptionalText(fullItem.hsn_code),
       itemGroupId: fullItem.item_group_id || null,
       colorCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.color),
@@ -1921,6 +1918,7 @@ const viewItem = async (item) => {
       minStockLevel: normalizeOptionalNumber(fullItem.min_stock_level),
       maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
       barcode: normalizeOptionalText(fullItem.barcode),
+      batchNumber: normalizeOptionalText(fullItem.batch_number)?.toUpperCase(),
       hsnCode: normalizeOptionalText(fullItem.hsn_code),
       itemGroupId: fullItem.item_group_id || null,
       colorCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.color),
@@ -1977,6 +1975,7 @@ const viewItem = async (item) => {
       minStockLevel: duplicateFormValues.minStockLevel,
       maxStockLevel: duplicateFormValues.maxStockLevel,
       barcode: duplicateFormValues.barcode,
+      batchNumber: duplicateFormValues.batchNumber,
       openingStock: duplicateFormValues.openingStock || 0,
       openingValue: duplicateFormValues.openingValue || 0,
       defaultBinId: duplicateFormValues.defaultBinId || null,
@@ -2067,7 +2066,7 @@ const viewItem = async (item) => {
   const hasDraftableValues = useCallback((values = {}) => {
     const fieldsToCheck = [
       'sku', 'name', 'description', 'category', 'unit', 'warehouseId', 'type',
-      'brand', 'manufacturer', 'barcode', 'upc', 'ean', 'isbn', 'mpn', 'itemGroupId'
+      'brand', 'manufacturer', 'barcode', 'batchNumber', 'upc', 'ean', 'isbn', 'mpn', 'itemGroupId'
     ];
     const hasText = fieldsToCheck.some((k) => {
       const v = values[k];
@@ -2215,6 +2214,36 @@ const viewItem = async (item) => {
     );
   });
 
+  const getItemSortDate = (item) => {
+    const rawValue = item?.created_at || item?.updated_at || null;
+    if (!rawValue) return 0;
+    const parsed = new Date(rawValue).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const sortedFilteredItems = useMemo(() => {
+    const list = [...filteredItems];
+
+    list.sort((left, right) => {
+      const leftName = String(left?.name || '');
+      const rightName = String(right?.name || '');
+
+      switch (sortBy) {
+        case 'name_desc':
+          return rightName.localeCompare(leftName, undefined, { sensitivity: 'base', numeric: true });
+        case 'date_desc':
+          return getItemSortDate(right) - getItemSortDate(left) || leftName.localeCompare(rightName, undefined, { sensitivity: 'base', numeric: true });
+        case 'date_asc':
+          return getItemSortDate(left) - getItemSortDate(right) || leftName.localeCompare(rightName, undefined, { sensitivity: 'base', numeric: true });
+        case 'name_asc':
+        default:
+          return leftName.localeCompare(rightName, undefined, { sensitivity: 'base', numeric: true });
+      }
+    });
+
+    return list;
+  }, [filteredItems, sortBy]);
+
   const getSelectedUnitLabel = () => {
     const selectedUnit = form.getFieldValue('unit');
     if (!selectedUnit) return 'kg';
@@ -2329,6 +2358,17 @@ const viewItem = async (item) => {
                 }))
               ]}
             />
+            <Select
+              value={sortBy}
+              onChange={setSortBy}
+              style={{ width: 180 }}
+              options={[
+                { value: 'name_asc', label: 'Name: A to Z' },
+                { value: 'name_desc', label: 'Name: Z to A' },
+                { value: 'date_desc', label: 'Date: Newest' },
+                { value: 'date_asc', label: 'Date: Oldest' }
+              ]}
+            />
             {canManageItems && (
               <Tooltip title="Configure SKU auto-generator rules (prefix, counter, date, per-category overrides)">
                 <Button
@@ -2375,11 +2415,11 @@ const viewItem = async (item) => {
           items={[
             {
               key: 'items',
-              label: <span>All Items <Tag color="purple" style={{ borderRadius: 20, marginLeft: 4 }}>{filteredItems.length}</Tag></span>,
+              label: <span>All Items <Tag color="purple" style={{ borderRadius: 20, marginLeft: 4 }}>{sortedFilteredItems.length}</Tag></span>,
               children: (
                 <Table
                   columns={columns}
-                  dataSource={filteredItems}
+                  dataSource={sortedFilteredItems}
                   loading={loading}
                   rowKey="id"
                   scroll={{ x: 'max-content' }}
@@ -3865,6 +3905,15 @@ const viewItem = async (item) => {
                   <Input placeholder="Enter HSN Code" />
                 </Form.Item>
               </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item
+                  name="batchNumber"
+                  label="Batch Number"
+                  getValueFromEvent={(event) => String(event?.target?.value || '').toUpperCase()}
+                >
+                  <Input placeholder="Enter Batch Number" />
+                </Form.Item>
+              </Col>
             </Row>
           </div>{/* end Basic Info section */}
 
@@ -4352,6 +4401,7 @@ const viewItem = async (item) => {
                 ['Brand', viewingItem.brand || 'N/A'],
                 ['Manufacturer', viewingItem.manufacturer || 'N/A'],
               ], [
+                ['Status', <Tag color={viewingItem.status === 'active' ? 'success' : 'error'} style={{ borderRadius: 20, marginInlineEnd: 0, textTransform: 'capitalize' }}>{viewingItem.status || 'N/A'}</Tag>],
                 ['Min Stock', viewingItem.min_stock_level ?? 'N/A'],
                 ['Max Stock', viewingItem.max_stock_level ?? 'N/A'],
                 ['Opening Stock', viewingItem.opening_stock ?? 'N/A'],
@@ -4359,6 +4409,7 @@ const viewItem = async (item) => {
                 ['HSN Code', viewingItem.hsn_code || 'N/A'],
                 ['Barcode', viewingItem.barcode || 'N/A'],
               ], [
+                ['Batch Number', viewingItem.batch_number || 'N/A'],
                 ['UPC', viewingItem.upc || 'N/A'],
                 ['EAN', viewingItem.ean || 'N/A'],
                 ['ISBN', viewingItem.isbn || 'N/A'],

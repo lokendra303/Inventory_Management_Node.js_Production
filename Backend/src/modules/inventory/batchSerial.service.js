@@ -11,6 +11,7 @@ class BatchSerialService {
       manufactureDate, expiryDate, quantityReceived,
       unitCost, grnId, poId, notes
     } = data;
+    const normalizedBatchNumber = String(batchNumber || '').trim().toUpperCase();
 
     const id = uuidv4();
 
@@ -26,7 +27,7 @@ class BatchSerialService {
         manufacture_date, expiry_date, quantity_received, quantity_remaining,
         unit_cost, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [id, institutionId, itemId, warehouseId, batchNumber,
+      [id, institutionId, itemId, warehouseId, normalizedBatchNumber,
        manufactureDate || null, expiryDate || null, quantityReceived, quantityReceived,
        unitCost || 0]
     );
@@ -36,7 +37,7 @@ class BatchSerialService {
       await this._checkAndCreateExpiryAlert(institutionId, itemId, warehouseId, id, expiryDate, quantityReceived);
     }
 
-    logger.info('Batch created', { id, institutionId, itemId, batchNumber, userId });
+    logger.info('Batch created', { id, institutionId, itemId, batchNumber: normalizedBatchNumber, userId });
     return id;
   }
 

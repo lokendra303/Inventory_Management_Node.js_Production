@@ -198,7 +198,12 @@ export default function BatchTracking() {
               {warehouses.map(w => <Option key={w.id} value={w.id}>{w.name}</Option>)}
             </Select>
           </Form.Item>
-          <Form.Item name="batchNumber" label="Batch Number" rules={[{ required: true }]}>
+          <Form.Item
+            name="batchNumber"
+            label="Batch Number"
+            rules={[{ required: true }]}
+            getValueFromEvent={(event) => String(event?.target?.value || '').toUpperCase()}
+          >
             <Input />
           </Form.Item>
           <Form.Item name="lotNumber" label="Lot Number"><Input /></Form.Item>

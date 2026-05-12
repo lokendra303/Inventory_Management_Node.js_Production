@@ -374,6 +374,7 @@ class ItemService {
       category,
       unit = 'pcs',
       barcode,
+      batchNumber,
       hsnCode,
       customFields = {},
       valuationMethod = 'fifo',
@@ -415,6 +416,7 @@ class ItemService {
 
     // Provide clear business error instead of raw DB duplicate key message.
     const normalizedSku = String(sku || '').trim();
+    const normalizedBatchNumber = String(batchNumber || '').trim().toUpperCase() || null;
     if (!normalizedSku) {
       throw new Error('SKU is required');
     }
@@ -435,14 +437,14 @@ class ItemService {
 
     await db.query(
       `INSERT INTO items 
-       (id, institution_id, created_by, sku, name, description, image, type, category, unit, barcode, hsn_code, 
+       (id, institution_id, created_by, sku, name, description, image, type, category, unit, barcode, batch_number, hsn_code, 
         custom_fields, default_bin_id, valuation_method, allow_negative_stock, cost_price, selling_price, mrp, 
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, item_group_id, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, category || null, unit, barcode || null, hsnCode || null,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+      [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, category || null, unit, barcode || null, normalizedBatchNumber, hsnCode || null,
        JSON.stringify(customFields), defaultBinId || null, valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
@@ -536,6 +538,7 @@ class ItemService {
       category,
       unit,
       barcode,
+      batchNumber,
       hsnCode,
       customFields,
       valuationMethod,
@@ -600,6 +603,10 @@ class ItemService {
     if (barcode !== undefined) {
       updateFields.push('barcode = ?');
       updateValues.push(barcode);
+    }
+    if (batchNumber !== undefined) {
+      updateFields.push('batch_number = ?');
+      updateValues.push(String(batchNumber || '').trim().toUpperCase() || null);
     }
     if (hsnCode !== undefined) {
       updateFields.push('hsn_code = ?');
@@ -1174,9 +1181,9 @@ class ItemService {
     }
 
     if (filters.search) {
-      query += ' AND (i.name LIKE ? OR i.sku LIKE ? OR COALESCE(i.category, \'\') LIKE ? OR COALESCE(ig.name, i.item_group, \'\') LIKE ?)';
+      query += ' AND (i.name LIKE ? OR i.sku LIKE ? OR COALESCE(i.category, \'\') LIKE ? OR COALESCE(i.batch_number, \'\') LIKE ? OR COALESCE(ig.name, i.item_group, \'\') LIKE ?)';
       const searchTerm = `%${String(filters.search).trim()}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     query += ' GROUP BY i.id ORDER BY i.name';
