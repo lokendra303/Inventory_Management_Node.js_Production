@@ -1189,6 +1189,25 @@ export default function Login() {
                     <Input.Password className="ims-input" prefix={<LockOutlined style={{fontSize:15}} />} placeholder="Min. 8 characters" autoComplete="new-password" />
                   </Form.Item>
 
+                  <Form.Item
+                    label={<span className="ims-label">Confirm Password</span>}
+                    name="adminConfirmPassword"
+                    dependencies={['adminPassword']}
+                    rules={[
+                      { required: true, message: 'Please confirm your password' },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (!value || getFieldValue('adminPassword') === value) {
+                            return Promise.resolve();
+                          }
+                          return Promise.reject(new Error('Passwords do not match'));
+                        }
+                      })
+                    ]}
+                  >
+                    <Input.Password className="ims-input" prefix={<LockOutlined style={{fontSize:15}} />} placeholder="Re-enter password" autoComplete="new-password" />
+                  </Form.Item>
+
                   <Form.Item style={{ marginBottom: 0 }}>
                     <button
                       type="submit"

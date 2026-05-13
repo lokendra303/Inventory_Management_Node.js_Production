@@ -231,7 +231,8 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (institutionData) => {
     try {
-      const response = await apiService.post('/auth/register-institution', institutionData);
+      const { adminConfirmPassword, ...payload } = institutionData;
+      const response = await apiService.post('/auth/register-institution', payload);
       if (response.success) {
         message.success('Institution registered successfully. Please login.');
         return { success: true };

@@ -242,7 +242,7 @@ const Users = () => {
 
   const handleCreateUser = async (values) => {
     try {
-      const { warehouseAccessType: accessType, warehouseAccess, ...rest } = values;
+      const { warehouseAccessType: accessType, warehouseAccess, confirmPassword, ...rest } = values;
       const payload = {
         ...rest,
         warehouseAccess: accessType === 'specific' ? (warehouseAccess || []) : []
@@ -658,6 +658,25 @@ const Users = () => {
                 ]}
               >
                 <Input.Password placeholder="Enter password" />
+              </Form.Item>
+
+              <Form.Item
+                name="confirmPassword"
+                label="Confirm Password"
+                dependencies={['password']}
+                rules={[
+                  { required: true, message: 'Please confirm password!' },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      if (!value || getFieldValue('password') === value) {
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(new Error('Passwords do not match'));
+                    }
+                  })
+                ]}
+              >
+                <Input.Password placeholder="Re-enter password" />
               </Form.Item>
             </>
           )}
