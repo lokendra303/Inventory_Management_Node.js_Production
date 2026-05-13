@@ -2608,7 +2608,7 @@ const viewItem = async (item) => {
                     Possible existing item found
                   </div>
                   <div style={{ fontSize: 12, color: '#ad6800', marginBottom: 12 }}>
-                    A matching item already exists by SKU, name, barcode, or batch number. If this is the same item, update the existing record instead of creating a new one.
+                    A matching item already exists by SKU, name, barcode, or batch number. Update the existing record if it is the same master data, or use <strong>Copy all data</strong> to pre-fill this form from a match and then change SKU or other fields before saving as a new item.
                   </div>
                   <div style={{ display: 'grid', gap: 10 }}>
                     {possibleDuplicateItems.map((item) => (
@@ -2655,15 +2655,27 @@ const viewItem = async (item) => {
                             View
                           </Button>
                           {canManageItems && (
-                            <Button
-                              size="small"
-                              type="primary"
-                              icon={<EditOutlined />}
-                              style={{ borderRadius: 6 }}
-                              onClick={() => openPossibleDuplicateForEdit(item)}
-                            >
-                              Update Existing
-                            </Button>
+                            <>
+                              <Tooltip title="Load every field from this item into the form. You stay on Add Item — change SKU (and anything else) before save.">
+                                <Button
+                                  size="small"
+                                  icon={<CopyOutlined />}
+                                  style={{ borderRadius: 6 }}
+                                  onClick={() => duplicateItem(item)}
+                                >
+                                  Copy all data
+                                </Button>
+                              </Tooltip>
+                              <Button
+                                size="small"
+                                type="primary"
+                                icon={<EditOutlined />}
+                                style={{ borderRadius: 6 }}
+                                onClick={() => openPossibleDuplicateForEdit(item)}
+                              >
+                                Update Existing
+                              </Button>
+                            </>
                           )}
                         </Space>
                       </div>
