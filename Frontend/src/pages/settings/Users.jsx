@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Table, Button, Space, Modal, Form, Input, Select, Tag, message, Tabs, Checkbox, Typography, Alert, Radio } from 'antd';
+import { Card, Table, Button, Space, Modal, Form, Input, Select, Tag, message, Tabs, Typography, Alert, Radio } from 'antd';
 import { PlusOutlined, EditOutlined, SettingOutlined, KeyOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useLocation } from 'react-router-dom';
+import RolePermissionMatrix from '../../components/settings/RolePermissionMatrix.jsx';
 
 const { TabPane } = Tabs;
 const { Text, Paragraph } = Typography;
@@ -64,6 +65,22 @@ const Users = () => {
     { key: 'audit_view', label: 'View Audit Trail' }
   ];
 
+  const permissionKeyLabelMap = useMemo(
+    () => Object.fromEntries(availablePermissions.map((p) => [p.key, p.label])),
+    []
+  );
+
+  const permissionsArrayFromRole = (role) => {
+    if (!role?.permissions) return [];
+    try {
+      const p = typeof role.permissions === 'string' ? JSON.parse(role.permissions) : role.permissions;
+      if (p && p.all === true) return ['all'];
+      return Object.keys(p || {}).filter((k) => p[k]);
+    } catch {
+      return [];
+    }
+  };
+
   const roleHasWarehouseAccess = (role) => {
     if (!role) return false;
     if (role.name === 'admin' || role.name === 'super_admin') return true;
@@ -81,10 +98,6 @@ const Users = () => {
     () => availablePermissions.map((perm) => perm.key),
     []
   );
-  const selectedRolePermissions = Form.useWatch('permissions', roleForm) || [];
-  const isAllPermissionsSelected =
-    allPermissionKeys.length > 0 &&
-    allPermissionKeys.every((permKey) => selectedRolePermissions.includes(permKey));
   const warehouseAccessType = Form.useWatch('warehouseAccessType', form) || 'normal';
   const selectedRole = Form.useWatch('role', form);
 
@@ -426,7 +439,7 @@ const Users = () => {
     setEditingRole(role);
     roleForm.setFieldsValue({
       roleName: role.name,
-      permissions: Object.keys(role.permissions)
+      permissions: permissionsArrayFromRole(role),
     });
     setRoleModalVisible(true);
   };
@@ -520,7 +533,12 @@ const Users = () => {
                 <Button 
                   type="primary" 
                   icon={<PlusOutlined />}
-                  onClick={() => setRoleModalVisible(true)}
+                  onClick={() => {
+                    setEditingRole(null);
+                    roleForm.resetFields();
+                    roleForm.setFieldsValue({ roleName: '', permissions: [] });
+                    setRoleModalVisible(true);
+                  }}
                 >
                   Create Role
                 </Button>
@@ -748,7 +766,7 @@ const Users = () => {
 
       {/* Role Management Modal */}
       <Modal
-        title={editingRole ? 'Edit Role' : 'Create New Role'}
+        title={editingRole ? 'Edit Role' : 'New Role'}
         open={roleModalVisible}
         onCancel={() => {
           setRoleModalVisible(false);
@@ -756,7 +774,8 @@ const Users = () => {
           roleForm.resetFields();
         }}
         footer={null}
-        width={800}
+        width="min(1080px, 96vw)"
+        style={{ top: 16 }}
       >
         {!canManageUsers ? (
           <Alert
@@ -778,75 +797,28 @@ const Users = () => {
           >
             <Input placeholder="Enter role name" disabled={editingRole?.name === 'admin'} />
           </Form.Item>
-          
-          <Form.Item label="Permissions" required>
-            <Space style={{ marginBottom: 12 }}>
-              <Button
-                size="small"
-                type={isAllPermissionsSelected ? 'default' : 'primary'}
-                onClick={() => roleForm.setFieldsValue({ permissions: allPermissionKeys })}
-              >
-                Select All
-              </Button>
-              <Button
-                size="small"
-                onClick={() => roleForm.setFieldsValue({ permissions: [] })}
-              >
-                Clear All
-              </Button>
-            </Space>
+
+          <Form.Item
+            label="Permissions"
+            required
+            style={{ marginBottom: 8 }}
+          >
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+              Use the matrix below. See the blue note for what Full / View / Create… mean in this app.
+            </Typography.Text>
             <Form.Item
               name="permissions"
-              rules={[{ required: true, message: 'Please select permissions!' }]}
+              rules={[
+                {
+                  validator: (_, v) =>
+                    Array.isArray(v) && v.length > 0
+                      ? Promise.resolve()
+                      : Promise.reject(new Error('Select at least one permission')),
+                },
+              ]}
               style={{ marginBottom: 0 }}
             >
-              <Checkbox.Group style={{ width: '100%' }}>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '12px',
-                  padding: '16px',
-                  backgroundColor: '#f8f9fa',
-                  borderRadius: '8px',
-                  border: '1px solid #e9ecef',
-                  maxHeight: '400px',
-                  overflowY: 'auto'
-                }}>
-                  {availablePermissions.map(perm => (
-                    <div key={perm.key} style={{
-                      padding: '12px 16px',
-                      backgroundColor: 'white',
-                      borderRadius: '8px',
-                      border: '1px solid #e1e5e9',
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                      ':hover': {
-                        borderColor: '#1890ff',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                      }
-                    }}>
-                      <Checkbox value={perm.key} style={{ width: '100%' }}>
-                        <div style={{ marginLeft: '8px' }}>
-                          <div style={{ 
-                            fontSize: '14px', 
-                            fontWeight: '600',
-                            color: '#262626',
-                            marginBottom: '2px'
-                          }}>
-                            {perm.label}
-                          </div>
-                          <div style={{
-                            fontSize: '12px',
-                            color: '#8c8c8c'
-                          }}>
-                            {perm.key}
-                          </div>
-                        </div>
-                      </Checkbox>
-                    </div>
-                  ))}
-                </div>
-              </Checkbox.Group>
+              <RolePermissionMatrix keyLabels={permissionKeyLabelMap} />
             </Form.Item>
           </Form.Item>
           
