@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const config = require('../../config');
 const logger = require('../../utils/logger');
+const emailService = require('../../services/emailService');
 const subscriptionService = require('../subscription/subscription.service');
 
 /** Feature keys stored in subscription_plans.features JSON; `all` grants every module. */
@@ -25,6 +26,14 @@ function institutionStatusToDb(apiStatus) {
   if (apiStatus === 'active') return 'active';
   if (apiStatus === 'inactive') return 'inactive';
   return null;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 async function ensureSchema() {
@@ -277,12 +286,21 @@ async function getInstitution(id) {
   };
 }
 
-async function setInstitutionStatus(id, apiStatus) {
+async function setInstitutionStatus(id, apiStatus, notifyOpts = {}) {
   await ensureSchema();
   const dbStatus = institutionStatusToDb(apiStatus);
   if (!dbStatus) {
     throw new Error('status must be active, inactive, or suspended');
   }
+
+  const notifyOnSuspend = apiStatus === 'suspended';
+  const notifyOnActivate = apiStatus === 'active';
+  const wantEmail = notifyOnSuspend || notifyOnActivate;
+  const notificationMessage = (notifyOpts?.notificationMessage || '').trim();
+  if (wantEmail && !notificationMessage) {
+    throw new Error('Notification message is required (email is sent for suspend and activate)');
+  }
+
   let result;
   try {
     result = await db.query('UPDATE institutions SET status = ?, updated_at = NOW() WHERE id = ?', [dbStatus, id]);
@@ -291,7 +309,76 @@ async function setInstitutionStatus(id, apiStatus) {
     result = await db.query('UPDATE institutions SET status = ? WHERE id = ?', [dbStatus, id]);
   }
   if (!result || result.affectedRows === 0) throw new Error('Institution not found');
-  return true;
+
+  const out = {};
+  if (wantEmail) {
+    const rows = await db.query('SELECT id, name, email FROM institutions WHERE id = ?', [id]);
+    const inst = rows[0] || {};
+    const customTo = notifyOpts.notifyTo != null && String(notifyOpts.notifyTo).trim();
+    const to = customTo || (inst.email && String(inst.email).trim());
+    if (!to) {
+      out.emailSent = false;
+      out.emailError = 'No recipient email; set the institution email or enter notify address';
+      logger.warn('Institution status notification skipped: no recipient', { institutionId: id, apiStatus });
+      return out;
+    }
+    const institutionLabel = inst.name || 'your organization';
+    let subject;
+    let text;
+    let html;
+    if (notifyOnSuspend) {
+      subject = 'Your institution account has been suspended';
+      text = [
+        `Your institution account (${institutionLabel}) has been suspended.`,
+        '',
+        `Institution ID: ${id}`,
+        '',
+        'Reason:',
+        notificationMessage,
+        '',
+        'Users from this institution cannot sign in until the account is reactivated by platform support.',
+        '',
+        'If you believe this is a mistake, please contact support.',
+      ].join('\n');
+      html = `
+      <p>Your institution account (<strong>${escapeHtml(institutionLabel)}</strong>) has been suspended.</p>
+      <p><strong>Institution ID:</strong> ${escapeHtml(id)}</p>
+      <p><strong>Reason:</strong></p>
+      <blockquote style="margin:0 0 1em;border-left:4px solid #cbd5e1;padding-left:12px;white-space:pre-wrap">${escapeHtml(notificationMessage).replace(/\n/g, '<br/>')}</blockquote>
+      <p>Users from this institution cannot sign in until the account is reactivated by platform support.</p>
+      <p>If you believe this is a mistake, please contact support.</p>
+    `.trim();
+    } else {
+      subject = 'Your institution account has been reactivated';
+      text = [
+        `Your institution account (${institutionLabel}) has been reactivated.`,
+        '',
+        `Institution ID: ${id}`,
+        '',
+        'Message:',
+        notificationMessage,
+        '',
+        'Users from this institution may sign in again.',
+        '',
+        'If you have questions, please contact support.',
+      ].join('\n');
+      html = `
+      <p>Your institution account (<strong>${escapeHtml(institutionLabel)}</strong>) has been <strong>reactivated</strong>.</p>
+      <p><strong>Institution ID:</strong> ${escapeHtml(id)}</p>
+      <p><strong>Message:</strong></p>
+      <blockquote style="margin:0 0 1em;border-left:4px solid #22c55e;padding-left:12px;white-space:pre-wrap">${escapeHtml(notificationMessage).replace(/\n/g, '<br/>')}</blockquote>
+      <p>Users from this institution may sign in again.</p>
+      <p>If you have questions, please contact support.</p>
+    `.trim();
+    }
+    const sendResult = await emailService.sendEmail({ to, subject, text, html });
+    out.emailSent = Boolean(sendResult.success);
+    out.emailError = sendResult.success ? undefined : (sendResult.error || 'Failed to send email');
+    if (!sendResult.success) {
+      logger.warn('Institution status notification email failed', { institutionId: id, apiStatus, error: out.emailError });
+    }
+  }
+  return out;
 }
 
 const INSTITUTION_PATCH_FIELDS = [

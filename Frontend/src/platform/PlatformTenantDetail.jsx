@@ -28,6 +28,10 @@ export default function PlatformTenantDetail() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignPlans, setAssignPlans] = useState([]);
   const [assignSaving, setAssignSaving] = useState(false);
+  const [statusNotifyOpen, setStatusNotifyOpen] = useState(false);
+  const [statusNotifyKind, setStatusNotifyKind] = useState(null);
+  const [statusNotifySaving, setStatusNotifySaving] = useState(false);
+  const [statusNotifyForm] = Form.useForm();
 
   useEffect(() => {
     let cancelled = false;
@@ -134,18 +138,50 @@ export default function PlatformTenantDetail() {
     }
   };
 
-  const setStatus = async (status) => {
+  const openStatusNotifyModal = (kind) => {
+    const inst = payload?.institution;
+    statusNotifyForm.setFieldsValue({
+      notificationMessage: '',
+      notifyTo: inst?.email || '',
+    });
+    setStatusNotifyKind(kind);
+    setStatusNotifyOpen(true);
+  };
+
+  const confirmStatusNotify = async () => {
+    if (!statusNotifyKind) return;
     try {
-      const res = await platformApi.patch(`/platform/institutions/${id}/status`, { status });
+      const values = await statusNotifyForm.validateFields();
+      setStatusNotifySaving(true);
+      const status = statusNotifyKind === 'suspend' ? 'suspended' : 'active';
+      const body = {
+        status,
+        notificationMessage: (values.notificationMessage || '').trim(),
+        notifyTo: (values.notifyTo || '').trim() || undefined,
+      };
+      const res = await platformApi.patch(`/platform/institutions/${id}/status`, body);
       if (res.success) {
-        message.success(`Institution ${status === 'suspended' ? 'suspended' : 'activated'}`);
+        const done = status === 'suspended' ? 'suspended' : 'activated';
+        let msg = `Institution ${done}`;
+        if (res.emailSent) msg += ' · notification email sent';
+        message.success(msg);
+        if (!res.emailSent && res.emailError) {
+          message.warning(`Status updated but email was not sent: ${res.emailError}`);
+        }
+        setStatusNotifyOpen(false);
+        setStatusNotifyKind(null);
         const refreshed = await platformApi.get(`/platform/institutions/${id}`);
         if (refreshed.success) setPayload(refreshed.data);
       } else message.error(res.error);
     } catch (e) {
+      if (e?.errorFields) return;
       message.error(e.response?.data?.error || e.message);
+    } finally {
+      setStatusNotifySaving(false);
     }
   };
+
+  const statusModalIsSuspend = statusNotifyKind === 'suspend';
 
   if (loading) {
     return (
@@ -184,9 +220,9 @@ export default function PlatformTenantDetail() {
           <Button icon={<EditOutlined />} onClick={openEdit}>Edit institution</Button>
           <Button type="primary" ghost onClick={openAssignSubscription}>Assign subscription plan</Button>
           {institution.status === 'active' ? (
-            <Button danger onClick={() => setStatus('suspended')}>Suspend institution</Button>
+            <Button danger onClick={() => openStatusNotifyModal('suspend')}>Suspend institution</Button>
           ) : (
-            <Button type="primary" onClick={() => setStatus('active')}>Activate institution</Button>
+            <Button type="primary" onClick={() => openStatusNotifyModal('activate')}>Activate institution</Button>
           )}
         </Space>
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
@@ -196,6 +232,48 @@ export default function PlatformTenantDetail() {
           Paid tiers (Standard and above) are granted here until online billing is enabled. Tenants cannot self-activate paid plans without payment verification.
         </Typography.Paragraph>
       </Card>
+
+      <Modal
+        title={statusModalIsSuspend ? 'Suspend institution' : 'Activate institution'}
+        open={statusNotifyOpen}
+        onCancel={() => { setStatusNotifyOpen(false); setStatusNotifyKind(null); }}
+        onOk={confirmStatusNotify}
+        confirmLoading={statusNotifySaving}
+        okText={statusModalIsSuspend ? 'Suspend' : 'Activate'}
+        okButtonProps={{ danger: statusModalIsSuspend }}
+        width={isNarrow ? 'calc(100vw - 24px)' : 520}
+        style={isNarrow ? { top: 12 } : undefined}
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          {statusModalIsSuspend
+            ? 'Suspension blocks sign-in for this institution. An email is required and will be sent with the institution ID and the text you enter below.'
+            : 'An email is required and will be sent to confirm reactivation, including the institution ID and your message below.'}
+        </Typography.Paragraph>
+        <Form form={statusNotifyForm} layout="vertical" style={{ marginTop: 4 }}>
+          <Form.Item
+            name="notifyTo"
+            label="Send to (optional)"
+            tooltip="Defaults to the institution email on file if left empty."
+          >
+            <Input type="email" placeholder={institution.email || 'Institution email'} />
+          </Form.Item>
+          <Form.Item
+            name="notificationMessage"
+            label={statusModalIsSuspend ? 'Reason (included in email)' : 'Message (included in email)'}
+            rules={[{ required: true, message: 'Enter the text to include in the notification email' }]}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder={
+                statusModalIsSuspend
+                  ? 'e.g. Account suspended due to non-payment…'
+                  : 'e.g. Your account has been reviewed and access is restored…'
+              }
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Assign subscription plan"

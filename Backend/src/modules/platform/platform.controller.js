@@ -52,9 +52,12 @@ class PlatformController {
 
   async updateInstitutionStatus(req, res) {
     try {
-      const { status } = req.body;
-      await platformAdminService.setInstitutionStatus(req.params.id, status);
-      res.json({ success: true, message: 'Institution updated' });
+      const { status, notifyTo, notificationMessage, suspensionReason } = req.body || {};
+      const extra = await platformAdminService.setInstitutionStatus(req.params.id, status, {
+        notifyTo,
+        notificationMessage: notificationMessage ?? suspensionReason,
+      });
+      res.json({ success: true, message: 'Institution updated', ...extra });
     } catch (error) {
       res.status(400).json({ success: false, error: error.message });
     }
