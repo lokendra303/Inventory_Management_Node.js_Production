@@ -122,6 +122,12 @@ const Items = () => {
     if (!text || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') return undefined;
     return text;
   };
+  const normalizeDuplicateLookup = (value) => (
+    String(value || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toUpperCase()
+  );
   const normalizeOptionalTextArray = (value) => {
     if (Array.isArray(value)) {
       return Array.from(new Set(value.map((v) => normalizeOptionalText(v)).filter(Boolean)));
@@ -1382,6 +1388,16 @@ const viewItem = async (item) => {
     setModalVisible(true);
   };
 
+  const openPossibleDuplicateForEdit = async (item) => {
+    if (!item) return;
+    setDuplicateBanner(null);
+    setDuplicateSourcePayload(null);
+    setDraftBanner(null);
+    setActiveDraftId(null);
+    await editItem(item);
+    message.info(`Opened "${item.name}" in edit mode.`);
+  };
+
   const handleBarcodeScan = async (barcode) => {
     setScannerOpen(false);
     // Fill EAN field first
@@ -1587,12 +1603,52 @@ const viewItem = async (item) => {
   const watchedVariantAttributes = Form.useWatch('variantAttributes', form);
   const watchedItemType = Form.useWatch('type', form);
   const watchedItemGroupId = Form.useWatch('itemGroupId', form);
+  const watchedSku = Form.useWatch('sku', form);
+  const watchedName = Form.useWatch('name', form);
+  const watchedBarcode = Form.useWatch('barcode', form);
+  const watchedBatchNumber = Form.useWatch('batchNumber', form);
   const watchedVariant = Form.useWatch('variant', form);
   const watchedColor = Form.useWatch('colorCode', form);
   const watchedSize = Form.useWatch('sizeCode', form);
   const watchedPackType = Form.useWatch('packType', form);
   const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
   const isVariantItem = watchedItemType === 'variant';
+
+  const possibleDuplicateItems = useMemo(() => {
+    if (!modalVisible || editingItem) return [];
+
+    const skuKey = normalizeDuplicateLookup(watchedSku);
+    const nameKey = normalizeDuplicateLookup(watchedName);
+    const barcodeKey = normalizeDuplicateLookup(watchedBarcode);
+    const batchKey = normalizeDuplicateLookup(watchedBatchNumber);
+
+    if (!skuKey && !nameKey && !barcodeKey && !batchKey) return [];
+
+    return (items || [])
+      .map((item) => {
+        if (!item?.id) return null;
+
+        const reasons = [];
+        if (skuKey && normalizeDuplicateLookup(item.sku) === skuKey) reasons.push('Same SKU');
+        if (nameKey && normalizeDuplicateLookup(item.name) === nameKey) reasons.push('Same name');
+        if (barcodeKey && normalizeDuplicateLookup(item.barcode) === barcodeKey) reasons.push('Same barcode');
+        if (batchKey && normalizeDuplicateLookup(item.batch_number) === batchKey) reasons.push('Same batch number');
+        if (reasons.length === 0) return null;
+
+        return {
+          ...item,
+          duplicateReasons: reasons,
+          duplicateScore: reasons.length
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        if (right.duplicateScore !== left.duplicateScore) return right.duplicateScore - left.duplicateScore;
+        if ((left.status === 'active') !== (right.status === 'active')) return left.status === 'active' ? -1 : 1;
+        return String(left.name || '').localeCompare(String(right.name || ''), undefined, { sensitivity: 'base', numeric: true });
+      })
+      .slice(0, 5);
+  }, [modalVisible, editingItem, items, watchedSku, watchedName, watchedBarcode, watchedBatchNumber]);
 
   const selectableItemGroups = useMemo(() => (
     (itemGroups || [])
@@ -2540,6 +2596,81 @@ const viewItem = async (item) => {
                 setImageUrl('');
                 fetchDrafts();
               }}>Discard</Button>
+            </div>
+          )}
+
+          {!editingItem && possibleDuplicateItems.length > 0 && (
+            <div style={{ background: 'linear-gradient(135deg, #fffbe6, #fff7e6)', border: '1px solid #ffd666', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <WarningOutlined style={{ color: '#d48806', fontSize: 18, marginTop: 2 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, color: '#ad6800', fontSize: 13, marginBottom: 4 }}>
+                    Possible existing item found
+                  </div>
+                  <div style={{ fontSize: 12, color: '#ad6800', marginBottom: 12 }}>
+                    A matching item already exists by SKU, name, barcode, or batch number. If this is the same item, update the existing record instead of creating a new one.
+                  </div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {possibleDuplicateItems.map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          alignItems: 'center',
+                          background: '#fff',
+                          border: '1px solid #ffe58f',
+                          borderRadius: 8,
+                          padding: '10px 12px'
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 700, color: '#262626' }}>
+                            {item.name || 'Unnamed Item'}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
+                            SKU: {item.sku || 'N/A'}
+                            {item.barcode ? ` | Barcode: ${item.barcode}` : ''}
+                            {item.batch_number ? ` | Batch: ${item.batch_number}` : ''}
+                          </div>
+                          <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {item.duplicateReasons.map((reason) => (
+                              <Tag key={`${item.id}-${reason}`} color="orange" style={{ borderRadius: 20, marginInlineEnd: 0 }}>
+                                {reason}
+                              </Tag>
+                            ))}
+                            <Tag color={item.status === 'active' ? 'green' : 'default'} style={{ borderRadius: 20, marginInlineEnd: 0, textTransform: 'capitalize' }}>
+                              {item.status || 'unknown'}
+                            </Tag>
+                          </div>
+                        </div>
+                        <Space wrap>
+                          <Button
+                            size="small"
+                            icon={<EyeOutlined />}
+                            style={{ borderRadius: 6 }}
+                            onClick={() => viewItem(item)}
+                          >
+                            View
+                          </Button>
+                          {canManageItems && (
+                            <Button
+                              size="small"
+                              type="primary"
+                              icon={<EditOutlined />}
+                              style={{ borderRadius: 6 }}
+                              onClick={() => openPossibleDuplicateForEdit(item)}
+                            >
+                              Update Existing
+                            </Button>
+                          )}
+                        </Space>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
