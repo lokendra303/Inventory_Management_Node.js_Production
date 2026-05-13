@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Card, Typography, Descriptions, Table, Button, Space, Tag, Spin, message, Modal, Form, Input, Row, Col,
-  Tabs, Select, DatePicker, Tooltip, Empty, Collapse, Radio,
+  Tabs, Select, DatePicker, Tooltip, Empty, Collapse, Radio, Grid,
 } from 'antd';
 import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -14,6 +14,8 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function PlatformTenantDetail() {
+  const screens = Grid.useBreakpoint();
+  const isNarrow = !screens.md;
   const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -165,7 +167,7 @@ export default function PlatformTenantDetail() {
       <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate('/platform/institutions')} style={{ marginBottom: 8, paddingLeft: 0 }}>
         Back to institutions
       </Button>
-      <Title level={3} style={{ marginTop: 0 }}>{institution.name}</Title>
+      <Title level={3} style={{ marginTop: 0, wordBreak: 'break-word' }}>{institution.name}</Title>
 
       <Card style={{ marginBottom: 16 }}>
         <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
@@ -201,7 +203,8 @@ export default function PlatformTenantDetail() {
         onCancel={() => setAssignOpen(false)}
         onOk={saveAssignSubscription}
         confirmLoading={assignSaving}
-        width={480}
+        width={isNarrow ? 'calc(100vw - 24px)' : 480}
+        style={isNarrow ? { top: 12 } : undefined}
         destroyOnClose
       >
         <Form form={assignForm} layout="vertical" style={{ marginTop: 8 }}>
@@ -217,7 +220,7 @@ export default function PlatformTenantDetail() {
             />
           </Form.Item>
           <Form.Item name="billingCycle" label="Billing cycle" rules={[{ required: true }]}>
-            <Radio.Group>
+            <Radio.Group style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               <Radio.Button value="monthly">Monthly</Radio.Button>
               <Radio.Button value="yearly">Yearly</Radio.Button>
             </Radio.Group>
@@ -236,7 +239,8 @@ export default function PlatformTenantDetail() {
         onCancel={() => setEditOpen(false)}
         onOk={saveEdit}
         confirmLoading={saving}
-        width={720}
+        width={isNarrow ? 'calc(100vw - 24px)' : 720}
+        style={isNarrow ? { top: 12 } : undefined}
         destroyOnClose
       >
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
@@ -319,6 +323,8 @@ export default function PlatformTenantDetail() {
         activeKey={activeTab}
         onChange={setActiveTab}
         destroyInactiveTabPane
+        size={isNarrow ? 'small' : undefined}
+        tabBarStyle={isNarrow ? { marginBottom: 8 } : undefined}
         items={[
           {
             key: 'overview',
@@ -330,6 +336,7 @@ export default function PlatformTenantDetail() {
                   size="small"
                   pagination={{ pageSize: 10 }}
                   dataSource={users || []}
+                  scroll={{ x: 760 }}
                   columns={[
                     { title: 'Email', dataIndex: 'email', key: 'email' },
                     { title: 'Name', key: 'name', render: (_, r) => `${r.first_name || ''} ${r.last_name || ''}`.trim() || '—' },
@@ -391,6 +398,8 @@ function actionColor(action) {
 }
 
 function InstitutionAuditTrail({ institutionId, users }) {
+  const screens = Grid.useBreakpoint();
+  const isNarrow = !screens.md;
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -531,13 +540,29 @@ function InstitutionAuditTrail({ institutionId, users }) {
   return (
     <Card
       title="Audit trail"
-      extra={
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={fetchLogs} loading={loading}>Refresh</Button>
-        </Space>
+      styles={
+        isNarrow
+          ? {
+            header: { flexWrap: 'wrap', alignItems: 'flex-start', rowGap: 8 },
+            title: { paddingInlineEnd: 0 },
+          }
+          : undefined
       }
+      extra={(
+        <Button icon={<ReloadOutlined />} onClick={fetchLogs} loading={loading} block={isNarrow}>
+          Refresh
+        </Button>
+      )}
     >
-      <Space wrap style={{ marginBottom: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8,
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
         <Input
           allowClear
           placeholder="Search entity id, path, description…"
@@ -545,13 +570,13 @@ function InstitutionAuditTrail({ institutionId, users }) {
           onChange={(e) => setSearchDraft(e.target.value)}
           onPressEnter={onApplySearch}
           prefix={<SearchOutlined />}
-          style={{ width: 280 }}
+          style={{ flex: '1 1 220px', minWidth: 0 }}
         />
         <Button onClick={onApplySearch} type="primary">Search</Button>
         <Select
           allowClear
           placeholder="Entity type"
-          style={{ minWidth: 180 }}
+          style={{ flex: '1 1 160px', minWidth: 120, maxWidth: '100%' }}
           value={filters.entityType}
           onChange={(v) => { setPage(1); setFilters((f) => ({ ...f, entityType: v })); }}
           options={filterOpts.entityTypes.map((e) => ({ value: e, label: e }))}
@@ -560,7 +585,7 @@ function InstitutionAuditTrail({ institutionId, users }) {
         <Select
           allowClear
           placeholder="Action"
-          style={{ minWidth: 150 }}
+          style={{ flex: '1 1 140px', minWidth: 120, maxWidth: '100%' }}
           value={filters.action}
           onChange={(v) => { setPage(1); setFilters((f) => ({ ...f, action: v })); }}
           options={filterOpts.actions.map((e) => ({ value: e, label: e }))}
@@ -569,7 +594,7 @@ function InstitutionAuditTrail({ institutionId, users }) {
         <Select
           allowClear
           placeholder="User"
-          style={{ minWidth: 240 }}
+          style={{ flex: '1 1 200px', minWidth: 120, maxWidth: '100%' }}
           value={filters.userId}
           onChange={(v) => { setPage(1); setFilters((f) => ({ ...f, userId: v })); }}
           options={userOptions}
@@ -578,6 +603,7 @@ function InstitutionAuditTrail({ institutionId, users }) {
         />
         <RangePicker
           allowEmpty={[true, true]}
+          style={{ flex: '1 1 260px', minWidth: 0, maxWidth: '100%' }}
           value={[
             filters.startDate ? dayjs(filters.startDate) : null,
             filters.endDate ? dayjs(filters.endDate) : null,
@@ -592,7 +618,7 @@ function InstitutionAuditTrail({ institutionId, users }) {
           }}
         />
         <Button onClick={onResetFilters}>Reset</Button>
-      </Space>
+      </div>
 
       <Table
         rowKey="id"
@@ -600,6 +626,7 @@ function InstitutionAuditTrail({ institutionId, users }) {
         loading={loading}
         dataSource={rows}
         columns={columns}
+        scroll={{ x: 1320 }}
         locale={{ emptyText: <Empty description="No audit activity for this institution yet" /> }}
         expandable={{
           expandedRowRender: (record) => <AuditRowDetail record={record} />,

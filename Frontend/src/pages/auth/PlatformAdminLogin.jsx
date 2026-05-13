@@ -260,6 +260,9 @@ const CSS = `
 
   @media (max-width: 520px) {
     .pa-card { padding: 36px 24px; }
+    .pa-title { font-size: 22px; }
+    .pa-icon-wrap { width: 52px; height: 52px; font-size: 24px; }
+    .pa-root { padding: 12px; }
   }
 `;
 

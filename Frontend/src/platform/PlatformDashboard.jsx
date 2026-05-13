@@ -44,7 +44,7 @@ export default function PlatformDashboard() {
 
   return (
     <div>
-      <Title level={3} style={{ marginTop: 0 }}>Platform overview</Title>
+      <Title level={3} style={{ marginTop: 0, wordBreak: 'break-word' }}>Platform overview</Title>
       <Paragraph type="secondary">
         Cross-institution metrics. Institution users sign in separately at the main app login.
       </Paragraph>

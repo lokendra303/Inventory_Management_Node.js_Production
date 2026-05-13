@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Card, Table, Typography, Spin, Tag, Button, Space, Select, Modal, Form, Input, message,
+  Card, Table, Typography, Spin, Tag, Button, Space, Select, Modal, Form, Input, message, Grid,
 } from 'antd';
 import { ReloadOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +11,8 @@ const { Title, Paragraph, Text } = Typography;
 const STATUS_COLOR = { pending: 'orange', approved: 'green', rejected: 'red' };
 
 export default function PlatformSubscriptionRequests() {
+  const screens = Grid.useBreakpoint();
+  const isNarrow = !screens.md;
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -170,16 +172,14 @@ export default function PlatformSubscriptionRequests() {
 
   return (
     <div>
-      <Space align="center" style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
-        <div>
+      {isNarrow ? (
+        <div style={{ marginBottom: 16 }}>
           <Title level={3} style={{ marginTop: 0, marginBottom: 4 }}>Subscription requests</Title>
-          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          <Paragraph type="secondary" style={{ marginBottom: 12 }}>
             Institutions request paid plan upgrades here. Approve to assign the plan (no payment), or reject with an optional note.
           </Paragraph>
-        </div>
-        <Space wrap>
           <Select
-            style={{ width: 160 }}
+            style={{ width: '100%', marginBottom: 8 }}
             value={statusFilter}
             onChange={(v) => { setPage(1); setStatusFilter(v); }}
             options={[
@@ -189,9 +189,34 @@ export default function PlatformSubscriptionRequests() {
               { value: 'all', label: 'All' },
             ]}
           />
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading} block>
+            Refresh
+          </Button>
+        </div>
+      ) : (
+        <Space align="center" style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
+          <div>
+            <Title level={3} style={{ marginTop: 0, marginBottom: 4 }}>Subscription requests</Title>
+            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              Institutions request paid plan upgrades here. Approve to assign the plan (no payment), or reject with an optional note.
+            </Paragraph>
+          </div>
+          <Space wrap>
+            <Select
+              style={{ width: 160 }}
+              value={statusFilter}
+              onChange={(v) => { setPage(1); setStatusFilter(v); }}
+              options={[
+                { value: 'pending', label: 'Pending' },
+                { value: 'approved', label: 'Approved' },
+                { value: 'rejected', label: 'Rejected' },
+                { value: 'all', label: 'All' },
+              ]}
+            />
+            <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
+          </Space>
         </Space>
-      </Space>
+      )}
 
       <Card>
         <Table
@@ -200,7 +225,7 @@ export default function PlatformSubscriptionRequests() {
           loading={loading}
           dataSource={rows}
           columns={columns}
-          scroll={{ x: 960 }}
+          scroll={{ x: 1000 }}
           pagination={{
             current: page,
             pageSize: limit,
@@ -219,6 +244,8 @@ export default function PlatformSubscriptionRequests() {
         onOk={submitAction}
         okText={actionType === 'approve' ? 'Approve & assign plan' : 'Reject request'}
         okButtonProps={{ danger: actionType === 'reject' }}
+        width={isNarrow ? 'calc(100vw - 24px)' : 520}
+        style={isNarrow ? { top: 12 } : undefined}
         destroyOnClose
       >
         {actionRow && (

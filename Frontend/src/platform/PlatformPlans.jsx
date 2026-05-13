@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Card, Table, Typography, Spin, Tag, Button, Space, Modal, Form, Input, InputNumber, Switch, Checkbox, message, Tooltip,
+  Card, Table, Typography, Spin, Tag, Button, Space, Modal, Form, Input, InputNumber, Switch, Checkbox, message, Tooltip, Grid,
 } from 'antd';
 import { PlusOutlined, EditOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import platformApi from '../services/platformApi';
@@ -11,6 +11,9 @@ const fmtMoney = (n) => (n === 0 ? 'Free' : `₹${Number(n).toLocaleString('en-I
 const fmtLimit = (n) => (n === -1 ? '∞' : n);
 
 export default function PlatformPlans() {
+  const screens = Grid.useBreakpoint();
+  const isNarrow = !screens.md;
+
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState([]);
   const [featureOptions, setFeatureOptions] = useState([]);
@@ -138,15 +141,21 @@ export default function PlatformPlans() {
 
   return (
     <div>
-      <Space align="start" style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
-        <div>
+      <Space
+        align="start"
+        direction={isNarrow ? 'vertical' : 'horizontal'}
+        style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
+      >
+        <div style={{ width: '100%', minWidth: 0 }}>
           <Title level={3} style={{ marginTop: 0, marginBottom: 4 }}>Subscription plans</Title>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
             Define prices, usage caps (use <Text code>-1</Text> for unlimited), and which modules each plan may access.
             Changes apply to new checkouts and to feature checks for existing institutions on that plan.
           </Paragraph>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>New plan</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} block={isNarrow}>
+          New plan
+        </Button>
       </Space>
 
       {error && <Card style={{ marginBottom: 16 }}><Paragraph type="danger">{error}</Paragraph></Card>}
@@ -203,6 +212,7 @@ export default function PlatformPlans() {
               ),
             },
           ]}
+          scroll={{ x: 960 }}
         />
       </Card>
 
@@ -212,8 +222,9 @@ export default function PlatformPlans() {
         onCancel={() => setModalOpen(false)}
         onOk={submit}
         confirmLoading={saving}
-        width={640}
+        width={isNarrow ? 'min(calc(100vw - 24px), 640px)' : 640}
         destroyOnClose
+        style={isNarrow ? { top: 16 } : undefined}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
           {modalMode === 'create' && (
@@ -286,7 +297,14 @@ export default function PlatformPlans() {
             {({ getFieldValue }) => (
               !getFieldValue('features_all') ? (
                 <Form.Item name="feature_keys" label="Allowed modules">
-                  <Checkbox.Group options={moduleChoices.map((o) => ({ label: o.label, value: o.key }))} />
+                  <Checkbox.Group
+                    options={moduleChoices.map((o) => ({ label: o.label, value: o.key }))}
+                    style={
+                      isNarrow
+                        ? { display: 'flex', flexDirection: 'column', gap: 4 }
+                        : { display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }
+                    }
+                  />
                 </Form.Item>
               ) : null
             )}

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Typography, Spin, Tag, Button, Space } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { Card, Table, Typography, Spin, Tag, Button, Space, Grid } from 'antd';import { ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import platformApi from '../services/platformApi';
 import { institutionStatusLabel } from '../config/institutionDisplay';
@@ -8,6 +7,8 @@ import { institutionStatusLabel } from '../config/institutionDisplay';
 const { Title, Paragraph } = Typography;
 
 export default function PlatformActivity() {
+  const screens = Grid.useBreakpoint();
+  const isNarrow = !screens.md;
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -39,15 +40,27 @@ export default function PlatformActivity() {
 
   return (
     <div>
-      <Space align="center" style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
-        <div>
+      {isNarrow ? (
+        <div style={{ marginBottom: 16 }}>
           <Title level={3} style={{ marginTop: 0, marginBottom: 4 }}>Recent institution logins</Title>
-          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          <Paragraph type="secondary" style={{ marginBottom: 12 }}>
             Latest sign-ins across all institutions (from user records).
           </Paragraph>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading} block>
+            Refresh
+          </Button>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
-      </Space>
+      ) : (
+        <Space align="center" style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
+          <div>
+            <Title level={3} style={{ marginTop: 0, marginBottom: 4 }}>Recent institution logins</Title>
+            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              Latest sign-ins across all institutions (from user records).
+            </Paragraph>
+          </div>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
+        </Space>
+      )}
 
       {error && <Card style={{ marginBottom: 16 }}><Paragraph type="danger">{error}</Paragraph></Card>}
 
@@ -58,6 +71,7 @@ export default function PlatformActivity() {
           loading={loading}
           pagination={{ pageSize: 15 }}
           dataSource={rows}
+          scroll={{ x: 920 }}
           columns={[
             {
               title: 'Last login',

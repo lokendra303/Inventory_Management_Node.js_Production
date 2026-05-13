@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Card, Table, Input, Button, Space, Tag, Typography, Select, message,
+  Card, Table, Input, Button, Tag, Typography, Select, message,
 } from 'antd';
 import { SearchOutlined, EyeOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -105,14 +105,22 @@ export default function PlatformTenants() {
 
   return (
     <div>
-      <Title level={3} style={{ marginTop: 0 }}>Institutions</Title>
+      <Title level={3} style={{ marginTop: 0, wordBreak: 'break-word' }}>Institutions</Title>
       <Card>
-        <Space wrap style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            alignItems: 'center',
+            marginBottom: 16,
+          }}
+        >
           <Input
             allowClear
             placeholder="Search name or email"
             prefix={<SearchOutlined />}
-            style={{ width: 260 }}
+            style={{ flex: '1 1 200px', minWidth: 0, maxWidth: '100%' }}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onPressEnter={runSearch}
@@ -120,7 +128,7 @@ export default function PlatformTenants() {
           <Select
             allowClear
             placeholder="Status"
-            style={{ width: 140 }}
+            style={{ flex: '0 1 140px', minWidth: 120, maxWidth: '100%' }}
             value={status || undefined}
             onChange={(v) => { setStatus(v || ''); setPage(1); }}
             options={[
@@ -130,12 +138,13 @@ export default function PlatformTenants() {
           />
           <Button type="primary" onClick={runSearch}>Search</Button>
           <Button icon={<DownloadOutlined />} onClick={exportCsv}>Export CSV</Button>
-        </Space>
+        </div>
         <Table
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={data}
+          scroll={{ x: 900 }}
           pagination={{
             current: page,
             pageSize: limit,
