@@ -4,6 +4,7 @@ import { PlusOutlined, EyeOutlined, SearchOutlined, InboxOutlined, WarningOutlin
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { formatNumber } from '../../utils/currency.js';
+import { isOpeningStockReceipt } from '../../utils/inventoryReceipt';
 import { useCurrency } from '../../contexts/CurrencyContext';
 
 const Inventory = () => {
@@ -250,8 +251,11 @@ const Inventory = () => {
     return 'gray';
   };
 
-  const getEventLabel = (eventType) => {
+  const getEventLabel = (eventType, event) => {
     const type = String(eventType || '').toUpperCase();
+    if (type.includes('PURCHASERECEIVED') && event && isOpeningStockReceipt(event)) {
+      return 'Opening Stock';
+    }
     if (type.includes('PURCHASERECEIVED') || type.includes('RECEIVED')) return 'Stock Received';
     if (type.includes('SALESHIPPED') || type.includes('SHIPPED')) return 'Stock Shipped';
     if (type.includes('SALERESERVED') || type.includes('RESERVED')) return 'Stock Reserved';
@@ -514,7 +518,7 @@ const Inventory = () => {
                         <div style={{ background: '#fafbff', border: '1px solid #edf2ff', borderRadius: 16, padding: '12px 14px', boxShadow: '0 4px 14px rgba(15,23,42,0.04)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
                             <Tag color={getEventColor(eventType)} style={{ borderRadius: 999, margin: 0, fontSize: 11, fontWeight: 600 }}>
-                              {getEventLabel(eventType)}
+                              {getEventLabel(eventType, event)}
                             </Tag>
                             <span style={{ fontSize: 12, color: '#8c8c8c' }}>
                               {timestamp ? new Date(timestamp).toLocaleString() : '-'}

@@ -8,6 +8,7 @@ import skuGeneratorService from '../../services/skuGeneratorService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
+import { isOpeningStockReceipt } from '../../utils/inventoryReceipt';
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -5606,7 +5607,10 @@ const viewItem = async (item) => {
                               if (type === 'ITEM_DELETED') return 'red';
                               return 'gray';
                             };
-                            const getEventLabel = (type) => {
+                            const getEventLabel = (type, logRow) => {
+                              if (type === 'PurchaseReceived' && isOpeningStockReceipt(logRow)) {
+                                return 'Opening Stock';
+                              }
                               const labels = {
                                 PurchaseReceived: 'Stock Received (PO)',
                                 PurchaseReturned: 'Purchase Returned',
@@ -5636,7 +5640,7 @@ const viewItem = async (item) => {
                             return (
                               <Timeline.Item key={index} color={getEventColor(eventType)}>
                                 <div style={{ marginBottom: 8 }}>
-                                  <Tag color={getEventColor(eventType)}>{getEventLabel(eventType)}</Tag>
+                                  <Tag color={getEventColor(eventType)}>{getEventLabel(eventType, log)}</Tag>
                                   <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
                                     {new Date(log.timestamp || log.operation_date).toLocaleString()}
                                   </span>
