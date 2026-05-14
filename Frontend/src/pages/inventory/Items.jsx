@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown, Alert, Typography, Checkbox } from 'antd';
+import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, CheckOutlined, ThunderboltOutlined, SettingOutlined, ImportOutlined, DownloadOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
 import apiService from '../../services/apiService';
@@ -10,6 +10,7 @@ import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
 import { useLocation } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 
 const VARIANT_MATRIX_GRID_TEMPLATE = 'minmax(0, 2.2fr) minmax(0, 1.5fr) minmax(0, 1.35fr) minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(64px, 0.6fr)';
 const VARIANT_MATRIX_MIN_WIDTH = '100%';
@@ -46,6 +47,333 @@ const isBlankVariantMatrixValue = (value) => (
   value === null ||
   (typeof value === 'string' && !value.trim())
 );
+
+const { Text: AntText } = Typography;
+
+/** CSV → { headers, rows }. `headerLineNumber` is 1-based line in the file (per Excel). */
+function parseCsvToRows(text, options = {}) {
+  const headerLineNumber = Math.max(1, Math.floor(Number(options.headerLineNumber) || 1));
+  const rows = [];
+  let lines = String(text || '').replace(/\r/g, '').split('\n');
+  while (lines.length && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+  if (lines.length === 0) return { headers: [], rows: [] };
+
+  const splitLine = (line) => {
+    const out = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === ',' && !inQuotes) {
+        out.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out.map((c) => c.trim());
+  };
+
+  const headerIndex = headerLineNumber - 1;
+  if (headerIndex >= lines.length) {
+    return { headers: [], rows: [] };
+  }
+
+  const headers = splitLine(lines[headerIndex]).map((h) => h.replace(/^\uFEFF/, ''));
+  for (let i = headerIndex + 1; i < lines.length; i += 1) {
+    const rawLine = lines[i];
+    if (!String(rawLine).trim()) continue;
+    const cols = splitLine(rawLine);
+    const obj = {};
+    headers.forEach((h, idx) => {
+      obj[h] = cols[idx] ?? '';
+    });
+    obj.__sourceLine = i + 1;
+    rows.push(obj);
+  }
+  return { headers, rows };
+}
+
+function countCsvTextLines(text) {
+  let lines = String(text || '').replace(/\r/g, '').split('\n');
+  while (lines.length && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+  return lines.length;
+}
+
+function isExcelImportFileName(name = '') {
+  const lower = String(name).toLowerCase();
+  return lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.xlsm');
+}
+
+/** First worksheet only. `headerLineNumber` is 1-based sheet row. */
+function parseExcelBufferToRows(buffer, options = {}) {
+  const headerLineNumber = Math.max(1, Math.floor(Number(options.headerLineNumber) || 1));
+  if (!buffer || !(buffer instanceof ArrayBuffer)) {
+    return { headers: [], rows: [], sheetRowCount: 0 };
+  }
+  let workbook;
+  try {
+    workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+  } catch {
+    return { headers: [], rows: [], sheetRowCount: 0 };
+  }
+  const sheetName = workbook.SheetNames?.[0];
+  if (!sheetName) return { headers: [], rows: [], sheetRowCount: 0 };
+  const ws = workbook.Sheets[sheetName];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  if (!aoa.length) return { headers: [], rows: [], sheetRowCount: 0 };
+
+  const rowIsBlank = (row) => {
+    if (!row || !row.length) return true;
+    return !row.some((c) => String(c ?? '').trim() !== '');
+  };
+  while (aoa.length > 0 && rowIsBlank(aoa[aoa.length - 1])) {
+    aoa.pop();
+  }
+  const sheetRowCount = aoa.length;
+  const headerIdx = headerLineNumber - 1;
+  if (headerIdx >= aoa.length) {
+    return { headers: [], rows: [], sheetRowCount };
+  }
+
+  const headerRow = aoa[headerIdx] || [];
+  let colCount = headerRow.length;
+  for (let r = headerIdx + 1; r < aoa.length; r += 1) {
+    colCount = Math.max(colCount, (aoa[r] || []).length);
+  }
+
+  const headerCells = [];
+  for (let c = 0; c < colCount; c += 1) {
+    const v = headerRow[c];
+    const s = v != null && String(v).trim() !== '' ? String(v).trim().replace(/^\uFEFF/, '') : '';
+    headerCells.push(s);
+  }
+  const baseHeaders = headerCells.map((h, i) => h || `Column_${i + 1}`);
+  const usedNames = new Set();
+  const headers = baseHeaders.map((h) => {
+    let name = h;
+    if (usedNames.has(name)) {
+      let n = 2;
+      while (usedNames.has(`${h} (${n})`)) n += 1;
+      name = `${h} (${n})`;
+    }
+    usedNames.add(name);
+    return name;
+  });
+
+  const rows = [];
+  for (let r = headerIdx + 1; r < aoa.length; r += 1) {
+    const cells = aoa[r] || [];
+    if (rowIsBlank(cells)) continue;
+    const obj = {};
+    headers.forEach((h, idx) => {
+      const cell = cells[idx];
+      if (cell instanceof Date) {
+        obj[h] = Number.isNaN(cell.getTime()) ? '' : cell.toISOString().slice(0, 10);
+      } else if (cell != null && cell !== '') {
+        obj[h] = String(cell).trim();
+      } else {
+        obj[h] = '';
+      }
+    });
+    obj.__sourceLine = r + 1;
+    rows.push(obj);
+  }
+  return { headers, rows, sheetRowCount };
+}
+
+const CSV_IMPORT_CORE_TARGETS = [
+  { id: 'sku', label: 'SKU', group: 'Core', required: true },
+  { id: 'name', label: 'Name', group: 'Core', required: true },
+  { id: 'description', label: 'Description', group: 'Core' },
+  { id: 'barcode', label: 'Barcode', group: 'Core' },
+  { id: 'category', label: 'Category', group: 'Core' },
+  { id: 'unit', label: 'Unit', group: 'Core' },
+  { id: 'itemGroupName', label: 'Item group (name)', group: 'Core' },
+  { id: 'brand', label: 'Brand', group: 'Attributes' },
+  { id: 'manufacturer', label: 'Manufacturer', group: 'Attributes' },
+  { id: 'supplierCode', label: 'Supplier code', group: 'Attributes' },
+  { id: 'costPrice', label: 'Cost price', group: 'Pricing' },
+  { id: 'sellingPrice', label: 'Selling price', group: 'Pricing' },
+  { id: 'mrp', label: 'MRP', group: 'Pricing' },
+  { id: 'taxRate', label: 'Tax rate (%)', group: 'Pricing' },
+  { id: 'weight', label: 'Weight', group: 'Physical' },
+  { id: 'hsnCode', label: 'HSN code', group: 'Physical' },
+  { id: 'batchNumber', label: 'Batch number', group: 'Physical' },
+  { id: 'minStockLevel', label: 'Min stock level', group: 'Stock' },
+  { id: 'maxStockLevel', label: 'Max stock level', group: 'Stock' },
+  { id: 'openingStock', label: 'Opening stock', group: 'Stock' },
+  { id: 'openingValue', label: 'Opening value', group: 'Stock' },
+  { id: 'dimLength', label: 'Length', group: 'Dimensions' },
+  { id: 'dimWidth', label: 'Width', group: 'Dimensions' },
+  { id: 'dimHeight', label: 'Height', group: 'Dimensions' },
+  { id: 'upc', label: 'UPC', group: 'Identifiers' },
+  { id: 'ean', label: 'EAN', group: 'Identifiers' },
+  { id: 'isbn', label: 'ISBN', group: 'Identifiers' },
+  { id: 'mpn', label: 'MPN', group: 'Identifiers' },
+];
+
+/** CSV import creates plain items (no BOM / variant matrix). */
+const CSV_IMPORT_SUPPORTED_ITEM_TYPES = ['simple', 'service'];
+
+const CSV_IMPORT_HEADER_ALIASES = {
+  sku: ['sku', 'item sku', 'item code', 'product code', 'code', 'article'],
+  name: ['name', 'title', 'product name', 'item name', 'description name'],
+  description: ['description', 'desc', 'details', 'remarks'],
+  barcode: ['barcode', 'bar code'],
+  category: ['category', 'class', 'type name'],
+  unit: ['unit', 'uom', 'measure'],
+  itemGroupName: ['item group', 'group', 'product group'],
+  brand: ['brand'],
+  manufacturer: ['manufacturer', 'mfg', 'maker'],
+  supplierCode: ['supplier code', 'supplier sku', 'vendor code'],
+  costPrice: ['cost', 'cost price', 'unit cost', 'purchase price', 'buy price'],
+  sellingPrice: ['selling price', 'sale price', 'price', 'sell'],
+  mrp: ['mrp', 'list price', 'rrp'],
+  taxRate: ['tax', 'tax rate', 'gst', 'vat'],
+  weight: ['weight', 'wt', 'mass'],
+  hsnCode: ['hsn', 'hsn code', 'tariff'],
+  batchNumber: ['batch', 'batch number', 'lot'],
+  minStockLevel: ['min stock', 'minimum stock', 'reorder'],
+  maxStockLevel: ['max stock', 'maximum stock'],
+  openingStock: ['opening stock', 'qty', 'quantity', 'stock', 'on hand'],
+  openingValue: ['opening value', 'stock value'],
+  dimLength: ['length', 'l mm', 'l cm'],
+  dimWidth: ['width', 'w mm', 'w cm'],
+  dimHeight: ['height', 'h mm', 'h cm'],
+  upc: ['upc'],
+  ean: ['ean'],
+  isbn: ['isbn'],
+  mpn: ['mpn', 'part number'],
+};
+
+function slugifyCsvHeader(h) {
+  return String(h || '')
+    .replace(/^\uFEFF/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function guessCsvColumnForTarget(targetId, headers) {
+  const aliases = CSV_IMPORT_HEADER_ALIASES[targetId] || [targetId.replace(/([A-Z])/g, ' $1').trim().toLowerCase()];
+  const normAliases = aliases.map((a) => slugifyCsvHeader(a)).filter(Boolean);
+  let best = '';
+  let bestScore = 0;
+  for (const header of headers) {
+    const sh = slugifyCsvHeader(header);
+    if (!sh) continue;
+    for (const a of normAliases) {
+      let score = 0;
+      if (sh === a) score = 100;
+      else if (sh.includes(a) || a.includes(sh)) score = 70;
+      else {
+        const tokens = a.split(/\s+/).filter((t) => t.length > 1);
+        if (tokens.length && tokens.every((t) => sh.includes(t))) score = 50;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = header;
+      }
+    }
+  }
+  return bestScore >= 50 ? best : '';
+}
+
+function dedupeItemFieldConfigs(configs) {
+  const list = Array.isArray(configs) ? configs : [];
+  const sorted = [...list].sort((a, b) => {
+    const ai = a.institution_id || a.institutionId || '';
+    const bi = b.institution_id || b.institutionId || '';
+    const aCustom = ai && ai !== 'default';
+    const bCustom = bi && bi !== 'default';
+    if (aCustom && !bCustom) return -1;
+    if (!aCustom && bCustom) return 1;
+    return 0;
+  });
+  const seen = new Set();
+  const out = [];
+  for (const c of sorted) {
+    const fn = c.field_name || c.fieldName;
+    if (!fn || seen.has(fn)) continue;
+    seen.add(fn);
+    out.push(c);
+  }
+  return out;
+}
+
+function buildInitialCsvMapping(headers, fieldConfigs) {
+  const mapping = {};
+  for (const t of CSV_IMPORT_CORE_TARGETS) {
+    mapping[t.id] = guessCsvColumnForTarget(t.id, headers);
+  }
+  for (const c of fieldConfigs) {
+    const fn = c.field_name || c.fieldName;
+    if (!fn) continue;
+    const label = c.field_label || c.fieldLabel || fn;
+    const guessed =
+      headers.find((h) => slugifyCsvHeader(h) === slugifyCsvHeader(fn)) ||
+      headers.find((h) => slugifyCsvHeader(h) === slugifyCsvHeader(label)) ||
+      guessCsvColumnForTarget(fn, headers) ||
+      '';
+    mapping[`cf:${fn}`] = guessed;
+  }
+  return mapping;
+}
+
+function resolveUnitForImport(raw, unitOptions) {
+  const s = String(raw ?? '').trim();
+  if (!s) return 'pcs';
+  const lower = s.toLowerCase();
+  const byId = unitOptions.find((u) => u.id === s);
+  if (byId) return byId.id;
+  const byName = unitOptions.find((u) => (u.name || '').toLowerCase() === lower || (u.symbol || '').toLowerCase() === lower);
+  if (byName) return byName.id;
+  return s;
+}
+
+function coerceImportedCustomValue(raw, fieldType) {
+  const str = String(raw ?? '').trim();
+  if (str === '') return undefined;
+  const t = String(fieldType || 'text').toLowerCase();
+  if (t === 'number' || t === 'decimal') {
+    const n = Number(str.replace(/,/g, ''));
+    if (!Number.isFinite(n)) return undefined;
+    return t === 'number' ? Math.round(n) : n;
+  }
+  return str;
+}
+
+function parseNumericImport(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(String(v).replace(/,/g, '').trim());
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Row has a non-empty value in the mapped file column for this core field key (e.g. sku, name). */
+function csvImportRowHasMappedValue(row, mapping, fieldKey) {
+  const col = mapping[fieldKey];
+  if (!col) return false;
+  const v = row[col];
+  return v !== undefined && v !== null && String(v).trim() !== '';
+}
+
+function buildItemsCsvTemplate() {
+  const cols = ['sku', 'name', 'description', 'unit', 'costPrice', 'sellingPrice', 'weight', 'barcode', 'category'];
+  return `${cols.join(',')}\nDEMO-001,Sample item,Notes here,pcs,10,12,0.5,1234567890,General\n`;
+}
 
 const Items = () => {
   const location = useLocation();
@@ -105,6 +433,8 @@ const Items = () => {
   const autoDraftSavingRef = useRef(false);
   const autoDraftSavedRef = useRef(false);
   const variantBuilderSeededRef = useRef(false);
+  const fetchItemsRef = useRef(async () => {});
+  const csvImportExcelBufferRef = useRef(null);
 
   // ---- SKU auto-generator (Zoho-style rules) ------------------------------
   const [skuRulesOpen, setSkuRulesOpen] = useState(false);
@@ -115,6 +445,23 @@ const Items = () => {
   const [skuGenerating, setSkuGenerating] = useState(false);
   const [selectedSkuRuleId, setSelectedSkuRuleId] = useState(null);
   const [lastAppliedSkuRule, setLastAppliedSkuRule] = useState(null);
+
+  const [csvImportModal, setCsvImportModal] = useState({
+    open: false,
+    busy: false,
+    csvImportSourceFormat: 'csv',
+    csvImportRawText: '',
+    csvImportFileLineCount: 0,
+    headerLineNumber: 1,
+    headers: [],
+    rows: [],
+    csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+    itemType: 'simple',
+    fieldConfigs: [],
+    mapping: {},
+    defaultWarehouseId: undefined,
+    result: null,
+  });
 
   const normalizeOptionalText = (value) => {
     if (value == null) return undefined;
@@ -1001,6 +1348,248 @@ const Items = () => {
       setLoading(false);
     }
   };
+  fetchItemsRef.current = fetchItems;
+
+  const resetCsvImportModal = useCallback(() => {
+    csvImportExcelBufferRef.current = null;
+    setCsvImportModal({
+      open: false,
+      busy: false,
+      csvImportSourceFormat: 'csv',
+      csvImportRawText: '',
+      csvImportFileLineCount: 0,
+      headerLineNumber: 1,
+      headers: [],
+      rows: [],
+      csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+      itemType: 'simple',
+      fieldConfigs: [],
+      mapping: {},
+      defaultWarehouseId: undefined,
+      result: null,
+    });
+  }, []);
+
+  const openCsvImportModal = useCallback(() => {
+    const firstWh = warehouses?.[0]?.id;
+    csvImportExcelBufferRef.current = null;
+    setCsvImportModal({
+      open: true,
+      busy: false,
+      csvImportSourceFormat: 'csv',
+      csvImportRawText: '',
+      csvImportFileLineCount: 0,
+      headerLineNumber: 1,
+      headers: [],
+      rows: [],
+      csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+      itemType: 'simple',
+      fieldConfigs: [],
+      mapping: {},
+      defaultWarehouseId: firstWh,
+      result: null,
+    });
+  }, [warehouses]);
+
+  const handleCsvImportBeforeUpload = useCallback((file) => {
+    const isExcel = isExcelImportFileName(file.name);
+    const reader = new FileReader();
+    const maxRows = 5000;
+
+    if (isExcel) {
+      reader.onload = (e) => {
+        const buf = e.target?.result;
+        if (!(buf instanceof ArrayBuffer)) {
+          message.error('Could not read spreadsheet file');
+          return;
+        }
+        csvImportExcelBufferRef.current = buf;
+        setCsvImportModal((prev) => {
+          const headerLineNumber = Math.max(1, Math.floor(Number(prev.headerLineNumber) || 1));
+          const { headers, rows, sheetRowCount } = parseExcelBufferToRows(buf, { headerLineNumber });
+          if (!headers.some((h) => String(h).trim())) {
+            setTimeout(() => {
+              message.error('No header row found at the selected line. Change “Header line” or try the first sheet of the workbook.');
+            }, 0);
+            return {
+              ...prev,
+              csvImportSourceFormat: 'xlsx',
+              csvImportRawText: '',
+              csvImportFileLineCount: sheetRowCount,
+              headerLineNumber,
+              headers: [],
+              rows: [],
+              csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+              mapping: {},
+              result: null,
+            };
+          }
+          const limited = rows.slice(0, maxRows);
+          setTimeout(() => {
+            if (rows.length > maxRows) {
+              message.warning(`Importing the first ${maxRows} data rows only`);
+            }
+            message.success(`Excel (first sheet): row ${headerLineNumber} as header — ${limited.length} data row(s), ${headers.length} column(s)`);
+          }, 0);
+          return {
+            ...prev,
+            csvImportSourceFormat: 'xlsx',
+            csvImportRawText: '',
+            csvImportFileLineCount: sheetRowCount,
+            headerLineNumber,
+            headers,
+            rows: limited,
+            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+            mapping: buildInitialCsvMapping(headers, prev.fieldConfigs || []),
+            result: null,
+          };
+        });
+      };
+      reader.onerror = () => message.error('Could not read file');
+      reader.readAsArrayBuffer(file);
+      return false;
+    }
+
+    csvImportExcelBufferRef.current = null;
+    reader.onload = (e) => {
+      const text = String(e.target?.result || '');
+      const fileLineCount = countCsvTextLines(text);
+      setCsvImportModal((prev) => {
+        const headerLineNumber = Math.max(1, Math.floor(Number(prev.headerLineNumber) || 1));
+        const { headers, rows } = parseCsvToRows(text, { headerLineNumber });
+        if (!headers.some((h) => String(h).trim())) {
+          setTimeout(() => {
+            message.error('No header row found at the selected line. Change “Header line” and upload again, or pick another line after upload.');
+          }, 0);
+          return {
+            ...prev,
+            csvImportSourceFormat: 'csv',
+            csvImportRawText: text,
+            csvImportFileLineCount: fileLineCount,
+            headerLineNumber,
+            headers: [],
+            rows: [],
+            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+            mapping: {},
+            result: null,
+          };
+        }
+        const limited = rows.slice(0, maxRows);
+        setTimeout(() => {
+          if (rows.length > maxRows) {
+            message.warning(`Importing the first ${maxRows} data rows only`);
+          }
+          message.success(`CSV: line ${headerLineNumber} as header — ${limited.length} data row(s), ${headers.length} column(s)`);
+        }, 0);
+        return {
+          ...prev,
+          csvImportSourceFormat: 'csv',
+          csvImportRawText: text,
+          csvImportFileLineCount: fileLineCount,
+          headerLineNumber,
+          headers,
+          rows: limited,
+          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+          mapping: buildInitialCsvMapping(headers, prev.fieldConfigs || []),
+          result: null,
+        };
+      });
+    };
+    reader.onerror = () => message.error('Could not read file');
+    reader.readAsText(file);
+    return false;
+  }, []);
+
+  const applyCsvHeaderLineNumber = useCallback((rawLineNum) => {
+    const n = Math.max(1, Math.floor(Number(rawLineNum) || 1));
+    setCsvImportModal((prev) => {
+      if (prev.csvImportSourceFormat === 'xlsx' && csvImportExcelBufferRef.current) {
+        const buf = csvImportExcelBufferRef.current;
+        const { headers, rows, sheetRowCount } = parseExcelBufferToRows(buf, { headerLineNumber: n });
+        if (!headers.some((h) => String(h).trim())) {
+          setTimeout(() => {
+            message.warning('That row has no column headers — try another row number.');
+          }, 0);
+          return {
+            ...prev,
+            headerLineNumber: n,
+            csvImportFileLineCount: sheetRowCount,
+            headers: [],
+            rows: [],
+            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+            mapping: {},
+            result: null,
+          };
+        }
+        const maxRows = 5000;
+        const limited = rows.slice(0, maxRows);
+        setTimeout(() => {
+          if (rows.length > maxRows) {
+            message.warning(`Importing the first ${maxRows} data rows only`);
+          }
+        }, 0);
+        return {
+          ...prev,
+          headerLineNumber: n,
+          csvImportFileLineCount: sheetRowCount,
+          headers,
+          rows: limited,
+          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+          mapping: buildInitialCsvMapping(headers, prev.fieldConfigs || []),
+          result: null,
+        };
+      }
+      if (prev.csvImportSourceFormat === 'csv' && prev.csvImportRawText) {
+        const { headers, rows } = parseCsvToRows(prev.csvImportRawText, { headerLineNumber: n });
+        const fileLineCount = countCsvTextLines(prev.csvImportRawText);
+        if (!headers.some((h) => String(h).trim())) {
+          setTimeout(() => {
+            message.warning('That line has no column headers — try another line number.');
+          }, 0);
+          return {
+            ...prev,
+            headerLineNumber: n,
+            csvImportFileLineCount: fileLineCount,
+            headers: [],
+            rows: [],
+            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+            mapping: {},
+            result: null,
+          };
+        }
+        const maxRows = 5000;
+        const limited = rows.slice(0, maxRows);
+        setTimeout(() => {
+          if (rows.length > maxRows) {
+            message.warning(`Importing the first ${maxRows} data rows only`);
+          }
+        }, 0);
+        return {
+          ...prev,
+          headerLineNumber: n,
+          csvImportFileLineCount: fileLineCount,
+          headers,
+          rows: limited,
+          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+          mapping: buildInitialCsvMapping(headers, prev.fieldConfigs || []),
+          result: null,
+        };
+      }
+      return { ...prev, headerLineNumber: n };
+    });
+  }, []);
+
+  const downloadItemsCsvTemplateFile = useCallback(() => {
+    const blob = new Blob([buildItemsCsvTemplate()], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'items_import_template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
 
   const handleSubmit = async (values) => {
     try {
@@ -2088,6 +2677,162 @@ const viewItem = async (item) => {
     setModalVisible(true);
   };
 
+  const openAddItemFromImportRow = async (rowIndex) => {
+    if (!canManageItems) return;
+    const {
+      mapping,
+      rows,
+      itemType,
+      fieldConfigs,
+      defaultWarehouseId,
+    } = csvImportModal;
+    if (!mapping?.sku || !mapping?.name) {
+      message.error('Map both SKU and Name to file columns first');
+      return;
+    }
+    if (!CSV_IMPORT_SUPPORTED_ITEM_TYPES.includes(itemType)) {
+      message.error('Import supports Simple and Service item types only');
+      return;
+    }
+    const row = rows[rowIndex];
+    if (!row) {
+      message.error('Row not found');
+      return;
+    }
+    const getCell = (r, colKey) => {
+      if (!colKey) return '';
+      const v = r[colKey];
+      if (v === undefined || v === null) return '';
+      return String(v).trim();
+    };
+
+    const openingStock = parseNumericImport(getCell(row, mapping.openingStock));
+    const openingValue = parseNumericImport(getCell(row, mapping.openingValue));
+    if (openingStock > 0 && !defaultWarehouseId) {
+      message.error('Select a default warehouse for opening stock, or clear opening stock on this row');
+      return;
+    }
+
+    const skuText = getCell(row, mapping.sku);
+    const nameText = getCell(row, mapping.name) || skuText;
+    const costRaw = getCell(row, mapping.costPrice);
+    const sellRaw = getCell(row, mapping.sellingPrice);
+    const mrpRaw = getCell(row, mapping.mrp);
+
+    const customFieldsObj = {};
+    for (const c of fieldConfigs || []) {
+      const fn = c.field_name || c.fieldName;
+      if (!fn) continue;
+      const col = mapping[`cf:${fn}`];
+      if (!col) continue;
+      const raw = row[col];
+      if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+      const coerced = coerceImportedCustomValue(raw, c.field_type || c.fieldType);
+      if (coerced !== undefined) customFieldsObj[fn] = coerced;
+    }
+
+    const groupName = getCell(row, mapping.itemGroupName);
+    let itemGroupId = null;
+    if (groupName) {
+      const g = itemGroups.find((ig) => (ig.name || '').toLowerCase() === groupName.toLowerCase());
+      if (g) itemGroupId = g.id;
+    }
+
+    const brandStr = getCell(row, mapping.brand);
+    const brandId = brandStr
+      ? brandOptions.find((b) => (b.name || '').toLowerCase() === brandStr.toLowerCase())?.id
+      : undefined;
+
+    const mfrStr = getCell(row, mapping.manufacturer);
+    const manufacturerId = mfrStr
+      ? manufacturerOptions.find((m) => (m.name || '').toLowerCase() === mfrStr.toLowerCase())?.id
+      : undefined;
+
+    const unitId = resolveUnitForImport(getCell(row, mapping.unit), unitOptions);
+
+    const L = parseNumericImport(getCell(row, mapping.dimLength));
+    const W = parseNumericImport(getCell(row, mapping.dimWidth));
+    const H = parseNumericImport(getCell(row, mapping.dimHeight));
+
+    const finalWarehouseId = openingStock > 0 ? defaultWarehouseId : undefined;
+
+    const resolvedItemType = itemTypes.find((t) => t.name === itemType)?.name
+      || itemTypes.find((t) => t.name === 'simple')?.name
+      || itemTypes[0]?.name
+      || itemType;
+
+    setEditingItem(null);
+    setEditingWarehouseSummaries([]);
+    setDuplicateSourcePayload(null);
+    variantBuilderSeededRef.current = false;
+    setActiveDraftId(null);
+    setPriceCurrency(priceCurrency);
+    setImageUrl('');
+    setImageFile(null);
+    form.resetFields();
+    setDraftBanner(null);
+    setDuplicateBanner(null);
+    setLastAppliedSkuRule(null);
+    setSelectedSkuRuleId(null);
+    setExistingCustomFields(customFieldsObj);
+    setVariantMatrixEdits([]);
+    setCompositeComponents([]);
+
+    await fetchDropdownOptions();
+    await loadSkuRules();
+
+    const minSl = parseNumericImport(getCell(row, mapping.minStockLevel));
+    const maxSl = parseNumericImport(getCell(row, mapping.maxStockLevel));
+    const mockItemForDerive = {
+      opening_stock: openingStock,
+      opening_value: openingValue,
+      min_stock_level: minSl,
+      max_stock_level: maxSl,
+    };
+
+    form.setFieldsValue({
+      type: resolvedItemType,
+      trackInventory: deriveTrackInventoryValue(mockItemForDerive, finalWarehouseId),
+      itemGroupId,
+      purchaseAccount: 'cogs',
+      purchaseTaxRate: 0,
+      purchaseDescription: 'Initial stock entry',
+      sku: normalizeOptionalText(skuText),
+      name: normalizeOptionalText(nameText),
+      description: normalizeOptionalText(getCell(row, mapping.description)),
+      category: normalizeOptionalText(getCell(row, mapping.category)),
+      unit: unitId,
+      costPrice: costRaw !== '' ? parseNumericImport(costRaw) : undefined,
+      sellingPrice: sellRaw !== '' ? normalizeOptionalNumber(parseNumericImport(sellRaw), { allowZero: false }) : undefined,
+      mrp: mrpRaw !== '' ? normalizeOptionalNumber(parseNumericImport(mrpRaw), { allowZero: false }) : undefined,
+      taxRate: normalizeTaxRateForForm(parseNumericImport(getCell(row, mapping.taxRate))),
+      brand: brandId,
+      manufacturer: manufacturerId,
+      minStockLevel: normalizeOptionalNumber(minSl),
+      maxStockLevel: normalizeOptionalNumber(maxSl),
+      barcode: normalizeOptionalText(getCell(row, mapping.barcode)),
+      batchNumber: normalizeOptionalText(getCell(row, mapping.batchNumber))?.toUpperCase(),
+      hsnCode: normalizeOptionalText(getCell(row, mapping.hsnCode)),
+      variantAttributes: [],
+      openingStock: normalizeOptionalNumber(openingStock),
+      openingValue: normalizeOptionalNumber(openingValue, { allowZero: false }),
+      valuationMethod: 'fifo',
+      warehouseId: finalWarehouseId,
+      defaultBinId: null,
+      weight: normalizeOptionalNumber(parseNumericImport(getCell(row, mapping.weight)), { allowZero: false }),
+      length: normalizeOptionalNumber(L, { allowZero: false }),
+      width: normalizeOptionalNumber(W, { allowZero: false }),
+      height: normalizeOptionalNumber(H, { allowZero: false }),
+      upc: normalizeOptionalText(getCell(row, mapping.upc)),
+      ean: normalizeOptionalText(getCell(row, mapping.ean)),
+      isbn: normalizeOptionalText(getCell(row, mapping.isbn)),
+      mpn: normalizeOptionalText(getCell(row, mapping.mpn)),
+    });
+    fetchBinsForWarehouse(finalWarehouseId);
+    setModalVisible(true);
+    message.info('Review mapped values, fill missing required fields, then save.');
+  };
+
   const fetchDrafts = async () => {
     try {
       setDraftsLoading(true);
@@ -2226,6 +2971,33 @@ const viewItem = async (item) => {
     setItemGroupFilter((current) => (current === requestedItemGroupId ? current : requestedItemGroupId));
   }, [location.search]);
 
+  useEffect(() => {
+    if (!csvImportModal.open) return undefined;
+    let cancelled = false;
+    (async () => {
+      const type = csvImportModal.itemType || 'simple';
+      try {
+        const res = await apiService.get(`/items/field-config/${type}`);
+        const raw = res?.success ? (res.data || []) : [];
+        const fieldConfigs = dedupeItemFieldConfigs(raw);
+        if (cancelled) return;
+        setCsvImportModal((prev) => {
+          if (!prev.open || prev.itemType !== type) return prev;
+          const next = { ...prev, fieldConfigs };
+          if (prev.headers?.length) {
+            next.mapping = buildInitialCsvMapping(prev.headers, fieldConfigs);
+          }
+          return next;
+        });
+      } catch {
+        if (!cancelled) message.error('Failed to load custom field config');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [csvImportModal.open, csvImportModal.itemType]);
+
   const sectionStyle = {
     background: '#fff',
     border: '1px solid #ebebf5',
@@ -2312,6 +3084,68 @@ const viewItem = async (item) => {
   const activeCount = items.filter(i => i.status === 'active').length;
   const lowStockCount = items.filter(i => (i.current_stock || 0) <= (i.min_stock_level || 0)).length;
 
+  const csvImportHeaderSelectOptions = useMemo(() => [
+    { value: '', label: '— None —' },
+    ...(csvImportModal.headers || []).map((h) => ({ value: h, label: h })),
+  ], [csvImportModal.headers]);
+
+  const csvImportTypeSelectOptions = useMemo(() => {
+    const fromApi = (itemTypes || [])
+      .filter((t) => CSV_IMPORT_SUPPORTED_ITEM_TYPES.includes(t.name))
+      .map((t) => ({ value: t.name, label: t.name }));
+    if (fromApi.length) return fromApi;
+    return CSV_IMPORT_SUPPORTED_ITEM_TYPES.map((name) => ({ value: name, label: name }));
+  }, [itemTypes]);
+
+  const csvImportMappingRows = useMemo(() => {
+    const core = CSV_IMPORT_CORE_TARGETS.map((t) => ({
+      key: t.id,
+      group: t.group,
+      label: t.label,
+      required: !!t.required,
+    }));
+    const custom = (csvImportModal.fieldConfigs || []).map((c) => ({
+      key: `cf:${c.field_name || c.fieldName}`,
+      group: 'Custom fields',
+      label: c.field_label || c.fieldLabel || c.field_name,
+      required: Boolean(c.is_required),
+    }));
+    return [...core, ...custom];
+  }, [csvImportModal.fieldConfigs]);
+
+  const csvImportPreviewRows = useMemo(() => {
+    const { rows, mapping, csvImportPreviewFilters: pf } = csvImportModal;
+    if (!rows?.length) return [];
+    return rows
+      .map((row, idx) => ({ ...row, _rowIndex: String(idx) }))
+      .filter((r) => {
+        if (pf?.hideMissingSku && !csvImportRowHasMappedValue(r, mapping, 'sku')) return false;
+        if (pf?.hideMissingName && !csvImportRowHasMappedValue(r, mapping, 'name')) return false;
+        if (pf?.onlyReady
+          && (!csvImportRowHasMappedValue(r, mapping, 'sku') || !csvImportRowHasMappedValue(r, mapping, 'name'))) {
+          return false;
+        }
+        return true;
+      });
+  }, [csvImportModal.rows, csvImportModal.mapping, csvImportModal.csvImportPreviewFilters]);
+
+  const csvImportReadyChecklist = useMemo(() => {
+    const m = csvImportModal.mapping || {};
+    const reqCustom = (csvImportModal.fieldConfigs || []).filter((c) => c.is_required || c.isRequired);
+    return {
+      skuMapped: !!m.sku,
+      nameMapped: !!m.name,
+      requiredCustom: reqCustom.map((c) => {
+        const fn = c.field_name || c.fieldName;
+        return {
+          key: fn,
+          label: c.field_label || c.fieldLabel || fn,
+          ok: !!m[`cf:${fn}`],
+        };
+      }),
+    };
+  }, [csvImportModal.mapping, csvImportModal.fieldConfigs]);
+
   return (
     <div style={{ padding: '24px', background: '#f0f2f5', minHeight: '100vh' }}>
       {/* Header */}
@@ -2330,14 +3164,24 @@ const viewItem = async (item) => {
           </div>
         </div>
         {canManageItems && (
-          <Button
-            icon={<PlusOutlined />}
-            size="large"
-            onClick={openCreateModal}
-            style={{ background: '#fff', color: '#764ba2', border: '2px solid rgba(255,255,255,0.6)', fontWeight: 700, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: 15 }}
-          >
-            Add Item
-          </Button>
+          <Space size={12}>
+            <Button
+              icon={<ImportOutlined />}
+              size="large"
+              onClick={openCsvImportModal}
+              style={{ background: 'rgba(255,255,255,0.95)', color: '#4338ca', border: '2px solid rgba(255,255,255,0.85)', fontWeight: 700, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', fontSize: 15 }}
+            >
+              Import file
+            </Button>
+            <Button
+              icon={<PlusOutlined />}
+              size="large"
+              onClick={openCreateModal}
+              style={{ background: '#fff', color: '#764ba2', border: '2px solid rgba(255,255,255,0.6)', fontWeight: 700, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: 15 }}
+            >
+              Add Item
+            </Button>
+          </Space>
         )}
       </div>
 
@@ -2443,6 +3287,23 @@ const viewItem = async (item) => {
                   SKU Rules
                 </Button>
               </Tooltip>
+            )}
+            {canManageItems && (
+              <Button
+                icon={<ImportOutlined />}
+                onClick={openCsvImportModal}
+                style={{
+                  background: '#fff',
+                  color: '#4338ca',
+                  border: '1.5px solid #4338ca',
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  fontSize: 13,
+                  height: 38,
+                }}
+              >
+                Import file
+              </Button>
             )}
             {canManageItems && (
               <Button
@@ -5362,6 +6223,318 @@ const viewItem = async (item) => {
             </Form>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        title="Import items from CSV or Excel"
+        open={csvImportModal.open}
+        onCancel={() => {
+          if (!csvImportModal.busy) resetCsvImportModal();
+        }}
+        width={1080}
+        destroyOnClose
+        footer={[
+          <Button key="tpl" icon={<DownloadOutlined />} onClick={downloadItemsCsvTemplateFile}>
+            Sample CSV
+          </Button>,
+          <Button
+            key="remap"
+            disabled={!csvImportModal.headers.length || csvImportModal.busy}
+            onClick={() => {
+              setCsvImportModal((prev) => ({
+                ...prev,
+                mapping: buildInitialCsvMapping(prev.headers, prev.fieldConfigs || []),
+              }));
+            }}
+          >
+            Re-auto map columns
+          </Button>,
+          <Button key="close" disabled={csvImportModal.busy} onClick={resetCsvImportModal}>
+            Close
+          </Button>,
+        ]}
+      >
+        <Alert
+          showIcon
+          type="info"
+          style={{ marginBottom: 14 }}
+          message="Map your file columns to item fields"
+          description={
+            <span>
+              Choose which <AntText strong>row</AntText> in the file contains column names (CSV line or Excel sheet row). CSV and Excel (
+              <AntText strong>.xlsx</AntText>
+              ,{' '}
+              <AntText strong>.xls</AntText>
+              ) are supported — Excel uses the{' '}
+              <AntText strong>first worksheet</AntText>
+              {' '}only. Then map each column to an app field (including custom fields for the selected item type). Prices use your current item currency (
+              <AntText strong>{priceCurrency}</AntText>
+              ) and are converted to USD for the API like the item form. Use <AntText strong>Add in form</AntText> on each preview row to open the Add Item screen with mapped values so you can fill missing SKU or required custom fields before saving. Simple and Service types only (up to 5,000 data rows).
+            </span>
+          }
+        />
+        <Row gutter={12} style={{ marginBottom: 12 }}>
+          <Col xs={24} sm={8}>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Item type</div>
+            <Select
+              style={{ width: '100%' }}
+              value={csvImportModal.itemType}
+              disabled={csvImportModal.busy}
+              options={csvImportTypeSelectOptions}
+              onChange={(v) => {
+                setCsvImportModal((prev) => ({ ...prev, itemType: v, result: null }));
+              }}
+            />
+          </Col>
+          <Col xs={24} sm={16}>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Default warehouse (required if any row has opening stock)</div>
+            <Select
+              allowClear
+              placeholder="Select warehouse"
+              style={{ width: '100%' }}
+              value={csvImportModal.defaultWarehouseId}
+              disabled={csvImportModal.busy}
+              options={(warehouses || []).map((w) => ({
+                value: w.id,
+                label: w.name || w.code || w.id,
+              }))}
+              onChange={(v) => setCsvImportModal((prev) => ({ ...prev, defaultWarehouseId: v || undefined, result: null }))}
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={12} style={{ marginBottom: 12 }}>
+          <Col xs={24} sm={14} md={10}>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Header row (1-based — CSV line or Excel row)</div>
+            <InputNumber
+              min={1}
+              max={csvImportModal.csvImportFileLineCount > 0 ? csvImportModal.csvImportFileLineCount : undefined}
+              value={csvImportModal.headerLineNumber}
+              disabled={csvImportModal.busy}
+              style={{ width: '100%' }}
+              onChange={(v) => applyCsvHeaderLineNumber(v ?? 1)}
+            />
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+              {csvImportModal.csvImportFileLineCount > 0
+                ? (
+                  csvImportModal.csvImportSourceFormat === 'xlsx'
+                    ? `First sheet has ${csvImportModal.csvImportFileLineCount} used row(s) (trailing blank rows dropped). Row ${csvImportModal.headerLineNumber} is the header; following non-blank rows are data.`
+                    : `Detected ${csvImportModal.csvImportFileLineCount} line(s) in the CSV (trailing empty lines dropped). Line ${csvImportModal.headerLineNumber} is the header row; the next non-blank lines are data.`
+                )
+                : 'Set the header row before or after upload (same numbering as Excel row numbers). Blank data rows are skipped.'}
+            </AntText>
+          </Col>
+        </Row>
+
+        <Upload.Dragger
+          accept=".csv,.txt,.xlsx,.xls,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          multiple={false}
+          showUploadList={false}
+          disabled={csvImportModal.busy}
+          beforeUpload={handleCsvImportBeforeUpload}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">Drop a CSV or Excel file here, or click to select</p>
+          <p className="ant-upload-hint">UTF-8 CSV recommended. Excel: first sheet only (.xlsx / .xls). Use “Header row” if titles or blank rows appear before column names.</p>
+        </Upload.Dragger>
+
+        {csvImportModal.headers.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <AntText strong style={{ display: 'block', marginBottom: 8 }}>
+              Column mapping ({csvImportModal.headers.length} file column(s), {csvImportModal.rows.length} data row(s))
+            </AntText>
+            <Table
+              size="small"
+              pagination={false}
+              rowKey="key"
+              scroll={{ y: 340 }}
+              dataSource={csvImportMappingRows}
+              columns={[
+                { title: 'Section', dataIndex: 'group', width: 130, ellipsis: true },
+                {
+                  title: 'App field',
+                  key: 'field',
+                  width: 220,
+                  render: (_, r) => (
+                    <span>
+                      {r.label}
+                      {r.required ? <Tag color="red" style={{ marginLeft: 6, fontSize: 10 }}>required</Tag> : null}
+                    </span>
+                  ),
+                },
+                {
+                  title: 'Maps from file column',
+                  key: 'map',
+                  render: (_, r) => (
+                    <Select
+                      style={{ width: '100%' }}
+                      showSearch
+                      optionFilterProp="label"
+                      disabled={csvImportModal.busy}
+                      value={csvImportModal.mapping[r.key] ?? ''}
+                      options={csvImportHeaderSelectOptions}
+                      onChange={(v) => {
+                        setCsvImportModal((prev) => ({
+                          ...prev,
+                          mapping: { ...prev.mapping, [r.key]: v || '' },
+                        }));
+                      }}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </div>
+        )}
+
+        {csvImportModal.rows.length > 0 && csvImportModal.headers.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <AntText strong style={{ display: 'block', marginBottom: 8 }}>Add-item requirements (mapping)</AntText>
+            <Space wrap size={[8, 8]} style={{ marginBottom: 10 }}>
+              <Tag
+                icon={csvImportReadyChecklist.skuMapped ? <CheckOutlined /> : <CloseOutlined />}
+                color={csvImportReadyChecklist.skuMapped ? 'success' : 'default'}
+              >
+                SKU column mapped
+              </Tag>
+              <Tag
+                icon={csvImportReadyChecklist.nameMapped ? <CheckOutlined /> : <CloseOutlined />}
+                color={csvImportReadyChecklist.nameMapped ? 'success' : 'default'}
+              >
+                Name column mapped
+              </Tag>
+              {csvImportReadyChecklist.requiredCustom.map((c) => (
+                <Tag
+                  key={c.key}
+                  icon={c.ok ? <CheckOutlined /> : <CloseOutlined />}
+                  color={c.ok ? 'success' : 'warning'}
+                >
+                  {c.label} (required custom field)
+                </Tag>
+              ))}
+            </Space>
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+              Preview shows loaded rows (after filters). <AntText strong>Ready</AntText> means the row has non-empty SKU and Name in the mapped columns. Use <AntText strong>Add in form</AntText> to open the item form with this row’s mapped values — complete missing fields and save.
+            </AntText>
+            <Space wrap style={{ marginBottom: 8 }}>
+              <AntText strong>Preview filters:</AntText>
+              <Checkbox
+                checked={!!csvImportModal.csvImportPreviewFilters?.hideMissingSku}
+                disabled={csvImportModal.busy}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setCsvImportModal((prev) => ({
+                    ...prev,
+                    csvImportPreviewFilters: {
+                      ...prev.csvImportPreviewFilters,
+                      hideMissingSku: checked,
+                    },
+                  }));
+                }}
+              >
+                Hide rows missing SKU
+              </Checkbox>
+              <Checkbox
+                checked={!!csvImportModal.csvImportPreviewFilters?.hideMissingName}
+                disabled={csvImportModal.busy}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setCsvImportModal((prev) => ({
+                    ...prev,
+                    csvImportPreviewFilters: {
+                      ...prev.csvImportPreviewFilters,
+                      hideMissingName: checked,
+                    },
+                  }));
+                }}
+              >
+                Hide rows missing Name
+              </Checkbox>
+              <Checkbox
+                checked={!!csvImportModal.csvImportPreviewFilters?.onlyReady}
+                disabled={csvImportModal.busy}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setCsvImportModal((prev) => ({
+                    ...prev,
+                    csvImportPreviewFilters: {
+                      ...prev.csvImportPreviewFilters,
+                      onlyReady: checked,
+                    },
+                  }));
+                }}
+              >
+                Only ready rows (SKU + Name)
+              </Checkbox>
+            </Space>
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+              Showing {csvImportPreviewRows.length} of {csvImportModal.rows.length} row(s) in preview
+            </AntText>
+            <Table
+              style={{ marginTop: 4 }}
+              size="small"
+              rowKey="_rowIndex"
+              dataSource={csvImportPreviewRows}
+              scroll={{ x: 'max-content', y: 360 }}
+              pagination={{
+                defaultPageSize: 50,
+                pageSizeOptions: ['25', '50', '100', '200'],
+                showSizeChanger: true,
+                showTotal: (t) => `Preview ${t} row(s)`,
+              }}
+              columns={[
+                {
+                  title: 'Line',
+                  dataIndex: '__sourceLine',
+                  width: 64,
+                  fixed: 'left',
+                  render: (v) => (v != null ? v : '—'),
+                },
+                {
+                  title: 'Ready',
+                  key: 'ready',
+                  width: 72,
+                  fixed: 'left',
+                  render: (_, r) => {
+                    const ok = csvImportRowHasMappedValue(r, csvImportModal.mapping, 'sku')
+                      && csvImportRowHasMappedValue(r, csvImportModal.mapping, 'name');
+                    return ok
+                      ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} title="Has SKU and Name" />
+                      : <CloseOutlined style={{ color: '#d9d9d9', fontSize: 14 }} title="Missing SKU or Name" />;
+                  },
+                },
+                {
+                  title: 'Action',
+                  key: 'addInForm',
+                  width: 112,
+                  fixed: 'left',
+                  render: (_, r) => (
+                    <Button
+                      type="link"
+                      size="small"
+                      disabled={csvImportModal.busy || !canManageItems}
+                      onClick={() => openAddItemFromImportRow(Number(r._rowIndex))}
+                    >
+                      Add in form
+                    </Button>
+                  ),
+                },
+                ...csvImportModal.headers.map((h) => ({
+                  title: h,
+                  key: h,
+                  ellipsis: true,
+                  width: 118,
+                  render: (_, r) => {
+                    const v = r[h];
+                    if (v === undefined || v === null) return '';
+                    return String(v);
+                  },
+                })),
+              ]}
+            />
+          </div>
+        )}
+
       </Modal>
     </div>
   );
