@@ -17,3 +17,13 @@ export function isOpeningStockReceipt(log) {
     ref.startsWith('OPENING-')
   );
 }
+
+/** Omit Ref line for opening stock — backend uses OPENING-{itemId} / OPENING-{timestamp} internally. */
+export function getInventoryLogReferenceDisplay(log) {
+  if (!log || typeof log !== 'object') return null;
+  if (isOpeningStockReceipt(log)) return null;
+  const ref = log.reference ?? log.reference_number;
+  if (ref == null) return null;
+  const t = String(ref).trim();
+  return t || null;
+}

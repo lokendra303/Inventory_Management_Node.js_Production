@@ -8,7 +8,7 @@ import skuGeneratorService from '../../services/skuGeneratorService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
-import { isOpeningStockReceipt } from '../../utils/inventoryReceipt';
+import { isOpeningStockReceipt, getInventoryLogReferenceDisplay } from '../../utils/inventoryReceipt';
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -5635,7 +5635,7 @@ const viewItem = async (item) => {
                             const isNegative = ['SaleShipped', 'SaleReserved', 'TransferOut', 'PurchaseReturned', 'StockDamaged', 'StockExpired'].includes(eventType) || (eventType === 'ADJUSTMENT' && log.sub_type === 'decrease');
                             const signedQty = qty != null ? (isNegative ? -Math.abs(qty) : isPositive ? Math.abs(qty) : qty) : null;
                             const unitCost = log.details?.unitCost || log.details?.unitPrice || log.unit_cost;
-                            const ref = log.reference || log.reference_number;
+                            const ref = getInventoryLogReferenceDisplay(log);
                             const notes = log.reason || log.notes;
                             return (
                               <Timeline.Item key={index} color={getEventColor(eventType)}>
