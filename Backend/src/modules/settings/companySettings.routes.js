@@ -48,6 +48,10 @@ const upload = multer({
 });
 
 router.get('/', companySettingsController.getSettings.bind(companySettingsController));
+router.get(
+  '/invoice-pdf-preview/:template',
+  companySettingsController.getInvoicePdfPreview.bind(companySettingsController)
+);
 router.put('/', auditLog('company_settings_updated'), companySettingsController.updateSettings.bind(companySettingsController));
 router.post('/upload/:fileType', auditLog('company_settings_file_uploaded'), upload.single('file'), companySettingsController.uploadFile.bind(companySettingsController));
 router.delete('/upload/:fileType', auditLog('company_settings_file_deleted'), companySettingsController.deleteFile.bind(companySettingsController));

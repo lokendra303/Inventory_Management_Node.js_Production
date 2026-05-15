@@ -300,6 +300,7 @@ CREATE TABLE IF NOT EXISTS `institution_profiles` (
   `logo_path` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `authorized_signatory_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `authorized_signatory_designation` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `invoice_pdf_template` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'classic',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

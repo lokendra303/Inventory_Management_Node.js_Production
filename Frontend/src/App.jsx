@@ -211,6 +211,7 @@ function AppContent() {
             <Route path="/reports/*" element={<ProtectedReports />} />
             <Route path="/profit-loss" element={<ProtectedProfitLoss />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/pdf-templates" element={<Navigate to="/company-settings" replace />} />
             <Route path="/settings/exchange-rate" element={<ExchangeRateSettings />} />
             <Route path="/account-settings" element={<AccountSettings />} />
             <Route path="/company-settings" element={<CompanySettings />} />

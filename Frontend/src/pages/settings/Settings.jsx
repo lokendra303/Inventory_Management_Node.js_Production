@@ -10,6 +10,7 @@ const Settings = () => {
     {
       title: 'Organization Settings',
       items: [
+        { label: 'Company profile & invoice PDF', path: '/company-settings' },
         { label: 'Profile', path: '/settings/profile' },
         { label: 'Branding', path: '/settings/branding' },
         { label: 'Locations', path: '/settings/locations' },
@@ -50,7 +51,7 @@ const Settings = () => {
       title: 'Customization',
       items: [
         { label: 'Transaction Number Series', path: '/settings/transaction-series' },
-        { label: 'PDF Templates', path: '/settings/pdf-templates' },
+        { label: 'Invoice PDF layout', path: '/settings/pdf-templates' },
         { label: 'Email Notifications', path: '/settings/email-notifications' },
         { label: 'SMS Notifications', path: '/settings/sms-notifications' },
         { label: 'Reporting Tags', path: '/settings/reporting-tags' },

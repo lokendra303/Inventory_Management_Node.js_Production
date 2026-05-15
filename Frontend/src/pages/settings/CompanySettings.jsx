@@ -18,6 +18,7 @@ import {
   Switch,
   Image,
   Popconfirm,
+  Spin,
 } from 'antd';
 import {
   UploadOutlined,
@@ -28,11 +29,14 @@ import {
   FileImageOutlined,
   PlusOutlined,
   EnvironmentOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { mediaUrl } from '../../config/appConfig';
 import InvoicePreview from '../../components/business/InvoicePreview';
+import InvoicePdfTemplateTiles from '../../components/business/InvoicePdfTemplateTiles';
 import { useAuth } from '../../hooks/useAuth.jsx';
+import { INVOICE_PDF_TEMPLATES } from '../../constants/invoicePdfTemplates';
 import './CompanySettings.css';
 
 const { Title, Text, Paragraph } = Typography;
@@ -47,6 +51,10 @@ const CompanySettings = () => {
   const [addrForm] = Form.useForm();
   const [stampLabel, setStampLabel] = useState('');
   const [sigLabel, setSigLabel] = useState('');
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState('');
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -64,6 +72,7 @@ const CompanySettings = () => {
           swiftCode: response.data.swift_code,
           authorizedSignatoryName: response.data.authorized_signatory_name,
           authorizedSignatoryDesignation: response.data.authorized_signatory_designation,
+          invoicePdfTemplate: response.data.invoice_pdf_template || 'classic',
         });
       }
     } catch {
@@ -74,6 +83,44 @@ const CompanySettings = () => {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  const closeInvoicePdfPreview = useCallback(() => {
+    setPdfPreviewOpen(false);
+    setPdfPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPdfPreviewLoading(false);
+  }, []);
+
+  const openInvoicePdfPreview = useCallback(
+    async (template) => {
+      const meta = INVOICE_PDF_TEMPLATES.find((x) => x.id === template);
+      setPdfPreviewTitle(meta ? `Sample PDF — ${meta.name}` : 'Sample PDF');
+      setPdfPreviewOpen(true);
+      setPdfPreviewLoading(true);
+      setPdfPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      try {
+        const res = await apiService.get(`/company-settings/invoice-pdf-preview/${template}`, { responseType: 'blob' });
+        const blob = res.data;
+        if (!blob || blob.size < 64 || (blob.type && blob.type.includes('json'))) {
+          message.error('Preview failed');
+          closeInvoicePdfPreview();
+          return;
+        }
+        setPdfPreviewUrl(URL.createObjectURL(blob));
+      } catch (e) {
+        message.error(e.response?.data?.error || e.userMessage || 'Could not load PDF preview');
+        closeInvoicePdfPreview();
+      } finally {
+        setPdfPreviewLoading(false);
+      }
+    },
+    [closeInvoicePdfPreview]
+  );
 
   const handleSaveSettings = async () => {
     try {
@@ -332,7 +379,7 @@ const CompanySettings = () => {
   ];
 
   const settingsPanel = (
-    <Form form={form} layout="vertical" requiredMark="optional">
+    <Form form={form} layout="vertical" requiredMark="optional" initialValues={{ invoicePdfTemplate: 'classic' }}>
       <Card size="small" title="Company" styles={{ header: { fontWeight: 600 } }}>
         <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 16 }}>
           Legal name and contact details used on invoices and PDFs.
@@ -423,6 +470,29 @@ const CompanySettings = () => {
             <Form.Item name="swiftCode" label="SWIFT / BIC"><Input allowClear /></Form.Item>
           </Col>
         </Row>
+      </Card>
+
+      <Card
+        size="small"
+        title={(
+          <Space>
+            <FileTextOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />
+            <span>Invoice PDF layout</span>
+          </Space>
+        )}
+        style={{ marginTop: 16 }}
+        styles={{ header: { fontWeight: 600 } }}
+      >
+        <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12 }}>
+          Applies to sales and purchase invoice PDF downloads. Pick a style, preview a sample with your logo and company details, then save.
+        </Paragraph>
+        <Form.Item
+          name="invoicePdfTemplate"
+          label="Template"
+          rules={[{ required: true, message: 'Select a template' }]}
+        >
+          <InvoicePdfTemplateTiles onPreviewPdf={openInvoicePdfPreview} />
+        </Form.Item>
       </Card>
 
       <Divider style={{ margin: '24px 0 16px' }} />
@@ -540,6 +610,28 @@ const CompanySettings = () => {
       />
 
       <Modal
+        title={pdfPreviewTitle}
+        open={pdfPreviewOpen}
+        onCancel={closeInvoicePdfPreview}
+        footer={null}
+        width={960}
+        destroyOnClose
+        styles={{ body: { paddingTop: 8 } }}
+      >
+        {pdfPreviewLoading ? (
+          <div style={{ height: 520, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Spin size="large" tip="Generating sample PDF…" />
+          </div>
+        ) : pdfPreviewUrl ? (
+          <iframe
+            title="Invoice PDF preview"
+            src={pdfPreviewUrl}
+            style={{ width: '100%', height: '72vh', border: 'none', borderRadius: 4 }}
+          />
+        ) : null}
+      </Modal>
+
+      <Modal
         title={addrModal.record ? 'Edit address' : 'Add address'}
         open={addrModal.open}
         onCancel={() => setAddrModal({ open: false, record: null })}
@@ -567,7 +659,10 @@ const CompanySettings = () => {
     <div className="company-settings" style={{ padding: '8px 0 32px' }}>
       <div className="company-settings__intro">
         <Title level={4} style={{ marginBottom: 4 }}>Company settings</Title>
-        <Text type="secondary">Company profile, locations, banking, and invoice assets.</Text>
+        <Text type="secondary">
+          Company profile, locations, banking, and invoice assets. Use the <Text strong>Invoice PDF layout</Text> card
+          (under Bank details) to choose classic, minimal, or modern invoice PDFs — then click Save changes.
+        </Text>
       </div>
 
       <Card bordered styles={{ body: { paddingTop: 8 } }}>

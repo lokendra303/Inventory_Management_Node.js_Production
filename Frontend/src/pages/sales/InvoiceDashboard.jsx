@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Spin, Tag } from 'antd';
 import {
   DollarOutlined, FileTextOutlined, BarChartOutlined,
-  ShoppingCartOutlined, ArrowRightOutlined, ClockCircleOutlined, CheckCircleOutlined
+  ShoppingCartOutlined, ArrowRightOutlined, ClockCircleOutlined, CheckCircleOutlined, FilePdfOutlined
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth.jsx';
 
 const StatCard = ({ label, value, sub, subValue, gradient, shadow, icon }) => (
   <div style={{
@@ -67,6 +68,7 @@ const QuickCard = ({ title, desc, icon, gradient, href, navigate }) => (
 
 const InvoiceDashboard = () => {
   const { currency } = useCurrency();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -104,6 +106,17 @@ const InvoiceDashboard = () => {
     { title: 'Payments',          desc: 'View all sales and purchase payment history',       icon: <CheckCircleOutlined style={{ fontSize: 22, color: '#fff' }} />, gradient: 'linear-gradient(135deg,#f093fb,#f5576c)', href: '/invoices/payments' },
   ];
 
+  const adminInvoicePdfCard =
+    user?.role === 'admin' || user?.role === 'super_admin'
+      ? [{
+          title: 'Invoice PDF layout',
+          desc: 'Choose classic, minimal, or modern template for invoice downloads',
+          icon: <FilePdfOutlined style={{ fontSize: 22, color: '#fff' }} />,
+          gradient: 'linear-gradient(135deg,#4facfe,#00f2fe)',
+          href: '/company-settings',
+        }]
+      : [];
+
   return (
     <div style={{ padding: '16px 16px 32px', background: '#f5f6fa', minHeight: '100vh' }}>
       {/* Header */}
@@ -129,7 +142,7 @@ const InvoiceDashboard = () => {
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1a2e', marginBottom: 14 }}>Quick Access</div>
         <Row gutter={[12, 12]}>
-          {quickCards.map(card => (
+          {[...quickCards, ...adminInvoicePdfCard].map(card => (
             <Col xs={24} sm={12} lg={6} key={card.title}>
               <QuickCard {...card} navigate={navigate} />
             </Col>

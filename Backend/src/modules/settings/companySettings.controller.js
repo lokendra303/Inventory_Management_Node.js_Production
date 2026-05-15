@@ -4,6 +4,8 @@ const path = require('path');
 const fs = require('fs');
 const multi = require('./companySettingsMulti.service');
 const { resolveUploadAbsolutePath } = require('../../shared/storage/fileStorage');
+const { normalizeInvoicePdfTemplate } = require('../invoice/invoicePdfTemplate.constants');
+const invoicePDFService = require('../invoice/invoicePDF.service');
 
 class CompanySettingsController {
   async getInstitutionProfile(institutionId) {
@@ -31,13 +33,14 @@ class CompanySettingsController {
       payload.swiftCode ?? null,
       payload.authorizedSignatoryName ?? null,
       payload.authorizedSignatoryDesignation ?? null,
+      normalizeInvoicePdfTemplate(payload.invoicePdfTemplate),
       institutionId,
     ];
 
     if (existing) {
       await db.query(
         `UPDATE institution_profiles
-         SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?
+         SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?
          WHERE institution_id = ?`,
         values
       );
@@ -46,8 +49,8 @@ class CompanySettingsController {
 
     await db.query(
       `INSERT INTO institution_profiles
-       (company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, authorized_signatory_name, authorized_signatory_designation, institution_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, authorized_signatory_name, authorized_signatory_designation, invoice_pdf_template, institution_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       values
     );
   }
@@ -73,6 +76,7 @@ class CompanySettingsController {
         logo_path: profile?.logo_path ?? null,
         authorized_signatory_name: profile?.authorized_signatory_name ?? null,
         authorized_signatory_designation: profile?.authorized_signatory_designation ?? null,
+        invoice_pdf_template: normalizeInvoicePdfTemplate(profile?.invoice_pdf_template),
       };
 
       const data = await multi.attachMultiToSettingsRow(institutionId, profileFirst);
@@ -86,6 +90,24 @@ class CompanySettingsController {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch company settings',
+      });
+    }
+  }
+
+  async getInvoicePdfPreview(req, res) {
+    try {
+      const { institutionId } = req;
+      const template = normalizeInvoicePdfTemplate(req.params.template);
+      const sample = invoicePDFService.getSampleStandardInvoice();
+      const buf = await invoicePDFService.generatePDFBuffer(sample, institutionId, { template });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'inline; filename="invoice-template-preview.pdf"');
+      res.send(buf);
+    } catch (error) {
+      logger.error('Error generating invoice PDF preview:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate invoice preview',
       });
     }
   }
@@ -108,6 +130,10 @@ class CompanySettingsController {
       const swiftCode = b.swiftCode !== undefined ? b.swiftCode : pf.swift_code;
       const authorizedSignatoryName = b.authorizedSignatoryName !== undefined ? b.authorizedSignatoryName : pf.authorized_signatory_name;
       const authorizedSignatoryDesignation = b.authorizedSignatoryDesignation !== undefined ? b.authorizedSignatoryDesignation : pf.authorized_signatory_designation;
+      const invoicePdfTemplate =
+        b.invoicePdfTemplate !== undefined
+          ? normalizeInvoicePdfTemplate(b.invoicePdfTemplate)
+          : normalizeInvoicePdfTemplate(pf.invoice_pdf_template);
 
       await this.upsertInstitutionProfile(institutionId, {
         companyName,
@@ -120,6 +146,7 @@ class CompanySettingsController {
         swiftCode,
         authorizedSignatoryName,
         authorizedSignatoryDesignation,
+        invoicePdfTemplate,
       });
 
       const addressPayload = {
