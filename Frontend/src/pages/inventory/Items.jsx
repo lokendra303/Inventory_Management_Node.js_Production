@@ -228,6 +228,9 @@ const CSV_IMPORT_CORE_TARGETS = [
 
 /** CSV import creates plain items (no BOM / variant matrix). */
 const CSV_IMPORT_SUPPORTED_ITEM_TYPES = ['simple', 'service'];
+const CSV_IMPORT_MODAL_Z_INDEX = 1000;
+/** Above import modal and app header (see Warehouses.jsx). */
+const ITEM_FORM_MODAL_OVER_IMPORT_Z_INDEX = 10050;
 
 const CSV_IMPORT_HEADER_ALIASES = {
   sku: ['sku', 'item sku', 'item code', 'product code', 'code', 'article'],
@@ -389,6 +392,7 @@ const Items = () => {
   const [currencies] = useState(getCurrencies());
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [itemFormOpenedFromImport, setItemFormOpenedFromImport] = useState(false);
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -436,6 +440,7 @@ const Items = () => {
   const variantBuilderSeededRef = useRef(false);
   const fetchItemsRef = useRef(async () => {});
   const csvImportExcelBufferRef = useRef(null);
+  const activeImportRowIndexRef = useRef(null);
 
   // ---- SKU auto-generator (Zoho-style rules) ------------------------------
   const [skuRulesOpen, setSkuRulesOpen] = useState(false);
@@ -462,6 +467,7 @@ const Items = () => {
     mapping: {},
     defaultWarehouseId: undefined,
     result: null,
+    addedRowIndexes: {},
   });
 
   const normalizeOptionalText = (value) => {
@@ -1368,8 +1374,31 @@ const Items = () => {
       mapping: {},
       defaultWarehouseId: undefined,
       result: null,
+      addedRowIndexes: {},
     });
+    activeImportRowIndexRef.current = null;
+    setItemFormOpenedFromImport(false);
   }, []);
+
+  const closeItemFormReturnToImport = useCallback(() => {
+    setModalVisible(false);
+    setItemFormOpenedFromImport(false);
+    activeImportRowIndexRef.current = null;
+    setEditingItem(null);
+    setImageUrl('');
+    setImageFile(null);
+    setDuplicateBanner(null);
+    setDuplicateSourcePayload(null);
+    setDraftBanner(null);
+    setActiveDraftId(null);
+    setExistingCustomFields({});
+    setVariantMatrixEdits([]);
+    setCompositeComponents([]);
+    setEditingWarehouseSummaries([]);
+    setSelectedSkuRuleId(null);
+    setLastAppliedSkuRule(null);
+    form.resetFields();
+  }, [form]);
 
   const openCsvImportModal = useCallback(() => {
     const firstWh = warehouses?.[0]?.id;
@@ -1389,7 +1418,10 @@ const Items = () => {
       mapping: {},
       defaultWarehouseId: firstWh,
       result: null,
+      addedRowIndexes: {},
     });
+    activeImportRowIndexRef.current = null;
+    setItemFormOpenedFromImport(false);
   }, [warehouses]);
 
   const handleCsvImportBeforeUpload = useCallback((file) => {
@@ -1722,13 +1754,24 @@ const Items = () => {
       setActiveDraftId(null);
       if (isEditing) {
         setModalVisible(false);
+        setItemFormOpenedFromImport(false);
+        activeImportRowIndexRef.current = null;
         setEditingItem(null);
         setVariantMatrixEdits([]);
         setSelectedSkuRuleId(null);
         setLastAppliedSkuRule(null);
         form.resetFields();
+      } else if (itemFormOpenedFromImport && csvImportModal.open) {
+        const savedRowIndex = activeImportRowIndexRef.current;
+        closeItemFormReturnToImport();
+        setCsvImportModal((prev) => {
+          const nextAdded = { ...prev.addedRowIndexes };
+          if (savedRowIndex != null) nextAdded[String(savedRowIndex)] = true;
+          return { ...prev, addedRowIndexes: nextAdded };
+        });
+        message.success('Item saved. Import list is still open — pick the next row.');
       } else {
-        // Keep form open for rapid multi-item entry.
+        // Keep form open for rapid multi-item entry (not from CSV import).
         setImageUrl('');
         setImageFile(null);
         setDuplicateBanner(null);
@@ -2784,16 +2827,12 @@ const viewItem = async (item) => {
 
     const minSl = parseNumericImport(getCell(row, mapping.minStockLevel));
     const maxSl = parseNumericImport(getCell(row, mapping.maxStockLevel));
-    const mockItemForDerive = {
-      opening_stock: openingStock,
-      opening_value: openingValue,
-      min_stock_level: minSl,
-      max_stock_level: maxSl,
-    };
+
+    activeImportRowIndexRef.current = rowIndex;
 
     form.setFieldsValue({
       type: resolvedItemType,
-      trackInventory: deriveTrackInventoryValue(mockItemForDerive, finalWarehouseId),
+      trackInventory: true,
       itemGroupId,
       purchaseAccount: 'cogs',
       purchaseTaxRate: 0,
@@ -2830,8 +2869,9 @@ const viewItem = async (item) => {
       mpn: normalizeOptionalText(getCell(row, mapping.mpn)),
     });
     fetchBinsForWarehouse(finalWarehouseId);
+    setItemFormOpenedFromImport(true);
     setModalVisible(true);
-    message.info('Review mapped values, fill missing required fields, then save.');
+    message.info('Review mapped values, then save. You will return to the import list for the next row.');
   };
 
   const fetchDrafts = async () => {
@@ -3411,20 +3451,385 @@ const viewItem = async (item) => {
       </Card>
 
       <Modal
+        title="Import items from CSV or Excel"
+        open={csvImportModal.open}
+        getContainer={() => document.body}
+        wrapClassName="items-csv-import-modal-wrap"
+        zIndex={CSV_IMPORT_MODAL_Z_INDEX}
+        maskClosable={!itemFormOpenedFromImport}
+        onCancel={() => {
+          if (csvImportModal.busy) return;
+          if (modalVisible && itemFormOpenedFromImport) {
+            closeItemFormReturnToImport();
+            return;
+          }
+          resetCsvImportModal();
+        }}
+        width={1080}
+        destroyOnClose
+        footer={[
+          <Button key="tpl" icon={<DownloadOutlined />} onClick={downloadItemsCsvTemplateFile}>
+            Sample CSV
+          </Button>,
+          <Button
+            key="remap"
+            disabled={!csvImportModal.headers.length || csvImportModal.busy}
+            onClick={() => {
+              setCsvImportModal((prev) => ({
+                ...prev,
+                mapping: buildInitialCsvMapping(prev.headers, prev.fieldConfigs || []),
+              }));
+            }}
+          >
+            Re-auto map columns
+          </Button>,
+          <Button key="close" disabled={csvImportModal.busy} onClick={resetCsvImportModal}>
+            Close
+          </Button>,
+        ]}
+      >
+        <Alert
+          showIcon
+          type="info"
+          style={{ marginBottom: 14 }}
+          message="Map your file columns to item fields"
+          description={
+            <span>
+              Choose which <AntText strong>row</AntText> in the file contains column names (CSV line or Excel sheet row). CSV and Excel (
+              <AntText strong>.xlsx</AntText>
+              ,{' '}
+              <AntText strong>.xls</AntText>
+              ) are supported — Excel uses the{' '}
+              <AntText strong>first worksheet</AntText>
+              {' '}only. Then map each column to an app field (including custom fields for the selected item type). Prices use your current item currency (
+              <AntText strong>{priceCurrency}</AntText>
+              ) and are converted to USD for the API like the item form. Use <AntText strong>Add in form</AntText> on each row — this list stays open while you add items one by one. After each save you return here; saved rows show <AntText strong>Added</AntText>. Simple and Service types only (up to 5,000 data rows).
+            </span>
+          }
+        />
+        <Row gutter={12} style={{ marginBottom: 12 }}>
+          <Col xs={24} sm={8}>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Item type</div>
+            <Select
+              style={{ width: '100%' }}
+              value={csvImportModal.itemType}
+              disabled={csvImportModal.busy}
+              options={csvImportTypeSelectOptions}
+              onChange={(v) => {
+                setCsvImportModal((prev) => ({ ...prev, itemType: v, result: null }));
+              }}
+            />
+          </Col>
+          <Col xs={24} sm={16}>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Default warehouse (required if any row has opening stock)</div>
+            <Select
+              allowClear
+              placeholder="Select warehouse"
+              style={{ width: '100%' }}
+              value={csvImportModal.defaultWarehouseId}
+              disabled={csvImportModal.busy}
+              options={(warehouses || []).map((w) => ({
+                value: w.id,
+                label: w.name || w.code || w.id,
+              }))}
+              onChange={(v) => setCsvImportModal((prev) => ({ ...prev, defaultWarehouseId: v || undefined, result: null }))}
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={12} style={{ marginBottom: 12 }}>
+          <Col xs={24} sm={14} md={10}>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Header row (1-based — CSV line or Excel row)</div>
+            <InputNumber
+              min={1}
+              max={csvImportModal.csvImportFileLineCount > 0 ? csvImportModal.csvImportFileLineCount : undefined}
+              value={csvImportModal.headerLineNumber}
+              disabled={csvImportModal.busy}
+              style={{ width: '100%' }}
+              onChange={(v) => applyCsvHeaderLineNumber(v ?? 1)}
+            />
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+              {csvImportModal.csvImportFileLineCount > 0
+                ? (
+                  csvImportModal.csvImportSourceFormat === 'xlsx'
+                    ? `First sheet has ${csvImportModal.csvImportFileLineCount} used row(s) (trailing blank rows dropped). Row ${csvImportModal.headerLineNumber} is the header; following non-blank rows are data.`
+                    : `Detected ${csvImportModal.csvImportFileLineCount} line(s) in the CSV (trailing empty lines dropped). Line ${csvImportModal.headerLineNumber} is the header row; the next non-blank lines are data.`
+                )
+                : 'Set the header row before or after upload (same numbering as Excel row numbers). Blank data rows are skipped.'}
+            </AntText>
+          </Col>
+        </Row>
+
+        <Upload.Dragger
+          accept=".csv,.txt,.xlsx,.xls,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          multiple={false}
+          showUploadList={false}
+          disabled={csvImportModal.busy}
+          beforeUpload={handleCsvImportBeforeUpload}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">Drop a CSV or Excel file here, or click to select</p>
+          <p className="ant-upload-hint">UTF-8 CSV recommended. Excel: first sheet only (.xlsx / .xls). Use “Header row” if titles or blank rows appear before column names.</p>
+        </Upload.Dragger>
+
+        {csvImportModal.headers.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <AntText strong style={{ display: 'block', marginBottom: 8 }}>
+              Column mapping ({csvImportModal.headers.length} file column(s), {csvImportModal.rows.length} data row(s))
+            </AntText>
+            <Table
+              size="small"
+              pagination={false}
+              rowKey="key"
+              scroll={{ y: 340 }}
+              dataSource={csvImportMappingRows}
+              columns={[
+                { title: 'Section', dataIndex: 'group', width: 130, ellipsis: true },
+                {
+                  title: 'App field',
+                  key: 'field',
+                  width: 220,
+                  render: (_, r) => (
+                    <span>
+                      {r.label}
+                      {r.required ? <Tag color="red" style={{ marginLeft: 6, fontSize: 10 }}>required</Tag> : null}
+                    </span>
+                  ),
+                },
+                {
+                  title: 'Maps from file column',
+                  key: 'map',
+                  render: (_, r) => (
+                    <Select
+                      style={{ width: '100%' }}
+                      showSearch
+                      optionFilterProp="label"
+                      disabled={csvImportModal.busy}
+                      value={csvImportModal.mapping[r.key] ?? ''}
+                      options={csvImportHeaderSelectOptions}
+                      onChange={(v) => {
+                        setCsvImportModal((prev) => ({
+                          ...prev,
+                          mapping: { ...prev.mapping, [r.key]: v || '' },
+                        }));
+                      }}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </div>
+        )}
+
+        {csvImportModal.rows.length > 0 && csvImportModal.headers.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <AntText strong style={{ display: 'block', marginBottom: 8 }}>Add-item requirements (mapping)</AntText>
+            <Space wrap size={[8, 8]} style={{ marginBottom: 10 }}>
+              <Tag
+                icon={csvImportReadyChecklist.skuMapped ? <CheckOutlined /> : <CloseOutlined />}
+                color={csvImportReadyChecklist.skuMapped ? 'success' : 'default'}
+              >
+                SKU column mapped
+              </Tag>
+              <Tag
+                icon={csvImportReadyChecklist.nameMapped ? <CheckOutlined /> : <CloseOutlined />}
+                color={csvImportReadyChecklist.nameMapped ? 'success' : 'default'}
+              >
+                Name column mapped
+              </Tag>
+              {csvImportReadyChecklist.requiredCustom.map((c) => (
+                <Tag
+                  key={c.key}
+                  icon={c.ok ? <CheckOutlined /> : <CloseOutlined />}
+                  color={c.ok ? 'success' : 'warning'}
+                >
+                  {c.label} (required custom field)
+                </Tag>
+              ))}
+            </Space>
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+              Preview shows loaded rows (after filters). <AntText strong>Ready</AntText> means the row has non-empty SKU and Name in the mapped columns. Use <AntText strong>Add in form</AntText> to open the item form with this row’s mapped values — complete missing fields and save.
+            </AntText>
+            <Space wrap style={{ marginBottom: 8 }}>
+              <AntText strong>Preview filters:</AntText>
+              <Checkbox
+                checked={!!csvImportModal.csvImportPreviewFilters?.hideMissingSku}
+                disabled={csvImportModal.busy}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setCsvImportModal((prev) => ({
+                    ...prev,
+                    csvImportPreviewFilters: {
+                      ...prev.csvImportPreviewFilters,
+                      hideMissingSku: checked,
+                    },
+                  }));
+                }}
+              >
+                Hide rows missing SKU
+              </Checkbox>
+              <Checkbox
+                checked={!!csvImportModal.csvImportPreviewFilters?.hideMissingName}
+                disabled={csvImportModal.busy}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setCsvImportModal((prev) => ({
+                    ...prev,
+                    csvImportPreviewFilters: {
+                      ...prev.csvImportPreviewFilters,
+                      hideMissingName: checked,
+                    },
+                  }));
+                }}
+              >
+                Hide rows missing Name
+              </Checkbox>
+              <Checkbox
+                checked={!!csvImportModal.csvImportPreviewFilters?.onlyReady}
+                disabled={csvImportModal.busy}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setCsvImportModal((prev) => ({
+                    ...prev,
+                    csvImportPreviewFilters: {
+                      ...prev.csvImportPreviewFilters,
+                      onlyReady: checked,
+                    },
+                  }));
+                }}
+              >
+                Only ready rows (SKU + Name)
+              </Checkbox>
+            </Space>
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+              Showing {csvImportPreviewRows.length} of {csvImportModal.rows.length} row(s) in preview
+              {Object.keys(csvImportModal.addedRowIndexes || {}).length > 0 && (
+                <>
+                  {' '}·{' '}
+                  <AntText strong>{Object.keys(csvImportModal.addedRowIndexes).length}</AntText>
+                  {' '}row(s) added so far
+                </>
+              )}
+            </AntText>
+            <Table
+              style={{ marginTop: 4 }}
+              size="small"
+              rowKey="_rowIndex"
+              dataSource={csvImportPreviewRows}
+              scroll={{ x: 'max-content', y: 360 }}
+              pagination={{
+                defaultPageSize: 50,
+                pageSizeOptions: ['25', '50', '100', '200'],
+                showSizeChanger: true,
+                showTotal: (t) => `Preview ${t} row(s)`,
+              }}
+              columns={[
+                {
+                  title: 'Line',
+                  dataIndex: '__sourceLine',
+                  width: 64,
+                  fixed: 'left',
+                  render: (v) => (v != null ? v : '—'),
+                },
+                {
+                  title: 'Ready',
+                  key: 'ready',
+                  width: 72,
+                  fixed: 'left',
+                  render: (_, r) => {
+                    const ok = csvImportRowHasMappedValue(r, csvImportModal.mapping, 'sku')
+                      && csvImportRowHasMappedValue(r, csvImportModal.mapping, 'name');
+                    return ok
+                      ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} title="Has SKU and Name" />
+                      : <CloseOutlined style={{ color: '#d9d9d9', fontSize: 14 }} title="Missing SKU or Name" />;
+                  },
+                },
+                {
+                  title: 'Action',
+                  key: 'addInForm',
+                  width: 128,
+                  fixed: 'left',
+                  render: (_, r) => {
+                    const rowKey = String(r._rowIndex);
+                    if (csvImportModal.addedRowIndexes?.[rowKey]) {
+                      return <Tag color="success" style={{ margin: 0 }}>Added</Tag>;
+                    }
+                    return (
+                      <Button
+                        type="link"
+                        size="small"
+                        disabled={csvImportModal.busy || !canManageItems}
+                        onClick={() => openAddItemFromImportRow(Number(r._rowIndex))}
+                      >
+                        Add in form
+                      </Button>
+                    );
+                  },
+                },
+                ...csvImportModal.headers.map((h) => ({
+                  title: h,
+                  key: h,
+                  ellipsis: true,
+                  width: 118,
+                  render: (_, r) => {
+                    const v = r[h];
+                    if (v === undefined || v === null) return '';
+                    return String(v);
+                  },
+                })),
+              ]}
+            />
+          </div>
+        )}
+
+      </Modal>
+      <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: 16 }}>
               {editingItem ? <EditOutlined /> : <PlusOutlined />}
             </div>
-            <span style={{ fontWeight: 700, fontSize: 17 }}>{editingItem ? 'Edit Item' : 'Add New Item'}</span>
+            <span style={{ fontWeight: 700, fontSize: 17 }}>
+              {editingItem ? 'Edit Item' : itemFormOpenedFromImport ? 'Add Item from Import' : 'Add New Item'}
+            </span>
           </div>
         }
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingItem(null); setImageUrl(''); setImageFile(null); setDuplicateBanner(null); setDuplicateSourcePayload(null); setDraftBanner(null); setActiveDraftId(null); setExistingCustomFields({}); setVariantMatrixEdits([]); setCompositeComponents([]); setEditingWarehouseSummaries([]); setSelectedSkuRuleId(null); setLastAppliedSkuRule(null); form.resetFields(); }}
+        getContainer={() => document.body}
+        wrapClassName={itemFormOpenedFromImport ? 'items-item-form-import-wrap' : undefined}
+        zIndex={itemFormOpenedFromImport ? ITEM_FORM_MODAL_OVER_IMPORT_Z_INDEX : undefined}
+        onCancel={() => {
+          if (itemFormOpenedFromImport) {
+            closeItemFormReturnToImport();
+            return;
+          }
+          setModalVisible(false);
+          setItemFormOpenedFromImport(false);
+          setEditingItem(null);
+          setImageUrl('');
+          setImageFile(null);
+          setDuplicateBanner(null);
+          setDuplicateSourcePayload(null);
+          setDraftBanner(null);
+          setActiveDraftId(null);
+          setExistingCustomFields({});
+          setVariantMatrixEdits([]);
+          setCompositeComponents([]);
+          setEditingWarehouseSummaries([]);
+          setSelectedSkuRuleId(null);
+          setLastAppliedSkuRule(null);
+          form.resetFields();
+        }}
         footer={null}
         width="min(1440px, 99vw)"
         style={{ top: 8 }}
-        styles={{ body: { background: '#fafbff', borderRadius: '0 0 12px 12px', maxHeight: '88vh', overflowY: 'auto', padding: 20 } }}
+        styles={{
+          body: { background: '#fafbff', borderRadius: '0 0 12px 12px', maxHeight: '88vh', overflowY: 'auto', padding: 20 },
+          ...(itemFormOpenedFromImport ? {
+            mask: { zIndex: ITEM_FORM_MODAL_OVER_IMPORT_Z_INDEX },
+            wrapper: { zIndex: ITEM_FORM_MODAL_OVER_IMPORT_Z_INDEX },
+          } : {}),
+        }}
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           style={{ '--ant-input-border-radius': '8px' }}
@@ -5108,12 +5513,13 @@ const viewItem = async (item) => {
               </div>
             ) : (
               <div style={{ marginBottom: 16 }}>
-                <Form.Item name="trackInventory" valuePropName="checked" style={{ marginBottom: 0 }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff', fontSize: 13, color: '#595959', userSelect: 'none' }}>
-                    <input type="checkbox" style={{ accentColor: '#667eea', width: 15, height: 15 }} />
-                    <span>Track Inventory for this Item</span>
-                  </label>
-                </Form.Item>
+                <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff' }}>
+                  <Form.Item name="trackInventory" valuePropName="checked" noStyle>
+                    <Checkbox style={{ fontSize: 13, color: '#595959' }}>
+                      Track Inventory for this Item
+                    </Checkbox>
+                  </Form.Item>
+                </div>
               </div>
             )}
           {(isVariantItem || watchedTrackInventory) && (
@@ -5341,8 +5747,25 @@ const viewItem = async (item) => {
                   Save as Draft
                 </Button>
               )}
-              <Button size="large" style={{ borderRadius: 10, color: '#8c8c8c' }} onClick={() => { setModalVisible(false); setEditingItem(null); setDuplicateBanner(null); setDuplicateSourcePayload(null); setCompositeComponents([]); setEditingWarehouseSummaries([]); form.resetFields(); }}>
-                Cancel
+              <Button
+                size="large"
+                style={{ borderRadius: 10, color: '#8c8c8c' }}
+                onClick={() => {
+                  if (itemFormOpenedFromImport) {
+                    closeItemFormReturnToImport();
+                    return;
+                  }
+                  setModalVisible(false);
+                  setItemFormOpenedFromImport(false);
+                  setEditingItem(null);
+                  setDuplicateBanner(null);
+                  setDuplicateSourcePayload(null);
+                  setCompositeComponents([]);
+                  setEditingWarehouseSummaries([]);
+                  form.resetFields();
+                }}
+              >
+                {itemFormOpenedFromImport ? 'Back to import list' : 'Cancel'}
               </Button>
             </Space>
           </div>
@@ -6229,317 +6652,6 @@ const viewItem = async (item) => {
         </div>
       </Modal>
 
-      <Modal
-        title="Import items from CSV or Excel"
-        open={csvImportModal.open}
-        onCancel={() => {
-          if (!csvImportModal.busy) resetCsvImportModal();
-        }}
-        width={1080}
-        destroyOnClose
-        footer={[
-          <Button key="tpl" icon={<DownloadOutlined />} onClick={downloadItemsCsvTemplateFile}>
-            Sample CSV
-          </Button>,
-          <Button
-            key="remap"
-            disabled={!csvImportModal.headers.length || csvImportModal.busy}
-            onClick={() => {
-              setCsvImportModal((prev) => ({
-                ...prev,
-                mapping: buildInitialCsvMapping(prev.headers, prev.fieldConfigs || []),
-              }));
-            }}
-          >
-            Re-auto map columns
-          </Button>,
-          <Button key="close" disabled={csvImportModal.busy} onClick={resetCsvImportModal}>
-            Close
-          </Button>,
-        ]}
-      >
-        <Alert
-          showIcon
-          type="info"
-          style={{ marginBottom: 14 }}
-          message="Map your file columns to item fields"
-          description={
-            <span>
-              Choose which <AntText strong>row</AntText> in the file contains column names (CSV line or Excel sheet row). CSV and Excel (
-              <AntText strong>.xlsx</AntText>
-              ,{' '}
-              <AntText strong>.xls</AntText>
-              ) are supported — Excel uses the{' '}
-              <AntText strong>first worksheet</AntText>
-              {' '}only. Then map each column to an app field (including custom fields for the selected item type). Prices use your current item currency (
-              <AntText strong>{priceCurrency}</AntText>
-              ) and are converted to USD for the API like the item form. Use <AntText strong>Add in form</AntText> on each preview row to open the Add Item screen with mapped values so you can fill missing SKU or required custom fields before saving. Simple and Service types only (up to 5,000 data rows).
-            </span>
-          }
-        />
-        <Row gutter={12} style={{ marginBottom: 12 }}>
-          <Col xs={24} sm={8}>
-            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Item type</div>
-            <Select
-              style={{ width: '100%' }}
-              value={csvImportModal.itemType}
-              disabled={csvImportModal.busy}
-              options={csvImportTypeSelectOptions}
-              onChange={(v) => {
-                setCsvImportModal((prev) => ({ ...prev, itemType: v, result: null }));
-              }}
-            />
-          </Col>
-          <Col xs={24} sm={16}>
-            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Default warehouse (required if any row has opening stock)</div>
-            <Select
-              allowClear
-              placeholder="Select warehouse"
-              style={{ width: '100%' }}
-              value={csvImportModal.defaultWarehouseId}
-              disabled={csvImportModal.busy}
-              options={(warehouses || []).map((w) => ({
-                value: w.id,
-                label: w.name || w.code || w.id,
-              }))}
-              onChange={(v) => setCsvImportModal((prev) => ({ ...prev, defaultWarehouseId: v || undefined, result: null }))}
-            />
-          </Col>
-        </Row>
-
-        <Row gutter={12} style={{ marginBottom: 12 }}>
-          <Col xs={24} sm={14} md={10}>
-            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>Header row (1-based — CSV line or Excel row)</div>
-            <InputNumber
-              min={1}
-              max={csvImportModal.csvImportFileLineCount > 0 ? csvImportModal.csvImportFileLineCount : undefined}
-              value={csvImportModal.headerLineNumber}
-              disabled={csvImportModal.busy}
-              style={{ width: '100%' }}
-              onChange={(v) => applyCsvHeaderLineNumber(v ?? 1)}
-            />
-            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-              {csvImportModal.csvImportFileLineCount > 0
-                ? (
-                  csvImportModal.csvImportSourceFormat === 'xlsx'
-                    ? `First sheet has ${csvImportModal.csvImportFileLineCount} used row(s) (trailing blank rows dropped). Row ${csvImportModal.headerLineNumber} is the header; following non-blank rows are data.`
-                    : `Detected ${csvImportModal.csvImportFileLineCount} line(s) in the CSV (trailing empty lines dropped). Line ${csvImportModal.headerLineNumber} is the header row; the next non-blank lines are data.`
-                )
-                : 'Set the header row before or after upload (same numbering as Excel row numbers). Blank data rows are skipped.'}
-            </AntText>
-          </Col>
-        </Row>
-
-        <Upload.Dragger
-          accept=".csv,.txt,.xlsx,.xls,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-          multiple={false}
-          showUploadList={false}
-          disabled={csvImportModal.busy}
-          beforeUpload={handleCsvImportBeforeUpload}
-        >
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">Drop a CSV or Excel file here, or click to select</p>
-          <p className="ant-upload-hint">UTF-8 CSV recommended. Excel: first sheet only (.xlsx / .xls). Use “Header row” if titles or blank rows appear before column names.</p>
-        </Upload.Dragger>
-
-        {csvImportModal.headers.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <AntText strong style={{ display: 'block', marginBottom: 8 }}>
-              Column mapping ({csvImportModal.headers.length} file column(s), {csvImportModal.rows.length} data row(s))
-            </AntText>
-            <Table
-              size="small"
-              pagination={false}
-              rowKey="key"
-              scroll={{ y: 340 }}
-              dataSource={csvImportMappingRows}
-              columns={[
-                { title: 'Section', dataIndex: 'group', width: 130, ellipsis: true },
-                {
-                  title: 'App field',
-                  key: 'field',
-                  width: 220,
-                  render: (_, r) => (
-                    <span>
-                      {r.label}
-                      {r.required ? <Tag color="red" style={{ marginLeft: 6, fontSize: 10 }}>required</Tag> : null}
-                    </span>
-                  ),
-                },
-                {
-                  title: 'Maps from file column',
-                  key: 'map',
-                  render: (_, r) => (
-                    <Select
-                      style={{ width: '100%' }}
-                      showSearch
-                      optionFilterProp="label"
-                      disabled={csvImportModal.busy}
-                      value={csvImportModal.mapping[r.key] ?? ''}
-                      options={csvImportHeaderSelectOptions}
-                      onChange={(v) => {
-                        setCsvImportModal((prev) => ({
-                          ...prev,
-                          mapping: { ...prev.mapping, [r.key]: v || '' },
-                        }));
-                      }}
-                    />
-                  ),
-                },
-              ]}
-            />
-          </div>
-        )}
-
-        {csvImportModal.rows.length > 0 && csvImportModal.headers.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <AntText strong style={{ display: 'block', marginBottom: 8 }}>Add-item requirements (mapping)</AntText>
-            <Space wrap size={[8, 8]} style={{ marginBottom: 10 }}>
-              <Tag
-                icon={csvImportReadyChecklist.skuMapped ? <CheckOutlined /> : <CloseOutlined />}
-                color={csvImportReadyChecklist.skuMapped ? 'success' : 'default'}
-              >
-                SKU column mapped
-              </Tag>
-              <Tag
-                icon={csvImportReadyChecklist.nameMapped ? <CheckOutlined /> : <CloseOutlined />}
-                color={csvImportReadyChecklist.nameMapped ? 'success' : 'default'}
-              >
-                Name column mapped
-              </Tag>
-              {csvImportReadyChecklist.requiredCustom.map((c) => (
-                <Tag
-                  key={c.key}
-                  icon={c.ok ? <CheckOutlined /> : <CloseOutlined />}
-                  color={c.ok ? 'success' : 'warning'}
-                >
-                  {c.label} (required custom field)
-                </Tag>
-              ))}
-            </Space>
-            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-              Preview shows loaded rows (after filters). <AntText strong>Ready</AntText> means the row has non-empty SKU and Name in the mapped columns. Use <AntText strong>Add in form</AntText> to open the item form with this row’s mapped values — complete missing fields and save.
-            </AntText>
-            <Space wrap style={{ marginBottom: 8 }}>
-              <AntText strong>Preview filters:</AntText>
-              <Checkbox
-                checked={!!csvImportModal.csvImportPreviewFilters?.hideMissingSku}
-                disabled={csvImportModal.busy}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setCsvImportModal((prev) => ({
-                    ...prev,
-                    csvImportPreviewFilters: {
-                      ...prev.csvImportPreviewFilters,
-                      hideMissingSku: checked,
-                    },
-                  }));
-                }}
-              >
-                Hide rows missing SKU
-              </Checkbox>
-              <Checkbox
-                checked={!!csvImportModal.csvImportPreviewFilters?.hideMissingName}
-                disabled={csvImportModal.busy}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setCsvImportModal((prev) => ({
-                    ...prev,
-                    csvImportPreviewFilters: {
-                      ...prev.csvImportPreviewFilters,
-                      hideMissingName: checked,
-                    },
-                  }));
-                }}
-              >
-                Hide rows missing Name
-              </Checkbox>
-              <Checkbox
-                checked={!!csvImportModal.csvImportPreviewFilters?.onlyReady}
-                disabled={csvImportModal.busy}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setCsvImportModal((prev) => ({
-                    ...prev,
-                    csvImportPreviewFilters: {
-                      ...prev.csvImportPreviewFilters,
-                      onlyReady: checked,
-                    },
-                  }));
-                }}
-              >
-                Only ready rows (SKU + Name)
-              </Checkbox>
-            </Space>
-            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-              Showing {csvImportPreviewRows.length} of {csvImportModal.rows.length} row(s) in preview
-            </AntText>
-            <Table
-              style={{ marginTop: 4 }}
-              size="small"
-              rowKey="_rowIndex"
-              dataSource={csvImportPreviewRows}
-              scroll={{ x: 'max-content', y: 360 }}
-              pagination={{
-                defaultPageSize: 50,
-                pageSizeOptions: ['25', '50', '100', '200'],
-                showSizeChanger: true,
-                showTotal: (t) => `Preview ${t} row(s)`,
-              }}
-              columns={[
-                {
-                  title: 'Line',
-                  dataIndex: '__sourceLine',
-                  width: 64,
-                  fixed: 'left',
-                  render: (v) => (v != null ? v : '—'),
-                },
-                {
-                  title: 'Ready',
-                  key: 'ready',
-                  width: 72,
-                  fixed: 'left',
-                  render: (_, r) => {
-                    const ok = csvImportRowHasMappedValue(r, csvImportModal.mapping, 'sku')
-                      && csvImportRowHasMappedValue(r, csvImportModal.mapping, 'name');
-                    return ok
-                      ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} title="Has SKU and Name" />
-                      : <CloseOutlined style={{ color: '#d9d9d9', fontSize: 14 }} title="Missing SKU or Name" />;
-                  },
-                },
-                {
-                  title: 'Action',
-                  key: 'addInForm',
-                  width: 112,
-                  fixed: 'left',
-                  render: (_, r) => (
-                    <Button
-                      type="link"
-                      size="small"
-                      disabled={csvImportModal.busy || !canManageItems}
-                      onClick={() => openAddItemFromImportRow(Number(r._rowIndex))}
-                    >
-                      Add in form
-                    </Button>
-                  ),
-                },
-                ...csvImportModal.headers.map((h) => ({
-                  title: h,
-                  key: h,
-                  ellipsis: true,
-                  width: 118,
-                  render: (_, r) => {
-                    const v = r[h];
-                    if (v === undefined || v === null) return '';
-                    return String(v);
-                  },
-                })),
-              ]}
-            />
-          </div>
-        )}
-
-      </Modal>
     </div>
   );
 };

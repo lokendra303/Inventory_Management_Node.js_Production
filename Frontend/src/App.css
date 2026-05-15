@@ -139,6 +139,18 @@
 }
 
 /* ─── Modals ─────────────────────────────────────────────── */
+/* Items CSV import: keep add-item form above import preview */
+.items-csv-import-modal-wrap {
+  z-index: 1000 !important;
+}
+.items-item-form-import-wrap {
+  z-index: 10050 !important;
+}
+.items-item-form-import-wrap + .ant-modal-mask,
+.ant-modal-root:has(.items-item-form-import-wrap) .ant-modal-mask {
+  z-index: 10050 !important;
+}
+
 .ant-modal-content {
   border-radius: 16px !important;
   overflow: hidden !important;
