@@ -115,8 +115,10 @@ class ReportsService {
   }
 
   async getStockTransferReport(institutionId, filters = {}) {
+    // One row per stock move: each transfer appends TransferOut + TransferIn with the same transferId.
+    // Listing both doubles every line; TransferOut alone matches /inventory/transfers history.
     let query = `
-      SELECT es.created_at, es.event_data, es.metadata,
+      SELECT es.id as event_id, es.created_at, es.event_data, es.metadata,
              i.sku, i.name as item_name,
              wf.name as from_warehouse, wt.name as to_warehouse,
              JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.quantity')) as quantity,
@@ -125,9 +127,9 @@ class ReportsService {
       JOIN items i ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.itemId')) = i.id
       LEFT JOIN warehouses wf ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.fromWarehouseId')) = wf.id
       LEFT JOIN warehouses wt ON JSON_UNQUOTE(JSON_EXTRACT(es.event_data, '$.toWarehouseId')) = wt.id
-      WHERE es.institution_id = ? AND es.event_type IN (?, ?)
+      WHERE es.institution_id = ? AND es.event_type = ?
     `;
-    const params = [institutionId, INVENTORY_EVENTS.TRANSFER_OUT, INVENTORY_EVENTS.TRANSFER_IN];
+    const params = [institutionId, INVENTORY_EVENTS.TRANSFER_OUT];
 
     if (filters.startDate) {
       const range = buildUtcDayRange(filters.startDate);

@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 const db = require('../../database/connection');
 const eventStore = require('../../events/eventStore');
 const { INVENTORY_EVENTS, validateEventData, createAggregateId, normalizeItemVariantId } = require('../../events/inventoryEvents');
@@ -340,7 +341,11 @@ class InventoryService {
   }
 
   async transferStock(institutionId, data, userId) {
-    const { itemId, fromWarehouseId, toWarehouseId, quantity, transferId = uuidv4() } = data;
+    const { itemId, fromWarehouseId, toWarehouseId, quantity } = data;
+    let { transferId } = data;
+    if (!transferId || String(transferId).toLowerCase() === NIL_UUID) {
+      transferId = uuidv4();
+    }
     const itemVariantId = normalizeItemVariantId(data.itemVariantId);
     const vOpt = variantPayload(itemVariantId);
     const vSql = itemVariantId ? ' AND item_variant_id = ? ' : ' AND item_variant_id IS NULL ';

@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Button, Table, Space, Modal, Form, message, Select, Drawer, Tag, Tooltip, Input
+  Button, Table, Space, Modal, Form, message, Select, Drawer, Tag, Tooltip, Input, Row, Col, Card, Pagination, Spin,
 } from 'antd';
 import {
   PlusOutlined, UploadOutlined, DeleteOutlined, FolderOutlined,
   EyeOutlined, DownloadOutlined, MenuOutlined, FolderAddOutlined,
   FileImageOutlined, FilePdfOutlined, FileExcelOutlined, FileWordOutlined,
   FileZipOutlined, FileTextOutlined, FileUnknownOutlined, InboxOutlined,
-  AppstoreOutlined, UnorderedListOutlined, CloudUploadOutlined
+  AppstoreOutlined, CloudUploadOutlined
 } from '@ant-design/icons';
 import { documentService } from '../../services/documentService';
 import { mediaUrl } from '../../config/appConfig';
+import ViewModeToggle from '../../components/common/ViewModeToggle';
+import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import '../../styles/Documents.css';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -50,12 +52,14 @@ const formatSize = (bytes) => {
 const Documents = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
+  const [viewMode, setViewMode] = usePersistedViewMode('ims-documents-view-mode', 'list');
   const [selectedView, setSelectedView] = useState('all');
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [selectedFolderName, setSelectedFolderName] = useState('All Documents');
   const [documents, setDocuments] = useState([]);
   const [folders, setFolders] = useState([]);
+  const [filesGridPage, setFilesGridPage] = useState(1);
+  const filesGridPageSize = 12;
   const [isUploadModalVisible, setIsUploadModalVisible] = useState(false);
   const [isFolderModalVisible, setIsFolderModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -72,6 +76,10 @@ const Documents = () => {
   }, []);
 
   useEffect(() => { loadFolders(); loadDocuments(); }, [selectedView, selectedFolder]);
+
+  useEffect(() => {
+    setFilesGridPage(1);
+  }, [selectedView, selectedFolder, viewMode, documents.length]);
 
   const loadFolders = async () => {
     try { const r = await documentService.getFolders(); setFolders(r.data || []); }
@@ -286,10 +294,7 @@ const Documents = () => {
             </div>
           </div>
           <div className="docs-topbar-actions">
-            <Tooltip title={viewMode === 'list' ? 'Grid view' : 'List view'}>
-              <Button icon={viewMode === 'list' ? <AppstoreOutlined /> : <UnorderedListOutlined />}
-                onClick={() => setViewMode(v => v === 'list' ? 'grid' : 'list')} />
-            </Tooltip>
+            <ViewModeToggle value={viewMode} onChange={setViewMode} />
             <Button icon={<FolderAddOutlined />} onClick={() => setIsFolderModalVisible(true)}>
               {!isMobile && 'New Folder'}
             </Button>
@@ -397,6 +402,94 @@ const Documents = () => {
                   Upload First File
                 </Button>
               </div>
+            ) : viewMode === 'grid' ? (
+              <Spin spinning={loading}>
+              <>
+                <Row gutter={[16, 16]}>
+                  {documents
+                    .slice((filesGridPage - 1) * filesGridPageSize, filesGridPage * filesGridPageSize)
+                    .map((record) => {
+                      const { icon, color } = getFileIcon(record.file_name);
+                      const dateStr = record.created_at
+                        ? new Date(record.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : '—';
+                      return (
+                        <Col xs={24} sm={12} md={8} lg={6} key={record.id}>
+                          <Card
+                            hoverable
+                            size="small"
+                            style={{
+                              borderRadius: 12,
+                              border: '1px solid #e8ecf4',
+                              height: '100%',
+                              boxShadow: '0 1px 3px rgba(15,23,42,0.06)',
+                            }}
+                            styles={{ body: { padding: 14 } }}
+                          >
+                            <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+                              <span style={{ fontSize: 36, lineHeight: 1, color }}>{icon}</span>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <a
+                                  href={mediaUrl(record.file_path)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ fontWeight: 700, color: '#1e293b', display: 'block', wordBreak: 'break-word' }}
+                                >
+                                  {record.file_name}
+                                </a>
+                                {record.file_size ? (
+                                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{formatSize(record.file_size)}</div>
+                                ) : null}
+                              </div>
+                            </div>
+                            {record.folder_name ? (
+                              <Tag icon={<FolderOutlined />} color="blue" style={{ borderRadius: 6, marginBottom: 8 }}>
+                                {record.folder_name}
+                              </Tag>
+                            ) : (
+                              <div style={{ fontSize: 12, color: '#cbd5e1', marginBottom: 8 }}>No folder</div>
+                            )}
+                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+                              {record.uploaded_by_name || 'Unknown'} · {dateStr}
+                            </div>
+                            <Space size={4}>
+                              <Tooltip title="Preview">
+                                <Button type="text" size="small" icon={<EyeOutlined />}
+                                  onClick={() => window.open(mediaUrl(record.file_path), '_blank')} />
+                              </Tooltip>
+                              <Tooltip title="Download">
+                                <Button type="text" size="small" icon={<DownloadOutlined />}
+                                  onClick={() => {
+                                    fetch(mediaUrl(record.file_path))
+                                      .then((r) => r.blob()).then((blob) => {
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url; a.download = record.file_name;
+                                        a.click(); URL.revokeObjectURL(url);
+                                      });
+                                  }} />
+                              </Tooltip>
+                              <Tooltip title="Delete">
+                                <Button type="text" size="small" danger icon={<DeleteOutlined />}
+                                  onClick={() => handleDelete(record.id)} />
+                              </Tooltip>
+                            </Space>
+                          </Card>
+                        </Col>
+                      );
+                    })}
+                </Row>
+                <Pagination
+                  style={{ marginTop: 16, textAlign: 'right' }}
+                  current={filesGridPage}
+                  pageSize={filesGridPageSize}
+                  total={documents.length}
+                  showSizeChanger={false}
+                  showTotal={(t) => `${t} files`}
+                  onChange={(p) => setFilesGridPage(p)}
+                />
+              </>
+              </Spin>
             ) : (
               <Table
                 columns={columns} dataSource={documents} rowKey="id"

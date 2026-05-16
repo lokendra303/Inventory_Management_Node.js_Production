@@ -5,6 +5,9 @@ import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useLocation } from 'react-router-dom';
 import RolePermissionMatrix from '../../components/settings/RolePermissionMatrix.jsx';
+import ViewModeToggle from '../../components/common/ViewModeToggle.jsx';
+import { usePersistedViewMode } from '../../hooks/usePersistedViewMode.js';
+import UserManagementGrid from '../../components/settings/UserManagementGrid.jsx';
 
 const { TabPane } = Tabs;
 const { Text, Paragraph } = Typography;
@@ -127,6 +130,16 @@ const Users = () => {
     return currentUser.permissions.all || currentUser.permissions[permission];
   };
   const canManageUsers = hasPermission('user_management');
+
+  const [usersViewMode, setUsersViewMode] = usePersistedViewMode('ims-users-view-mode', 'list');
+  const [usersGridPage, setUsersGridPage] = useState(1);
+  const [usersGridPageSize, setUsersGridPageSize] = useState(12);
+
+  useEffect(() => {
+    if (usersViewMode === 'grid') {
+      setUsersGridPage(1);
+    }
+  }, [usersViewMode]);
 
   const columns = [
     { 
@@ -499,30 +512,57 @@ const Users = () => {
       <Tabs defaultActiveKey={defaultTabKey}>
         <TabPane tab="Users" key="users">
           <Card>
-            <Space style={{ marginBottom: 16 }}>
-              {canManageUsers && (
-                <Button 
-                  type="primary" 
-                  icon={<PlusOutlined />}
-                  onClick={openCreateModal}
-                >
-                  Add User
-                </Button>
-              )}
-            </Space>
-            <Table 
-              columns={columns} 
-              dataSource={users} 
-              loading={loading}
-              rowKey="id"
-              scroll={{ x: 800 }}
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} users`
+            <Space
+              style={{
+                marginBottom: 16,
+                width: '100%',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
               }}
-            />
+            >
+              <Space wrap>
+                {canManageUsers && (
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={openCreateModal}
+                  >
+                    Add User
+                  </Button>
+                )}
+              </Space>
+              <ViewModeToggle value={usersViewMode} onChange={setUsersViewMode} />
+            </Space>
+            {usersViewMode === 'grid' ? (
+              <UserManagementGrid
+                users={users}
+                loading={loading}
+                canManageUsers={canManageUsers}
+                page={usersGridPage}
+                pageSize={usersGridPageSize}
+                onPageChange={(p, ps) => {
+                  setUsersGridPage(p);
+                  setUsersGridPageSize(ps);
+                }}
+                onEdit={editUser}
+                onToggleStatus={toggleUserStatus}
+                onTempAccess={generateTempAccess}
+              />
+            ) : (
+              <Table
+                columns={columns}
+                dataSource={users}
+                loading={loading}
+                rowKey="id"
+                scroll={{ x: 800 }}
+                pagination={{
+                  pageSize: 10,
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} users`,
+                }}
+              />
+            )}
           </Card>
         </TabPane>
         

@@ -10,6 +10,9 @@ import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
 import { isOpeningStockReceipt, getInventoryLogReferenceDisplay } from '../../utils/inventoryReceipt';
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
+import ViewModeToggle from '../../components/common/ViewModeToggle';
+import ItemCatalogGrid from '../../components/inventory/ItemCatalogGrid';
+import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 
@@ -427,6 +430,9 @@ const Items = () => {
   const [editingWarehouseId, setEditingWarehouseId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('name_asc');
+  const [itemsViewMode, setItemsViewMode] = usePersistedViewMode('ims-items-view-mode', 'list');
+  const [catalogGridPage, setCatalogGridPage] = useState(1);
+  const [catalogGridPageSize, setCatalogGridPageSize] = useState(12);
   const [binsForWarehouse, setBinsForWarehouse] = useState([]);
   const [binsLoading, setBinsLoading] = useState(false);
   const [editingWarehouseSummaries, setEditingWarehouseSummaries] = useState([]);
@@ -3113,6 +3119,10 @@ const viewItem = async (item) => {
     return list;
   }, [filteredItems, sortBy]);
 
+  useEffect(() => {
+    setCatalogGridPage(1);
+  }, [searchText, statusFilter, itemGroupFilter, sortBy, itemsViewMode]);
+
   const getSelectedUnitLabel = () => {
     const selectedUnit = form.getFieldValue('unit');
     if (!selectedUnit) return 'kg';
@@ -3310,6 +3320,11 @@ const viewItem = async (item) => {
                 { value: 'date_asc', label: 'Date: Oldest' }
               ]}
             />
+            <ViewModeToggle
+              value={itemsViewMode}
+              onChange={setItemsViewMode}
+              size="middle"
+            />
             {canManageItems && (
               <Tooltip title="Configure SKU auto-generator rules (prefix, counter, date, per-category overrides)">
                 <Button
@@ -3374,7 +3389,25 @@ const viewItem = async (item) => {
             {
               key: 'items',
               label: <span>All Items <Tag color="purple" style={{ borderRadius: 20, marginLeft: 4 }}>{sortedFilteredItems.length}</Tag></span>,
-              children: (
+              children: itemsViewMode === 'grid' ? (
+                <ItemCatalogGrid
+                  items={sortedFilteredItems}
+                  loading={loading}
+                  currency={currency}
+                  canManageItems={canManageItems}
+                  page={catalogGridPage}
+                  pageSize={catalogGridPageSize}
+                  onPageChange={setCatalogGridPage}
+                  onPageSizeChange={(size) => {
+                    setCatalogGridPageSize(size);
+                    setCatalogGridPage(1);
+                  }}
+                  onView={viewItem}
+                  onEdit={editItem}
+                  onDuplicate={duplicateItem}
+                  onToggleStatus={toggleItemStatus}
+                />
+              ) : (
                 <Table
                   columns={columns}
                   dataSource={sortedFilteredItems}

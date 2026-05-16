@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Form, Select, Input, Button, Table, message, Space, Row, Col, Statistic, Modal, Tag, Tooltip, Empty } from 'antd';
+import { Card, Form, Select, Input, Button, Table, message, Space, Row, Col, Statistic, Modal, Tag, Tooltip, Empty, Pagination, Spin } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, TagsOutlined, EyeOutlined, CheckCircleOutlined, StopOutlined } from '@ant-design/icons';
+import ViewModeToggle from '../../components/common/ViewModeToggle';
+import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import { useNavigate } from 'react-router-dom';
 import apiService from '../../services/apiService.js';
 import { useAuth } from '../../hooks/useAuth.jsx';
@@ -16,6 +18,9 @@ const ItemGroups = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
   const [form] = Form.useForm();
+  const [groupsViewMode, setGroupsViewMode] = usePersistedViewMode('ims-item-groups-view-mode', 'list');
+  const [groupsGridPage, setGroupsGridPage] = useState(1);
+  const [groupsGridPageSize, setGroupsGridPageSize] = useState(12);
 
   const fetchGroups = async () => {
     try {
@@ -34,6 +39,10 @@ const ItemGroups = () => {
   useEffect(() => {
     fetchGroups();
   }, []);
+
+  useEffect(() => {
+    setGroupsGridPage(1);
+  }, [searchText, statusFilter, groupsViewMode]);
 
   const filteredGroups = useMemo(() => (
     groups.filter((group) => {
@@ -380,31 +389,152 @@ const ItemGroups = () => {
               </span>
             ))}
           </Space>
-          <Input
-            allowClear
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-            placeholder="Search item groups..."
-            prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
-            style={{ width: 280, borderRadius: 10 }}
-          />
+          <Space wrap>
+            <ViewModeToggle value={groupsViewMode} onChange={setGroupsViewMode} />
+            <Input
+              allowClear
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="Search item groups..."
+              prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
+              style={{ width: 280, borderRadius: 10 }}
+            />
+          </Space>
         </div>
 
-        <Table
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={filteredGroups}
-          locale={{
-            emptyText: (
-              <Empty
-                description={searchText ? 'No item groups matched your search' : 'No item groups created yet'}
+        {groupsViewMode === 'grid' ? (
+          loading ? (
+            <div style={{ textAlign: 'center', padding: 48 }}><Spin size="large" /></div>
+          ) : filteredGroups.length === 0 ? (
+            <Empty description={searchText ? 'No item groups matched your search' : 'No item groups created yet'} />
+          ) : (
+            <>
+              <Row gutter={[16, 16]} align="stretch">
+                {filteredGroups
+                  .slice((groupsGridPage - 1) * groupsGridPageSize, groupsGridPage * groupsGridPageSize)
+                  .map((group) => {
+                    const count = Number(group.usage_count || 0);
+                    return (
+                      <Col xs={24} sm={12} md={8} lg={6} key={group.id} style={{ display: 'flex' }}>
+                        <Card
+                          hoverable
+                          bordered={false}
+                          style={{
+                            borderRadius: 14,
+                            border: '1px solid #ebebf5',
+                            boxShadow: '0 2px 12px rgba(102,126,234,0.08)',
+                            width: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                          }}
+                          styles={{
+                            body: {
+                              padding: 16,
+                              flex: 1,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              minHeight: 0,
+                            },
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                            <div style={{
+                              width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                              background: 'linear-gradient(135deg, #eef0ff, #f3e8ff)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#764ba2', fontSize: 20,
+                            }}
+                            >
+                              <TagsOutlined />
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  fontSize: 15,
+                                  color: '#1f2937',
+                                  lineHeight: 1.35,
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden',
+                                }}
+                                title={group.name}
+                              >
+                                {group.name}
+                              </div>
+                              {group.description && (
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    color: '#8c8c8c',
+                                    marginTop: 4,
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: 'vertical',
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  {group.description}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <Space size={6} wrap style={{ marginBottom: 12 }}>
+                            <Tag color={group.is_active ? 'green' : 'default'} style={{ borderRadius: 20 }}>
+                              {group.is_active ? 'Active' : 'Inactive'}
+                            </Tag>
+                            <Tag color={count > 0 ? 'purple' : 'default'} style={{ borderRadius: 20 }}>
+                              {count} item{count === 1 ? '' : 's'}
+                            </Tag>
+                          </Space>
+                          <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #f0f0f5' }}>
+                            <Space size={6} wrap>
+                              <Button size="small" icon={<EyeOutlined />} onClick={() => openGroupedItems(group)}>View Items</Button>
+                              {canManageItems && (
+                                <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(group)}>Edit</Button>
+                              )}
+                            </Space>
+                          </div>
+                        </Card>
+                      </Col>
+                    );
+                  })}
+              </Row>
+              <Pagination
+                style={{ marginTop: 16, textAlign: 'right' }}
+                current={groupsGridPage}
+                pageSize={groupsGridPageSize}
+                total={filteredGroups.length}
+                showSizeChanger
+                pageSizeOptions={['12', '24', '48']}
+                showTotal={(t) => `Total ${t} groups`}
+                onChange={(p, ps) => {
+                  setGroupsGridPage(p);
+                  if (ps !== groupsGridPageSize) {
+                    setGroupsGridPageSize(ps);
+                    setGroupsGridPage(1);
+                  }
+                }}
               />
-            )
-          }}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
-          scroll={{ x: 760 }}
-        />
+            </>
+          )
+        ) : (
+          <Table
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={filteredGroups}
+            locale={{
+              emptyText: (
+                <Empty
+                  description={searchText ? 'No item groups matched your search' : 'No item groups created yet'}
+                />
+              )
+            }}
+            pagination={{ pageSize: 10, showSizeChanger: true }}
+            scroll={{ x: 760 }}
+          />
+        )}
       </Card>
 
       <Modal

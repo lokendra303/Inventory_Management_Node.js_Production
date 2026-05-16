@@ -239,6 +239,8 @@ const Reports = () => {
     { title: 'By', key: 'adjusted_by', width: 120, render: (_, record) => record.adjusted_by_name?.trim() || 'System' }
   ];
 
+  const nilTransferId = (id) => !id || String(id).toLowerCase() === '00000000-0000-0000-0000-000000000000';
+
   const transferColumns = [
     { title: 'Date', dataIndex: 'created_at', key: 'created_at', width: 100, render: (val) => new Date(val).toLocaleDateString() },
     { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 130, ellipsis: true },
@@ -246,7 +248,14 @@ const Reports = () => {
     { title: 'From', dataIndex: 'from_warehouse', key: 'from_warehouse', width: 120, ellipsis: true },
     { title: 'To', dataIndex: 'to_warehouse', key: 'to_warehouse', width: 120, ellipsis: true },
     { title: 'Qty', dataIndex: 'quantity', key: 'quantity', width: 70, render: (val) => formatNumber(val) },
-    { title: 'Transfer ID', dataIndex: 'transfer_id', key: 'transfer_id', width: 120, ellipsis: true }
+    {
+      title: 'Transfer ID',
+      dataIndex: 'transfer_id',
+      key: 'transfer_id',
+      width: 120,
+      ellipsis: true,
+      render: (id) => (nilTransferId(id) ? '—' : id),
+    }
   ];
 
   const filterBar = (children) => (
@@ -436,7 +445,8 @@ const Reports = () => {
                       const dateMatch = (!transferFromDate || !transferToDate) || (() => { const d = new Date(item.created_at); return d >= transferFromDate.startOf('day').toDate() && d <= transferToDate.endOf('day').toDate(); })();
                       return dateMatch;
                     })}
-                    loading={loading} rowKey={(r) => `${r.created_at}-${r.transfer_id}`}
+                    loading={loading}
+                    rowKey={(r) => (r.event_id ? String(r.event_id) : `${r.created_at}-${r.transfer_id}-${r.sku}`)}
                     scroll={{ x: 'max-content' }} size="small" pagination={{ size: 'small', showSizeChanger: false }} />
                 </div>
               )

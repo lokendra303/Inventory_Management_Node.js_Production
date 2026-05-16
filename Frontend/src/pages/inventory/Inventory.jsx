@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, Statistic, Row, Col, Empty, Tag, Timeline, Spin, Badge } from 'antd';
 import { PlusOutlined, EyeOutlined, SearchOutlined, InboxOutlined, WarningOutlined, HistoryOutlined, DollarOutlined, ReloadOutlined, FilterOutlined, CheckCircleOutlined, LockOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
@@ -6,6 +6,9 @@ import { useAuth } from '../../hooks/useAuth.jsx';
 import { formatNumber } from '../../utils/currency.js';
 import { isOpeningStockReceipt } from '../../utils/inventoryReceipt';
 import { useCurrency } from '../../contexts/CurrencyContext';
+import ViewModeToggle from '../../components/common/ViewModeToggle';
+import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
+import InventoryOverviewGrid from '../../components/inventory/InventoryOverviewGrid';
 
 const Inventory = () => {
   const { user } = useAuth();
@@ -20,6 +23,9 @@ const Inventory = () => {
   const [form] = Form.useForm();
   const [viewingRecord, setViewingRecord] = useState(null);
   const [searchText, setSearchText] = useState('');
+  const [overviewViewMode, setOverviewViewMode] = usePersistedViewMode('ims-inventory-overview-view-mode', 'list');
+  const [overviewGridPage, setOverviewGridPage] = useState(1);
+  const [overviewGridPageSize, setOverviewGridPageSize] = useState(12);
   const [stats, setStats] = useState({ totalValue: 0, totalItems: 0, lowStockCount: 0 });
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -34,10 +40,6 @@ const Inventory = () => {
       dataIndex: 'item_name',
       key: 'item_name',
       sorter: (a, b) => (a.item_name || '').localeCompare(b.item_name || ''),
-      filteredValue: searchText ? [searchText] : null,
-      onFilter: (value, record) =>
-        (record.item_name?.toLowerCase().includes(value.toLowerCase()) ||
-         record.sku?.toLowerCase().includes(value.toLowerCase())),
       render: (val, record) => (
         <div>
           <div style={{ fontWeight: 600, color: '#1a1a2e', fontSize: 13 }}>{val}</div>
@@ -198,7 +200,6 @@ const Inventory = () => {
         soId: values.soId || '00000000-0000-0000-0000-000000000000',
         soLineId: values.soLineId || '00000000-0000-0000-0000-000000000000',
         shipmentNumber: values.shipmentNumber || `SHIP-${Date.now()}`,
-        transferId: values.transferId || '00000000-0000-0000-0000-000000000000'
       };
       const response = modalType === 'receive' ? await apiService.post('/inventory/receive', operationData) : null;
       if (response?.success) {
@@ -240,6 +241,20 @@ const Inventory = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const filteredInventory = useMemo(() => {
+    const q = (searchText || '').trim().toLowerCase();
+    if (!q) return inventory;
+    return inventory.filter(
+      (r) =>
+        (r.item_name || '').toLowerCase().includes(q) ||
+        (r.sku || '').toLowerCase().includes(q)
+    );
+  }, [inventory, searchText]);
+
+  useEffect(() => {
+    setOverviewGridPage(1);
+  }, [searchText, selectedWarehouse, overviewViewMode, inventory.length]);
 
   const getEventColor = (eventType) => {
     const type = String(eventType || '').toUpperCase();
@@ -731,11 +746,34 @@ const Inventory = () => {
               <Select.Option key={wh.id} value={wh.id}>{wh.name}</Select.Option>
             ))}
           </Select>
+          <ViewModeToggle
+            value={overviewViewMode}
+            onChange={setOverviewViewMode}
+            listTitle="Table view"
+            gridTitle="Grid view"
+          />
         </div>
 
+        {overviewViewMode === 'grid' ? (
+          <InventoryOverviewGrid
+            rows={filteredInventory}
+            loading={loading}
+            formatCurrency={formatCurrency}
+            page={overviewGridPage}
+            pageSize={overviewGridPageSize}
+            onPageChange={(p, ps) => {
+              setOverviewGridPage(p);
+              if (ps && ps !== overviewGridPageSize) {
+                setOverviewGridPageSize(ps);
+                setOverviewGridPage(1);
+              }
+            }}
+            onView={(record) => openViewModal(record)}
+          />
+        ) : (
         <Table
           columns={columns}
-          dataSource={inventory}
+          dataSource={filteredInventory}
           loading={loading}
           rowKey="id"
           rowClassName={(record) => (record.quantity_available || 0) <= 10 ? 'low-stock-row' : ''}
@@ -751,6 +789,7 @@ const Inventory = () => {
           scroll={{ x: 1000 }}
           style={{ fontSize: 13 }}
         />
+        )}
       </div>
 
       {/* Low stock row style */}
