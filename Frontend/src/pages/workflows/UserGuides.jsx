@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Card, Alert, Row, Col, Tag, Input, Empty, Typography, Divider, Collapse, Button, Tooltip } from 'antd';
-import { BookOutlined, CheckCircleOutlined, ShoppingCartOutlined, ShopOutlined, TagsOutlined, SearchOutlined, DownOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { BookOutlined, CheckCircleOutlined, ShoppingCartOutlined, ShopOutlined, TagsOutlined, SearchOutlined, DownOutlined, MenuFoldOutlined, MenuUnfoldOutlined, InboxOutlined } from '@ant-design/icons';
 import { SalesOrderFlow, PurchaseOrderFlow, PriceListFlow } from './ProcessGuides.jsx';
+import { AddItemGuide } from './AddItemGuide.jsx';
 const { Title, Text } = Typography;
 
 const WorkflowGuide = () => (
@@ -100,13 +101,21 @@ export default function UserGuides() {
       icon: <TagsOutlined />,
       component: <PriceListFlow />,
     },
+    {
+      key: 'add-item-guide',
+      title: 'Add Item — Field Guide',
+      category: 'Inventory',
+      keywords: ['items', 'sku', 'catalog', 'variant', 'price', 'stock', 'add item', 'item form'],
+      icon: <InboxOutlined />,
+      component: <AddItemGuide />,
+    },
   ]), []);
 
   const categories = useMemo(() => Array.from(new Set(guides.map(g => g.category))), [guides]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchText, setSearchText] = useState('');
   const [selectedGuideKey, setSelectedGuideKey] = useState(guides[0]?.key || '');
-  const [openSections, setOpenSections] = useState(['Automation', 'Operations', 'Masters']);
+  const [openSections, setOpenSections] = useState(['Automation', 'Operations', 'Masters', 'Inventory']);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
 
   const filteredGuides = useMemo(() => {
@@ -152,7 +161,7 @@ export default function UserGuides() {
         <div>
           <div style={{ color: '#fff', fontSize: 22, fontWeight: 700 }}>User Guide</div>
           <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>
-            Centralized guides for workflow automation and key business flows
+            Centralized guides for workflows, operations, masters, and the item catalog
           </div>
         </div>
       </div>
