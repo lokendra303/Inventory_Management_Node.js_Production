@@ -77,6 +77,23 @@ export function AddItemGuide() {
         />
       </Card>
 
+      <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} title="Composite item — BOM components (kit recipe)">
+        <Paragraph type="secondary" style={{ marginTop: 0 }}>
+          Shown when <Text strong>Item type</Text> is <Text strong>composite</Text>. Each row is one BOM line—the same meanings as the help panel at the top of the BOM section on the form.
+        </Paragraph>
+        <Table
+          {...tableProps}
+          rowKey="field"
+          columns={[colField, colInfo]}
+          dataSource={[
+            { field: 'Component item', info: 'An existing catalogue item (simple or variant only). Adding it here does not change that item’s record; it only links it into this BOM.' },
+            { field: 'Qty per 1 kit', info: 'How many units of the component belong to exactly one unit of the parent composite. Total need for kits sold = kits × this quantity.' },
+            { field: 'Consume when → Shipment', info: 'Use when component stock should be tied to fulfilment dispatch (warehouse ship/goods issue).' },
+            { field: 'Consume when → Order', info: 'Use when consumption or allocation aligns with placing or confirming the sales order (not yet shipped).' },
+          ]}
+        />
+      </Card>
+
       <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} title="Sales Information">
         <Paragraph type="secondary" style={{ marginTop: 0 }}>
           Customer-facing pricing and tax context for quotations, sales orders, and invoices.
