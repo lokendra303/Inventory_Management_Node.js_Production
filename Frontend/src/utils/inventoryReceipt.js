@@ -25,5 +25,7 @@ export function getInventoryLogReferenceDisplay(log) {
   const ref = log.reference ?? log.reference_number;
   if (ref == null) return null;
   const t = String(ref).trim();
-  return t || null;
+  if (!t) return null;
+  if (t.toLowerCase() === '00000000-0000-0000-0000-000000000000') return null;
+  return t;
 }

@@ -1,6 +1,27 @@
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 
+/** Placeholder IDs in event payloads — must not win over real refs (e.g. shipmentNumber on manual invoice). */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+
+function isMeaningfulReference(value) {
+  if (value == null) return false;
+  const s = String(value).trim();
+  if (!s) return false;
+  if (s.toLowerCase() === NIL_UUID) return false;
+  return true;
+}
+
+/** First non-empty, non-nil reference field from inventory event_data (order matches legacy UI expectations). */
+function pickInventoryEventReference(d) {
+  if (!d || typeof d !== 'object') return null;
+  const keys = ['poId', 'soId', 'grnNumber', 'shipmentNumber', 'transferId'];
+  for (const k of keys) {
+    if (isMeaningfulReference(d[k])) return String(d[k]).trim();
+  }
+  return null;
+}
+
 const ITEM_AUDIT_EVENT_TYPES = {
   item_created: 'ITEM_CREATED',
   item_updated: 'ITEM_UPDATED',
@@ -463,7 +484,7 @@ class ItemActivityService {
           id: log.id,
           type: log.event_type,
           quantity: (() => { try { const d = typeof log.event_data === 'object' ? log.event_data : JSON.parse(log.event_data); return d.quantity; } catch { return null; } })(),
-          reference: (() => { try { const d = typeof log.event_data === 'object' ? log.event_data : JSON.parse(log.event_data); return d.poId || d.soId || d.grnNumber || d.shipmentNumber || d.transferId || null; } catch { return null; } })(),
+          reference: (() => { try { const d = typeof log.event_data === 'object' ? log.event_data : JSON.parse(log.event_data); return pickInventoryEventReference(d); } catch { return null; } })(),
           warehouse: log.warehouse_name,
           performed_by: log.performed_by,
           timestamp: log.created_at,

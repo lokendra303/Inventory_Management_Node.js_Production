@@ -14,7 +14,7 @@ class InvoiceTemplateService {
         details: await this.getInvoiceDetails(invoiceData, type),
         partyDetails: await this.getPartyDetails(institutionId, invoiceData, type),
         lineItems: this.formatLineItems(invoiceData.lines || []),
-        totals: this.calculateTotals(invoiceData.lines || []),
+        totals: this.calculateTotals(invoiceData.lines || [], invoiceData.currency || 'USD'),
         footer: this.getInvoiceFooter(invoiceData),
         metadata: {
           type,
@@ -274,7 +274,7 @@ class InvoiceTemplateService {
   /**
    * Calculate invoice totals
    */
-  calculateTotals(lines) {
+  calculateTotals(lines, currencyCode = 'USD') {
     const formattedLines = this.formatLineItems(lines);
     
     const subtotal = formattedLines.reduce((sum, line) => sum + line.lineTotal, 0);
@@ -282,15 +282,140 @@ class InvoiceTemplateService {
     const totalTaxableAmount = formattedLines.reduce((sum, line) => sum + line.taxableAmount, 0);
     const totalTaxAmount = formattedLines.reduce((sum, line) => sum + line.taxAmount, 0);
     const grandTotal = formattedLines.reduce((sum, line) => sum + line.netAmount, 0);
+    const roundedGrand = this.roundAmount(grandTotal);
 
     return {
       subtotal: this.roundAmount(subtotal),
       totalDiscountAmount: this.roundAmount(totalDiscountAmount),
       totalTaxableAmount: this.roundAmount(totalTaxableAmount),
       totalTaxAmount: this.roundAmount(totalTaxAmount),
-      grandTotal: this.roundAmount(grandTotal),
-      amountInWords: this.convertAmountToWords(grandTotal)
+      grandTotal: roundedGrand,
+      amountInWords: this.convertAmountToWords(roundedGrand, currencyCode)
     };
+  }
+
+  /**
+   * 0–99 to words (shared building block)
+   */
+  _wordsBelowHundred(num) {
+    const n = Math.floor(Number(num) || 0);
+    if (n < 0 || n > 99) return '';
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    if (n < 10) return ones[n];
+    if (n < 20) return teens[n - 10];
+    const t = Math.floor(n / 10);
+    const o = n % 10;
+    return tens[t] + (o ? ` ${ones[o]}` : '');
+  }
+
+  /**
+   * 0–999 to words
+   */
+  _wordsBelowThousand(num) {
+    const n = Math.floor(Number(num) || 0);
+    if (n < 0 || n > 999) return '';
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    if (n < 100) return this._wordsBelowHundred(n);
+    const h = Math.floor(n / 100);
+    const rest = n % 100;
+    return `${ones[h]} Hundred${rest ? ` and ${this._wordsBelowHundred(rest)}` : ''}`;
+  }
+
+  /**
+   * Non-negative integer to words (Indian numbering: Crore, Lakh, Thousand)
+   */
+  _integerToIndianWords(n) {
+    let rem = Math.floor(Number(n) || 0);
+    if (rem === 0) return 'Zero';
+    if (rem < 0) return 'Zero';
+    const parts = [];
+
+    const crore = Math.floor(rem / 10000000);
+    rem %= 10000000;
+    if (crore) parts.push(`${this._wordsBelowThousand(crore)} Crore`.trim());
+
+    const lakh = Math.floor(rem / 100000);
+    rem %= 100000;
+    if (lakh) parts.push(`${this._wordsBelowThousand(lakh)} Lakh`.trim());
+
+    const thousand = Math.floor(rem / 1000);
+    rem %= 1000;
+    if (thousand) parts.push(`${this._wordsBelowThousand(thousand)} Thousand`.trim());
+
+    if (rem) parts.push(this._wordsBelowThousand(rem));
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Non-negative integer to words (short scale: Billion, Million, Thousand)
+   */
+  _integerToWesternWords(n) {
+    let rem = Math.floor(Number(n) || 0);
+    if (rem === 0) return 'Zero';
+    if (rem < 0) return 'Zero';
+    const scales = [
+      [1000000000, 'Billion'],
+      [1000000, 'Million'],
+      [1000, 'Thousand']
+    ];
+    const parts = [];
+    for (const [div, label] of scales) {
+      if (rem >= div) {
+        const v = Math.floor(rem / div);
+        rem %= div;
+        parts.push(`${this._wordsBelowThousand(v)} ${label}`.trim());
+      }
+    }
+    if (rem) parts.push(this._wordsBelowThousand(rem));
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Amount in words for invoice (e.g. INR → "Five Rupees Only", USD → "Five Dollars Only")
+   */
+  convertAmountToWords(amount, currencyCode = 'USD') {
+    const code = String(currencyCode || 'USD').toUpperCase().trim();
+    const rounded = this.roundAmount(Number(amount) || 0);
+    const totalPaisa = Math.round(rounded * 100 + Number.EPSILON);
+    const major = Math.floor(totalPaisa / 100);
+    const minor = totalPaisa % 100;
+
+    const currencyLabels = {
+      INR: { majorSingular: 'Rupee', majorPlural: 'Rupees', minorSingular: 'Paisa', minorPlural: 'Paise', useIndian: true },
+      USD: { majorSingular: 'Dollar', majorPlural: 'Dollars', minorSingular: 'Cent', minorPlural: 'Cents', useIndian: false },
+      GBP: { majorSingular: 'Pound', majorPlural: 'Pounds', minorSingular: 'Penny', minorPlural: 'Pence', useIndian: false },
+      EUR: { majorSingular: 'Euro', majorPlural: 'Euros', minorSingular: 'Cent', minorPlural: 'Cents', useIndian: false },
+      AED: { majorSingular: 'Dirham', majorPlural: 'Dirhams', minorSingular: 'Fils', minorPlural: 'Fils', useIndian: false }
+    };
+    const L = currencyLabels[code] || {
+      majorSingular: 'Unit',
+      majorPlural: 'Units',
+      minorSingular: 'Cent',
+      minorPlural: 'Cents',
+      useIndian: false
+    };
+
+    const intWords = L.useIndian ? this._integerToIndianWords(major) : this._integerToWesternWords(major);
+    const minorWords = minor ? this._wordsBelowHundred(minor) : '';
+
+    let body = '';
+    if (major === 0 && minor === 0) {
+      body = `Zero ${L.majorPlural}`;
+    } else if (major === 0) {
+      body = `${minorWords} ${minor === 1 ? L.minorSingular : L.minorPlural}`;
+    } else if (minor === 0) {
+      const majorLabel = major === 1 ? L.majorSingular : L.majorPlural;
+      body = `${intWords} ${majorLabel}`;
+    } else {
+      const majorLabel = major === 1 ? L.majorSingular : L.majorPlural;
+      const minorLabel = minor === 1 ? L.minorSingular : L.minorPlural;
+      body = `${intWords} ${majorLabel} and ${minorWords} ${minorLabel}`;
+    }
+
+    return `${body} Only`;
   }
 
   /**
@@ -366,16 +491,6 @@ class InvoiceTemplateService {
    */
   roundAmount(amount) {
     return Math.round((amount + Number.EPSILON) * 100) / 100;
-  }
-
-  /**
-   * Convert amount to words (basic implementation)
-   */
-  convertAmountToWords(amount) {
-    // This is a simplified implementation
-    // You can integrate a proper number-to-words library
-    const rounded = Math.round(amount);
-    return `${rounded} Only`;
   }
 
   /**

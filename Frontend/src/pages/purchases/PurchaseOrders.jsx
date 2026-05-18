@@ -1,15 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker, Tag } from 'antd';
 import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from '@ant-design/icons';
 import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
-import { formatQuantity, formatAmount } from '../../utils/numberFormat';
+import { formatQuantity } from '../../utils/numberFormat';
+import { getCurrencies } from '../../utils/currency';
 import TransactionHistory from '../../components/inventory/TransactionHistory';
 import { useTaxRates } from '../../hooks/useTaxRates';
+import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
+import { amountInDocumentCurrency, convertAmountBetweenCurrencies } from '../../utils/commercialDocument';
+import DocumentTotalsSummary from '../../components/business/DocumentTotalsSummary';
+import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
+
+const DEFAULT_LINE = { discountRate: 0, taxRateId: undefined };
 
 const PurchaseOrders = () => {
   const { currency, formatCurrency } = useCurrency();
+  const institutionCurrency = currency;
   const { taxRates, getRateById } = useTaxRates();
   const [pos, setPOs] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -31,6 +39,43 @@ const PurchaseOrders = () => {
   const [selectedPOForCancel, setSelectedPOForCancel] = useState(null);
   const [form] = Form.useForm();
   const [receiveForm] = Form.useForm();
+  const {
+    documentCurrency,
+    institutionCurrency: instCcy,
+    exchangeRate,
+    syncRateToForm,
+  } = useCommercialDocumentCurrency(form);
+  const watchedLines = Form.useWatch('lines', form) || [];
+
+  const getLineTaxRate = useCallback(
+    (line) => (line?.taxRateId ? parseFloat(getRateById(line.taxRateId)?.rate || 0) : 0),
+    [getRateById]
+  );
+
+  const openCreateModal = () => {
+    setEditingPO(null);
+    form.resetFields();
+    form.setFieldsValue({
+      currency: institutionCurrency,
+      exchangeRate: 1,
+      orderDate: moment(),
+      lines: [{ ...DEFAULT_LINE }],
+    });
+    setModalVisible(true);
+  };
+
+  const convertPoLineCosts = async (fromCcy, toCcy) => {
+    const lines = form.getFieldValue('lines') || [];
+    const updated = await Promise.all(
+      lines.map(async (line) => {
+        const v = Number(line?.unitCost);
+        if (!Number.isFinite(v) || v === 0) return line;
+        const converted = await convertAmountBetweenCurrencies(apiService, v, fromCcy, toCcy);
+        return { ...line, unitCost: converted };
+      })
+    );
+    form.setFieldsValue({ lines: updated });
+  };
   const [searchText, setSearchText] = useState('');
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate] = useState(null);
@@ -117,6 +162,7 @@ const PurchaseOrders = () => {
         vendorName: selectedVendor?.display_name || selectedVendor?.company_name || 'Unknown Vendor',
         orderDate: orderDate,
         expectedDate: expectedDate,
+        exchangeRate: values.exchangeRate || 1,
         lines: (values.lines || []).map(line => {
           const taxRate = line.taxRateId ? parseFloat(getRateById(line.taxRateId)?.rate || 0) : 0;
           return { ...line, taxRate, taxRateId: line.taxRateId || null };
@@ -295,15 +341,18 @@ const PurchaseOrders = () => {
         form.setFieldsValue({
           poNumber: poData.po_number,
           vendorId: poData.vendor_id,
-          currency: poData.currency,
+          currency: poData.currency || institutionCurrency,
+          exchangeRate: poData.exchange_rate || 1,
           orderDate: poData.order_date ? moment(poData.order_date) : null,
           expectedDate: poData.expected_date ? moment(poData.expected_date) : null,
           lines: poData.lines?.map(line => ({
             itemId: line.item_id,
             warehouseId: line.warehouse_id,
             quantity: line.quantity_ordered,
-            unitCost: line.unit_cost
-          })) || []
+            unitCost: line.unit_cost,
+            taxRateId: line.tax_rate_id || undefined,
+            discountRate: line.discount_rate || 0,
+          })) || [{ ...DEFAULT_LINE }]
         });
         
         setModalVisible(true);
@@ -437,7 +486,7 @@ const PurchaseOrders = () => {
       <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Purchase Orders</h1>
       <Card>
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>Create PO</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>Create PO</Button>
           <Input placeholder="Search PO or vendor..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 220 }} allowClear />
           <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
           <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
@@ -483,14 +532,30 @@ const PurchaseOrders = () => {
             </Select>
           </Form.Item>
           
-          <Form.Item name="currency" label="Currency" initialValue="USD">
-            <Select placeholder="Select currency">
-              <Select.Option value="USD">USD</Select.Option>
-              <Select.Option value="EUR">EUR</Select.Option>
-              <Select.Option value="GBP">GBP</Select.Option>
-              <Select.Option value="INR">INR</Select.Option>
+          <Form.Item name="currency" label="Currency" initialValue={institutionCurrency}>
+            <Select
+              showSearch
+              optionFilterProp="children"
+              onChange={async (value) => {
+                const prev = form.getFieldValue('currency');
+                if (prev && prev !== value) {
+                  await convertPoLineCosts(prev, value);
+                }
+              }}
+            >
+              {getCurrencies().map((c) => (
+                <Select.Option key={c.code} value={c.code}>
+                  {c.code} — {c.symbol} {c.name}
+                </Select.Option>
+              ))}
             </Select>
           </Form.Item>
+
+          <CommercialExchangeRateField
+            documentCurrency={documentCurrency}
+            institutionCurrency={instCcy}
+            onRateChange={syncRateToForm}
+          />
           
           <Form.Item name="orderDate" label="Order Date" rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} />
@@ -566,7 +631,13 @@ const PurchaseOrders = () => {
 
                                   lines[name] = {
                                     ...lines[name],
-                                    unitCost: selectedItem.cost_price || 0,
+                                    unitCost: amountInDocumentCurrency(
+                                      selectedItem.cost_price || 0,
+                                      documentCurrency || instCcy,
+                                      instCcy,
+                                      exchangeRate
+                                    ),
+                                    taxRateId: undefined,
                                     warehouseId: bestWarehouseId
                                   };
                                   form.setFieldsValue({ lines });
@@ -655,7 +726,7 @@ const PurchaseOrders = () => {
                             label="Tax"
                             style={{ marginBottom: 0, width: 150 }}
                           >
-                            <Select placeholder="Select tax" allowClear
+                            <Select placeholder="No tax (0%)" allowClear
                               onChange={() => form.setFieldsValue({})}>
                               {taxRates.map(t => (
                                 <Select.Option key={t.id} value={t.id}>
@@ -698,13 +769,22 @@ const PurchaseOrders = () => {
                   );
                 })}
                 <Form.Item>
-                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                  <Button type="dashed" onClick={() => add({ ...DEFAULT_LINE })} block icon={<PlusOutlined />}>
                     Add Line Item
                   </Button>
                 </Form.Item>
               </>
             )}
           </Form.List>
+
+          <DocumentTotalsSummary
+            lines={watchedLines}
+            documentCurrency={documentCurrency || instCcy}
+            institutionCurrency={instCcy}
+            exchangeRate={exchangeRate}
+            unitField="unitCost"
+            getTaxRate={getLineTaxRate}
+          />
           
           <Form.Item>
             <Space>
@@ -894,7 +974,7 @@ const PurchaseOrders = () => {
                 />
               </div>
             )}
-            <TransactionHistory data={poHistory} loading={loadingHistory} currency={selectedPOForView.currency || currency} />
+            <TransactionHistory data={poHistory} loading={loadingHistory} currency={selectedPOForView?.currency || institutionCurrency} />
           </div>
         )}
       </Modal>

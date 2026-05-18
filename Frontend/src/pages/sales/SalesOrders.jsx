@@ -1,16 +1,23 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Card, Table, Button, Space, Modal, Form, Input, Select,
   InputNumber, message, DatePicker, Tag,
 } from "antd";
 import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from "@ant-design/icons";
+import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { useTaxRates } from '../../hooks/useTaxRates';
-import { getCurrencies } from '../../utils/currency';
+import { getCurrencies, getCurrencySymbol } from '../../utils/currency';
+import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
+import { amountInDocumentCurrency, convertAmountBetweenCurrencies } from '../../utils/commercialDocument';
+import DocumentTotalsSummary from '../../components/business/DocumentTotalsSummary';
+import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
+
+const DEFAULT_SO_LINE = { discountRate: 0, taxRateId: undefined };
 
 const SalesOrders = () => {
-  const { formatCurrency } = useCurrency();
+  const { currency: institutionCurrency, formatCurrency } = useCurrency();
   const { taxRates, getRateById } = useTaxRates();
   const [sos, setSOs] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -28,6 +35,46 @@ const SalesOrders = () => {
   const [cancellationReason, setCancellationReason] = useState('');
   const [selectedSOForCancel, setSelectedSOForCancel] = useState(null);
   const [form] = Form.useForm();
+  const {
+    documentCurrency,
+    institutionCurrency: instCcy,
+    exchangeRate,
+    syncRateToForm,
+  } = useCommercialDocumentCurrency(form);
+  const watchedLines = Form.useWatch('lines', form) || [];
+
+  const getLineTaxRate = useCallback(
+    (line) => (line?.taxRateId ? parseFloat(getRateById(line.taxRateId)?.rate || 0) : 0),
+    [getRateById]
+  );
+
+  const openCreateModal = () => {
+    form.resetFields();
+    form.setFieldsValue({
+      currency: institutionCurrency,
+      exchangeRate: 1,
+      channel: 'direct',
+      orderDate: moment(),
+      lines: [{ ...DEFAULT_SO_LINE }],
+    });
+    setSelectedPriceListId(null);
+    setPriceListItemMap({});
+    setModalVisible(true);
+  };
+
+  const convertSoLinePrices = async (fromCcy, toCcy) => {
+    const lines = form.getFieldValue('lines') || [];
+    const updated = await Promise.all(
+      lines.map(async (line) => {
+        const v = Number(line?.unitPrice);
+        if (!Number.isFinite(v) || v === 0) return line;
+        const converted = await convertAmountBetweenCurrencies(apiService, v, fromCcy, toCcy);
+        return { ...line, unitPrice: converted };
+      })
+    );
+    form.setFieldsValue({ lines: updated });
+  };
+
   const [searchText, setSearchText] = useState('');
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate] = useState(null);
@@ -43,16 +90,23 @@ const SalesOrders = () => {
 
   const getLineUnitPrice = (item, variantId = null) => {
     if (!item) return 0;
+    let raw = 0;
     const priceListEntry = priceListItemMap[item.id];
-    if (priceListEntry != null) return priceListEntry.unitPrice;
-
-    if (variantId && Array.isArray(item.variant_options)) {
+    if (priceListEntry != null) {
+      raw = priceListEntry.unitPrice;
+    } else if (variantId && Array.isArray(item.variant_options)) {
       const variantOption = item.variant_options.find((option) => option.id === variantId);
       const variantSellingPrice = Number(variantOption?.sellingPrice || 0);
-      if (variantSellingPrice > 0) return variantSellingPrice;
+      raw = variantSellingPrice > 0 ? variantSellingPrice : Number(item.selling_price || 0);
+    } else {
+      raw = Number(item.selling_price || 0);
     }
-
-    return Number(item.selling_price || 0);
+    return amountInDocumentCurrency(
+      raw,
+      documentCurrency || instCcy,
+      instCcy,
+      exchangeRate
+    );
   };
 
   const fetchPriceLists = async () => {
@@ -421,7 +475,7 @@ const SalesOrders = () => {
       <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Sales Orders</h1>
       <Card>
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>Create SO</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>Create SO</Button>
           <Input placeholder="Search SO or customer..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 220 }} allowClear />
           <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
           <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
@@ -449,7 +503,7 @@ const SalesOrders = () => {
         />
       </Card>
 
-      <Modal title="Create Sales Order" open={modalVisible} onCancel={() => { setModalVisible(false); setSelectedPriceListId(null); setPriceListItemMap({}); }} footer={null} width="min(800px, 96vw)" style={{ top: 16 }}>
+      <Modal title="Create Sales Order" open={modalVisible} onCancel={() => { setModalVisible(false); setSelectedPriceListId(null); setPriceListItemMap({}); form.resetFields(); }} footer={null} width="min(800px, 96vw)" style={{ top: 16 }}>
         <Form form={form} layout="vertical" onFinish={handleCreateSO}>
           <Form.Item name="soNumber" label="SO Number">
             <Input placeholder="Auto-generated if empty" />
@@ -504,7 +558,7 @@ const SalesOrders = () => {
             </Form.Item>
           )}
 
-          <Form.Item name="currency" label="Currency" initialValue="INR">
+          <Form.Item name="currency" label="Currency" initialValue={institutionCurrency}>
             <Select
               showSearch
               placeholder="Search currency..."
@@ -512,6 +566,12 @@ const SalesOrders = () => {
               filterOption={(input, option) =>
                 option.children.toLowerCase().includes(input.toLowerCase())
               }
+              onChange={async (value) => {
+                const prev = form.getFieldValue('currency');
+                if (prev && prev !== value) {
+                  await convertSoLinePrices(prev, value);
+                }
+              }}
             >
               {getCurrencies().map(c => (
                 <Select.Option key={c.code} value={c.code}>
@@ -520,6 +580,12 @@ const SalesOrders = () => {
               ))}
             </Select>
           </Form.Item>
+
+          <CommercialExchangeRateField
+            documentCurrency={documentCurrency}
+            institutionCurrency={instCcy}
+            onRateChange={syncRateToForm}
+          />
 
           <Form.Item name="channel" label="Sales Channel" initialValue="direct">
             <Select placeholder="Select channel">
@@ -656,6 +722,7 @@ const SalesOrders = () => {
                                     itemVariantId: defaultVariantId,
                                     unitPrice: getLineUnitPrice(sel, defaultVariantId),
                                     discountRate: getLineDiscountRate(itemId),
+                                    taxRateId: undefined,
                                   };
                                   form.setFieldsValue({ lines });
                                 }
@@ -842,7 +909,7 @@ const SalesOrders = () => {
                             label="Tax"
                             style={{ marginBottom: 0, width: 150 }}
                           >
-                            <Select placeholder="Select tax" allowClear
+                            <Select placeholder="No tax (0%)" allowClear
                               onChange={() => form.setFieldsValue({})}>
                               {taxRates.map(t => (
                                 <Select.Option key={t.id} value={t.id}>
@@ -910,7 +977,7 @@ const SalesOrders = () => {
                 <Form.Item>
                   <Button
                     type="dashed"
-                    onClick={() => add()}
+                    onClick={() => add({ ...DEFAULT_SO_LINE })}
                     block
                     icon={<PlusOutlined />}
                   >
@@ -920,6 +987,15 @@ const SalesOrders = () => {
               </>
             )}
           </Form.List>
+
+          <DocumentTotalsSummary
+            lines={watchedLines}
+            documentCurrency={documentCurrency || instCcy}
+            institutionCurrency={instCcy}
+            exchangeRate={exchangeRate}
+            unitField="unitPrice"
+            getTaxRate={getLineTaxRate}
+          />
 
           <Form.Item>
             <Space>

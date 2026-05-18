@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Form,
   Input,
@@ -24,23 +24,58 @@ import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice, getCurrencySymbol, getCurrencies } from '../../utils/currency';
+import {
+  amountInDocumentCurrency as amountInInvoiceCurrency,
+  averageCostInDocumentCurrency as averageCostInInvoiceCurrency,
+  calculateCommercialTotals,
+  fetchLiveExchangeRate,
+  roundMoney,
+} from '../../utils/commercialDocument';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 
+const UUID_LIKE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Items list often returns `unit` as a units-table FK (UUID). Do not render that as a label. */
+function formatItemUnitForDisplay(unit) {
+  if (unit == null || unit === '') return '';
+  const s = String(unit).trim();
+  if (UUID_LIKE.test(s)) return '';
+  if (s.length >= 24 && /^[0-9a-f-]+$/i.test(s)) return '';
+  return s;
+}
+
+function formatStockQuantity(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return '0';
+  if (x === 0) return '0';
+  return x % 1 === 0
+    ? x.toLocaleString(undefined, { maximumFractionDigits: 0 })
+    : x.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
 const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   const { currency } = useCurrency();
   const [form] = Form.useForm();
+  const shipFromWarehouseId = Form.useWatch('shipFromWarehouseId', form);
   const [loading, setLoading] = useState(false);
   const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
-  const [allItemStocks, setAllItemStocks] = useState({});
+  /** Per item + warehouse: available qty and WAC from inventory_projections (GET /inventory). */
+  const [inventoryByItemWarehouse, setInventoryByItemWarehouse] = useState({});
   const [selectedParty, setSelectedParty] = useState(null);
-  const [invoiceLines, setInvoiceLines] = useState([{ key: 1 }]);
+  const [invoiceLines, setInvoiceLines] = useState([{ key: 1, taxRate: 0, discountRate: 0 }]);
   const [invoiceCurrency, setInvoiceCurrency] = useState(currency || 'USD');
   const [exchangeRate, setExchangeRate] = useState(1);
+  /** When true, auto-fetch live FX for invoice↔institution pair. False while editing until user changes currency or clicks refresh. */
+  const allowLiveExchangeRef = useRef(true);
+  useEffect(() => {
+    allowLiveExchangeRef.current = !invoiceId;
+  }, [invoiceId]);
   const [taxRates, setTaxRates] = useState([]);
   const [priceListItemMap, setPriceListItemMap] = useState({}); // loaded from /tax/rates
   const [totals, setTotals] = useState({
@@ -52,16 +87,22 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
   const fetchAllStocks = async () => {
     try {
-      const response = await apiService.get('/inventory');
+      const response = await apiService.get('/inventory', {
+        params: { limit: 10000, offset: 0 }
+      });
       if (response.success) {
-        const stockByItemAndWarehouse = {};
-        response.data.forEach((inv) => {
-          if (!stockByItemAndWarehouse[inv.item_id]) {
-            stockByItemAndWarehouse[inv.item_id] = {};
-          }
-          stockByItemAndWarehouse[inv.item_id][inv.warehouse_id] = inv.quantity_available || 0;
+        const map = {};
+        (response.data || []).forEach((inv) => {
+          const itemId = inv.item_id;
+          const whId = inv.warehouse_id;
+          if (!itemId || !whId) return;
+          if (!map[itemId]) map[itemId] = {};
+          map[itemId][whId] = {
+            quantityAvailable: Number(inv.quantity_available || 0),
+            averageCost: Number(inv.average_cost != null ? inv.average_cost : 0)
+          };
         });
-        setAllItemStocks(stockByItemAndWarehouse);
+        setInventoryByItemWarehouse(map);
       }
     } catch (error) {
       console.error('Failed to fetch stock', error);
@@ -126,22 +167,41 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     } catch { /* silent — tax rates are optional */ }
   };
 
+  const convertLinePricesToCurrency = useCallback(async (fromCcy, toCcy) => {
+    if (!fromCcy || !toCcy || fromCcy === toCcy) return;
+    const priceKey = type === 'purchase' ? 'unitCost' : 'unitPrice';
+    try {
+      const rate = await fetchLiveExchangeRate(apiService, fromCcy, toCcy);
+      setInvoiceLines((prev) =>
+        prev.map((line) => {
+          const v = Number(line[priceKey]);
+          if (!Number.isFinite(v) || v === 0) return line;
+          return { ...line, [priceKey]: roundMoney(v * rate) };
+        })
+      );
+    } catch {
+      /* keep existing prices */
+    }
+  }, [type]);
+
   const handleItemSelect = (key, itemId) => {
     const item = items.find(i => i.id === itemId);
     if (item) {
       const priceField    = type === 'purchase' ? 'cost_price'   : 'selling_price';
       const unitPriceKey  = type === 'purchase' ? 'unitCost'     : 'unitPrice';
-      const basePrice     = item[priceField] || 0;
+      const rawPrice      = item[priceField] || 0;
       const priceListPrice = type === 'sales' && priceListItemMap[itemId] != null ? priceListItemMap[itemId] : null;
+      const baseInInst    = priceListPrice != null ? priceListPrice : rawPrice;
+      const unitAmount    = amountInInvoiceCurrency(baseInInst, invoiceCurrency, currency, exchangeRate);
       setInvoiceLines(invoiceLines.map(line =>
         line.key === key ? {
           ...line,
           itemId:            item.id,
           itemName:          item.name,
-          [unitPriceKey]:    priceListPrice != null ? priceListPrice : basePrice,
+          [unitPriceKey]:    unitAmount,
           hsn_code:          item.hsn_code    || '',
           unit:              item.unit        || '',
-          taxRate:           parseFloat(item.tax_rate) || 0,
+          taxRate:           0,
           discountRate:      line.discountRate || 0,
           stockQuantity:     item.stock_quantity    || 0,
           reservedQuantity:  item.reserved_quantity || 0,
@@ -214,7 +274,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
   const addInvoiceLine = () => {
     const newKey = Math.max(...invoiceLines.map(line => line.key)) + 1;
-    setInvoiceLines([...invoiceLines, { key: newKey }]);
+    setInvoiceLines([...invoiceLines, { key: newKey, taxRate: 0, discountRate: 0 }]);
   };
 
   const removeInvoiceLine = (key) => {
@@ -230,37 +290,49 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   };
 
   const calculateTotals = useCallback(() => {
-    let subtotal = 0;
-    let totalDiscount = 0;
-    let totalTax = 0;
+    setTotals(
+      calculateCommercialTotals(invoiceLines, {
+        getUnitAmount: (line) =>
+          type === 'purchase' ? Number(line.unitCost || 0) : Number(line.unitPrice || 0),
+        getTaxRate: (line) => Number(line.taxRate || 0),
+        getDiscountRate: (line) => Number(line.discountRate || 0),
+      })
+    );
+  }, [invoiceLines, type]);
 
-    invoiceLines.forEach(line => {
-      const quantity = line.quantity || 0;
-      const unitPrice = type === 'purchase' ? (line.unitCost || 0) : (line.unitPrice || 0);
-      const discountRate = line.discountRate || 0;
-      const taxRate = line.taxRate || 0;
+  const fetchAndApplyLiveExchangeRate = useCallback(async (silent = false, isCancelled = () => false) => {
+    if (invoiceCurrency === currency) {
+      setExchangeRate(1);
+      form.setFieldsValue({ exchangeRate: 1 });
+      return;
+    }
+    try {
+      const rounded = await fetchLiveExchangeRate(apiService, invoiceCurrency, currency);
+      if (isCancelled()) return;
+      setExchangeRate(rounded);
+      form.setFieldsValue({ exchangeRate: rounded });
+      if (!silent) message.success('Exchange rate updated from live market');
+    } catch (e) {
+      console.warn('Live exchange rate fetch failed', e);
+      if (!silent) message.warning('Live exchange rate unavailable. Enter the rate manually.');
+    }
+  }, [invoiceCurrency, currency, form]);
 
-      const lineTotal = quantity * unitPrice;
-      const discountAmount = (lineTotal * discountRate) / 100;
-      const taxableAmount = lineTotal - discountAmount;
-      const taxAmount = (taxableAmount * taxRate) / 100;
-
-      subtotal += lineTotal;
-      totalDiscount += discountAmount;
-      totalTax += taxAmount;
-    });
-
-    const grandTotal = subtotal - totalDiscount + totalTax;
-    // Only apply exchange rate if invoice currency differs from system currency
-    const rate = (invoiceCurrency !== currency && exchangeRate > 0) ? exchangeRate : 1;
-
-    setTotals({
-      subtotal:      Math.round(subtotal      * rate * 100) / 100,
-      totalDiscount: Math.round(totalDiscount * rate * 100) / 100,
-      totalTax:      Math.round(totalTax      * rate * 100) / 100,
-      grandTotal:    Math.round(grandTotal    * rate * 100) / 100
-    });
-  }, [invoiceLines, exchangeRate, type]);
+  useEffect(() => {
+    if (invoiceCurrency === currency) {
+      setExchangeRate(1);
+      form.setFieldsValue({ exchangeRate: 1 });
+      return undefined;
+    }
+    if (invoiceId && !allowLiveExchangeRef.current) {
+      return undefined;
+    }
+    let cancelled = false;
+    void fetchAndApplyLiveExchangeRate(true, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [invoiceCurrency, currency, invoiceId, form, fetchAndApplyLiveExchangeRate]);
 
   const handleSave = async () => {
     try {
@@ -418,6 +490,13 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         
         const invoiceCurr = invoice.currency || 'INR';
         setInvoiceCurrency(invoiceCurr);
+        const savedEr = parseFloat(invoice.exchange_rate);
+        const er = Number.isFinite(savedEr) && savedEr > 0 ? savedEr : 1;
+        if (invoiceCurr === currency) {
+          setExchangeRate(1);
+        } else {
+          setExchangeRate(er);
+        }
         form.setFieldsValue({
           invoiceNumber: invoice.invoice_number,
           invoiceDate:   invoice.invoice_date ? dayjs(invoice.invoice_date) : null,
@@ -425,6 +504,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           [formPartyIdField]:   invoice[partyIdField],
           [formPartyNameField]: invoice[partyNameField],
           currency:  invoiceCurr,
+          exchangeRate: invoiceCurr === currency ? 1 : er,
           reference: invoice.reference || '',
           notes:     invoice.notes     || ''
         });
@@ -447,6 +527,9 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               lineData.unitCost = line.unit_cost;
             } else {
               lineData.unitPrice = line.unit_price;
+              if (line.warehouse_id) {
+                lineData.warehouseId = line.warehouse_id;
+              }
             }
             return lineData;
           }));
@@ -478,7 +561,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         if (type === 'sales') {
           const selectedWarehouseId = record.warehouseId;
           return (
-            <div>
+            <div style={{ minWidth: 0 }}>
               <Select
                 showSearch
                 value={record.itemId}
@@ -494,13 +577,16 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 {items.map(item => {
                   let available = 0;
                   if (selectedWarehouseId) {
-                    available = allItemStocks[item.id]?.[selectedWarehouseId] || 0;
+                    available = Number(inventoryByItemWarehouse[item.id]?.[selectedWarehouseId]?.quantityAvailable || 0);
                   } else {
-                    available = Object.values(allItemStocks[item.id] || {}).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                    available = Object.values(inventoryByItemWarehouse[item.id] || {}).reduce(
+                      (sum, cell) => sum + (Number(cell?.quantityAvailable) || 0),
+                      0
+                    );
                   }
                   return (
                     <Option key={item.id} value={item.id}>
-                      {item.sku} - {item.name} (Avail: {available})
+                      {item.sku} — {item.name} (Avail: {formatStockQuantity(available)})
                     </Option>
                   );
                 })}
@@ -511,16 +597,27 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 </div>
               )}
               {record.itemId && selectedWarehouseId && (
-                <div style={{ fontSize: '11px', marginTop: 4, color: '#666' }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    marginTop: 8,
+                    paddingTop: 6,
+                    lineHeight: 1.45,
+                    borderTop: '1px solid #f0f0f0',
+                    color: '#595959'
+                  }}
+                >
                   {(() => {
                     const item = items.find(i => i.id === record.itemId);
                     if (!item) return null;
-                    const available = allItemStocks[record.itemId]?.[selectedWarehouseId] || 0;
+                    const available = Number(inventoryByItemWarehouse[record.itemId]?.[selectedWarehouseId]?.quantityAvailable || 0);
                     const qty = record.quantity || 0;
+                    const unitSuffix = formatItemUnitForDisplay(item.unit);
                     return (
-                      <span style={{ color: qty > available ? '#ff4d4f' : '#52c41a' }}>
-                        Available: {available} {item.unit || ''}
-                        {qty > available && ' - Insufficient stock!'}
+                      <span style={{ color: qty > available ? '#ff4d4f' : '#389e0d' }}>
+                        Available: {formatStockQuantity(available)}
+                        {unitSuffix ? ` ${unitSuffix}` : ' units'}
+                        {qty > available && ' — insufficient stock'}
                       </span>
                     );
                   })()}
@@ -579,31 +676,32 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         const availableWarehouses = warehouses.filter((wh) => wh.status === 'active');
 
         return (
-          <Select
-            value={value}
-            placeholder="Select warehouse"
-            onChange={(val) => updateInvoiceLine(record.key, 'warehouseId', val)}
-            style={{ width: '100%' }}
-          >
-            {availableWarehouses.map(wh => {
-              const stock = allItemStocks[selectedItemId]?.[wh.id] || 0;
-              return (
-                <Option key={wh.id} value={wh.id} label={wh.name}>
-                  <div>
-                    <strong>{wh.name}</strong>
-                    {selectedItemId && (
-                      <>
-                        <br />
-                        <span style={{ fontSize: '12px', color: '#52c41a' }}>
-                          Available: {stock} units
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </Option>
-              );
-            })}
-          </Select>
+          <div style={{ minWidth: 0 }}>
+            <Select
+              value={value}
+              placeholder="Select warehouse"
+              onChange={(val) => updateInvoiceLine(record.key, 'warehouseId', val)}
+              style={{ width: '100%' }}
+              optionLabelProp="label"
+              popupMatchSelectWidth={false}
+            >
+              {availableWarehouses.map(wh => {
+                const stock = Number(inventoryByItemWarehouse[selectedItemId]?.[wh.id]?.quantityAvailable || 0);
+                return (
+                  <Option key={wh.id} value={wh.id} label={wh.name}>
+                    <div style={{ lineHeight: 1.35, padding: '2px 0' }}>
+                      <div style={{ fontWeight: 600 }}>{wh.name}</div>
+                      {selectedItemId && !String(selectedItemId).includes('manual_') && (
+                        <div style={{ fontSize: 12, color: '#389e0d', marginTop: 2 }}>
+                          Avail: {formatStockQuantity(stock)} units
+                        </div>
+                      )}
+                    </div>
+                  </Option>
+                );
+              })}
+            </Select>
+          </div>
         );
       }
     }] : []),
@@ -633,6 +731,71 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         />
       )
     },
+    ...(type === 'sales' ? [
+      {
+        title: 'Avg cost (WH)',
+        key: 'avgCostWh',
+        width: 118,
+        render: (_, record) => {
+          const wid = record.warehouseId || shipFromWarehouseId;
+          const manual = record.itemId && String(record.itemId).includes('manual_');
+          if (!record.itemId || manual || !wid) {
+            return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+          }
+          const avgRaw = inventoryByItemWarehouse[record.itemId]?.[wid]?.averageCost;
+          const n = averageCostInInvoiceCurrency(avgRaw, invoiceCurrency, currency, exchangeRate);
+          if (n == null || !Number.isFinite(n) || n <= 0) {
+            return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+          }
+          const sym = getCurrencySymbol(invoiceCurrency);
+          return (
+            <Text
+              style={{ fontSize: 13 }}
+              title={
+                invoiceCurrency !== currency
+                  ? `Weighted average cost in stock (${currency}), converted to ${invoiceCurrency} using the exchange rate above.`
+                  : 'Weighted average cost for this item in the selected warehouse (from stock).'
+              }
+            >
+              {sym}{n.toFixed(2)}
+            </Text>
+          );
+        }
+      },
+      {
+        title: 'vs avg (excl. disc.)',
+        key: 'marginVsAvg',
+        width: 132,
+        render: (_, record) => {
+          const wid = record.warehouseId || shipFromWarehouseId;
+          const manual = record.itemId && String(record.itemId).includes('manual_');
+          const qty = Number(record.quantity) || 0;
+          const unitPrice = Number(record.unitPrice) || 0;
+          if (!record.itemId || manual || !wid) {
+            return <Text type="secondary" style={{ fontSize: 11 }}>Select item and warehouse</Text>;
+          }
+          const avgRaw = inventoryByItemWarehouse[record.itemId]?.[wid]?.averageCost;
+          const avgN = averageCostInInvoiceCurrency(avgRaw, invoiceCurrency, currency, exchangeRate);
+          if (avgN == null || !Number.isFinite(avgN) || avgN <= 0) {
+            return <Text type="secondary" style={{ fontSize: 11 }}>No avg cost</Text>;
+          }
+          const perUnit = unitPrice - avgN;
+          const line = perUnit * qty;
+          const sym = getCurrencySymbol(invoiceCurrency);
+          const isProfit = perUnit >= 0;
+          return (
+            <div title="Unit price minus average stock cost (converted to invoice currency), before line discount and tax.">
+              <Text type={isProfit ? 'success' : 'danger'} style={{ fontSize: 12, fontWeight: 600 }}>
+                {isProfit ? 'Profit' : 'Loss'} {sym}{Math.abs(perUnit).toFixed(2)}/u
+              </Text>
+              <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                Line: {isProfit ? '+' : '−'}{sym}{Math.abs(line).toFixed(2)}
+              </div>
+            </div>
+          );
+        }
+      }
+    ] : []),
     {
       title: 'Discount %',
       dataIndex: 'discountRate',
@@ -760,7 +923,12 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                     option.children?.toString().toLowerCase().includes(input.toLowerCase())
                   }
                   value={invoiceCurrency}
-                  onChange={(value) => {
+                  onChange={async (value) => {
+                    const prev = invoiceCurrency;
+                    if (prev && prev !== value) {
+                      await convertLinePricesToCurrency(prev, value);
+                    }
+                    allowLiveExchangeRef.current = true;
                     setInvoiceCurrency(value);
                     if (value === currency) {
                       setExchangeRate(1);
@@ -780,11 +948,17 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               {invoiceCurrency !== currency && (
                 <Form.Item
                   name="exchangeRate"
-                  label={`Exchange Rate (1 ${invoiceCurrency} = ? ${currency})`}
+                  label={`Exchange rate (1 ${invoiceCurrency} = ? ${currency})`}
                   initialValue={1}
+                  tooltip={`Prefilled from live rates (server: open.er-api.com). This is how many ${currency} equal one ${invoiceCurrency}. Average cost from stock is in ${currency}; margin uses this rate to compare in ${invoiceCurrency}.`}
+                  extra={(
+                    <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => void fetchAndApplyLiveExchangeRate(false, () => false)}>
+                      Refresh live rate
+                    </Button>
+                  )}
                   rules={[{ required: true, message: 'Exchange rate is required' }]}
                 >
-                  <InputNumber min={0.0001} precision={4} style={{ width: '100%' }}
+                  <InputNumber min={0.0001} precision={6} style={{ width: '100%' }}
                     onChange={(value) => setExchangeRate(value || 1)} />
                 </Form.Item>
               )}
@@ -863,7 +1037,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             <Col xs={24} sm={12} md={8}>
               <Card size="small">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text>Subtotal:</Text>
+                  <Text>Subtotal{invoiceCurrency !== currency ? ` (${invoiceCurrency})` : ''}:</Text>
                   <Text>{getCurrencySymbol(invoiceCurrency)}{totals.subtotal.toFixed(2)}</Text>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -875,9 +1049,19 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                   <Text>{getCurrencySymbol(invoiceCurrency)}{totals.totalTax.toFixed(2)}</Text>
                 </div>
                 <Divider style={{ margin: '8px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Text strong>Grand Total:</Text>
-                  <Text strong style={{ fontSize: '16px' }}>{getCurrencySymbol(invoiceCurrency)}{totals.grandTotal.toFixed(2)}</Text>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Text strong>Grand Total{invoiceCurrency !== currency ? ` (${invoiceCurrency})` : ''}:</Text>
+                  <div style={{ textAlign: 'right' }}>
+                    <Text strong style={{ fontSize: '16px' }}>
+                      {getCurrencySymbol(invoiceCurrency)}{totals.grandTotal.toFixed(2)}
+                    </Text>
+                    {invoiceCurrency !== currency && Number(exchangeRate) > 0 && (
+                      <div style={{ fontSize: 11, color: '#666', marginTop: 4, fontWeight: 400 }}>
+                        ≈ {getCurrencySymbol(currency)}
+                        {roundMoney(totals.grandTotal * Number(exchangeRate)).toFixed(2)} ({currency})
+                      </div>
+                    )}
+                  </div>
                 </div>
               </Card>
             </Col>
