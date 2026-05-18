@@ -1,4 +1,5 @@
 const db = require('../../database/connection');
+const { normalizeDateInput } = require('../../utils/dateHelpers');
 const logger = require('../../utils/logger');
 const invoiceTemplateService = require('./invoiceTemplate.service');
 const invoicePDFService = require('./invoicePDF.service');
@@ -61,13 +62,9 @@ class PurchaseInvoiceController {
           vendorName = vendor ? (vendor.display_name || vendor.company_name) : 'Unknown Vendor';
         }
 
-        // Validate and format dates
-        const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
-          ? invoiceData.invoiceDate 
-          : new Date().toISOString().split('T')[0];
-        const dueDate = invoiceData.dueDate && typeof invoiceData.dueDate === 'string' && invoiceData.dueDate.trim() 
-          ? invoiceData.dueDate 
-          : null;
+        const today = new Date().toISOString().split('T')[0];
+        const invoiceDate = normalizeDateInput(invoiceData.invoiceDate, today);
+        const dueDate = normalizeDateInput(invoiceData.dueDate, null);
 
         // Calculate totals from frontend totals or recalculate
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
@@ -319,12 +316,9 @@ class PurchaseInvoiceController {
         if (existing.status !== 'draft') throw new Error('Only draft invoices can be edited');
         if (existing.po_id || existing.grn_id) throw new Error('System-generated invoices cannot be edited');
 
-        const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
-          ? invoiceData.invoiceDate 
-          : new Date().toISOString().split('T')[0];
-        const dueDate = invoiceData.dueDate && typeof invoiceData.dueDate === 'string' && invoiceData.dueDate.trim() 
-          ? invoiceData.dueDate 
-          : null;
+        const today = new Date().toISOString().split('T')[0];
+        const invoiceDate = normalizeDateInput(invoiceData.invoiceDate, today);
+        const dueDate = normalizeDateInput(invoiceData.dueDate, null);
 
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
         

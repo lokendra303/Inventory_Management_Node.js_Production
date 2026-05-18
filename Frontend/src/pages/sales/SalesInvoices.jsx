@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Button, Table, Tag, message, Modal, Input, DatePicker, Select, Row, Col, Tooltip } from 'antd';
 import {
   FileTextOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined,
-  EditOutlined, PrinterOutlined, MailOutlined, SearchOutlined, ReloadOutlined
+  EditOutlined, PrinterOutlined, MailOutlined, SearchOutlined, ReloadOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
@@ -176,6 +177,23 @@ const SalesInvoices = () => {
     finally { setLoading(false); }
   };
 
+  const handlePostInvoice = async (invoiceId) => {
+    try {
+      setLoading(true);
+      const response = await apiService.post(`/sales-invoices/${invoiceId}/post`);
+      if (response.success) {
+        message.success('Invoice posted successfully');
+        fetchInvoices();
+      } else {
+        message.error(response.error || 'Failed to post invoice');
+      }
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to post invoice');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSendEmail = async () => {
     if (!emailAddress) { message.warning('Please enter an email address'); return; }
     try {
@@ -212,11 +230,18 @@ const SalesInvoices = () => {
       render: (_, record) => (
         <div style={{ display: 'flex', gap: 2 }}>
           {record.status === 'draft' && (
-            <Tooltip title="Edit" key="Edit">
-              <Button type="text" icon={<EditOutlined />}
-                onClick={() => { setSelectedInvoiceId(record.id); setModalMode('edit'); setModalVisible(true); }}
-                style={{ color: '#667eea', padding: '4px 6px' }} />
-            </Tooltip>
+            <>
+              <Tooltip title="Edit" key="Edit">
+                <Button type="text" icon={<EditOutlined />}
+                  onClick={() => { setSelectedInvoiceId(record.id); setModalMode('edit'); setModalVisible(true); }}
+                  style={{ color: '#667eea', padding: '4px 6px' }} />
+              </Tooltip>
+              <Tooltip title="Post" key="Post">
+                <Button type="text" icon={<CheckCircleOutlined />}
+                  onClick={() => handlePostInvoice(record.id)}
+                  style={{ color: '#52c41a', padding: '4px 6px' }} />
+              </Tooltip>
+            </>
           )}
           {[
             { icon: <EyeOutlined />,      title: 'View',     color: '#11998e', onClick: () => handleViewStandardFormat(record.id) },

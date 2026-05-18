@@ -9,7 +9,11 @@ import { getCurrencies } from '../../utils/currency';
 import TransactionHistory from '../../components/inventory/TransactionHistory';
 import { useTaxRates } from '../../hooks/useTaxRates';
 import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
-import { amountInDocumentCurrency, convertAmountBetweenCurrencies } from '../../utils/commercialDocument';
+import {
+  amountInDocumentCurrency,
+  convertAmountBetweenCurrencies,
+  getExchangeRateValidationError,
+} from '../../utils/commercialDocument';
 import DocumentTotalsSummary from '../../components/business/DocumentTotalsSummary';
 import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
 
@@ -43,7 +47,11 @@ const PurchaseOrders = () => {
     documentCurrency,
     institutionCurrency: instCcy,
     exchangeRate,
+    rateMissing,
+    rateSource,
+    rateResolving,
     syncRateToForm,
+    applyResolvedRate,
   } = useCommercialDocumentCurrency(form);
   const watchedLines = Form.useWatch('lines', form) || [];
 
@@ -150,6 +158,16 @@ const PurchaseOrders = () => {
 
   const handleCreatePO = async (values) => {
     try {
+      const rateErr = getExchangeRateValidationError(
+        values.currency || documentCurrency,
+        instCcy,
+        values.exchangeRate
+      );
+      if (rateErr) {
+        message.error(rateErr);
+        return;
+      }
+
       // Get selected vendor details
       const selectedVendor = vendors.find(v => v.id === values.vendorId);
       
@@ -162,7 +180,7 @@ const PurchaseOrders = () => {
         vendorName: selectedVendor?.display_name || selectedVendor?.company_name || 'Unknown Vendor',
         orderDate: orderDate,
         expectedDate: expectedDate,
-        exchangeRate: values.exchangeRate || 1,
+        exchangeRate: values.currency === instCcy ? 1 : values.exchangeRate,
         lines: (values.lines || []).map(line => {
           const taxRate = line.taxRateId ? parseFloat(getRateById(line.taxRateId)?.rate || 0) : 0;
           return { ...line, taxRate, taxRateId: line.taxRateId || null };
@@ -555,6 +573,8 @@ const PurchaseOrders = () => {
             documentCurrency={documentCurrency}
             institutionCurrency={instCcy}
             onRateChange={syncRateToForm}
+            onRefresh={applyResolvedRate}
+            loading={rateResolving}
           />
           
           <Form.Item name="orderDate" label="Order Date" rules={[{ required: true }]}>
@@ -631,12 +651,13 @@ const PurchaseOrders = () => {
 
                                   lines[name] = {
                                     ...lines[name],
-                                    unitCost: amountInDocumentCurrency(
-                                      selectedItem.cost_price || 0,
-                                      documentCurrency || instCcy,
-                                      instCcy,
-                                      exchangeRate
-                                    ),
+                                    unitCost:
+                                      amountInDocumentCurrency(
+                                        selectedItem.cost_price || 0,
+                                        documentCurrency || instCcy,
+                                        instCcy,
+                                        exchangeRate
+                                      ) ?? Number(selectedItem.cost_price || 0),
                                     taxRateId: undefined,
                                     warehouseId: bestWarehouseId
                                   };
@@ -782,6 +803,8 @@ const PurchaseOrders = () => {
             documentCurrency={documentCurrency || instCcy}
             institutionCurrency={instCcy}
             exchangeRate={exchangeRate}
+            rateMissing={rateMissing}
+            rateSource={rateSource}
             unitField="unitCost"
             getTaxRate={getLineTaxRate}
           />

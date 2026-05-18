@@ -10,7 +10,11 @@ import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { useTaxRates } from '../../hooks/useTaxRates';
 import { getCurrencies, getCurrencySymbol } from '../../utils/currency';
 import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
-import { amountInDocumentCurrency, convertAmountBetweenCurrencies } from '../../utils/commercialDocument';
+import {
+  amountInDocumentCurrency,
+  convertAmountBetweenCurrencies,
+  getExchangeRateValidationError,
+} from '../../utils/commercialDocument';
 import DocumentTotalsSummary from '../../components/business/DocumentTotalsSummary';
 import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
 
@@ -39,7 +43,11 @@ const SalesOrders = () => {
     documentCurrency,
     institutionCurrency: instCcy,
     exchangeRate,
+    rateMissing,
+    rateSource,
+    rateResolving,
     syncRateToForm,
+    applyResolvedRate,
   } = useCommercialDocumentCurrency(form);
   const watchedLines = Form.useWatch('lines', form) || [];
 
@@ -101,11 +109,8 @@ const SalesOrders = () => {
     } else {
       raw = Number(item.selling_price || 0);
     }
-    return amountInDocumentCurrency(
-      raw,
-      documentCurrency || instCcy,
-      instCcy,
-      exchangeRate
+    return (
+      amountInDocumentCurrency(raw, documentCurrency || instCcy, instCcy, exchangeRate) ?? raw
     );
   };
 
@@ -240,6 +245,16 @@ const SalesOrders = () => {
 
   const handleCreateSO = async (values) => {
     try {
+      const rateErr = getExchangeRateValidationError(
+        values.currency || documentCurrency,
+        instCcy,
+        values.exchangeRate
+      );
+      if (rateErr) {
+        message.error(rateErr);
+        return;
+      }
+
       const selectedCustomer = customers.find(c => c.id === values.customerId);
 
       const soData = {
@@ -585,6 +600,8 @@ const SalesOrders = () => {
             documentCurrency={documentCurrency}
             institutionCurrency={instCcy}
             onRateChange={syncRateToForm}
+            onRefresh={applyResolvedRate}
+            loading={rateResolving}
           />
 
           <Form.Item name="channel" label="Sales Channel" initialValue="direct">
@@ -993,6 +1010,8 @@ const SalesOrders = () => {
             documentCurrency={documentCurrency || instCcy}
             institutionCurrency={instCcy}
             exchangeRate={exchangeRate}
+            rateMissing={rateMissing}
+            rateSource={rateSource}
             unitField="unitPrice"
             getTaxRate={getLineTaxRate}
           />

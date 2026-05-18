@@ -257,3 +257,13 @@
   transform: translateY(-4px);
   box-shadow: 0 8px 28px rgba(0,0,0,0.18) !important;
 }
+
+/* Invoice / document line tables — top-align controls (match SO/PO row layout) */
+.invoice-lines-table .ant-table-thead > tr > th,
+.invoice-lines-table .ant-table-tbody > tr > td {
+  vertical-align: top !important;
+}
+.invoice-lines-table .ant-select,
+.invoice-lines-table .ant-input-number {
+  width: 100%;
+}

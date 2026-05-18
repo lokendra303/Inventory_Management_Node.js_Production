@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Form,
   Input,
@@ -28,9 +28,13 @@ import {
   amountInDocumentCurrency as amountInInvoiceCurrency,
   averageCostInDocumentCurrency as averageCostInInvoiceCurrency,
   calculateCommercialTotals,
-  fetchLiveExchangeRate,
+  convertAmountBetweenCurrencies,
+  getExchangeRateValidationError,
   roundMoney,
 } from '../../utils/commercialDocument';
+import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
+import DocumentTotalsSummary from '../business/DocumentTotalsSummary';
+import CommercialExchangeRateField from '../business/CommercialExchangeRateField';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -58,9 +62,18 @@ function formatStockQuantity(n) {
 }
 
 const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
-  const { currency } = useCurrency();
+  const { currency: institutionCurrency } = useCurrency();
   const [form] = Form.useForm();
   const shipFromWarehouseId = Form.useWatch('shipFromWarehouseId', form);
+  const {
+    documentCurrency: invoiceCurrency,
+    exchangeRate,
+    rateMissing,
+    rateSource,
+    rateResolving,
+    syncRateToForm,
+    applyResolvedRate,
+  } = useCommercialDocumentCurrency(form);
   const [loading, setLoading] = useState(false);
   const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
@@ -69,13 +82,6 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
   const [inventoryByItemWarehouse, setInventoryByItemWarehouse] = useState({});
   const [selectedParty, setSelectedParty] = useState(null);
   const [invoiceLines, setInvoiceLines] = useState([{ key: 1, taxRate: 0, discountRate: 0 }]);
-  const [invoiceCurrency, setInvoiceCurrency] = useState(currency || 'USD');
-  const [exchangeRate, setExchangeRate] = useState(1);
-  /** When true, auto-fetch live FX for invoice↔institution pair. False while editing until user changes currency or clicks refresh. */
-  const allowLiveExchangeRef = useRef(true);
-  useEffect(() => {
-    allowLiveExchangeRef.current = !invoiceId;
-  }, [invoiceId]);
   const [taxRates, setTaxRates] = useState([]);
   const [priceListItemMap, setPriceListItemMap] = useState({}); // loaded from /tax/rates
   const [totals, setTotals] = useState({
@@ -171,16 +177,17 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     if (!fromCcy || !toCcy || fromCcy === toCcy) return;
     const priceKey = type === 'purchase' ? 'unitCost' : 'unitPrice';
     try {
-      const rate = await fetchLiveExchangeRate(apiService, fromCcy, toCcy);
-      setInvoiceLines((prev) =>
-        prev.map((line) => {
+      const updated = await Promise.all(
+        invoiceLines.map(async (line) => {
           const v = Number(line[priceKey]);
           if (!Number.isFinite(v) || v === 0) return line;
-          return { ...line, [priceKey]: roundMoney(v * rate) };
+          const converted = await convertAmountBetweenCurrencies(apiService, v, fromCcy, toCcy);
+          return { ...line, [priceKey]: converted };
         })
       );
+      setInvoiceLines(updated);
     } catch {
-      /* keep existing prices */
+      message.warning('Could not convert line prices — update exchange rate or enter prices manually.');
     }
   }, [type]);
 
@@ -192,7 +199,9 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       const rawPrice      = item[priceField] || 0;
       const priceListPrice = type === 'sales' && priceListItemMap[itemId] != null ? priceListItemMap[itemId] : null;
       const baseInInst    = priceListPrice != null ? priceListPrice : rawPrice;
-      const unitAmount    = amountInInvoiceCurrency(baseInInst, invoiceCurrency, currency, exchangeRate);
+      const unitAmount =
+        amountInInvoiceCurrency(baseInInst, invoiceCurrency, institutionCurrency, exchangeRate) ??
+        roundMoney(baseInInst);
       setInvoiceLines(invoiceLines.map(line =>
         line.key === key ? {
           ...line,
@@ -225,7 +234,6 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         if (!skipCurrencyOverride) {
           const partyCurrency = response.data.businessInfo?.currency || 'INR';
           updates.currency = partyCurrency;
-          setInvoiceCurrency(partyCurrency);
         }
         form.setFieldsValue(updates);
       }
@@ -300,43 +308,19 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     );
   }, [invoiceLines, type]);
 
-  const fetchAndApplyLiveExchangeRate = useCallback(async (silent = false, isCancelled = () => false) => {
-    if (invoiceCurrency === currency) {
-      setExchangeRate(1);
-      form.setFieldsValue({ exchangeRate: 1 });
-      return;
-    }
-    try {
-      const rounded = await fetchLiveExchangeRate(apiService, invoiceCurrency, currency);
-      if (isCancelled()) return;
-      setExchangeRate(rounded);
-      form.setFieldsValue({ exchangeRate: rounded });
-      if (!silent) message.success('Exchange rate updated from live market');
-    } catch (e) {
-      console.warn('Live exchange rate fetch failed', e);
-      if (!silent) message.warning('Live exchange rate unavailable. Enter the rate manually.');
-    }
-  }, [invoiceCurrency, currency, form]);
-
-  useEffect(() => {
-    if (invoiceCurrency === currency) {
-      setExchangeRate(1);
-      form.setFieldsValue({ exchangeRate: 1 });
-      return undefined;
-    }
-    if (invoiceId && !allowLiveExchangeRef.current) {
-      return undefined;
-    }
-    let cancelled = false;
-    void fetchAndApplyLiveExchangeRate(true, () => cancelled);
-    return () => {
-      cancelled = true;
-    };
-  }, [invoiceCurrency, currency, invoiceId, form, fetchAndApplyLiveExchangeRate]);
-
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+
+      const rateErr = getExchangeRateValidationError(
+        values.currency || invoiceCurrency,
+        institutionCurrency,
+        values.exchangeRate
+      );
+      if (rateErr) {
+        message.error(rateErr);
+        return;
+      }
       
       // Debug: Log current invoice lines
       console.log('Current invoice lines:', invoiceLines);
@@ -378,9 +362,11 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       const { shipFromWarehouseId, ...formValuesForPayload } = values;
       const invoiceData = {
         ...formValuesForPayload,
-        invoiceNumber: values.invoiceNumber?.trim() || `${prefix}${Date.now()}`,
+        invoiceNumber: values.invoiceNumber?.trim() || undefined,
         invoiceDate: values.invoiceDate.format('YYYY-MM-DD'),
-        dueDate: values.dueDate.format('YYYY-MM-DD'),
+        dueDate: values.dueDate
+          ? values.dueDate.format('YYYY-MM-DD')
+          : values.invoiceDate.add(30, 'day').format('YYYY-MM-DD'),
         ...(type === 'sales' && defaultShipWarehouse ? { warehouseId: defaultShipWarehouse } : {}),
         lines: validLines.map(line => {
           const lineData = {
@@ -463,8 +449,16 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     }
     if (invoiceId) {
       loadInvoiceData();
+    } else {
+      const today = dayjs();
+      form.setFieldsValue({
+        invoiceDate: today,
+        dueDate: today.add(30, 'day'),
+        currency: institutionCurrency,
+        exchangeRate: 1,
+      });
     }
-  }, [type, invoiceId]);
+  }, [type, invoiceId, institutionCurrency, form]);
 
   useEffect(() => {
     if (type !== 'sales' || invoiceId || warehouses.length !== 1) return;
@@ -488,15 +482,9 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         const formPartyIdField = type === 'purchase' ? 'vendorId' : 'customerId';
         const formPartyNameField = type === 'purchase' ? 'vendorName' : 'customerName';
         
-        const invoiceCurr = invoice.currency || 'INR';
-        setInvoiceCurrency(invoiceCurr);
+        const invoiceCurr = invoice.currency || institutionCurrency;
         const savedEr = parseFloat(invoice.exchange_rate);
         const er = Number.isFinite(savedEr) && savedEr > 0 ? savedEr : 1;
-        if (invoiceCurr === currency) {
-          setExchangeRate(1);
-        } else {
-          setExchangeRate(er);
-        }
         form.setFieldsValue({
           invoiceNumber: invoice.invoice_number,
           invoiceDate:   invoice.invoice_date ? dayjs(invoice.invoice_date) : null,
@@ -504,9 +492,9 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           [formPartyIdField]:   invoice[partyIdField],
           [formPartyNameField]: invoice[partyNameField],
           currency:  invoiceCurr,
-          exchangeRate: invoiceCurr === currency ? 1 : er,
+          exchangeRate: invoiceCurr === institutionCurrency ? 1 : er,
           reference: invoice.reference || '',
-          notes:     invoice.notes     || ''
+          notes:     invoice.notes     || '',
         });
         if (invoice[partyIdField]) {
           loadPartyDetails(invoice[partyIdField], true); // true = skip currency override
@@ -547,11 +535,27 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
     calculateTotals();
   }, [calculateTotals]);
 
+  const lineCellStyle = { verticalAlign: 'top', paddingTop: 10, paddingBottom: 10 };
+  const withTopAlign = (column) => ({
+    ...column,
+    onCell: () => ({ style: lineCellStyle }),
+  });
+  const cellWrap = (node) => <div style={{ minWidth: 0 }}>{node}</div>;
+
+  const getLineAvailableQty = (record) => {
+    if (!record.itemId || String(record.itemId).includes('manual_')) return null;
+    const whId = record.warehouseId || shipFromWarehouseId;
+    if (!whId) return null;
+    return Number(inventoryByItemWarehouse[record.itemId]?.[whId]?.quantityAvailable || 0);
+  };
+
   const lineColumns = [
     {
       title: 'S.No',
       width: 60,
-      render: (_, __, index) => index + 1
+      render: (_, __, index) => (
+        <span style={{ display: 'inline-block', lineHeight: '32px' }}>{index + 1}</span>
+      ),
     },
     {
       title: 'Item',
@@ -566,18 +570,23 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 showSearch
                 value={record.itemId}
                 placeholder="Select item"
+                optionLabelProp="label"
+                optionFilterProp="label"
                 onSelect={(itemId) => handleItemSelect(record.key, itemId)}
-                filterOption={(input, option) => {
-                  return option.children?.toString().toLowerCase().includes(input.toLowerCase());
-                }}
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
+                }
+                dropdownStyle={{ minWidth: 350 }}
                 style={{ width: '100%' }}
                 allowClear
                 notFoundContent="No items found"
               >
-                {items.map(item => {
+                {items.map((item) => {
                   let available = 0;
                   if (selectedWarehouseId) {
-                    available = Number(inventoryByItemWarehouse[item.id]?.[selectedWarehouseId]?.quantityAvailable || 0);
+                    available = Number(
+                      inventoryByItemWarehouse[item.id]?.[selectedWarehouseId]?.quantityAvailable || 0
+                    );
                   } else {
                     available = Object.values(inventoryByItemWarehouse[item.id] || {}).reduce(
                       (sum, cell) => sum + (Number(cell?.quantityAvailable) || 0),
@@ -585,64 +594,44 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                     );
                   }
                   return (
-                    <Option key={item.id} value={item.id}>
-                      {item.sku} — {item.name} (Avail: {formatStockQuantity(available)})
+                    <Option key={item.id} value={item.id} label={`${item.sku} — ${item.name}`}>
+                      <div>
+                        <strong>{item.sku}</strong> — {item.name}
+                        <br />
+                        <span style={{ fontSize: 12, color: available > 0 ? '#52c41a' : '#ff4d4f' }}>
+                          Available: {formatStockQuantity(available)}
+                          {!selectedWarehouseId ? ' (all warehouses)' : ''}
+                        </span>
+                      </div>
                     </Option>
                   );
                 })}
               </Select>
               {items.length === 0 && (
-                <div style={{ color: 'red', fontSize: '12px', marginTop: 4 }}>
-                  No items loaded. Check console for errors.
-                </div>
-              )}
-              {record.itemId && selectedWarehouseId && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    marginTop: 8,
-                    paddingTop: 6,
-                    lineHeight: 1.45,
-                    borderTop: '1px solid #f0f0f0',
-                    color: '#595959'
-                  }}
-                >
-                  {(() => {
-                    const item = items.find(i => i.id === record.itemId);
-                    if (!item) return null;
-                    const available = Number(inventoryByItemWarehouse[record.itemId]?.[selectedWarehouseId]?.quantityAvailable || 0);
-                    const qty = record.quantity || 0;
-                    const unitSuffix = formatItemUnitForDisplay(item.unit);
-                    return (
-                      <span style={{ color: qty > available ? '#ff4d4f' : '#389e0d' }}>
-                        Available: {formatStockQuantity(available)}
-                        {unitSuffix ? ` ${unitSuffix}` : ' units'}
-                        {qty > available && ' — insufficient stock'}
-                      </span>
-                    );
-                  })()}
-                </div>
+                <div style={{ color: 'red', fontSize: 12, marginTop: 4 }}>No items loaded.</div>
               )}
             </div>
           );
         }
 
         return (
-          <div>
+          <div style={{ minWidth: 0 }}>
             <Select
               showSearch
               value={record.itemId}
               placeholder="Select item"
-              optionFilterProp="children"
+              optionLabelProp="label"
+              optionFilterProp="label"
               onSelect={(itemId) => handleItemSelect(record.key, itemId)}
               onSearch={loadItems}
               filterOption={false}
+              dropdownStyle={{ minWidth: 320 }}
               style={{ width: '100%', marginBottom: 8 }}
               allowClear
             >
-              {items.map(item => (
-                <Option key={item.id} value={item.id}>
-                  {item.sku} - {item.name}
+              {items.map((item) => (
+                <Option key={item.id} value={item.id} label={`${item.sku} — ${item.name}`}>
+                  {item.sku} — {item.name}
                 </Option>
               ))}
             </Select>
@@ -665,7 +654,9 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       title: 'HSN Code',
       dataIndex: 'hsn_code',
       width: 100,
-      render: (value) => value || '-'
+      render: (value) => (
+        <span style={{ display: 'inline-block', lineHeight: '32px' }}>{value || '—'}</span>
+      ),
     },
     ...(type === 'sales' ? [{
       title: 'Warehouse',
@@ -703,33 +694,49 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             </Select>
           </div>
         );
-      }
+      },
     }] : []),
     {
       title: 'Quantity',
       dataIndex: 'quantity',
-      width: 100,
-      render: (value, record) => (
-        <InputNumber
-          value={value}
-          min={0}
-          precision={2}
-          onChange={(val) => updateInvoiceLine(record.key, 'quantity', val)}
-        />
-      )
+      width: 110,
+      render: (value, record) => {
+        const available = getLineAvailableQty(record);
+        const qty = Number(value) || 0;
+        const item = items.find((i) => i.id === record.itemId);
+        const unitSuffix = item ? formatItemUnitForDisplay(item.unit) : '';
+        return cellWrap(
+          <>
+            <InputNumber
+              value={value}
+              min={0}
+              precision={2}
+              style={{ width: '100%' }}
+              onChange={(val) => updateInvoiceLine(record.key, 'quantity', val)}
+            />
+            {available != null && type === 'sales' && qty > available && (
+              <div style={{ fontSize: 11, marginTop: 4, lineHeight: 1.3, color: '#ff4d4f' }}>
+                Exceeds available ({formatStockQuantity(available)}
+                {unitSuffix ? ` ${unitSuffix}` : ''})
+              </div>
+            )}
+          </>
+        );
+      },
     },
     {
       title: type === 'purchase' ? 'Unit Cost' : 'Unit Price',
       dataIndex: type === 'purchase' ? 'unitCost' : 'unitPrice',
       width: 120,
-      render: (value, record) => (
+      render: (value, record) => cellWrap(
         <InputNumber
           value={type === 'purchase' ? record.unitCost : record.unitPrice}
           min={0}
           precision={2}
+          style={{ width: '100%' }}
           onChange={(val) => updateInvoiceLine(record.key, type === 'purchase' ? 'unitCost' : 'unitPrice', val)}
         />
-      )
+      ),
     },
     ...(type === 'sales' ? [
       {
@@ -743,7 +750,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
           }
           const avgRaw = inventoryByItemWarehouse[record.itemId]?.[wid]?.averageCost;
-          const n = averageCostInInvoiceCurrency(avgRaw, invoiceCurrency, currency, exchangeRate);
+          const n = averageCostInInvoiceCurrency(avgRaw, invoiceCurrency, institutionCurrency, exchangeRate);
           if (n == null || !Number.isFinite(n) || n <= 0) {
             return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
           }
@@ -752,8 +759,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             <Text
               style={{ fontSize: 13 }}
               title={
-                invoiceCurrency !== currency
-                  ? `Weighted average cost in stock (${currency}), converted to ${invoiceCurrency} using the exchange rate above.`
+                invoiceCurrency !== institutionCurrency
+                  ? `Weighted average cost in stock (${institutionCurrency}), converted to ${invoiceCurrency} using the exchange rate above.`
                   : 'Weighted average cost for this item in the selected warehouse (from stock).'
               }
             >
@@ -775,7 +782,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             return <Text type="secondary" style={{ fontSize: 11 }}>Select item and warehouse</Text>;
           }
           const avgRaw = inventoryByItemWarehouse[record.itemId]?.[wid]?.averageCost;
-          const avgN = averageCostInInvoiceCurrency(avgRaw, invoiceCurrency, currency, exchangeRate);
+          const avgN = averageCostInInvoiceCurrency(avgRaw, invoiceCurrency, institutionCurrency, exchangeRate);
           if (avgN == null || !Number.isFinite(avgN) || avgN <= 0) {
             return <Text type="secondary" style={{ fontSize: 11 }}>No avg cost</Text>;
           }
@@ -800,7 +807,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       title: 'Discount %',
       dataIndex: 'discountRate',
       width: 100,
-      render: (value, record) => (
+      render: (value, record) => cellWrap(
         <InputNumber
           value={value || 0}
           min={0}
@@ -810,13 +817,13 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           style={{ width: '100%' }}
           onChange={(val) => updateInvoiceLine(record.key, 'discountRate', val || 0)}
         />
-      )
+      ),
     },
     {
       title: 'Tax Rate',
       dataIndex: 'taxRate',
       width: 170,
-      render: (value, record) => (
+      render: (value, record) => cellWrap(
         <Select
           value={value ?? 0}
           style={{ width: '100%', border: (value > 0) ? undefined : '1px solid #faad14', borderRadius: 6 }}
@@ -832,7 +839,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             </Option>
           ))}
         </Select>
-      )
+      ),
     },
     {
       title: 'Line Total',
@@ -864,10 +871,11 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           icon={<DeleteOutlined />}
           onClick={() => removeInvoiceLine(record.key)}
           disabled={invoiceLines.length === 1}
+          style={{ marginTop: 0 }}
         />
-      )
-    }
-  ];
+      ),
+    },
+  ].map(withTopAlign);
 
   return (
     <div style={{ padding: '8px' }}>
@@ -879,8 +887,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         <Form form={form} layout="vertical">
           <Row gutter={[16, 0]}>
             <Col xs={24} sm={8}>
-              <Form.Item name="invoiceNumber" label="Invoice Number" rules={[{ required: !invoiceId, message: 'Please enter invoice number' }]}>
-                <Input placeholder="Auto-generated if empty" />
+              <Form.Item name="invoiceNumber" label="Invoice Number">
+                <Input placeholder="Leave blank to auto-generate (e.g. SI000001)" disabled={!!invoiceId} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
@@ -922,17 +930,10 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                   filterOption={(input, option) =>
                     option.children?.toString().toLowerCase().includes(input.toLowerCase())
                   }
-                  value={invoiceCurrency}
                   onChange={async (value) => {
-                    const prev = invoiceCurrency;
+                    const prev = form.getFieldValue('currency');
                     if (prev && prev !== value) {
                       await convertLinePricesToCurrency(prev, value);
-                    }
-                    allowLiveExchangeRef.current = true;
-                    setInvoiceCurrency(value);
-                    if (value === currency) {
-                      setExchangeRate(1);
-                      form.setFieldsValue({ exchangeRate: 1 });
                     }
                   }}
                 >
@@ -945,23 +946,13 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               </Form.Item>
             </Col>
             <Col xs={24} sm={6}>
-              {invoiceCurrency !== currency && (
-                <Form.Item
-                  name="exchangeRate"
-                  label={`Exchange rate (1 ${invoiceCurrency} = ? ${currency})`}
-                  initialValue={1}
-                  tooltip={`Prefilled from live rates (server: open.er-api.com). This is how many ${currency} equal one ${invoiceCurrency}. Average cost from stock is in ${currency}; margin uses this rate to compare in ${invoiceCurrency}.`}
-                  extra={(
-                    <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => void fetchAndApplyLiveExchangeRate(false, () => false)}>
-                      Refresh live rate
-                    </Button>
-                  )}
-                  rules={[{ required: true, message: 'Exchange rate is required' }]}
-                >
-                  <InputNumber min={0.0001} precision={6} style={{ width: '100%' }}
-                    onChange={(value) => setExchangeRate(value || 1)} />
-                </Form.Item>
-              )}
+              <CommercialExchangeRateField
+                documentCurrency={invoiceCurrency}
+                institutionCurrency={institutionCurrency}
+                onRateChange={syncRateToForm}
+                onRefresh={applyResolvedRate}
+                loading={rateResolving}
+              />
             </Col>
           </Row>
 
@@ -1019,10 +1010,12 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <Table
+              className="invoice-lines-table"
               columns={lineColumns}
               dataSource={invoiceLines}
               pagination={false}
               size="small"
+              rowKey="key"
               scroll={{ x: 'max-content' }}
             />
           </div>
@@ -1035,35 +1028,16 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
           <Row justify="end">
             <Col xs={24} sm={12} md={8}>
-              <Card size="small">
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text>Subtotal{invoiceCurrency !== currency ? ` (${invoiceCurrency})` : ''}:</Text>
-                  <Text>{getCurrencySymbol(invoiceCurrency)}{totals.subtotal.toFixed(2)}</Text>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text>Total Discount:</Text>
-                  <Text>-{getCurrencySymbol(invoiceCurrency)}{totals.totalDiscount.toFixed(2)}</Text>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text>Total Tax:</Text>
-                  <Text>{getCurrencySymbol(invoiceCurrency)}{totals.totalTax.toFixed(2)}</Text>
-                </div>
-                <Divider style={{ margin: '8px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <Text strong>Grand Total{invoiceCurrency !== currency ? ` (${invoiceCurrency})` : ''}:</Text>
-                  <div style={{ textAlign: 'right' }}>
-                    <Text strong style={{ fontSize: '16px' }}>
-                      {getCurrencySymbol(invoiceCurrency)}{totals.grandTotal.toFixed(2)}
-                    </Text>
-                    {invoiceCurrency !== currency && Number(exchangeRate) > 0 && (
-                      <div style={{ fontSize: 11, color: '#666', marginTop: 4, fontWeight: 400 }}>
-                        ≈ {getCurrencySymbol(currency)}
-                        {roundMoney(totals.grandTotal * Number(exchangeRate)).toFixed(2)} ({currency})
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Card>
+              <DocumentTotalsSummary
+                lines={invoiceLines}
+                documentCurrency={invoiceCurrency || institutionCurrency}
+                institutionCurrency={institutionCurrency}
+                exchangeRate={exchangeRate}
+                rateMissing={rateMissing}
+                rateSource={rateSource}
+                unitField={type === 'purchase' ? 'unitCost' : 'unitPrice'}
+                getTaxRate={(line) => Number(line.taxRate || 0)}
+              />
             </Col>
           </Row>
 

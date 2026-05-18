@@ -318,8 +318,8 @@ const createPurchaseInvoiceSchema = Joi.object({
 
 // Sales Invoice schemas
 const createSalesInvoiceSchema = Joi.object({
-  invoiceNumber: Joi.string().max(100).required(),
-  customerId: Joi.string().uuid().optional(),
+  invoiceNumber: Joi.string().max(100).allow('', null).optional(),
+  customerId: Joi.string().uuid().required(),
   customerName: Joi.string().max(255).required(),
   soId: Joi.string().uuid().optional(),
   deliveryNoteId: Joi.string().uuid().optional(),

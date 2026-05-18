@@ -1,18 +1,21 @@
 import React, { useMemo } from 'react';
-import { Card, Divider, Typography } from 'antd';
+import { Alert, Card, Divider, Typography } from 'antd';
 import { getCurrencySymbol } from '../../utils/currency';
-import { calculateCommercialTotals, roundMoney } from '../../utils/commercialDocument';
+import {
+  calculateCommercialTotals,
+  convertDocumentAmountToInstitution,
+  isSameCurrency,
+} from '../../utils/commercialDocument';
 
 const { Text } = Typography;
 
-/**
- * Footer totals for PO / SO / invoices — amounts in document currency.
- */
 export default function DocumentTotalsSummary({
   lines = [],
   documentCurrency,
   institutionCurrency,
   exchangeRate = 1,
+  rateMissing = false,
+  rateSource,
   getTaxRate = () => 0,
   unitField = 'unitPrice',
 }) {
@@ -26,16 +29,36 @@ export default function DocumentTotalsSummary({
   );
 
   const sym = getCurrencySymbol(documentCurrency);
-  const showEquiv =
-    documentCurrency &&
-    institutionCurrency &&
-    documentCurrency !== institutionCurrency &&
-    Number(exchangeRate) > 0;
+  const crossCurrency = !isSameCurrency(documentCurrency, institutionCurrency);
+  const institutionEquiv = crossCurrency
+    ? convertDocumentAmountToInstitution(
+        totals.grandTotal,
+        documentCurrency,
+        institutionCurrency,
+        exchangeRate
+      )
+    : null;
+
+  const showEquiv = crossCurrency && institutionEquiv != null && !rateMissing;
 
   return (
     <Card size="small" style={{ marginTop: 16 }}>
+      {crossCurrency && rateMissing && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Exchange rate required"
+          description={`Set how many ${institutionCurrency} equal 1 ${documentCurrency} (use Refresh live rate or Settings → Exchange rates). A 1:1 rate is not used between different currencies.`}
+        />
+      )}
+      {crossCurrency && !rateMissing && rateSource && rateSource !== 'manual' && (
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
+          FX rate: {rateSource === 'live' ? 'live market' : rateSource === 'stored' ? 'saved in Settings' : ''}
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <Text>Subtotal{showEquiv ? ` (${documentCurrency})` : ''}:</Text>
+        <Text>Subtotal{crossCurrency ? ` (${documentCurrency})` : ''}:</Text>
         <Text>
           {sym}
           {totals.subtotal.toFixed(2)}
@@ -57,7 +80,7 @@ export default function DocumentTotalsSummary({
       </div>
       <Divider style={{ margin: '8px 0' }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <Text strong>Grand Total{showEquiv ? ` (${documentCurrency})` : ''}:</Text>
+        <Text strong>Grand Total{crossCurrency ? ` (${documentCurrency})` : ''}:</Text>
         <div style={{ textAlign: 'right' }}>
           <Text strong style={{ fontSize: 16 }}>
             {sym}
@@ -66,7 +89,7 @@ export default function DocumentTotalsSummary({
           {showEquiv && (
             <div style={{ fontSize: 11, color: '#666', marginTop: 4, fontWeight: 400 }}>
               ≈ {getCurrencySymbol(institutionCurrency)}
-              {roundMoney(totals.grandTotal * Number(exchangeRate)).toFixed(2)} ({institutionCurrency})
+              {institutionEquiv.toFixed(2)} ({institutionCurrency})
             </div>
           )}
         </div>

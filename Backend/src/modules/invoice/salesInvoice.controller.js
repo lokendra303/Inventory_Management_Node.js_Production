@@ -1,5 +1,6 @@
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const { normalizeDateInput } = require('../../utils/dateHelpers');
 const invoiceTemplateService = require('./invoiceTemplate.service');
 const invoicePDFService = require('./invoicePDF.service');
 const emailService = require('../../services/emailService');
@@ -30,7 +31,22 @@ class SalesInvoiceController {
 
       const result = await db.transaction(async (connection) => {
         const invoiceId = uuidv4();
-        const invoiceNumber = invoiceData.invoiceNumber || `SI${Date.now()}`;
+
+        let invoiceNumber = (invoiceData.invoiceNumber && String(invoiceData.invoiceNumber).trim()) || null;
+        if (!invoiceNumber) {
+          const [lastInvoice] = await connection.execute(
+            'SELECT invoice_number FROM sales_invoices WHERE institution_id = ? ORDER BY created_at DESC LIMIT 1',
+            [institutionId]
+          );
+          const lastRow = Array.isArray(lastInvoice) ? lastInvoice[0] : lastInvoice;
+          if (lastRow?.invoice_number) {
+            const match = String(lastRow.invoice_number).match(/\d+$/);
+            const nextNum = match ? parseInt(match[0], 10) + 1 : 1;
+            invoiceNumber = `SI${String(nextNum).padStart(6, '0')}`;
+          } else {
+            invoiceNumber = 'SI000001';
+          }
+        }
         
         let customerName = invoiceData.customerName;
         if (!customerName && invoiceData.customerId) {
@@ -41,12 +57,9 @@ class SalesInvoiceController {
           customerName = customer ? (customer.display_name || customer.company_name) : 'Unknown Customer';
         }
 
-        const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
-          ? invoiceData.invoiceDate 
-          : new Date().toISOString().split('T')[0];
-        const dueDate = invoiceData.dueDate && typeof invoiceData.dueDate === 'string' && invoiceData.dueDate.trim() 
-          ? invoiceData.dueDate 
-          : null;
+        const today = new Date().toISOString().split('T')[0];
+        const invoiceDate = normalizeDateInput(invoiceData.invoiceDate, today);
+        const dueDate = normalizeDateInput(invoiceData.dueDate, null);
 
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
         
@@ -594,12 +607,9 @@ class SalesInvoiceController {
         if (existing.status !== 'draft') throw new Error('Only draft invoices can be edited');
         if (existing.so_id) throw new Error('System-generated invoices cannot be edited');
 
-        const invoiceDate = invoiceData.invoiceDate && typeof invoiceData.invoiceDate === 'string' && invoiceData.invoiceDate.trim() 
-          ? invoiceData.invoiceDate 
-          : new Date().toISOString().split('T')[0];
-        const dueDate = invoiceData.dueDate && typeof invoiceData.dueDate === 'string' && invoiceData.dueDate.trim() 
-          ? invoiceData.dueDate 
-          : null;
+        const today = new Date().toISOString().split('T')[0];
+        const invoiceDate = normalizeDateInput(invoiceData.invoiceDate, today);
+        const dueDate = normalizeDateInput(invoiceData.dueDate, null);
 
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
         
