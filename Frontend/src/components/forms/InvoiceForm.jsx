@@ -282,15 +282,34 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         message.error('Please add at least one line item with name, quantity, and price');
         return;
       }
+
+      const defaultShipWarehouse = type === 'sales' ? values.shipFromWarehouseId : undefined;
+
+      if (type === 'sales') {
+        const missingWh = validLines.find((line) => {
+          const hasRealItem = line.itemId && !String(line.itemId).includes('manual_');
+          const qty = Number(line.quantity) || 0;
+          if (!hasRealItem || qty <= 0) return false;
+          return !(line.warehouseId || defaultShipWarehouse);
+        });
+        if (missingWh) {
+          message.error(
+            'Select a warehouse on each line that has a catalog item, or set "Ship from warehouse" once for all lines. Stock is deducted from that warehouse when the invoice is saved.'
+          );
+          return;
+        }
+      }
       
       setLoading(true);
 
       const prefix = type === 'purchase' ? 'PI' : 'SI';
+      const { shipFromWarehouseId, ...formValuesForPayload } = values;
       const invoiceData = {
-        ...values,
+        ...formValuesForPayload,
         invoiceNumber: values.invoiceNumber?.trim() || `${prefix}${Date.now()}`,
         invoiceDate: values.invoiceDate.format('YYYY-MM-DD'),
         dueDate: values.dueDate.format('YYYY-MM-DD'),
+        ...(type === 'sales' && defaultShipWarehouse ? { warehouseId: defaultShipWarehouse } : {}),
         lines: validLines.map(line => {
           const lineData = {
             itemName:     line.itemName,
@@ -307,6 +326,10 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
           if (line.itemId && !line.itemId.includes('manual_')) {
             lineData.itemId = line.itemId;
+          }
+
+          if (type === 'sales' && line.warehouseId) {
+            lineData.warehouseId = line.warehouseId;
           }
 
           return lineData;
@@ -370,6 +393,16 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
       loadInvoiceData();
     }
   }, [type, invoiceId]);
+
+  useEffect(() => {
+    if (type !== 'sales' || invoiceId || warehouses.length !== 1) return;
+    const wid = warehouses[0]?.id;
+    if (!wid) return;
+    const current = form.getFieldValue('shipFromWarehouseId');
+    if (!current) {
+      form.setFieldsValue({ shipFromWarehouseId: wid });
+    }
+  }, [type, invoiceId, warehouses, form]);
 
   const loadInvoiceData = async () => {
     try {
@@ -765,6 +798,28 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               </Form.Item>
             </Col>
           </Row>
+
+          {type === 'sales' && (
+            <Row gutter={[16, 0]}>
+              <Col xs={24} sm={12} md={10}>
+                <Form.Item
+                  name="shipFromWarehouseId"
+                  label="Ship from warehouse (default)"
+                  tooltip="Applies to any line that does not choose its own warehouse. The API needs a warehouse to deduct stock for catalog items."
+                >
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Optional — use if all lines ship from one warehouse"
+                    options={warehouses
+                      .filter((w) => w.status === 'active')
+                      .map((w) => ({ value: w.id, label: w.name }))}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
 
           {selectedParty && (
             <Card size="small" style={{ marginBottom: 16, backgroundColor: '#f9f9f9' }}>
