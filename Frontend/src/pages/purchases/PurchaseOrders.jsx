@@ -5,7 +5,7 @@ import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity } from '../../utils/numberFormat';
-import { getCurrencies } from '../../utils/currency';
+import { getCurrencies, formatDocumentAmount } from '../../utils/currency';
 import TransactionHistory from '../../components/inventory/TransactionHistory';
 import { useTaxRates } from '../../hooks/useTaxRates';
 import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
@@ -16,12 +16,12 @@ import {
 } from '../../utils/commercialDocument';
 import DocumentTotalsSummary from '../../components/business/DocumentTotalsSummary';
 import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
+import { filterSelectOption } from '../../utils/selectFilter';
 
 const DEFAULT_LINE = { discountRate: 0, taxRateId: undefined };
 
 const PurchaseOrders = () => {
-  const { currency, formatCurrency } = useCurrency();
-  const institutionCurrency = currency;
+  const { formatCurrency, baseCurrency } = useCurrency();
   const { taxRates, getRateById } = useTaxRates();
   const [pos, setPOs] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -64,7 +64,7 @@ const PurchaseOrders = () => {
     setEditingPO(null);
     form.resetFields();
     form.setFieldsValue({
-      currency: institutionCurrency,
+      currency: instCcy,
       exchangeRate: 1,
       orderDate: moment(),
       lines: [{ ...DEFAULT_LINE }],
@@ -359,7 +359,7 @@ const PurchaseOrders = () => {
         form.setFieldsValue({
           poNumber: poData.po_number,
           vendorId: poData.vendor_id,
-          currency: poData.currency || institutionCurrency,
+          currency: poData.currency || instCcy,
           exchangeRate: poData.exchange_rate || 1,
           orderDate: poData.order_date ? moment(poData.order_date) : null,
           expectedDate: poData.expected_date ? moment(poData.expected_date) : null,
@@ -550,10 +550,10 @@ const PurchaseOrders = () => {
             </Select>
           </Form.Item>
           
-          <Form.Item name="currency" label="Currency" initialValue={institutionCurrency}>
+          <Form.Item name="currency" label="Currency" initialValue={instCcy}>
             <Select
               showSearch
-              optionFilterProp="children"
+              optionFilterProp="label"
               onChange={async (value) => {
                 const prev = form.getFieldValue('currency');
                 if (prev && prev !== value) {
@@ -562,7 +562,7 @@ const PurchaseOrders = () => {
               }}
             >
               {getCurrencies().map((c) => (
-                <Select.Option key={c.code} value={c.code}>
+                <Select.Option key={c.code} value={c.code} label={`${c.code} ${c.symbol} ${c.name}`}>
                   {c.code} — {c.symbol} {c.name}
                 </Select.Option>
               ))}
@@ -628,10 +628,7 @@ const PurchaseOrders = () => {
                               placeholder="Select item"
                               showSearch
                               optionLabelProp="label"
-                              filterOption={(input, option) => {
-                                const label = option.label || '';
-                                return label.toLowerCase().includes(input.toLowerCase());
-                              }}
+                              filterOption={filterSelectOption}
                               dropdownStyle={{ minWidth: 350 }}
                               onChange={(itemId) => {
                                 const selectedItem = items.find(i => i.id === itemId);
@@ -770,6 +767,8 @@ const PurchaseOrders = () => {
                           const lineTotal   = qty * cost;
                           const taxAmount   = lineTotal * taxPct / 100;
                           const grandTotal  = lineTotal + taxAmount;
+                          const docCcy      = documentCurrency || instCcy;
+                          const fmtDoc      = (n) => formatDocumentAmount(n, docCcy);
                           return (
                             <div style={{ padding: '8px 12px', backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 4 }}>
                               <span style={{ fontSize: '13px', color: '#0050b3' }}>
@@ -777,8 +776,8 @@ const PurchaseOrders = () => {
                                 <strong style={{ color: '#1890ff', marginLeft: 4 }}>Stock: {formatQuantity(currentStock)} units</strong>
                                 {qty > 0 && (
                                   <span style={{ marginLeft: 8 }}>
-                                    Subtotal: <strong>{formatCurrency(lineTotal)}</strong>
-                                    {taxPct > 0 && <> + Tax ({taxPct}%): <strong>{formatCurrency(taxAmount)}</strong> = <Tag color="green">{formatCurrency(grandTotal)}</Tag></>}
+                                    Subtotal: <strong>{fmtDoc(lineTotal)}</strong>
+                                    {taxPct > 0 && <> + Tax ({taxPct}%): <strong>{fmtDoc(taxAmount)}</strong> = <Tag color="green">{fmtDoc(grandTotal)} ({docCcy})</Tag></>}
                                   </span>
                                 )}
                               </span>
@@ -997,7 +996,7 @@ const PurchaseOrders = () => {
                 />
               </div>
             )}
-            <TransactionHistory data={poHistory} loading={loadingHistory} currency={selectedPOForView?.currency || institutionCurrency} />
+            <TransactionHistory data={poHistory} loading={loadingHistory} currency={selectedPOForView?.currency || baseCurrency} />
           </div>
         )}
       </Modal>

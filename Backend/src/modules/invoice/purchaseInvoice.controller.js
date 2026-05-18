@@ -1,5 +1,10 @@
 const db = require('../../database/connection');
 const { normalizeDateInput } = require('../../utils/dateHelpers');
+const {
+  getInstitutionBaseCurrency,
+  resolveExchangeRateForSave,
+  getExchangeRateValidationError,
+} = require('../../utils/exchangeRateHelpers');
 const logger = require('../../utils/logger');
 const invoiceTemplateService = require('./invoiceTemplate.service');
 const invoicePDFService = require('./invoicePDF.service');
@@ -28,6 +33,20 @@ class PurchaseInvoiceController {
           success: false,
           error: 'Vendor is required'
         });
+      }
+
+      const baseCcy = await getInstitutionBaseCurrency(db, institutionId);
+      const docCcy = invoiceData.currency || 'USD';
+      const resolvedRate = await resolveExchangeRateForSave(
+        db,
+        institutionId,
+        docCcy,
+        baseCcy,
+        invoiceData.exchangeRate
+      );
+      const rateErr = getExchangeRateValidationError(docCcy, baseCcy, resolvedRate);
+      if (rateErr) {
+        return res.status(400).json({ success: false, error: rateErr });
       }
 
       const result = await db.transaction(async (connection) => {
@@ -87,11 +106,11 @@ class PurchaseInvoiceController {
           invoiceDate, 
           dueDate,
           invoiceData.currency || 'USD', 
-          invoiceData.exchangeRate || 1, 
+          resolvedRate, 
           totals.subtotal, 
           totals.totalTax,
           totals.totalDiscount, 
-          totals.grandTotal, 
+          totals.grandTotal,
           totals.grandTotal, 
           invoiceData.reference || null, 
           invoiceData.notes || null, 
@@ -305,6 +324,20 @@ class PurchaseInvoiceController {
         });
       }
 
+      const baseCcy = await getInstitutionBaseCurrency(db, institutionId);
+      const docCcy = invoiceData.currency || 'USD';
+      const resolvedRate = await resolveExchangeRateForSave(
+        db,
+        institutionId,
+        docCcy,
+        baseCcy,
+        invoiceData.exchangeRate
+      );
+      const rateErr = getExchangeRateValidationError(docCcy, baseCcy, resolvedRate);
+      if (rateErr) {
+        return res.status(400).json({ success: false, error: rateErr });
+      }
+
       const result = await db.transaction(async (connection) => {
         // Block editing non-draft or system-generated invoices
         const [existingRows] = await connection.execute(
@@ -329,7 +362,7 @@ class PurchaseInvoiceController {
             balance_amount = ?, reference = ?, notes = ?, updated_by = ?
           WHERE id = ? AND institution_id = ?
         `, [
-          invoiceDate, dueDate, invoiceData.currency || 'USD', invoiceData.exchangeRate || 1,
+          invoiceDate, dueDate, invoiceData.currency || 'USD', resolvedRate,
           totals.subtotal, totals.totalTax, totals.totalDiscount, totals.grandTotal,
           totals.grandTotal, invoiceData.reference || null, invoiceData.notes || null,
           user?.userId || 1, id, institutionId

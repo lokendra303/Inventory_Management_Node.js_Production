@@ -1,8 +1,8 @@
 /**
  * Shared pricing/totals/FX helpers for PO, SO, PI, SI and manual line entry.
  * Document amounts (lines + footer) are always in the selected document currency.
- * Institution/base currency is used for stock average cost; convert with exchangeRate
- * where exchangeRate = institution amount per 1 document currency unit.
+ * Institution base currency (from settings baseCurrency) is used for stock average cost.
+ * exchangeRate = base-currency amount per 1 document-currency unit (e.g. 1 INR ≈ 0.012 USD).
  */
 
 export function roundMoney(n) {

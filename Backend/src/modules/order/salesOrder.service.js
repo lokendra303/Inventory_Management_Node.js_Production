@@ -1,5 +1,10 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
+const {
+  getInstitutionBaseCurrency,
+  resolveExchangeRateForSave,
+  getExchangeRateValidationError,
+} = require('../../utils/exchangeRateHelpers');
 const logger = require('../../utils/logger');
 const inventoryService = require('../inventory/inventory.service');
 const warehouseOptimizationService = require('../warehouse/warehouseOptimization.service');
@@ -131,6 +136,7 @@ class SalesOrderService {
       customerName,
       channel = 'direct',
       currency = 'USD',
+      exchangeRate = 1,
       orderDate,
       expectedShipDate,
       notes,
@@ -145,16 +151,27 @@ class SalesOrderService {
     let totalCommittedDemand = 0;
     const createdLines = [];
 
+    const baseCcy = await getInstitutionBaseCurrency(db, institutionId);
+    const resolvedRate = await resolveExchangeRateForSave(
+      db,
+      institutionId,
+      currency,
+      baseCcy,
+      exchangeRate
+    );
+    const rateErr = getExchangeRateValidationError(currency, baseCcy, resolvedRate);
+    if (rateErr) throw new Error(rateErr);
+
     try {
       await db.transaction(async (connection) => {
         // Create SO header without warehouse_id (multi-warehouse order)
         await connection.execute(
           `INSERT INTO sales_orders 
-           (id, institution_id, so_number, customer_id, customer_name, channel, currency, 
+           (id, institution_id, so_number, customer_id, customer_name, channel, currency, exchange_rate,
             order_date, expected_ship_date, notes, created_by, status, is_preorder, shipping_method) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
-          [soId, institutionId, soNumber || `SO-${Date.now()}`, customerId || null, customerName, channel, currency, 
-           orderDate || null, expectedShipDate || null, notes || null, userId, isPreorder, shippingMethod]
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+          [soId, institutionId, soNumber || `SO-${Date.now()}`, customerId || null, customerName, channel, currency,
+           resolvedRate, orderDate || null, expectedShipDate || null, notes || null, userId, isPreorder, shippingMethod]
         );
 
         // Create SO lines with warehouse per line

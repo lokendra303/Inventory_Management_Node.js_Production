@@ -199,3 +199,12 @@ export const formatNumber = (value) => {
   if (isNaN(num)) return '-';
   return num % 1 === 0 ? num.toString() : num.toFixed(2);
 };
+
+/** Format an amount already in the given currency (no base/display conversion). */
+export const formatDocumentAmount = (amount, currencyCode = 'USD', showSymbol = true) => {
+  if (amount == null || (amount !== 0 && !amount)) return '-';
+  const num = parseFloat(amount);
+  if (isNaN(num)) return '-';
+  const formatted = formatNumber(num);
+  return showSymbol ? `${getCurrencySymbol(currencyCode)}${formatted}` : formatted;
+};

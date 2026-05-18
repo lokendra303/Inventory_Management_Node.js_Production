@@ -187,6 +187,7 @@ const createSalesOrderSchema = Joi.object({
   warehouseId: Joi.string().uuid().optional(),
   channel: Joi.string().max(100).default('direct'),
   currency: Joi.string().length(3).default('USD'),
+  exchangeRate: Joi.number().positive().default(1.0),
   orderDate: Joi.alternatives().try(
     Joi.date(),
     Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)

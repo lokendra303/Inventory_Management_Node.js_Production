@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { CurrencyProvider } from './contexts/CurrencyContext.jsx';
 import { withPermission } from './components/common/PermissionWrapper.jsx';
 import ErrorBoundary from './components/common/ErrorBoundary.jsx';
+import { filterSelectOption } from './utils/selectFilter';
 import Login from './pages/auth/Login.jsx';
 import PlatformAdminLogin from './pages/auth/PlatformAdminLogin.jsx';
 import PlatformAdminShell from './platform/PlatformAdminShell.jsx';
@@ -81,14 +82,7 @@ if (!Select.__imsSearchPatched) {
   Select.defaultProps = {
     ...(Select.defaultProps || {}),
     showSearch: true,
-    filterOption: (input, option) => {
-      const source =
-        option?.label ??
-        option?.children ??
-        option?.value ??
-        '';
-      return String(source).toLowerCase().includes(String(input || '').toLowerCase());
-    },
+    filterOption: filterSelectOption,
   };
   Select.__imsSearchPatched = true;
 }

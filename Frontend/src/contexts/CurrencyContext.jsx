@@ -31,18 +31,22 @@ export const CurrencyProvider = ({ children }) => {
         setCurrencySymbol(activeSymbol);
         setBaseCurrency(response.data.baseCurrency || 'USD');
 
-        // If active currency is USD (base), rate is always 1
-        if (activeCurrency === 'USD' || activeCurrency === (response.data.baseCurrency || 'USD')) {
+        const base = response.data.baseCurrency || 'USD';
+
+        // If display currency equals base, rate is always 1
+        if (activeCurrency === base) {
           setExchangeRate(1);
           return;
         }
 
-        // Read the actual live rate from exchange_rates table (USD → activeCurrency)
+        // Read rate from exchange_rates table (base → display)
         try {
           const ratesRes = await apiService.get('/settings/exchange-rates');
           if (ratesRes?.success && ratesRes?.data?.length > 0) {
             const pair = ratesRes.data.find(
-              r => r.from_currency === 'USD' && r.to_currency === activeCurrency
+              (r) =>
+                String(r.from_currency).toUpperCase() === String(base).toUpperCase() &&
+                String(r.to_currency).toUpperCase() === String(activeCurrency).toUpperCase()
             );
             if (pair) {
               setExchangeRate(parseFloat(pair.rate) || 1);
@@ -74,9 +78,10 @@ export const CurrencyProvider = ({ children }) => {
       if (!response?.success) return false;
 
       // Step 2: if a rate was provided, also upsert it into exchange_rates table
-      if (newExchangeRate && newExchangeRate !== 1 && newCurrency !== 'USD') {
+      const base = baseCurrency || 'USD';
+      if (newExchangeRate && newExchangeRate !== 1 && newCurrency !== base) {
         await apiService.put('/settings/exchange-rates', {
-          fromCurrency: 'USD',
+          fromCurrency: base,
           toCurrency: newCurrency,
           rate: newExchangeRate,
           note: 'Set active via currency selector'

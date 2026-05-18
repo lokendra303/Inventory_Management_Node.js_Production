@@ -13,7 +13,7 @@ import UpgradePlanModal from '../../components/common/UpgradePlanModal';
 
 const Warehouses = () => {
   const { hasPermission } = usePermissions();
-  const { currency, exchangeRate } = useCurrency();
+  const { currency, baseCurrency, exchangeRate } = useCurrency();
   const [warehouses, setWarehouses] = useState([]);
   const [warehouseTypes, setWarehouseTypes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -44,7 +44,8 @@ const Warehouses = () => {
   }, []);
 
   const formatPrice = (value) => {
-    const convertedValue = (value || 0) * exchangeRate;
+    const convertedValue =
+      currency === baseCurrency ? (value || 0) : (value || 0) * exchangeRate;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency

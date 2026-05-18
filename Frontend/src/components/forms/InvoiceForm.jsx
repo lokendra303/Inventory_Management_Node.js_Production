@@ -35,6 +35,7 @@ import {
 import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
 import DocumentTotalsSummary from '../business/DocumentTotalsSummary';
 import CommercialExchangeRateField from '../business/CommercialExchangeRateField';
+import { filterSelectOption } from '../../utils/selectFilter';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -62,7 +63,7 @@ function formatStockQuantity(n) {
 }
 
 const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
-  const { currency: institutionCurrency } = useCurrency();
+  const { baseCurrency: institutionCurrency } = useCurrency();
   const [form] = Form.useForm();
   const shipFromWarehouseId = Form.useWatch('shipFromWarehouseId', form);
   const {
@@ -573,9 +574,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 optionLabelProp="label"
                 optionFilterProp="label"
                 onSelect={(itemId) => handleItemSelect(record.key, itemId)}
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
-                }
+                filterOption={filterSelectOption}
                 dropdownStyle={{ minWidth: 350 }}
                 style={{ width: '100%' }}
                 allowClear
@@ -926,10 +925,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                 <Select
                   showSearch
                   placeholder="Search currency..."
-                  optionFilterProp="children"
-                  filterOption={(input, option) =>
-                    option.children?.toString().toLowerCase().includes(input.toLowerCase())
-                  }
+                  optionFilterProp="label"
+                  filterOption={filterSelectOption}
                   onChange={async (value) => {
                     const prev = form.getFieldValue('currency');
                     if (prev && prev !== value) {
@@ -938,7 +935,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
                   }}
                 >
                   {getCurrencies().map(curr => (
-                    <Option key={curr.code} value={curr.code}>
+                    <Option key={curr.code} value={curr.code} label={`${curr.code} ${curr.symbol} ${curr.name}`}>
                       {curr.code} — {curr.symbol} {curr.name}
                     </Option>
                   ))}

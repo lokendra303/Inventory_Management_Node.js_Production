@@ -15,6 +15,7 @@ import ItemCatalogGrid from '../../components/inventory/ItemCatalogGrid';
 import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { filterSelectOption } from '../../utils/selectFilter';
 
 const VARIANT_MATRIX_GRID_TEMPLATE = 'minmax(0, 2.2fr) minmax(0, 1.5fr) minmax(0, 1.35fr) minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(64px, 0.6fr)';
 const VARIANT_MATRIX_MIN_WIDTH = '100%';
@@ -5646,9 +5647,7 @@ const viewItem = async (item) => {
                   placeholder="Select Vendor" 
                   allowClear
                   showSearch
-                  filterOption={(input, option) =>
-                    option.children.toLowerCase().includes(input.toLowerCase())
-                  }
+                  filterOption={filterSelectOption}
                 >
                   {vendorOptions.map(vendor => (
                     <Select.Option key={vendor.id} value={vendor.id}>

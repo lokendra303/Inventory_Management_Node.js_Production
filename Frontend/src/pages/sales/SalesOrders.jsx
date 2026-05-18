@@ -8,20 +8,21 @@ import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { useTaxRates } from '../../hooks/useTaxRates';
-import { getCurrencies, getCurrencySymbol } from '../../utils/currency';
+import { getCurrencies, formatDocumentAmount } from '../../utils/currency';
 import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
 import {
   amountInDocumentCurrency,
   convertAmountBetweenCurrencies,
   getExchangeRateValidationError,
 } from '../../utils/commercialDocument';
+import { filterSelectOption } from '../../utils/selectFilter';
 import DocumentTotalsSummary from '../../components/business/DocumentTotalsSummary';
 import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
 
 const DEFAULT_SO_LINE = { discountRate: 0, taxRateId: undefined };
 
 const SalesOrders = () => {
-  const { currency: institutionCurrency, formatCurrency } = useCurrency();
+  const { formatCurrency } = useCurrency();
   const { taxRates, getRateById } = useTaxRates();
   const [sos, setSOs] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -59,7 +60,7 @@ const SalesOrders = () => {
   const openCreateModal = () => {
     form.resetFields();
     form.setFieldsValue({
-      currency: institutionCurrency,
+      currency: instCcy,
       exchangeRate: 1,
       channel: 'direct',
       orderDate: moment(),
@@ -573,14 +574,12 @@ const SalesOrders = () => {
             </Form.Item>
           )}
 
-          <Form.Item name="currency" label="Currency" initialValue={institutionCurrency}>
+          <Form.Item name="currency" label="Currency" initialValue={instCcy}>
             <Select
               showSearch
               placeholder="Search currency..."
-              optionFilterProp="children"
-              filterOption={(input, option) =>
-                option.children.toLowerCase().includes(input.toLowerCase())
-              }
+              optionFilterProp="label"
+              filterOption={filterSelectOption}
               onChange={async (value) => {
                 const prev = form.getFieldValue('currency');
                 if (prev && prev !== value) {
@@ -589,7 +588,7 @@ const SalesOrders = () => {
               }}
             >
               {getCurrencies().map(c => (
-                <Select.Option key={c.code} value={c.code}>
+                <Select.Option key={c.code} value={c.code} label={`${c.code} ${c.symbol} ${c.name}`}>
                   {c.code} — {c.symbol} {c.name}
                 </Select.Option>
               ))}
@@ -720,10 +719,7 @@ const SalesOrders = () => {
                               placeholder="Select item"
                               showSearch
                               optionLabelProp="label"
-                              filterOption={(input, option) => {
-                                const label = option.label || '';
-                                return label.toLowerCase().includes(input.toLowerCase());
-                              }}
+                              filterOption={filterSelectOption}
                               dropdownStyle={{ minWidth: 350 }}
                               onChange={(itemId) => {
                                 const sel = items.find((i) => i.id === itemId);
@@ -954,6 +950,8 @@ const SalesOrders = () => {
                           const afterDiscount = lineTotal - discountAmt;
                           const taxAmount     = afterDiscount * taxPct / 100;
                           const grandTotal    = afterDiscount + taxAmount;
+                          const docCcy        = documentCurrency || instCcy;
+                          const fmtDoc        = (n) => formatDocumentAmount(n, docCcy);
                           // Must match variant-aware stock map: itemId → variantKey → warehouseId
                           const available     = currentAvailable;
                           const isInsufficient = qty > 0 && available < qty;
@@ -976,10 +974,10 @@ const SalesOrders = () => {
                                   <strong style={{ color: available > 0 ? '#52c41a' : '#ff4d4f', marginLeft: 4 }}>{available} in stock</strong>
                                   {qty > 0 && (
                                     <span style={{ marginLeft: 8 }}>
-                                      Subtotal: <strong>{formatCurrency(lineTotal)}</strong>
-                                      {discountPct > 0 && <> − Discount ({discountPct}%): <strong style={{ color: '#ff4d4f' }}>−{formatCurrency(discountAmt)}</strong></>}
-                                      {taxPct > 0 && <> + Tax ({taxPct}%): <strong>{formatCurrency(taxAmount)}</strong></>}
-                                      {' = '}<Tag color="green">{formatCurrency(grandTotal)}</Tag>
+                                      Subtotal: <strong>{fmtDoc(lineTotal)}</strong>
+                                      {discountPct > 0 && <> − Discount ({discountPct}%): <strong style={{ color: '#ff4d4f' }}>−{fmtDoc(discountAmt)}</strong></>}
+                                      {taxPct > 0 && <> + Tax ({taxPct}%): <strong>{fmtDoc(taxAmount)}</strong></>}
+                                      {' = '}<Tag color="green">{fmtDoc(grandTotal)} ({docCcy})</Tag>
                                     </span>
                                   )}
                                 </span>

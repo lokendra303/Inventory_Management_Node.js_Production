@@ -19,7 +19,7 @@ export function useCommercialDocumentCurrency(
   currencyFieldName = 'currency',
   exchangeRateFieldName = 'exchangeRate'
 ) {
-  const { currency: institutionCurrency } = useCurrency();
+  const { baseCurrency: institutionCurrency } = useCurrency();
   const documentCurrency = Form.useWatch(currencyFieldName, form) || institutionCurrency;
   const watchedRate = Form.useWatch(exchangeRateFieldName, form);
   const [exchangeRate, setExchangeRate] = useState(1);

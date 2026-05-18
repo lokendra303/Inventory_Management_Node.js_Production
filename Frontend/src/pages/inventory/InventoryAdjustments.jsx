@@ -5,6 +5,7 @@ import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
+import { filterSelectOption } from '../../utils/selectFilter';
 
 const ADJUSTMENT_REASONS = {
   increase: [
@@ -231,7 +232,7 @@ const InventoryAdjustments = () => {
                     <Select
                       placeholder="Select item"
                       showSearch
-                      filterOption={(input, option) => option.children.toLowerCase().includes(input.toLowerCase())}
+                      filterOption={filterSelectOption}
                       onChange={onItemOrWarehouseChange}
                       style={{ borderRadius: 8 }}
                     >

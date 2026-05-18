@@ -2,6 +2,11 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const auditLogService = require('../audit/auditLog.service');
+const {
+  getInstitutionBaseCurrency,
+  resolveExchangeRateForSave,
+  getExchangeRateValidationError,
+} = require('../../utils/exchangeRateHelpers');
 
 class PurchaseOrderService {
   async createPurchaseOrder(institutionId, poData, userId) {
@@ -19,6 +24,17 @@ class PurchaseOrderService {
 
     const poId = uuidv4();
     let subtotal = 0;
+
+    const baseCcy = await getInstitutionBaseCurrency(db, institutionId);
+    const resolvedRate = await resolveExchangeRateForSave(
+      db,
+      institutionId,
+      currency,
+      baseCcy,
+      exchangeRate
+    );
+    const rateErr = getExchangeRateValidationError(currency, baseCcy, resolvedRate);
+    if (rateErr) throw new Error(rateErr);
 
     try {
       await db.transaction(async (connection) => {
@@ -63,11 +79,11 @@ class PurchaseOrderService {
            (id, institution_id, po_number, vendor_id, vendor_name, currency, exchange_rate, 
             order_date, expected_date, notes, created_by, status) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
-          [poId, institutionId, poNumber, vendorId || null, vendorName, currency, exchangeRate, 
+          [poId, institutionId, poNumber, vendorId || null, vendorName, currency, resolvedRate,
            formattedOrderDate, formattedExpectedDate, notes || null, createdBy]
         );
 
-        const effectiveExchangeRate = parseFloat(exchangeRate) || 1.0;
+        const effectiveExchangeRate = resolvedRate;
 
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
@@ -399,6 +415,18 @@ class PurchaseOrderService {
   async updatePurchaseOrder(institutionId, poId, poData, userId) {
     const { vendorId, vendorName, currency, exchangeRate, orderDate, expectedDate, notes, lines } = poData;
 
+    const baseCcy = await getInstitutionBaseCurrency(db, institutionId);
+    const docCcy = currency || 'USD';
+    const resolvedRate = await resolveExchangeRateForSave(
+      db,
+      institutionId,
+      docCcy,
+      baseCcy,
+      exchangeRate
+    );
+    const rateErr = getExchangeRateValidationError(docCcy, baseCcy, resolvedRate);
+    if (rateErr) throw new Error(rateErr);
+
     try {
       await db.transaction(async (connection) => {
         // Check if PO exists and is in draft status
@@ -432,7 +460,7 @@ class PurchaseOrderService {
            SET vendor_id = ?, vendor_name = ?, currency = ?, exchange_rate = ?, 
                order_date = ?, expected_date = ?, notes = ?, updated_at = NOW()
            WHERE institution_id = ? AND id = ?`,
-          [vendorId || null, vendorName, currency || 'USD', exchangeRate || 1.0, 
+          [vendorId || null, vendorName, currency || 'USD', resolvedRate,
            orderDate, expectedDate || null, notes || null, institutionId, poId]
         );
 
@@ -443,7 +471,7 @@ class PurchaseOrderService {
         );
 
         // Insert new lines
-        const updateExchangeRate = parseFloat(exchangeRate) || 1.0;
+        const updateExchangeRate = resolvedRate;
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           const lineId = uuidv4();
