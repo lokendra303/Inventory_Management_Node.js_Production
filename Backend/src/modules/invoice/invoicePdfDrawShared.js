@@ -366,18 +366,27 @@ function drawPartyBankBox(doc, startY, standardInvoice) {
 
 function drawStampSignature(doc, y, companySettings, stampBuffer, signatureBuffer) {
   const footerY = y;
+  const signColX = 400;
 
   if (stampBuffer) {
     doc.image(stampBuffer, 50, footerY, { width: 80, height: 80 });
   }
 
   if (signatureBuffer) {
-    doc.image(signatureBuffer, 400, footerY, { width: 100, height: 60 });
+    doc.image(signatureBuffer, signColX, footerY, { width: 100, height: 60 });
   }
 
-  doc.fontSize(8).font('Helvetica').text('_____________________', 400, footerY + 65);
-  doc.text(companySettings?.authorized_signatory_name || 'Authorized Signatory', 400, footerY + 75);
-  doc.text(companySettings?.authorized_signatory_designation || '', 400, footerY + 85);
+  const titleY = footerY + (signatureBuffer ? 62 : 0);
+  const lineY = footerY + (signatureBuffer ? 76 : 14);
+  const nameY = lineY + 10;
+  const roleY = nameY + 12;
+
+  doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text('Authorized signatory', signColX, titleY, {
+    width: 140,
+  });
+  doc.fontSize(8).font('Helvetica').fillColor('#000').text('_____________________', signColX, lineY);
+  doc.text(companySettings?.authorized_signatory_name || 'Authorized Signatory', signColX, nameY);
+  doc.text(companySettings?.authorized_signatory_designation || '', signColX, roleY);
 }
 
 module.exports = {

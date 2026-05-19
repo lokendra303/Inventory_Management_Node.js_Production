@@ -730,19 +730,29 @@ class InvoicePDFService {
     const cs = this._resolveCompanyStrings(standardInvoice, companySettings);
     const left = 50;
     const header = drawCompanyLogoTopLeft(doc, logoBuffer);
-    const bannerBottom = drawParallelogramCompanyBanner(doc, 318, header.topY - 2, cs);
+    const partyLeft = header.hasLogo ? header.contentX : left;
+    const columnLayout = {
+      billStartX: partyLeft,
+      billColWidth: 148,
+      billShipGap: 22,
+    };
+    const layout = getSalesPartyColumnLayout(columnLayout);
+    const bannerX = header.hasLogo ? 330 : 318;
+    const bannerBottom = drawParallelogramCompanyBanner(doc, bannerX, header.topY - 2, cs);
 
     const partyStartY = Math.max(header.bottomY + 10, bannerBottom + 8);
     const party = standardInvoice.partyDetails || { name: 'N/A' };
     const isSales = this._isSalesInvoice(standardInvoice);
     let partyY;
 
-    const layout = getSalesPartyColumnLayout();
-
     if (isSales) {
-      ({ bottomY: partyY } = drawSalesBillShipColumns(doc, left, partyStartY, party, { showGst: true }));
+      ({ bottomY: partyY } = drawSalesBillShipColumns(doc, partyStartY, party, {
+        showGst: true,
+        columnLayout,
+      }));
     } else {
-      partyY = drawBrandedPartyColumn(doc, left, partyStartY, 300, 'Bill to:', party, {
+      const billW = Math.max(180, layout.metaX - partyLeft - 14);
+      partyY = drawBrandedPartyColumn(doc, partyLeft, partyStartY, billW, 'Bill to:', party, {
         addressKey: 'billing',
         showName: true,
         showContact: true,
@@ -751,6 +761,19 @@ class InvoicePDFService {
     }
 
     let metaY = partyStartY;
+    if (isSales) {
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text('SALES INVOICE', layout.metaX, metaY, {
+        width: layout.metaWidth,
+        align: 'right',
+      });
+      metaY += 18;
+    } else {
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text('PURCHASE INVOICE', layout.metaX, metaY, {
+        width: layout.metaWidth,
+        align: 'right',
+      });
+      metaY += 18;
+    }
     const metaRow = (label, value, valueBold = false) => {
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(label, layout.metaX, metaY, {
         width: layout.metaWidth,
@@ -774,7 +797,7 @@ class InvoicePDFService {
     }
 
     const tableStart = Math.max(partyY, metaY) + 16;
-    const { y: afterTable, pageNumber } = drawBrandedLineItems(doc, tableStart, standardInvoice, {
+    let { y: afterTable, pageNumber } = drawBrandedLineItems(doc, tableStart, standardInvoice, {
       invoiceNumber: standardInvoice.details?.invoiceNumber || 'N/A',
     });
 

@@ -16,7 +16,7 @@ function formatInvoiceDate(d) {
   return `${dd} / ${mm} / ${yyyy}`;
 }
 
-const { formatDocumentAmount } = require('../../utils/currencyFormat');
+const { formatDocumentAmount, formatNumber, getRateColumnHeader } = require('../../utils/currencyFormat');
 const formatMoney = (amount, currencyCode) => formatDocumentAmount(amount, currencyCode, { pdf: true });
 
 /** Filled quadrilateral with horizontal skew (parallelogram). */
@@ -46,8 +46,8 @@ function drawLines(doc, lines, x, y, width, lineGap = 11) {
  * @returns {number} bottom Y
  */
 function drawParallelogramCompanyBanner(doc, x, y, companyStrings) {
-  const w = 218;
-  const skew = 14;
+  const w = 210;
+  const skew = 12;
   const padX = 16;
   const padY = 10;
   const textW = w - padX * 2;
@@ -76,8 +76,8 @@ function drawParallelogramCompanyBanner(doc, x, y, companyStrings) {
   const h = Math.max(52, padY * 2 + contentLines.length * lineH + 4);
 
   fillSkewRect(doc, x, y, w, h, skew, BRAND_GRAY);
-  fillSkewRect(doc, x - 18, y + 6, 22, h - 12, 8, BRAND_BLUE);
-  fillSkewRect(doc, x + w + skew + 4, y + 6, 22, h - 12, 8, BRAND_BLUE);
+  fillSkewRect(doc, x - 14, y + 6, 18, h - 12, 6, BRAND_BLUE);
+  fillSkewRect(doc, x + w + skew + 4, y + 6, 18, h - 12, 6, BRAND_BLUE);
 
   let ty = y + padY;
   contentLines.forEach((line) => {
@@ -129,7 +129,11 @@ function drawBrandedLineItems(doc, startY, standardInvoice, opts) {
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
     doc.text('SL.', xSl + 4, yPos + 6, { width: colSl - 8 });
     doc.text('Item Description', xDesc + 6, yPos + 6, { width: colDesc - 12 });
-    doc.text('Price', xPrice, yPos + 6, { width: colPrice, align: 'center' });
+    const priceHeader = getRateColumnHeader(currency);
+    const priceHeaderFont = priceHeader.length > 14 ? 7.5 : 9;
+    doc.fontSize(priceHeaderFont).font('Helvetica-Bold').fillColor('#ffffff');
+    doc.text(priceHeader, xPrice, yPos + 6, { width: colPrice, align: 'center' });
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
     doc.text('Qty.', xQty, yPos + 6, { width: colQty, align: 'center' });
     doc.text('Total', xTotal, yPos + 6, { width: colTotal - 4, align: 'right' });
     doc.fillColor('#000000');
@@ -167,7 +171,7 @@ function drawBrandedLineItems(doc, startY, standardInvoice, opts) {
     doc.fillColor('#333333');
     doc.text(String(item.sno || index + 1), xSl + 4, rowY + 5, { width: colSl - 8 });
     doc.text(name, xDesc + 6, rowY + 5, { width: colDesc - 12 });
-    doc.text(formatMoney(item.unitAmount, currency), xPrice, rowY + 5, { width: colPrice, align: 'center' });
+    doc.text(formatNumber(item.unitAmount), xPrice, rowY + 5, { width: colPrice, align: 'center' });
     const qtyN = parseFloat(item.quantity || 0);
     doc.text(qtyN.toFixed(qtyN % 1 === 0 ? 0 : 2), xQty, rowY + 5, {
       width: colQty,
@@ -270,19 +274,23 @@ function drawBrandedFooter(doc, y, standardInvoice, companySettings, signatureBu
   if (signatureBuffer) {
     doc.image(signatureBuffer, signX, signY, { width: 110, height: 52 });
   }
-  const lineY = signY + (signatureBuffer ? 56 : 8);
+  const titleY = signY + (signatureBuffer ? 56 : 2);
+  const lineY = titleY + 12;
+  doc.fontSize(8).font('Helvetica-Bold').fillColor('#333').text('Authorized signatory', signX, titleY, {
+    width: 130,
+    align: 'center',
+  });
   doc.moveTo(signX, lineY).lineTo(signX + 130, lineY).strokeColor('#999').lineWidth(0.8).stroke();
-  doc.fontSize(8).font('Helvetica').fillColor('#333').text('Authorised Sign', signX + 36, lineY + 4);
   const sigName = companySettings?.authorized_signatory_name;
   const sigRole = companySettings?.authorized_signatory_designation;
   if (sigName) {
-    doc.font('Helvetica-Bold').text(sigName, signX, lineY + 16, { width: 130, align: 'center' });
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#333').text(sigName, signX, lineY + 8, { width: 130, align: 'center' });
   }
   if (sigRole) {
-    doc.font('Helvetica').fontSize(7).text(sigRole, signX, lineY + 28, { width: 130, align: 'center' });
+    doc.font('Helvetica').fontSize(7).text(sigRole, signX, lineY + 22, { width: 130, align: 'center' });
   }
 
-  return Math.max(ty, lineY + 40);
+  return Math.max(ty, lineY + 38);
 }
 
 function hasAddress(addr) {
@@ -299,19 +307,20 @@ function hasAddress(addr) {
 }
 
 /** Bill to / Ship to columns + right meta slot (A4 content width 50–545). */
-function getSalesPartyColumnLayout() {
-  const pageLeft = 50;
+function getSalesPartyColumnLayout(options = {}) {
   const pageRight = 545;
-  const metaWidth = 128;
-  const metaGutter = 12;
+  const metaWidth = options.metaWidth != null ? options.metaWidth : 128;
+  const metaGutter = options.metaGutter != null ? options.metaGutter : 12;
   const metaX = pageRight - metaWidth;
   const blocksRight = metaX - metaGutter;
-  const billColWidth = 165;
-  const shipX = 268;
-  const shipColWidth = blocksRight - shipX;
+  const billStart = options.billStartX != null ? options.billStartX : 50;
+  const billColWidth = options.billColWidth != null ? options.billColWidth : 165;
+  const billShipGap = options.billShipGap != null ? options.billShipGap : 28;
+  const shipX = billStart + billColWidth + billShipGap;
+  const shipColWidth = Math.max(70, blocksRight - shipX);
   return {
-    pageLeft,
-    billX: pageLeft,
+    pageLeft: billStart,
+    billX: billStart,
     shipX,
     billColWidth,
     shipColWidth,
@@ -418,8 +427,9 @@ function drawSalesBillShipColumns(doc, startY, party, options = {}) {
     billLabel = 'Bill to',
     shipLabel = 'Ship to',
     shipShowName = false,
+    columnLayout = {},
   } = options;
-  const layout = getSalesPartyColumnLayout();
+  const layout = getSalesPartyColumnLayout(columnLayout);
   const { billX, shipX, billColWidth, shipColWidth } = layout;
 
   doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');

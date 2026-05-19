@@ -18,6 +18,7 @@ import {
 import { filterSelectOption } from '../../utils/selectFilter';
 import DocumentTotalsSummary from '../../components/business/DocumentTotalsSummary';
 import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
+import { assertPdfBlob, printPdfBlob } from '../../utils/printPdfBlob';
 
 const DEFAULT_SO_LINE = { discountRate: 0, taxRateId: undefined };
 
@@ -393,6 +394,7 @@ const SalesOrders = () => {
       if (!response.ok) throw new Error('Failed to download PDF');
       
       const blob = await response.blob();
+      await assertPdfBlob(blob);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -411,7 +413,7 @@ const SalesOrders = () => {
     try {
       const token = sessionStorage.getItem('token');
       let institutionId = sessionStorage.getItem('institutionId');
-      
+
       if (!institutionId && token) {
         try {
           const payload = JSON.parse(atob(token.split('.')[1]));
@@ -420,36 +422,26 @@ const SalesOrders = () => {
           console.error('Failed to parse token');
         }
       }
-      
+
       const response = await fetch(`${apiService.baseURL}/sales-orders/${so.id}/pdf`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'x-institution-id': institutionId
-        }
+          Authorization: `Bearer ${token}`,
+          'x-institution-id': institutionId,
+        },
       });
-      
+
       if (!response.ok) throw new Error('Failed to load PDF');
-      
+
       const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      
-      const printWindow = window.open(blobUrl, '_blank');
-      if (!printWindow) {
-        message.error('Please allow pop-ups to print');
-        URL.revokeObjectURL(blobUrl);
-        return;
-      }
-      
-      printWindow.onload = function() {
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-        }, 250);
-      };
+      await printPdfBlob(blob);
     } catch (error) {
       console.error('Print error:', error);
-      message.error('Failed to print PDF');
+      message.error(
+        error?.message === 'POPUP_BLOCKED'
+          ? 'Please allow pop-ups to print'
+          : error?.message || 'Failed to print PDF'
+      );
     }
   };
 

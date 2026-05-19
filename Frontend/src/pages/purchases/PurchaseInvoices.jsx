@@ -10,6 +10,7 @@ import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
 import { formatCommercialDocAmount, formatDocumentAmount } from '../../utils/currency';
 import { mediaUrl } from '../../config/appConfig';
+import { assertPdfBlob, printPdfBlob } from '../../utils/printPdfBlob';
 
 const STATUS_CONFIG = {
   draft:          { color: 'orange',  label: 'Draft' },
@@ -140,6 +141,7 @@ const PurchaseInvoices = () => {
               {stampUrl && <img src={stampUrl} alt="Stamp" style={{ maxHeight: '80px' }} />}
               <div style={{ textAlign: 'right' }}>
                 {signatureUrl && <img src={signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginBottom: '5px' }} />}
+                <p style={{ margin: '0 0 4px 0', fontSize: '12px', fontWeight: 700 }}>Authorized signatory</p>
                 <p style={{ margin: '5px 0', fontSize: '12px', borderTop: '1px solid #333', paddingTop: '5px', textAlign: 'left' }}>
                   <strong>Name:</strong> {settings.authorized_signatory_name || 'N/A'}<br />
                   <strong>Designation:</strong> {settings.authorized_signatory_designation || 'N/A'}
@@ -158,13 +160,16 @@ const PurchaseInvoices = () => {
     try {
       setLoading(true);
       const response = await apiService.get(`/purchase-invoices/${invoiceId}/pdf?download=true`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      await assertPdfBlob(response.data);
+      const url = window.URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url; link.setAttribute('download', `PI_${invoiceNumber}.pdf`);
       document.body.appendChild(link); link.click(); link.remove();
       window.URL.revokeObjectURL(url);
       message.success('PDF downloaded');
-    } catch { message.error('Failed to download PDF'); }
+    } catch (e) {
+      message.error(e?.message || 'Failed to download PDF');
+    }
     finally { setLoading(false); }
   };
 
@@ -172,12 +177,16 @@ const PurchaseInvoices = () => {
     try {
       setLoading(true);
       const response = await apiService.get(`/purchase-invoices/${invoiceId}/pdf?download=true`, { responseType: 'blob' });
-      const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      const w = window.open(blobUrl, '_blank');
-      if (!w) { message.error('Allow pop-ups to print'); URL.revokeObjectURL(blobUrl); return; }
-      w.onload = () => { w.focus(); setTimeout(() => w.print(), 250); };
-    } catch { message.error('Failed to print PDF'); }
-    finally { setLoading(false); }
+      await printPdfBlob(response.data);
+    } catch (e) {
+      message.error(
+        e?.message === 'POPUP_BLOCKED'
+          ? 'Allow pop-ups for this site to print'
+          : e?.message || 'Failed to print PDF'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSendEmail = async () => {
