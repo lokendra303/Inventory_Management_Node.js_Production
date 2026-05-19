@@ -364,11 +364,133 @@ function drawPartyBankBox(doc, startY, standardInvoice) {
   return startY + 10 + 120 + 15;
 }
 
-function drawStampSignature(doc, y, companySettings, stampBuffer, signatureBuffer) {
-  const footerY = y;
-  const signColX = 400;
+function isSalesStandardInvoice(standardInvoice) {
+  if (!standardInvoice) return true;
+  const t = standardInvoice.details?.type || standardInvoice.metadata?.type;
+  return t !== 'purchase';
+}
 
-  if (stampBuffer) {
+function buildCompanyBankRows(companySettings) {
+  return [
+    ["A/c Holder's Name", companySettings?.company_name],
+    ['Bank Name', companySettings?.bank_name],
+    ['A/c No.', companySettings?.account_number],
+    [
+      'Branch & IFSC Code',
+      [companySettings?.branch_name, companySettings?.ifsc_code].filter(Boolean).join(' / ') ||
+        companySettings?.ifsc_code,
+    ],
+    ['SWIFT Code', companySettings?.swift_code],
+  ];
+}
+
+function buildVendorBankRows(party) {
+  const b = party?.bankDetails || {};
+  const holder =
+    b.accountHolder ||
+    b.account_holder ||
+    b.account_holder_name ||
+    party?.name ||
+    party?.companyName;
+  return [
+    ["A/c Holder's Name", holder],
+    ['Bank Name', b.bankName || b.bank_name],
+    ['A/c No.', b.accountNumber || b.account_number],
+    [
+      'Branch & IFSC Code',
+      [b.branchName || b.branch_name, b.ifscCode || b.ifsc_code].filter(Boolean).join(' / ') ||
+        b.ifscCode ||
+        b.ifsc_code,
+    ],
+    ['SWIFT Code', b.swiftCode || b.swift_code],
+  ];
+}
+
+function hasBankRows(rows) {
+  return rows.some(([, val]) => val != null && String(val).trim() !== '');
+}
+
+/**
+ * Draw label/value bank rows (classic footer — 8pt).
+ * @returns {number} bottom Y
+ */
+function drawBankDetailsFooter(doc, footerY, title, rows, options = {}) {
+  const leftX = options.leftX ?? 50;
+  const width = options.width ?? 310;
+  if (!hasBankRows(rows)) return footerY;
+
+  let ty = footerY;
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(title, leftX, ty, { width });
+  ty += 14;
+  doc.fontSize(8).font('Helvetica');
+
+  rows.forEach(([label, val]) => {
+    if (val == null || String(val).trim() === '') return;
+    doc.font('Helvetica-Bold').text(`${label}: `, leftX, ty, { continued: true, width });
+    doc.font('Helvetica').text(String(val), { width: width - 10 });
+    ty += 12;
+  });
+
+  doc.fillColor('#000');
+  return ty;
+}
+
+/** Tally/proforma compact bank block (6.5pt). @returns {number} bottom Y */
+function drawTallyBankBlock(doc, x, startY, title, rows, maxWidth) {
+  if (!hasBankRows(rows)) return startY;
+  doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000').text(title, x, startY);
+  let by = startY + 9;
+  doc.fontSize(6.5).font('Helvetica');
+  rows.forEach(([label, val]) => {
+    if (val == null || String(val).trim() === '') return;
+    doc.font('Helvetica-Bold').text(`${label}: `, x, by, { continued: true });
+    doc.font('Helvetica').text(String(val), { width: maxWidth });
+    by += 10;
+  });
+  doc.fillColor('#000');
+  return by;
+}
+
+/**
+ * Company bank details (left footer) — from Company Settings / institution_profiles.
+ */
+function drawCompanyBankFooter(doc, footerY, companySettings, options = {}) {
+  return drawBankDetailsFooter(
+    doc,
+    footerY,
+    "Company's Bank Details",
+    buildCompanyBankRows(companySettings),
+    options
+  );
+}
+
+/** Vendor bank details (purchase invoices). */
+function drawVendorBankFooter(doc, footerY, partyDetails, options = {}) {
+  return drawBankDetailsFooter(
+    doc,
+    footerY,
+    "Vendor's Bank Details",
+    buildVendorBankRows(partyDetails),
+    options
+  );
+}
+
+function drawStampSignature(doc, y, companySettings, stampBuffer, signatureBuffer, standardInvoice = null) {
+  const footerY = y;
+  const signColX = 380;
+  const isSales = isSalesStandardInvoice(standardInvoice);
+
+  if (isSales) {
+    drawCompanyBankFooter(doc, footerY, companySettings);
+  } else {
+    drawVendorBankFooter(doc, footerY, standardInvoice?.partyDetails);
+  }
+
+  const hasLeftBank = isSales
+    ? Boolean(companySettings?.bank_name) || Boolean(companySettings?.account_number)
+    : hasBankRows(buildVendorBankRows(standardInvoice?.partyDetails));
+
+  if (stampBuffer && !hasLeftBank) {
     doc.image(stampBuffer, 50, footerY, { width: 80, height: 80 });
   }
 
@@ -382,11 +504,13 @@ function drawStampSignature(doc, y, companySettings, stampBuffer, signatureBuffe
   const roleY = nameY + 12;
 
   doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text('Authorized signatory', signColX, titleY, {
-    width: 140,
+    width: 155,
   });
   doc.fontSize(8).font('Helvetica').fillColor('#000').text('_____________________', signColX, lineY);
-  doc.text(companySettings?.authorized_signatory_name || 'Authorized Signatory', signColX, nameY);
-  doc.text(companySettings?.authorized_signatory_designation || '', signColX, roleY);
+  doc.text(companySettings?.authorized_signatory_name || 'Authorized Signatory', signColX, nameY, {
+    width: 155,
+  });
+  doc.text(companySettings?.authorized_signatory_designation || '', signColX, roleY, { width: 155 });
 }
 
 module.exports = {
@@ -397,5 +521,12 @@ module.exports = {
   drawInvoiceLineItems,
   drawTotalsBlock,
   drawPartyBankBox,
+  isSalesStandardInvoice,
+  buildCompanyBankRows,
+  buildVendorBankRows,
+  drawBankDetailsFooter,
+  drawTallyBankBlock,
+  drawCompanyBankFooter,
+  drawVendorBankFooter,
   drawStampSignature,
 };

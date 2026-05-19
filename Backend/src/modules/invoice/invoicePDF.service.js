@@ -13,7 +13,6 @@ const {
   drawCompanyLogoTopLeft,
   drawInvoiceLineItems,
   drawTotalsBlock,
-  drawPartyBankBox,
   drawStampSignature,
 } = require('./invoicePdfDrawShared');
 const {
@@ -27,6 +26,7 @@ const {
   drawBrandedTotals,
   drawBrandedFooter,
 } = require('./invoicePdfBranded');
+const { drawClassicPartyMetaBand } = require('./invoicePdfMetaGrid');
 const { normalizeDocType } = require('../../utils/pdfFooterOptions');
 const { loadPdfFooterAssets } = require('../../utils/pdfFooterAssets');
 const { drawProformaInvoice } = require('./invoicePdfProforma');
@@ -241,23 +241,30 @@ class InvoicePDFService {
   }
 
   /** Bill to / Ship to (sales) or single Bill to (purchase). Returns bottom Y. */
-  _drawPartyBillShipBlock(doc, startY, standardInvoice) {
+  _drawPartyBillShipBlock(doc, startY, standardInvoice, options = {}) {
+    const { includeSimpleMeta = true } = options;
     const party = standardInvoice.partyDetails || { name: 'N/A' };
     const isSales = this._isSalesInvoice(standardInvoice);
+    const fullWidthParty = { metaWidth: 0, metaGutter: 0 };
 
     if (isSales) {
-      const { bottomY, layout } = drawSalesBillShipColumns(doc, startY, party, { showGst: false });
+      const { bottomY, layout } = drawSalesBillShipColumns(doc, startY, party, {
+        showGst: false,
+        columnLayout: includeSimpleMeta ? {} : fullWidthParty,
+      });
+      if (!includeSimpleMeta) return bottomY;
       const metaY = this._drawSalesInvoiceMetaRight(doc, startY, standardInvoice, layout);
       return Math.max(bottomY, metaY);
     }
 
-    const layout = getSalesPartyColumnLayout();
+    const layout = getSalesPartyColumnLayout(includeSimpleMeta ? {} : fullWidthParty);
     const billY = drawBrandedPartyColumn(doc, layout.billX, startY, layout.colWidth + 40, 'Bill to:', party, {
       addressKey: 'billing',
       showName: true,
       showContact: true,
       showGst: true,
     });
+    if (!includeSimpleMeta) return billY;
     const metaY = this._drawInvoiceMetaBlock(doc, layout.metaX, startY, standardInvoice, layout.metaWidth);
     return Math.max(billY, metaY);
   }
@@ -624,8 +631,7 @@ class InvoicePDFService {
   _tailSection(doc, y, standardInvoice, companySettings, stampBuffer, signatureBuffer, pageNumber, tailOpts = {}) {
     let yn = drawTotalsBlock(doc, y, standardInvoice, tailOpts);
     doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
-    yn = drawPartyBankBox(doc, yn, standardInvoice);
-    drawStampSignature(doc, yn + 20, companySettings, stampBuffer, signatureBuffer);
+    drawStampSignature(doc, yn + 20, companySettings, stampBuffer, signatureBuffer, standardInvoice);
   }
 
   _renderClassic(doc, ctx) {
@@ -643,9 +649,21 @@ class InvoicePDFService {
     if (!isSales) {
       doc.fontSize(18).font('Helvetica-Bold').fillColor('#000').text('PURCHASE INVOICE', 50, y);
       y += 28;
+    } else {
+      doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('SALES INVOICE', 50, y, {
+        width: 495,
+        align: 'center',
+      });
+      y += 22;
     }
 
-    y = this._drawPartyBillShipBlock(doc, y, standardInvoice) + 12;
+    const party = standardInvoice.partyDetails || {};
+    y =
+      drawClassicPartyMetaBand(doc, y, standardInvoice, party, {
+        isSales,
+        leftX: 50,
+        totalWidth: 495,
+      }) + 12;
 
     const { y: y2, pageNumber } = drawInvoiceLineItems(doc, y, standardInvoice, {
       variant: isSales ? 'classic-sales' : 'classic',

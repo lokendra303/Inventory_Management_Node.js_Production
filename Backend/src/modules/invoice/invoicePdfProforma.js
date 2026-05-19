@@ -5,6 +5,12 @@
 const { formatDocumentAmount, formatNumber } = require('../../utils/currencyFormat');
 const { normalizeInvoiceUnit } = require('../../utils/invoiceUnit');
 const invoiceTemplateService = require('./invoiceTemplate.service');
+const { buildTallyMetaGridRows, drawTallyMetaGrid, measureMetaRowHeight } = require('./invoicePdfMetaGrid');
+const {
+  buildCompanyBankRows,
+  buildVendorBankRows,
+  drawTallyBankBlock,
+} = require('./invoicePdfDrawShared');
 
 const PAGE_W = 595.28;
 const MARGIN = 12;
@@ -169,67 +175,6 @@ function drawGridTable(doc, x, y, colWidths, rows, defaultRowH = 16) {
   return cy;
 }
 
-const META_LABEL_SIZE = 6;
-const META_VALUE_SIZE = 7;
-const META_LABEL_H = 8;
-const META_VALUE_PAD_TOP = 9;
-const META_CELL_PAD = 4;
-
-/** Clip value for narrow meta cells. */
-function clipMetaValue(value, maxLen = 42) {
-  const s = String(value || '').trim();
-  if (!s) return '';
-  if (s.length <= maxLen) return s;
-  return `${s.slice(0, maxLen - 1)}…`;
-}
-
-/**
- * Measure row height for one or two meta cells (label + value each).
- */
-function measureMetaRowHeight(doc, cells, colWidths) {
-  const pad = META_CELL_PAD;
-  let maxH = 18;
-  cells.forEach((cell, i) => {
-    const cw = colWidths[i] || colWidths[0];
-    const value = cell.value || '';
-    doc.fontSize(META_VALUE_SIZE).font(FONT);
-    const valueH = value
-      ? doc.heightOfString(value, { width: cw - pad * 2, lineGap: 0 })
-      : 0;
-    const h = META_VALUE_PAD_TOP + Math.max(valueH, 7) + 4;
-    if (h > maxH) maxH = h;
-  });
-  return Math.min(maxH, 36);
-}
-
-/**
- * Draw label (top) + value (below) inside a meta cell; stays above bottom border.
- */
-function drawMetaLabeledCell(doc, x, y, w, h, label, value) {
-  const pad = META_CELL_PAD;
-  doc.fontSize(META_LABEL_SIZE).font(FONT_BOLD).fillColor('#000000');
-  doc.text(label, x + pad, y + 2, { width: w - pad * 2, lineGap: 0 });
-
-  const valueText = clipMetaValue(value, w < 140 ? 28 : 48);
-  if (valueText) {
-    doc.fontSize(META_VALUE_SIZE).font(FONT);
-    const maxValueH = Math.max(7, h - META_VALUE_PAD_TOP - 3);
-    doc.text(valueText, x + pad, y + META_VALUE_PAD_TOP, {
-      width: w - pad * 2,
-      height: maxValueH,
-      lineGap: 0,
-      ellipsis: true,
-    });
-  }
-}
-
-function strokeVLine(doc, x, y1, y2) {
-  doc.save();
-  doc.lineWidth(LINE).strokeColor('#000000');
-  doc.moveTo(x, y1).lineTo(x, y2).stroke();
-  doc.restore();
-}
-
 function buildHsnTaxSummary(lineItems) {
   const map = new Map();
   (lineItems || []).forEach((item) => {
@@ -315,51 +260,7 @@ function drawProformaInvoice(doc, ctx) {
   const metaX = LEFT + sellerW;
   const halfMeta = metaW / 2;
   const metaColWidths = [halfMeta, halfMeta];
-  const invDate = formatTallyDate(standardInvoice.details?.invoiceDate);
-  const details = standardInvoice.details || {};
-  const refLine = [details.reference, invDate].filter(Boolean).join(' / ');
-  const buyersOrder =
-    details.buyersOrderNo ||
-    details.soNumber ||
-    details.poNumber ||
-    '';
-  const termsDelivery = clipMetaValue(details.deliveryTerms || '', 55);
-
-  const metaGridRows = [
-    {
-      cells: [
-        { label: 'Invoice No.', value: details.invoiceNumber },
-        { label: 'Dated', value: invDate },
-      ],
-    },
-    { cells: [{ label: 'e-Way Bill No.', value: details.ewayBill || '' }] },
-    { cells: [{ label: 'Delivery Note', value: details.deliveryNote || '' }] },
-    { cells: [{ label: 'Mode/Terms of Payment', value: details.paymentTerms || '' }] },
-    { cells: [{ label: 'Reference No. & Date.', value: refLine }] },
-    { cells: [{ label: 'Other References', value: details.otherReferences || details.grnNumber || '' }] },
-    {
-      cells: [
-        { label: "Buyer's Order No.", value: buyersOrder },
-        { label: 'Dated', value: invDate },
-      ],
-    },
-    {
-      cells: [
-        { label: 'Dispatch Doc No.', value: details.dispatchDocNo || '' },
-        { label: 'Delivery Note Date', value: formatTallyDate(details.deliveryNoteDate) },
-      ],
-    },
-    {
-      cells: [
-        { label: 'Dispatched through', value: details.dispatchMode || '' },
-        {
-          label: 'Destination',
-          value: party.shippingAddress?.city || party.billingAddress?.city || '',
-        },
-      ],
-    },
-    { cells: [{ label: 'Terms of Delivery', value: termsDelivery }] },
-  ];
+  const metaGridRows = buildTallyMetaGridRows(standardInvoice, party);
 
   metaGridRows.forEach((row) => {
     const cols =
@@ -410,26 +311,7 @@ function drawProformaInvoice(doc, ctx) {
     sy += lh + 2;
   });
 
-  let metaY = y;
-  metaGridRows.forEach((row) => {
-    const rowH = row._height;
-    const spanFull = row.cells.length === 1;
-    box(doc, metaX, metaY, metaW, rowH);
-
-    if (spanFull) {
-      drawMetaLabeledCell(doc, metaX, metaY, metaW, rowH, row.cells[0].label, row.cells[0].value);
-    } else {
-      let mx = metaX;
-      row.cells.forEach((cell, i) => {
-        const cw = metaColWidths[i];
-        if (i > 0) strokeVLine(doc, mx, metaY, metaY + rowH);
-        drawMetaLabeledCell(doc, mx, metaY, cw, rowH, cell.label, cell.value);
-        mx += cw;
-      });
-    }
-    metaY += rowH;
-  });
-
+  drawTallyMetaGrid(doc, metaX, y, metaW, metaGridRows);
   y += topH;
 
   const drawPartySection = (title, addr, gst, stateInfo, extraLines = []) => {
@@ -675,28 +557,18 @@ function drawProformaInvoice(doc, ctx) {
     y + 13,
     { width: footMid - LEFT - 8, lineGap: 0.4 }
   );
-  doc.font(FONT_BOLD).fontSize(6.5).text("Customer's Seal and Signature", LEFT + 4, y + footerH - 16);
+  const sealLabel = isSales ? "Customer's Seal and Signature" : "Vendor's Seal and Signature";
+  doc.font(FONT_BOLD).fontSize(6.5).text(sealLabel, LEFT + 4, y + footerH - 16);
 
-  doc.fontSize(6.5).font(FONT_BOLD).text("Company's Bank Details:", footMid + 4, y + 4);
-  let by = y + 13;
-  doc.fontSize(6.5).font(FONT);
-  const bankRows = [
-    ["A/c Holder's Name", companySettings?.company_name || cs.companyName],
-    ['Bank Name', companySettings?.bank_name],
-    ['A/c No.', companySettings?.account_number],
-    [
-      'Branch & IFS Code',
-      [companySettings?.branch_name, companySettings?.ifsc_code].filter(Boolean).join(' & ') ||
-        companySettings?.ifsc_code,
-    ],
-  ];
-  bankRows.forEach(([label, val]) => {
-    if (val) {
-      doc.font(FONT_BOLD).text(`${label}: `, footMid + 4, by, { continued: true });
-      doc.font(FONT).text(String(val), { width: RIGHT - footMid - 8 });
-      by += 10;
-    }
-  });
+  const bankTitle = isSales ? "Company's Bank Details:" : "Vendor's Bank Details:";
+  const bankRows = isSales
+    ? buildCompanyBankRows({
+        ...companySettings,
+        company_name: companySettings?.company_name || cs.companyName,
+      })
+    : buildVendorBankRows(party);
+
+  drawTallyBankBlock(doc, footMid + 4, y + 4, bankTitle, bankRows, RIGHT - footMid - 8);
 
   const signY = y + footerH - 32;
   doc.fontSize(6.5).font(FONT_BOLD).text(`for ${cs.companyName || 'Company'}`, footMid + 4, signY, {

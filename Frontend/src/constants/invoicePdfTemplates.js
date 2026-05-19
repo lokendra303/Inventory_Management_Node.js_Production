@@ -8,7 +8,7 @@ export const INVOICE_PDF_TEMPLATES = [
   {
     id: 'classic',
     name: 'Classic bordered',
-    description: 'Logo and company on opposite sides, full grid line items.',
+    description: 'Company header, Tally-style meta grid, bill/ship, bordered line items.',
   },
   {
     id: 'minimal',

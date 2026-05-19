@@ -10,7 +10,8 @@ const INVOICE_PDF_TEMPLATES = [
   {
     id: 'classic',
     name: 'Classic bordered',
-    description: 'Logo and company on opposite sides, full grid line items, traditional look.',
+    description:
+      'Logo and company header, Tally-style meta grid (e-Way Bill, delivery, dispatch), bill/ship, bordered line items.',
   },
   {
     id: 'minimal',
