@@ -40,6 +40,20 @@ function ThumbnailModern() {
   );
 }
 
+function ThumbnailProforma() {
+  return (
+    <div style={{ height: 72, background: '#fff', borderRadius: 4, padding: 4, border: '1px solid #d9d9d9' }}>
+      <div style={{ height: 8, background: '#434343', marginBottom: 3, width: '50%', marginLeft: '25%' }} />
+      <div style={{ display: 'flex', gap: 2, height: 28, marginBottom: 3 }}>
+        <div style={{ flex: 1.2, border: '1px solid #999' }} />
+        <div style={{ flex: 0.8, border: '1px solid #999' }} />
+      </div>
+      <div style={{ height: 10, border: '1px solid #999', marginBottom: 2 }} />
+      <div style={{ height: 18, border: '1px solid #999' }} />
+    </div>
+  );
+}
+
 function ThumbnailBranded() {
   return (
     <div style={{ height: 72, background: '#fafafa', borderRadius: 4, padding: 6 }}>
@@ -72,6 +86,7 @@ const THUMB = {
   classic: ThumbnailClassic,
   minimal: ThumbnailMinimal,
   modern: ThumbnailModern,
+  proforma: ThumbnailProforma,
 };
 
 /**

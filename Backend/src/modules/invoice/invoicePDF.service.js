@@ -29,6 +29,7 @@ const {
 } = require('./invoicePdfBranded');
 const { normalizeDocType } = require('../../utils/pdfFooterOptions');
 const { loadPdfFooterAssets } = require('../../utils/pdfFooterAssets');
+const { drawProformaInvoice } = require('./invoicePdfProforma');
 
 class InvoicePDFService {
   _firstRow(result) {
@@ -814,6 +815,14 @@ class InvoicePDFService {
     drawBrandedFooter(doc, footerY, standardInvoice, companySettings, signatureBuffer);
   }
 
+  _renderProforma(doc, ctx) {
+    const { standardInvoice, companySettings } = ctx;
+    drawProformaInvoice(doc, {
+      ...ctx,
+      companyStrings: this._resolveCompanyStrings(standardInvoice, companySettings),
+    });
+  }
+
   _renderModern(doc, ctx) {
     const { standardInvoice, companySettings, logoBuffer, stampBuffer, signatureBuffer } = ctx;
     const cs = this._resolveCompanyStrings(standardInvoice, companySettings);
@@ -911,7 +920,8 @@ class InvoicePDFService {
     };
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 15, size: 'A4' });
+      const docMargins = templateKey === 'proforma' ? 0 : 15;
+      const doc = new PDFDocument({ margin: docMargins, size: 'A4' });
       const chunks = [];
 
       doc.on('data', (chunk) => chunks.push(chunk));
@@ -921,6 +931,8 @@ class InvoicePDFService {
       try {
         if (templateKey === 'branded') {
           this._renderBranded(doc, ctx);
+        } else if (templateKey === 'proforma') {
+          this._renderProforma(doc, ctx);
         } else if (templateKey === 'minimal') {
           this._renderMinimal(doc, ctx);
         } else if (templateKey === 'modern') {

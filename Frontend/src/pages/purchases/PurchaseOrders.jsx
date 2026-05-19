@@ -18,6 +18,12 @@ import DocumentTotalsSummary from '../../components/business/DocumentTotalsSumma
 import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
 import { filterSelectOption } from '../../utils/selectFilter';
 import { assertPdfBlob, printPdfBlob } from '../../utils/printPdfBlob';
+import DocumentMetaFields from '../../components/business/DocumentMetaFields';
+import {
+  documentMetaToFormValues,
+  emptyDocumentMetaForm,
+  formatDocumentMetaForApi,
+} from '../../constants/documentMetaFields';
 
 const DEFAULT_LINE = { discountRate: 0, taxRateId: undefined };
 
@@ -69,6 +75,7 @@ const PurchaseOrders = () => {
       exchangeRate: 1,
       orderDate: moment(),
       lines: [{ ...DEFAULT_LINE }],
+      documentMeta: emptyDocumentMetaForm('purchaseOrder'),
     });
     setModalVisible(true);
   };
@@ -186,7 +193,8 @@ const PurchaseOrders = () => {
         lines: (values.lines || []).map(line => {
           const taxRate = line.taxRateId ? parseFloat(getRateById(line.taxRateId)?.rate || 0) : 0;
           return { ...line, taxRate, taxRateId: line.taxRateId || null };
-        })
+        }),
+        documentMeta: formatDocumentMetaForApi(values.documentMeta, moment, 'purchaseOrder'),
       };
 
       if (editingPO) {
@@ -372,7 +380,12 @@ const PurchaseOrders = () => {
             unitCost: line.unit_cost,
             taxRateId: line.tax_rate_id || undefined,
             discountRate: line.discount_rate || 0,
-          })) || [{ ...DEFAULT_LINE }]
+          })) || [{ ...DEFAULT_LINE }],
+          documentMeta: documentMetaToFormValues(
+            poData.documentMeta ?? poData.document_meta,
+            moment,
+            'purchaseOrder'
+          ),
         });
         
         setModalVisible(true);
@@ -800,6 +813,8 @@ const PurchaseOrders = () => {
             unitField="unitCost"
             getTaxRate={getLineTaxRate}
           />
+
+          <DocumentMetaFields docType="purchaseOrder" />
           
           <Form.Item>
             <Space>

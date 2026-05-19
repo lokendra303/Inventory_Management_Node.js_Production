@@ -12,6 +12,7 @@ const autoInvoiceService = require('./autoInvoice.service');
 const emailService = require('../../services/emailService');
 const { v4: uuidv4 } = require('uuid');
 const { roundToTwo, safeAdd, safeSubtract } = require('../../utils/precision');
+const { serializeDocumentMeta, parseDocumentMeta } = require('../../utils/documentMeta');
 
 class PurchaseInvoiceController {
   // Create Purchase Invoice
@@ -88,13 +89,18 @@ class PurchaseInvoiceController {
         // Calculate totals from frontend totals or recalculate
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
         
+        const documentMetaJson = serializeDocumentMeta(
+          invoiceData.documentMeta ?? invoiceData.document_meta,
+          'purchaseInvoice'
+        );
+
         // Create invoice header
         await connection.execute(`
           INSERT INTO purchase_invoices (
             id, institution_id, invoice_number, vendor_id, vendor_name, po_id, grn_id,
             invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
-            discount_amount, total_amount, balance_amount, reference, notes, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            discount_amount, total_amount, balance_amount, reference, notes, document_meta, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           invoiceId,
           institutionId, 
@@ -113,7 +119,8 @@ class PurchaseInvoiceController {
           totals.grandTotal,
           totals.grandTotal, 
           invoiceData.reference || null, 
-          invoiceData.notes || null, 
+          invoiceData.notes || null,
+          documentMetaJson,
           user?.userId || 1
         ]);
 
@@ -295,7 +302,10 @@ class PurchaseInvoiceController {
       res.json({
         success: true,
         data: {
-          invoice,
+          invoice: {
+            ...invoice,
+            documentMeta: parseDocumentMeta(invoice.document_meta),
+          },
           lines,
           payments
         }
@@ -355,16 +365,22 @@ class PurchaseInvoiceController {
 
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
         
+        const documentMetaJson = serializeDocumentMeta(
+          invoiceData.documentMeta ?? invoiceData.document_meta,
+          'purchaseInvoice'
+        );
+
         await connection.execute(`
           UPDATE purchase_invoices SET
             invoice_date = ?, due_date = ?, currency = ?, exchange_rate = ?,
             subtotal = ?, tax_amount = ?, discount_amount = ?, total_amount = ?,
-            balance_amount = ?, reference = ?, notes = ?, updated_by = ?
+            balance_amount = ?, reference = ?, notes = ?, document_meta = ?, updated_by = ?
           WHERE id = ? AND institution_id = ?
         `, [
           invoiceDate, dueDate, invoiceData.currency || 'USD', resolvedRate,
           totals.subtotal, totals.totalTax, totals.totalDiscount, totals.grandTotal,
           totals.grandTotal, invoiceData.reference || null, invoiceData.notes || null,
+          documentMetaJson,
           user?.userId || 1, id, institutionId
         ]);
 
@@ -454,6 +470,7 @@ class PurchaseInvoiceController {
         reference: invoice.reference,
         notes: invoice.notes,
         poNumber: invoice.po_number,
+        documentMeta: parseDocumentMeta(invoice.document_meta),
         lines: lines.map(line => ({
           itemId: line.item_id,
           itemName: line.item_name,
@@ -832,6 +849,7 @@ class PurchaseInvoiceController {
         reference: invoice.reference,
         notes: invoice.notes,
         poNumber: invoice.po_number,
+        documentMeta: parseDocumentMeta(invoice.document_meta),
         lines: lines.map(line => ({
           itemId: line.item_id,
           itemName: line.item_name,
@@ -852,36 +870,33 @@ class PurchaseInvoiceController {
         'purchase'
       );
 
-      if (download === 'true') {
+      const { queryFlag, sendInvoicePdfBuffer } = require('./invoicePdfResponse.helper');
+      const wantsPdf = queryFlag(download) || queryFlag(req.query.inline);
+
+      if (wantsPdf) {
         try {
-          logger.info('Generating PDF for download', { invoiceId: id });
-          const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice, institutionId);
-          
-          if (!pdfBuffer || pdfBuffer.length === 0) {
-            throw new Error('Generated PDF buffer is empty');
-          }
-          
-          const filename = invoicePDFService.generateFilename(invoice.invoice_number, 'purchase');
-          logger.info('PDF generated successfully', { filename, size: pdfBuffer.length });
-          
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-          res.setHeader('Content-Length', pdfBuffer.length);
-          return res.send(pdfBuffer);
+          logger.info('Generating purchase invoice PDF', { invoiceId: id, inline: queryFlag(req.query.inline) });
+          return await sendInvoicePdfBuffer(res, {
+            standardInvoice,
+            institutionId,
+            invoiceNumber: invoice.invoice_number,
+            type: 'purchase',
+            attachment: queryFlag(download),
+          });
         } catch (pdfError) {
           logger.error('PDF generation error:', pdfError);
           return res.status(500).json({
             success: false,
-            error: pdfError.message || 'PDF generation failed'
+            error: pdfError.message || 'PDF generation failed',
           });
         }
       } else {
         try {
-          // Save PDF and return file info
           const fileInfo = await invoicePDFService.saveInvoicePDF(
-            standardInvoice, 
-            invoice.invoice_number, 
-            'purchase'
+            standardInvoice,
+            invoice.invoice_number,
+            'purchase',
+            institutionId
           );
           
           res.json({

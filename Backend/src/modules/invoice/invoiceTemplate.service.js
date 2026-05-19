@@ -2,6 +2,8 @@ const db = require('../../database/connection');
 const vendorService = require('../entity/vendor.service');
 const customerService = require('../entity/customer.service');
 const logger = require('../../utils/logger');
+const { normalizeInvoiceUnit } = require('../../utils/invoiceUnit');
+const { applyDocumentMetaToInvoiceDetails } = require('../../utils/documentMeta');
 
 class InvoiceTemplateService {
   /**
@@ -94,7 +96,7 @@ class InvoiceTemplateService {
    * Get invoice basic details
    */
   async getInvoiceDetails(invoiceData, type) {
-    return {
+    const base = {
       type: type === 'purchase' ? 'purchase' : 'sales',
       invoiceNumber: invoiceData.invoiceNumber || await this.generateInvoiceNumber(type),
       invoiceDate: invoiceData.invoiceDate || new Date().toISOString().split('T')[0],
@@ -104,8 +106,16 @@ class InvoiceTemplateService {
       reference: invoiceData.reference || '',
       poNumber: invoiceData.poNumber || '',
       grnNumber: invoiceData.grnNumber || '',
-      paymentTerms: invoiceData.paymentTerms || 'Net 30'
+      paymentTerms: invoiceData.paymentTerms || 'Net 30',
     };
+    const meta = invoiceData.documentMeta ?? invoiceData.document_meta;
+    return applyDocumentMetaToInvoiceDetails(base, meta, {
+      invoiceType: type,
+      soNumber: invoiceData.soNumber,
+      poNumber: invoiceData.poNumber,
+      invoiceDate: base.invoiceDate,
+      destination: invoiceData.destination,
+    });
   }
 
   /**
@@ -271,7 +281,7 @@ class InvoiceTemplateService {
         itemName: line.itemName ?? line.item_name ?? line.description,
         description: line.description,
         sku: line.sku,
-        unit: line.unit || 'PCS',
+        unit: normalizeInvoiceUnit(line.unit || line.unit_of_measure),
         quantity,
         unitAmount,
         lineTotal,

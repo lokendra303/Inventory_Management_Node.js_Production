@@ -20,4 +20,10 @@ export const INVOICE_PDF_TEMPLATES = [
     name: 'Modern band',
     description: 'Colored top band, boxed metadata, softer table styling.',
   },
+  {
+    id: 'proforma',
+    name: 'GST grid (Tally style)',
+    description:
+      'Bordered GST layout: seller & meta grid, consignee/buyer, HSN items, IGST summary, bank & signatures.',
+  },
 ];

@@ -22,6 +22,12 @@ const INVOICE_PDF_TEMPLATES = [
     name: 'Modern band',
     description: 'Colored title band, bold invoice type, structured two-column meta block.',
   },
+  {
+    id: 'proforma',
+    name: 'GST grid (Tally style)',
+    description:
+      'Dense bordered layout: seller & invoice meta grid, consignee/buyer, HSN line items, IGST summary, bank & signatures.',
+  },
 ];
 
 const ALLOWED = new Set(INVOICE_PDF_TEMPLATES.map((t) => t.id));

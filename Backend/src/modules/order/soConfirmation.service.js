@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const inventoryService = require('../inventory/inventory.service');
+const { serializeDocumentMeta } = require('../../utils/documentMeta');
 
 class SOConfirmationService {
   /**
@@ -121,16 +122,18 @@ class SOConfirmationService {
         
         const grandTotal = subtotal + totalTax - totalDiscount;
         
+        const documentMetaJson = serializeDocumentMeta(so.document_meta);
+
         await connection.execute(`
           INSERT INTO sales_invoices (
             id, institution_id, invoice_number, customer_id, customer_name, so_id,
             invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
-            discount_amount, total_amount, paid_amount, balance_amount, status, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?)
+            discount_amount, total_amount, paid_amount, balance_amount, document_meta, status, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?)
         `, [
           invoiceId, institutionId, invoiceNumber, so.customer_id, so.customer_name, soId,
           new Date().toISOString().split('T')[0], null, so.currency || 'INR', 1,
-          subtotal, totalTax, totalDiscount, grandTotal, 0, grandTotal, userId
+          subtotal, totalTax, totalDiscount, grandTotal, 0, grandTotal, documentMetaJson, userId
         ]);
         
         // Add invoice lines with correct tax & discount

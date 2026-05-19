@@ -7,6 +7,7 @@ const {
   resolveExchangeRateForSave,
   getExchangeRateValidationError,
 } = require('../../utils/exchangeRateHelpers');
+const { serializeDocumentMeta, parseDocumentMeta } = require('../../utils/documentMeta');
 
 class PurchaseOrderService {
   async createPurchaseOrder(institutionId, poData, userId) {
@@ -19,9 +20,11 @@ class PurchaseOrderService {
       orderDate,
       expectedDate,
       notes,
+      documentMeta,
       lines
     } = poData;
 
+    const documentMetaJson = serializeDocumentMeta(documentMeta ?? poData.document_meta, 'purchaseOrder');
     const poId = uuidv4();
     let subtotal = 0;
 
@@ -77,10 +80,10 @@ class PurchaseOrderService {
         await connection.execute(
           `INSERT INTO purchase_orders 
            (id, institution_id, po_number, vendor_id, vendor_name, currency, exchange_rate, 
-            order_date, expected_date, notes, created_by, status) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+            order_date, expected_date, notes, document_meta, created_by, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
           [poId, institutionId, poNumber, vendorId || null, vendorName, currency, resolvedRate,
-           formattedOrderDate, formattedExpectedDate, notes || null, createdBy]
+           formattedOrderDate, formattedExpectedDate, notes || null, documentMetaJson, createdBy]
         );
 
         const effectiveExchangeRate = resolvedRate;
@@ -369,7 +372,12 @@ class PurchaseOrderService {
       [institutionId, poId]
     );
 
-    return { ...po, lines, grns };
+    return {
+      ...po,
+      documentMeta: parseDocumentMeta(po.document_meta),
+      lines,
+      grns,
+    };
   }
 
   async getGRN(institutionId, grnId) {
@@ -413,7 +421,8 @@ class PurchaseOrderService {
   }
 
   async updatePurchaseOrder(institutionId, poId, poData, userId) {
-    const { vendorId, vendorName, currency, exchangeRate, orderDate, expectedDate, notes, lines } = poData;
+    const { vendorId, vendorName, currency, exchangeRate, orderDate, expectedDate, notes, documentMeta, lines } = poData;
+    const documentMetaJson = serializeDocumentMeta(documentMeta ?? poData.document_meta, 'purchaseOrder');
 
     const baseCcy = await getInstitutionBaseCurrency(db, institutionId);
     const docCcy = currency || 'USD';
@@ -458,10 +467,10 @@ class PurchaseOrderService {
         await connection.execute(
           `UPDATE purchase_orders 
            SET vendor_id = ?, vendor_name = ?, currency = ?, exchange_rate = ?, 
-               order_date = ?, expected_date = ?, notes = ?, updated_at = NOW()
+               order_date = ?, expected_date = ?, notes = ?, document_meta = ?, updated_at = NOW()
            WHERE institution_id = ? AND id = ?`,
           [vendorId || null, vendorName, currency || 'USD', resolvedRate,
-           orderDate, expectedDate || null, notes || null, institutionId, poId]
+           orderDate, expectedDate || null, notes || null, documentMetaJson, institutionId, poId]
         );
 
         // Delete existing lines

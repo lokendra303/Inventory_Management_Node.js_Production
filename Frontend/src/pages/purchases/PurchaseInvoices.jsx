@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
+import InvoicePdfViewModal from '../../components/business/InvoicePdfViewModal';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
 import { formatCommercialDocAmount, formatDocumentAmount } from '../../utils/currency';
@@ -26,8 +27,8 @@ const PurchaseInvoices = () => {
   const [loading, setLoading]                                 = useState(true);
   const [pagination, setPagination]                           = useState({ current: 1, pageSize: 10, total: 0 });
   const [modalVisible, setModalVisible]                       = useState(false);
-  const [previewVisible, setPreviewVisible]                   = useState(false);
-  const [previewContent, setPreviewContent]                   = useState(null);
+  const [viewInvoiceId, setViewInvoiceId] = useState(null);
+  const [viewInvoiceNumber, setViewInvoiceNumber] = useState('');
   const [emailModalVisible, setEmailModalVisible]             = useState(false);
   const [emailAddress, setEmailAddress]                       = useState('');
   const [selectedInvoiceForEmail, setSelectedInvoiceForEmail] = useState(null);
@@ -60,100 +61,9 @@ const PurchaseInvoices = () => {
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
-  const handleViewStandardFormat = async (invoiceId) => {
-    try {
-      setLoading(true);
-      const [invoiceResponse, settingsResponse] = await Promise.all([
-        apiService.get(`/purchase-invoices/${invoiceId}/standard-format`),
-        apiService.get('/company-settings')
-      ]);
-      if (invoiceResponse.success) {
-        const data = invoiceResponse.data;
-        const settings = settingsResponse.data || {};
-        const companyName  = settings.company_name || data.header.companyName;
-        const address      = settings.address || `${data.header.address.line1}, ${data.header.address.city}, ${data.header.address.state}`;
-        const phone        = settings.phone || data.header.contact.phone;
-        const email        = settings.email || data.header.contact.email;
-        const logoUrl      = settings.logo_path      ? mediaUrl(settings.logo_path)      : data.header.branding?.logoUrl;
-        const stampUrl     = settings.stamp_path     ? mediaUrl(settings.stamp_path)     : data.header.branding?.stampUrl;
-        const signatureUrl = settings.signature_path ? mediaUrl(settings.signature_path) : data.header.branding?.signatureUrl;
-        setPreviewContent(
-          <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
-              <div>{logoUrl && <img src={logoUrl} alt="Logo" style={{ maxHeight: '60px', marginBottom: '10px' }} />}</div>
-              <div style={{ textAlign: 'right' }}>
-                <h2 style={{ margin: 0 }}>{companyName}</h2>
-                <p style={{ margin: '5px 0', fontSize: '12px' }}>{address}<br />{phone} | {email}</p>
-                {data.header.taxInfo.taxId && <p style={{ margin: '5px 0', fontSize: '11px' }}>Tax ID: {data.header.taxInfo.taxId}</p>}
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <div>
-                <h4 style={{ margin: '0 0 10px 0' }}>Vendor Details</h4>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>{data.partyDetails.name}</strong></p>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.line1}</p>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.city}, {data.partyDetails.billingAddress.state}</p>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.contact.phone}</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <h3 style={{ margin: '0 0 10px 0' }}>PURCHASE INVOICE</h3>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Invoice #:</strong> {data.details.invoiceNumber}</p>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Date:</strong> {new Date(data.details.invoiceDate).toLocaleDateString()}</p>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Due Date:</strong> {new Date(data.details.dueDate).toLocaleDateString()}</p>
-              </div>
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '12px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f0f0f0' }}>
-                  {['#','Item','Qty','Rate','Tax %','Tax Amt','Amount'].map(h => <th key={h} style={{ border: '1px solid #ddd', padding: '8px', textAlign: h === '#' || h === 'Item' ? 'left' : 'right' }}>{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {data.lineItems.map(item => (
-                  <tr key={item.sno}>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.sno}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.itemName}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{formatQuantity(item.quantity)}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{formatAmount(item.unitAmount)}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{item.taxRate > 0 ? `${item.taxRate}%` : '-'}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{item.taxRate > 0 ? formatAmount(item.taxAmount) : '-'}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{formatAmount(item.netAmount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ textAlign: 'right', marginTop: '20px' }}>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {formatDocumentAmount(data.totals.subtotal, data.details.currency)}</p>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {formatDocumentAmount(data.totals.totalTaxAmount, data.details.currency)}</p>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Discount:</strong> {formatDocumentAmount(data.totals.totalDiscountAmount, data.details.currency)}</p>
-              <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {formatDocumentAmount(data.totals.grandTotal, data.details.currency)}</h3>
-              <p style={{ margin: '5px 0', fontSize: '12px', fontStyle: 'italic' }}>Amount in words: {data.totals.amountInWords}</p>
-            </div>
-            {(data.partyDetails.bankDetails?.bankName || data.partyDetails.bankDetails?.accountNumber) && (
-              <div style={{ marginTop: '30px', padding: '15px', backgroundColor: '#f9f9f9', border: '1px solid #ddd' }}>
-                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Vendor Bank Details</h4>
-                {data.partyDetails.bankDetails.bankName      && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Bank:</strong> {data.partyDetails.bankDetails.bankName}</p>}
-                {data.partyDetails.bankDetails.accountNumber && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>Account:</strong> {data.partyDetails.bankDetails.accountNumber}</p>}
-                {data.partyDetails.bankDetails.ifscCode      && <p style={{ margin: '3px 0', fontSize: '12px' }}><strong>IFSC:</strong> {data.partyDetails.bankDetails.ifscCode}</p>}
-              </div>
-            )}
-            <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-              {stampUrl && <img src={stampUrl} alt="Stamp" style={{ maxHeight: '80px' }} />}
-              <div style={{ textAlign: 'right' }}>
-                {signatureUrl && <img src={signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginBottom: '5px' }} />}
-                <p style={{ margin: '0 0 4px 0', fontSize: '12px', fontWeight: 700 }}>Authorized signatory</p>
-                <p style={{ margin: '5px 0', fontSize: '12px', borderTop: '1px solid #333', paddingTop: '5px', textAlign: 'left' }}>
-                  <strong>Name:</strong> {settings.authorized_signatory_name || 'N/A'}<br />
-                  <strong>Designation:</strong> {settings.authorized_signatory_designation || 'N/A'}
-                </p>
-              </div>
-            </div>
-          </div>
-        );
-        setPreviewVisible(true);
-      }
-    } catch { message.error('Failed to generate standard format'); }
-    finally { setLoading(false); }
+  const handleViewInvoice = (record) => {
+    setViewInvoiceId(record.id);
+    setViewInvoiceNumber(record.invoice_number || '');
   };
 
   const handleDownloadPDF = async (invoiceId, invoiceNumber) => {
@@ -232,7 +142,7 @@ const PurchaseInvoices = () => {
             </Tooltip>
           )}
           {[
-            { icon: <EyeOutlined />,     title: 'View',     color: '#11998e', onClick: () => handleViewStandardFormat(record.id) },
+            { icon: <EyeOutlined />,     title: 'View',     color: '#11998e', onClick: () => handleViewInvoice(record) },
             { icon: <MailOutlined />,    title: 'Email',    color: '#f7971e', onClick: () => { setSelectedInvoiceForEmail(record); setEmailAddress(''); setEmailModalVisible(true); } },
             { icon: <PrinterOutlined />, title: 'Print',    color: '#764ba2', onClick: () => handlePrintPDF(record.id) },
             { icon: <FilePdfOutlined />, title: 'Download', color: '#f5576c', onClick: () => handleDownloadPDF(record.id, record.invoice_number) },
@@ -299,11 +209,13 @@ const PurchaseInvoices = () => {
       </Card>
 
       {/* Preview Modal */}
-      <Modal open={previewVisible} onCancel={() => setPreviewVisible(false)}
-        footer={null} width="min(900px,96vw)" style={{ top: 16 }}
-        maskClosable={true} destroyOnClose>
-        {previewContent}
-      </Modal>
+      <InvoicePdfViewModal
+        open={!!viewInvoiceId}
+        onClose={() => setViewInvoiceId(null)}
+        invoiceId={viewInvoiceId}
+        apiBase="/purchase-invoices"
+        title={viewInvoiceNumber ? `Purchase invoice ${viewInvoiceNumber}` : 'Purchase invoice'}
+      />
 
       <Modal title={<span style={{ fontWeight: 700 }}>{modalMode === 'create' ? <><PlusOutlined style={{ marginRight: 6 }} />Create</> : <><EditOutlined style={{ marginRight: 6 }} />Edit</>} Purchase Invoice</span>}
         open={modalVisible} onCancel={() => setModalVisible(false)}

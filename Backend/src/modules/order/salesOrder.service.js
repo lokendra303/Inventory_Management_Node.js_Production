@@ -5,6 +5,7 @@ const {
   resolveExchangeRateForSave,
   getExchangeRateValidationError,
 } = require('../../utils/exchangeRateHelpers');
+const { serializeDocumentMeta, parseDocumentMeta } = require('../../utils/documentMeta');
 const logger = require('../../utils/logger');
 const inventoryService = require('../inventory/inventory.service');
 const warehouseOptimizationService = require('../warehouse/warehouseOptimization.service');
@@ -140,11 +141,14 @@ class SalesOrderService {
       orderDate,
       expectedShipDate,
       notes,
+      documentMeta,
       lines,
       isPreorder = false,
       customerAddress,
       shippingMethod = 'standard'
     } = soData;
+
+    const documentMetaJson = serializeDocumentMeta(documentMeta ?? soData.document_meta, 'salesOrder');
 
     const soId = uuidv4();
     let subtotal = 0;
@@ -168,10 +172,10 @@ class SalesOrderService {
         await connection.execute(
           `INSERT INTO sales_orders 
            (id, institution_id, so_number, customer_id, customer_name, channel, currency, exchange_rate,
-            order_date, expected_ship_date, notes, created_by, status, is_preorder, shipping_method) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+            order_date, expected_ship_date, notes, document_meta, created_by, status, is_preorder, shipping_method) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
           [soId, institutionId, soNumber || `SO-${Date.now()}`, customerId || null, customerName, channel, currency,
-           resolvedRate, orderDate || null, expectedShipDate || null, notes || null, userId, isPreorder, shippingMethod]
+           resolvedRate, orderDate || null, expectedShipDate || null, notes || null, documentMetaJson, userId, isPreorder, shippingMethod]
         );
 
         // Create SO lines with warehouse per line
@@ -287,7 +291,11 @@ class SalesOrderService {
       [institutionId, soId]
     );
 
-    return { ...so, lines };
+    return {
+      ...so,
+      documentMeta: parseDocumentMeta(so.document_meta),
+      lines,
+    };
   }
   async reserveStock(institutionId, soData, userId) {
     const { soId, lines } = soData;

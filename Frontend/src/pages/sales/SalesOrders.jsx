@@ -19,6 +19,11 @@ import { filterSelectOption } from '../../utils/selectFilter';
 import DocumentTotalsSummary from '../../components/business/DocumentTotalsSummary';
 import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
 import { assertPdfBlob, printPdfBlob } from '../../utils/printPdfBlob';
+import DocumentMetaFields from '../../components/business/DocumentMetaFields';
+import {
+  emptyDocumentMetaForm,
+  formatDocumentMetaForApi,
+} from '../../constants/documentMetaFields';
 
 const DEFAULT_SO_LINE = { discountRate: 0, taxRateId: undefined };
 
@@ -66,6 +71,7 @@ const SalesOrders = () => {
       channel: 'direct',
       orderDate: moment(),
       lines: [{ ...DEFAULT_SO_LINE }],
+      documentMeta: emptyDocumentMetaForm('salesOrder'),
     });
     setSelectedPriceListId(null);
     setPriceListItemMap({});
@@ -281,6 +287,7 @@ const SalesOrders = () => {
             taxRateId: line.taxRateId || null,
           };
         }),
+        documentMeta: formatDocumentMetaForApi(values.documentMeta, moment, 'salesOrder'),
       };
 
       const response = await apiService.post("/sales-orders", soData);
@@ -1006,6 +1013,8 @@ const SalesOrders = () => {
             unitField="unitPrice"
             getTaxRate={getLineTaxRate}
           />
+
+          <DocumentMetaFields docType="salesOrder" />
 
           <Form.Item>
             <Space>

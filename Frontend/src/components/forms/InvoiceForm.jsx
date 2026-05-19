@@ -33,6 +33,12 @@ import {
   roundMoney,
 } from '../../utils/commercialDocument';
 import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
+import DocumentMetaFields from '../business/DocumentMetaFields';
+import {
+  documentMetaToFormValues,
+  emptyDocumentMetaForm,
+  formatDocumentMetaForApi,
+} from '../../constants/documentMetaFields';
 import DocumentTotalsSummary from '../business/DocumentTotalsSummary';
 import CommercialExchangeRateField from '../business/CommercialExchangeRateField';
 import { filterSelectOption } from '../../utils/selectFilter';
@@ -368,6 +374,11 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         dueDate: values.dueDate
           ? values.dueDate.format('YYYY-MM-DD')
           : values.invoiceDate.add(30, 'day').format('YYYY-MM-DD'),
+        documentMeta: formatDocumentMetaForApi(
+          values.documentMeta,
+          dayjs,
+          type === 'purchase' ? 'purchaseInvoice' : 'salesInvoice'
+        ),
         ...(type === 'sales' && defaultShipWarehouse ? { warehouseId: defaultShipWarehouse } : {}),
         lines: validLines.map(line => {
           const lineData = {
@@ -457,6 +468,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
         dueDate: today.add(30, 'day'),
         currency: institutionCurrency,
         exchangeRate: 1,
+        documentMeta: emptyDocumentMetaForm(type === 'purchase' ? 'purchaseInvoice' : 'salesInvoice'),
       });
     }
   }, [type, invoiceId, institutionCurrency, form]);
@@ -496,6 +508,11 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           exchangeRate: invoiceCurr === institutionCurrency ? 1 : er,
           reference: invoice.reference || '',
           notes:     invoice.notes     || '',
+          documentMeta: documentMetaToFormValues(
+            invoice.documentMeta ?? invoice.document_meta,
+            dayjs,
+            type === 'purchase' ? 'purchaseInvoice' : 'salesInvoice'
+          ),
         });
         if (invoice[partyIdField]) {
           loadPartyDetails(invoice[partyIdField], true); // true = skip currency override
@@ -960,6 +977,8 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
               </Form.Item>
             </Col>
           </Row>
+
+          <DocumentMetaFields docType={type === 'purchase' ? 'purchaseInvoice' : 'salesInvoice'} />
 
           {type === 'sales' && (
             <Row gutter={[16, 0]}>

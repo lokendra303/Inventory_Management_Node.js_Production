@@ -12,6 +12,7 @@ const emailService = require('../../services/emailService');
 const { v4: uuidv4 } = require('uuid');
 const { roundToTwo, safeAdd, safeSubtract } = require('../../utils/precision');
 const { INVENTORY_EVENTS, createAggregateId } = require('../../events/inventoryEvents');
+const { serializeDocumentMeta, parseDocumentMeta } = require('../../utils/documentMeta');
 
 class SalesInvoiceController {
   // Create Sales Invoice
@@ -82,12 +83,17 @@ class SalesInvoiceController {
 
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
         
+        const documentMetaJson = serializeDocumentMeta(
+          invoiceData.documentMeta ?? invoiceData.document_meta,
+          'salesInvoice'
+        );
+
         await connection.execute(`
           INSERT INTO sales_invoices (
             id, institution_id, invoice_number, customer_id, customer_name, so_id, delivery_note_id,
             invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
-            discount_amount, total_amount, paid_amount, balance_amount, reference, notes, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            discount_amount, total_amount, paid_amount, balance_amount, reference, notes, document_meta, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           invoiceId,
           institutionId, 
@@ -107,7 +113,8 @@ class SalesInvoiceController {
           0,
           totals.grandTotal, 
           invoiceData.reference || null, 
-          invoiceData.notes || null, 
+          invoiceData.notes || null,
+          documentMetaJson,
           user?.userId || 1
         ]);
 
@@ -387,7 +394,10 @@ class SalesInvoiceController {
       res.json({
         success: true,
         data: {
-          invoice,
+          invoice: {
+            ...invoice,
+            documentMeta: parseDocumentMeta(invoice.document_meta),
+          },
           lines,
           payments
         }
@@ -646,16 +656,22 @@ class SalesInvoiceController {
 
         const totals = invoiceData.totals || { subtotal: 0, totalDiscount: 0, totalTax: 0, grandTotal: 0 };
         
+        const documentMetaJson = serializeDocumentMeta(
+          invoiceData.documentMeta ?? invoiceData.document_meta,
+          'salesInvoice'
+        );
+
         await connection.execute(`
           UPDATE sales_invoices SET
             invoice_date = ?, due_date = ?, currency = ?, exchange_rate = ?,
             subtotal = ?, tax_amount = ?, discount_amount = ?, total_amount = ?,
-            balance_amount = ?, reference = ?, notes = ?, updated_by = ?
+            balance_amount = ?, reference = ?, notes = ?, document_meta = ?, updated_by = ?
           WHERE id = ? AND institution_id = ?
         `, [
           invoiceDate, dueDate, invoiceData.currency || 'USD', resolvedRate,
           totals.subtotal, totals.totalTax, totals.totalDiscount, totals.grandTotal,
           totals.grandTotal, invoiceData.reference || null, invoiceData.notes || null,
+          documentMetaJson,
           user?.userId || 1, id, institutionId
         ]);
 
@@ -743,6 +759,7 @@ class SalesInvoiceController {
         reference: invoice.reference,
         notes: invoice.notes,
         soNumber: invoice.so_number,
+        documentMeta: parseDocumentMeta(invoice.document_meta),
         lines: lines.map(line => ({
           itemId: line.item_id,
           itemName: line.item_name,
@@ -918,6 +935,7 @@ class SalesInvoiceController {
         reference: invoice.reference,
         notes: invoice.notes,
         soNumber: invoice.so_number,
+        documentMeta: parseDocumentMeta(invoice.document_meta),
         lines: lines.map(line => ({
           itemId: line.item_id,
           itemName: line.item_name,
@@ -937,35 +955,33 @@ class SalesInvoiceController {
         'sales'
       );
 
-      if (download === 'true') {
+      const { queryFlag, sendInvoicePdfBuffer } = require('./invoicePdfResponse.helper');
+      const wantsPdf = queryFlag(download) || queryFlag(req.query.inline);
+
+      if (wantsPdf) {
         try {
-          logger.info('Generating PDF for download', { invoiceId: id });
-          const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice, institutionId);
-          
-          if (!pdfBuffer || pdfBuffer.length === 0) {
-            throw new Error('Generated PDF buffer is empty');
-          }
-          
-          const filename = invoicePDFService.generateFilename(invoice.invoice_number, 'sales');
-          logger.info('PDF generated successfully', { filename, size: pdfBuffer.length });
-          
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-          res.setHeader('Content-Length', pdfBuffer.length);
-          return res.send(pdfBuffer);
+          logger.info('Generating sales invoice PDF', { invoiceId: id, inline: queryFlag(req.query.inline) });
+          return await sendInvoicePdfBuffer(res, {
+            standardInvoice,
+            institutionId,
+            invoiceNumber: invoice.invoice_number,
+            type: 'sales',
+            attachment: queryFlag(download),
+          });
         } catch (pdfError) {
           logger.error('PDF generation error:', pdfError);
           return res.status(500).json({
             success: false,
-            error: pdfError.message || 'PDF generation failed'
+            error: pdfError.message || 'PDF generation failed',
           });
         }
       } else {
         try {
           const fileInfo = await invoicePDFService.saveInvoicePDF(
-            standardInvoice, 
-            invoice.invoice_number, 
-            'sales'
+            standardInvoice,
+            invoice.invoice_number,
+            'sales',
+            institutionId
           );
           
           res.json({
@@ -1095,6 +1111,7 @@ class SalesInvoiceController {
         exchangeRate: invoice.exchange_rate,
         reference: invoice.reference,
         notes: invoice.notes,
+        documentMeta: parseDocumentMeta(invoice.document_meta),
         lines: lines.map(line => ({
           itemId: line.item_id,
           itemName: line.item_name,
