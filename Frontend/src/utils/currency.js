@@ -200,6 +200,23 @@ export const formatNumber = (value) => {
   return num % 1 === 0 ? num.toString() : num.toFixed(2);
 };
 
+/**
+ * Format a list/grid amount using the commercial document's currency (SI, PI, SO, PO).
+ * Does not apply institution display-currency conversion.
+ */
+export const formatCommercialDocAmount = (amount, row, currencyField = 'currency', fallback = 'USD') => {
+  const code = row?.[currencyField] || fallback;
+  return formatDocumentAmount(amount, code);
+};
+
+/** Table header label for unit rate column, e.g. Rate (INR), Rate ($). */
+export const getRateColumnHeader = (currencyCode = 'USD') => {
+  const code = String(currencyCode || 'USD').toUpperCase().trim();
+  const headerSymbols = { USD: '$', GBP: '£', JPY: '¥', CNY: '¥', EUR: 'EUR' };
+  const label = headerSymbols[code] || code;
+  return `Rate (${label})`;
+};
+
 /** Format an amount already in the given currency (no base/display conversion). */
 export const formatDocumentAmount = (amount, currencyCode = 'USD', showSymbol = true) => {
   if (amount == null || (amount !== 0 && !amount)) return '-';

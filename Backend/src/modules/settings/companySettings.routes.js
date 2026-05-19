@@ -49,6 +49,10 @@ const upload = multer({
 
 router.get('/', companySettingsController.getSettings.bind(companySettingsController));
 router.get(
+  '/invoice-pdf-preview/:template/:docType',
+  companySettingsController.getInvoicePdfPreview.bind(companySettingsController)
+);
+router.get(
   '/invoice-pdf-preview/:template',
   companySettingsController.getInvoicePdfPreview.bind(companySettingsController)
 );

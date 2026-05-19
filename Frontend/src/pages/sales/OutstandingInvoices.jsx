@@ -3,6 +3,7 @@ import { Card, Table, Tag, Progress, Spin, message, Row, Col } from 'antd';
 import { ClockCircleOutlined, ExclamationCircleOutlined, CheckCircleOutlined, DollarOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
+import { formatCommercialDocAmount } from '../../utils/currency';
 
 const BUCKET_CONFIG = {
   current:         { label: 'Current',       gradient: 'linear-gradient(135deg,#11998e,#38ef7d)', shadow: 'rgba(17,153,142,0.35)',  tagColor: 'success', from: '#11998e', to: '#38ef7d' },
@@ -66,10 +67,12 @@ const OutstandingInvoices = () => {
     },
     { title: 'Party',        dataIndex: 'party_name',     key: 'party_name',     ellipsis: true },
     { title: 'Total Amount', dataIndex: 'total_amount',   key: 'total_amount',   align: 'right', width: 130,
-      render: v => <span style={{ fontWeight: 500 }}>{formatCurrency(v || 0)}</span>
+      render: (v, record) => <span style={{ fontWeight: 500 }}>{formatCommercialDocAmount(v || 0, record)}</span>
     },
     { title: 'Balance Due',  dataIndex: 'balance_amount', key: 'balance_amount', align: 'right', width: 130,
-      render: v => <span style={{ fontWeight: 700, color: '#f5222d' }}>{formatCurrency(v || 0)}</span>
+      render: (v, record) => (
+        <span style={{ fontWeight: 700, color: '#f5222d' }}>{formatCommercialDocAmount(v || 0, record)}</span>
+      )
     },
     { title: 'Due Date', dataIndex: 'due_date', key: 'due_date', width: 110,
       render: d => d ? new Date(d).toLocaleDateString() : '-'

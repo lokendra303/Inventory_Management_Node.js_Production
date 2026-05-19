@@ -1,6 +1,10 @@
 const PDFDocument = require('pdfkit');
 const logger = require('../../utils/logger');
 const db = require('../../database/connection');
+const { formatDocumentAmount } = require('../../utils/currencyFormat');
+const { drawStampSignature } = require('./invoicePdfDrawShared');
+const { loadPdfFooterAssets } = require('../../utils/pdfFooterAssets');
+const invoicePDFService = require('./invoicePDF.service');
 
 class SalesOrderPDFService {
   async generatePDFBuffer(soData, institutionId = null) {
@@ -12,8 +16,9 @@ class SalesOrderPDFService {
         const [settings] = await db.query(
           `SELECT ip.*, i.city, i.state
              FROM institution_profiles ip
-             LEFT JOIN institutions i ON i.id = ip.institution_id
-            WHERE ip.institution_id = ?
+             LEFT JOIN institutions i
+               ON i.id COLLATE utf8mb4_unicode_ci = ip.institution_id COLLATE utf8mb4_unicode_ci
+            WHERE ip.institution_id COLLATE utf8mb4_unicode_ci = ?
             LIMIT 1`,
           [institutionId]
         );
@@ -62,6 +67,14 @@ class SalesOrderPDFService {
           logger.warn('Could not load customer details');
         }
       }
+    }
+
+    let footerProfile = companySettings;
+    let stampBuffer = null;
+    let signatureBuffer = null;
+    if (institutionId) {
+      footerProfile = (await invoicePDFService.loadCompanyProfileForPdf(institutionId)) || companySettings;
+      ({ stampBuffer, signatureBuffer } = await loadPdfFooterAssets(invoicePDFService, footerProfile, 'so'));
     }
 
     return new Promise((resolve, reject) => {
@@ -311,14 +324,25 @@ class SalesOrderPDFService {
         const grandTotal = parseFloat(soData.total_amount || subtotal + totalTax);
 
         const totX = 350;
+        const soCcy = soData.currency || 'USD';
         doc.fontSize(9).font('Helvetica');
-        doc.text('Subtotal:',   totX, y);  doc.text(`${soData.currency || ''} ${subtotal.toFixed(2)}`,  480, y); y += 16;
+        doc.text('Subtotal:', totX, y);
+        doc.text(formatDocumentAmount(subtotal, soCcy), 480, y);
+        y += 16;
         if (totalTax > 0) {
-          doc.text('Tax:',      totX, y);  doc.text(`${soData.currency || ''} ${totalTax.toFixed(2)}`,   480, y); y += 16;
+          doc.text('Tax:', totX, y);
+          doc.text(formatDocumentAmount(totalTax, soCcy), 480, y);
+          y += 16;
         }
-        doc.moveTo(totX, y).lineTo(545, y).stroke(); y += 6;
+        doc.moveTo(totX, y).lineTo(545, y).stroke();
+        y += 6;
         doc.fontSize(11).font('Helvetica-Bold');
-        doc.text('Grand Total:', totX, y); doc.text(`${soData.currency || ''} ${grandTotal.toFixed(2)}`, 480, y);
+        doc.text('Grand Total:', totX, y);
+        doc.text(formatDocumentAmount(grandTotal, soCcy), 480, y);
+
+        if (stampBuffer || signatureBuffer) {
+          drawStampSignature(doc, y + 28, footerProfile, stampBuffer, signatureBuffer);
+        }
 
         doc.end();
       } catch (error) {

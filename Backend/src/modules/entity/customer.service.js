@@ -176,18 +176,40 @@ class CustomerService {
 
   async getCustomer(institutionId, customerId) {
     const customers = await db.query(
-      'SELECT * FROM customers WHERE institution_id = ? AND id = ?',
+      `SELECT * FROM customers
+        WHERE institution_id COLLATE utf8mb4_unicode_ci = ?
+          AND id COLLATE utf8mb4_unicode_ci = ?`,
       [institutionId, customerId]
     );
 
-    if (!customers[0]) return null;
-    
-    const customer = customers[0];
-    
-    // Get addresses
+    const customer = Array.isArray(customers) ? customers[0] : customers;
+    if (!customer) return null;
+
+    const { loadCustomerAddressesFromTable } = require('../../utils/partyAddressLoader');
+    const { billing, shipping } = await loadCustomerAddressesFromTable(customerId);
+
+    customer.billing_attention = billing.attention;
+    customer.billing_country = billing.country;
+    customer.billing_address1 = billing.line1;
+    customer.billing_address2 = billing.line2;
+    customer.billing_city = billing.city;
+    customer.billing_state = billing.state;
+    customer.billing_pin_code = billing.postalCode;
+
+    customer.shipping_attention = shipping.attention;
+    customer.shipping_country = shipping.country;
+    customer.shipping_address1 = shipping.line1;
+    customer.shipping_address2 = shipping.line2;
+    customer.shipping_city = shipping.city;
+    customer.shipping_state = shipping.state;
+    customer.shipping_pin_code = shipping.postalCode;
+
+    // Legacy path: also read addresses table directly if loader returned empty
     const addresses = await db.query(
-      'SELECT * FROM addresses WHERE entity_type = ? AND entity_id = ?',
-      ['customer', customerId]
+      `SELECT * FROM addresses
+        WHERE entity_type = 'customer'
+          AND entity_id COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci`,
+      [customerId]
     );
     
     // Get bank details
@@ -196,16 +218,19 @@ class CustomerService {
       ['customer', customerId]
     );
     
-    // Map addresses
-    addresses.forEach(addr => {
-      const prefix = addr.address_type;
-      customer[`${prefix}_attention`] = addr.attention;
-      customer[`${prefix}_country`] = addr.country;
-      customer[`${prefix}_address1`] = addr.address1;
-      customer[`${prefix}_address2`] = addr.address2;
-      customer[`${prefix}_city`] = addr.city;
-      customer[`${prefix}_state`] = addr.state;
-      customer[`${prefix}_pin_code`] = addr.pin_code;
+    const addressList = Array.isArray(addresses) ? addresses : addresses ? [addresses] : [];
+    addressList.forEach((addr) => {
+      const prefix = String(addr.address_type || '').toLowerCase();
+      if (prefix !== 'billing' && prefix !== 'shipping') return;
+      if (!customer[`${prefix}_address1`]) {
+        customer[`${prefix}_attention`] = addr.attention;
+        customer[`${prefix}_country`] = addr.country;
+        customer[`${prefix}_address1`] = addr.address1;
+        customer[`${prefix}_address2`] = addr.address2;
+        customer[`${prefix}_city`] = addr.city;
+        customer[`${prefix}_state`] = addr.state;
+        customer[`${prefix}_pin_code`] = addr.pin_code;
+      }
     });
     
     // Map bank details

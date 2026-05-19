@@ -3,6 +3,11 @@
  */
 const INVOICE_PDF_TEMPLATES = [
   {
+    id: 'branded',
+    name: 'Branded professional',
+    description: 'Blue & gray parallelogram INVOICE title, split table header, payment info footer.',
+  },
+  {
     id: 'classic',
     name: 'Classic bordered',
     description: 'Logo and company on opposite sides, full grid line items, traditional look.',
@@ -20,7 +25,7 @@ const INVOICE_PDF_TEMPLATES = [
 ];
 
 const ALLOWED = new Set(INVOICE_PDF_TEMPLATES.map((t) => t.id));
-const DEFAULT_INVOICE_PDF_TEMPLATE = 'classic';
+const DEFAULT_INVOICE_PDF_TEMPLATE = 'branded';
 
 function normalizeInvoicePdfTemplate(value) {
   const k = String(value || DEFAULT_INVOICE_PDF_TEMPLATE)

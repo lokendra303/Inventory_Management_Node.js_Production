@@ -5,7 +5,7 @@ import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity } from '../../utils/numberFormat';
-import { getCurrencies, formatDocumentAmount } from '../../utils/currency';
+import { getCurrencies, formatDocumentAmount, formatCommercialDocAmount } from '../../utils/currency';
 import TransactionHistory from '../../components/inventory/TransactionHistory';
 import { useTaxRates } from '../../hooks/useTaxRates';
 import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
@@ -118,7 +118,8 @@ const PurchaseOrders = () => {
         return <span style={{ color: colors[status] || 'black' }}>{status?.toUpperCase()}</span>;
       }
     },
-    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', width: 110, render: (val) => formatCurrency(val) },
+    { title: 'Total', dataIndex: 'total_amount', key: 'total_amount', width: 110,
+      render: (val, record) => formatCommercialDocAmount(val, record) },
     { title: 'Order Date', dataIndex: 'order_date', key: 'order_date', width: 110 },
     {
       title: 'Actions', key: 'actions', width: 220,
@@ -961,7 +962,7 @@ const PurchaseOrders = () => {
               <strong>Order Date:</strong> {selectedPOForView.order_date ? new Date(selectedPOForView.order_date).toLocaleDateString() : '-'}<br/>
               <strong>Expected Date:</strong> {selectedPOForView.expected_date ? new Date(selectedPOForView.expected_date).toLocaleDateString() : '-'}<br/>
               <strong>Currency:</strong> {selectedPOForView.currency}<br/>
-              <strong>Total Amount:</strong> {formatCurrency(selectedPOForView.total_amount)}<br/>
+              <strong>Total Amount:</strong> {formatDocumentAmount(selectedPOForView.total_amount, selectedPOForView.currency)}<br/>
               <strong>Notes:</strong> {selectedPOForView.notes || 'N/A'}<br/>
               <strong>Created By:</strong> {selectedPOForView.created_by_name || 'N/A'}
               {selectedPOForView.status === 'cancelled' && selectedPOForView.cancellation_reason && (
@@ -977,10 +978,13 @@ const PurchaseOrders = () => {
                 { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 140, ellipsis: true },
                 { title: 'HSN', dataIndex: 'hsn_code', key: 'hsn_code', width: 80, render: v => v || '-' },
                 { title: 'Qty', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 70, render: v => formatQuantity(v) },
-                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', width: 100, render: v => formatCurrency(v) },
+                { title: 'Unit Cost', dataIndex: 'unit_cost', key: 'unit_cost', width: 100,
+                  render: v => formatDocumentAmount(v, selectedPOForView?.currency) },
                 { title: 'Tax', dataIndex: 'tax_rate', key: 'tax_rate', width: 70, render: v => v > 0 ? <Tag color="blue">{v}%</Tag> : '-' },
-                { title: 'Tax Amt', dataIndex: 'tax_amount', key: 'tax_amount', width: 90, render: v => v > 0 ? formatCurrency(v) : '-' },
-                { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100, render: v => formatCurrency(v) },
+                { title: 'Tax Amt', dataIndex: 'tax_amount', key: 'tax_amount', width: 90,
+                  render: v => v > 0 ? formatDocumentAmount(v, selectedPOForView?.currency) : '-' },
+                { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100,
+                  render: v => formatDocumentAmount(v, selectedPOForView?.currency) },
                 { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: v => v?.toUpperCase() }
               ]}
             />

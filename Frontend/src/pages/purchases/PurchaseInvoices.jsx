@@ -8,6 +8,7 @@ import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
+import { formatCommercialDocAmount, formatDocumentAmount } from '../../utils/currency';
 import { mediaUrl } from '../../config/appConfig';
 
 const STATUS_CONFIG = {
@@ -121,10 +122,10 @@ const PurchaseInvoices = () => {
               </tbody>
             </table>
             <div style={{ textAlign: 'right', marginTop: '20px' }}>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {data.details.currency} {formatAmount(data.totals.subtotal)}</p>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {data.details.currency} {formatAmount(data.totals.totalTaxAmount)}</p>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Discount:</strong> {data.details.currency} {formatAmount(data.totals.totalDiscountAmount)}</p>
-              <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {data.details.currency} {formatAmount(data.totals.grandTotal)}</h3>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {formatDocumentAmount(data.totals.subtotal, data.details.currency)}</p>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {formatDocumentAmount(data.totals.totalTaxAmount, data.details.currency)}</p>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Discount:</strong> {formatDocumentAmount(data.totals.totalDiscountAmount, data.details.currency)}</p>
+              <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {formatDocumentAmount(data.totals.grandTotal, data.details.currency)}</h3>
               <p style={{ margin: '5px 0', fontSize: '12px', fontStyle: 'italic' }}>Amount in words: {data.totals.amountInWords}</p>
             </div>
             {(data.partyDetails.bankDetails?.bankName || data.partyDetails.bankDetails?.accountNumber) && (
@@ -206,7 +207,8 @@ const PurchaseInvoices = () => {
     { title: 'Vendor',       dataIndex: 'vendor_name',   key: 'vendor_name',   width: 140, ellipsis: true },
     { title: 'Invoice Date', dataIndex: 'invoice_date',  key: 'invoice_date',  width: 110, render: d => new Date(d).toLocaleDateString() },
     { title: 'Due Date',     dataIndex: 'due_date',      key: 'due_date',      width: 100, render: d => d ? new Date(d).toLocaleDateString() : '-', responsive: ['sm'] },
-    { title: 'Amount',       dataIndex: 'total_amount',  key: 'total_amount',  width: 115, render: v => <span style={{ fontWeight: 600 }}>{formatCurrency(v)}</span> },
+    { title: 'Amount',       dataIndex: 'total_amount',  key: 'total_amount',  width: 115,
+      render: (v, record) => <span style={{ fontWeight: 600 }}>{formatCommercialDocAmount(v, record)}</span> },
     { title: 'Status',       dataIndex: 'status',        key: 'status',        width: 120,
       render: s => { const c = STATUS_CONFIG[s] || {}; return <Tag color={c.color || 'default'} style={{ fontWeight: 600 }}>{c.label || s?.toUpperCase()}</Tag>; }
     },

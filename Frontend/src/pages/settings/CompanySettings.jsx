@@ -41,6 +41,20 @@ import './CompanySettings.css';
 
 const { Title, Text, Paragraph } = Typography;
 
+const DEFAULT_PDF_FOOTER_OPTIONS = {
+  si: { stamp: true, signature: true },
+  pi: { stamp: true, signature: true },
+  so: { stamp: true, signature: true },
+  po: { stamp: true, signature: true },
+};
+
+const PDF_FOOTER_DOC_ROWS = [
+  { key: 'si', label: 'Sales Invoice (SI)' },
+  { key: 'pi', label: 'Purchase Invoice (PI)' },
+  { key: 'so', label: 'Sales Order (SO)' },
+  { key: 'po', label: 'Purchase Order (PO)' },
+];
+
 const CompanySettings = () => {
   const { fetchProfile } = useAuth();
   const [form] = Form.useForm();
@@ -55,6 +69,8 @@ const CompanySettings = () => {
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
   const [pdfPreviewTitle, setPdfPreviewTitle] = useState('');
   const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const watchedInvoiceTemplate = Form.useWatch('invoicePdfTemplate', form);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -72,7 +88,11 @@ const CompanySettings = () => {
           swiftCode: response.data.swift_code,
           authorizedSignatoryName: response.data.authorized_signatory_name,
           authorizedSignatoryDesignation: response.data.authorized_signatory_designation,
-          invoicePdfTemplate: response.data.invoice_pdf_template || 'classic',
+          invoicePdfTemplate: response.data.invoice_pdf_template || 'branded',
+          pdfFooterOptions: {
+            ...DEFAULT_PDF_FOOTER_OPTIONS,
+            ...(response.data.pdf_footer_options || {}),
+          },
         });
       }
     } catch {
@@ -130,6 +150,7 @@ const CompanySettings = () => {
       if (response.success) {
         message.success('Company settings saved');
         await loadSettings();
+        setPreviewRefreshKey((k) => k + 1);
         await fetchProfile();
         if (values.companyName && values.address && values.phone) {
           apiService.post('/onboarding/complete', { stepId: 'company_profile' }).catch(() => {});
@@ -379,7 +400,7 @@ const CompanySettings = () => {
   ];
 
   const settingsPanel = (
-    <Form form={form} layout="vertical" requiredMark="optional" initialValues={{ invoicePdfTemplate: 'classic' }}>
+    <Form form={form} layout="vertical" requiredMark="optional" initialValues={{ invoicePdfTemplate: 'branded' }}>
       <Card size="small" title="Company" styles={{ header: { fontWeight: 600 } }}>
         <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 16 }}>
           Legal name and contact details used on invoices and PDFs.
@@ -495,6 +516,56 @@ const CompanySettings = () => {
         </Form.Item>
       </Card>
 
+      <Card
+        size="small"
+        title="Stamp & signature on PDFs"
+        style={{ marginTop: 16 }}
+        styles={{ header: { fontWeight: 600 } }}
+      >
+        <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12 }}>
+          Choose which documents include your default stamp and signature. Upload files below; turn off per document type as needed.
+        </Paragraph>
+        <Table
+          size="small"
+          pagination={false}
+          rowKey="key"
+          dataSource={PDF_FOOTER_DOC_ROWS}
+          columns={[
+            { title: 'Document', dataIndex: 'label', key: 'label' },
+            {
+              title: 'Stamp',
+              key: 'stamp',
+              width: 100,
+              align: 'center',
+              render: (_, row) => (
+                <Form.Item
+                  name={['pdfFooterOptions', row.key, 'stamp']}
+                  valuePropName="checked"
+                  style={{ margin: 0 }}
+                >
+                  <Switch size="small" />
+                </Form.Item>
+              ),
+            },
+            {
+              title: 'Signature',
+              key: 'signature',
+              width: 100,
+              align: 'center',
+              render: (_, row) => (
+                <Form.Item
+                  name={['pdfFooterOptions', row.key, 'signature']}
+                  valuePropName="checked"
+                  style={{ margin: 0 }}
+                >
+                  <Switch size="small" />
+                </Form.Item>
+              ),
+            },
+          ]}
+        />
+      </Card>
+
       <Divider style={{ margin: '24px 0 16px' }} />
 
       <div style={{ fontWeight: 600, marginBottom: 8 }}>
@@ -606,7 +677,7 @@ const CompanySettings = () => {
         type="info"
         showIcon
         style={{ marginTop: 20 }}
-        message="Invoices & PDFs use the default stamp, signature, and default address unless a document template specifies otherwise."
+        message="Default stamp and signature files are used when enabled above for each document type. Save changes after updating switches."
       />
 
       <Modal
@@ -660,8 +731,8 @@ const CompanySettings = () => {
       <div className="company-settings__intro">
         <Title level={4} style={{ marginBottom: 4 }}>Company settings</Title>
         <Text type="secondary">
-          Company profile, locations, banking, and invoice assets. Use the <Text strong>Invoice PDF layout</Text> card
-          (under Bank details) to choose classic, minimal, or modern invoice PDFs — then click Save changes.
+          Company profile, locations, banking, and invoice assets. Under <Text strong>Invoice PDF layout</Text>, click a
+          template card (radio + &quot;Selected&quot;) — then click Save changes.
         </Text>
       </div>
 
@@ -698,9 +769,20 @@ const CompanySettings = () => {
               children: (
                 <div style={{ paddingTop: 8 }}>
                   <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                    Uses your default address, logo, stamp, and signature from this page.
+                    Two previews for the selected template — sales (SI) with Bill to and Ship to, and
+                    purchase (PI) with vendor Bill to. Logo, company banner, and signature come from
+                    Details &amp; branding. Save there, then refresh each preview.
                   </Paragraph>
-                  <InvoicePreview />
+                  <InvoicePreview
+                    documentType="sales"
+                    templateId={watchedInvoiceTemplate || settings.invoice_pdf_template || 'branded'}
+                    refreshKey={`${previewRefreshKey}-si-${activeTab}`}
+                  />
+                  <InvoicePreview
+                    documentType="purchase"
+                    templateId={watchedInvoiceTemplate || settings.invoice_pdf_template || 'branded'}
+                    refreshKey={`${previewRefreshKey}-pi-${activeTab}`}
+                  />
                 </div>
               ),
             },

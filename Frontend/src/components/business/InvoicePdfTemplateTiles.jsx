@@ -1,6 +1,6 @@
 import React from 'react';
-import { Row, Col, Card, Button, Typography, Space } from 'antd';
-import { FilePdfOutlined } from '@ant-design/icons';
+import { Row, Col, Card, Button, Typography, Space, Radio, Tag } from 'antd';
+import { CheckCircleFilled, FilePdfOutlined } from '@ant-design/icons';
 import { INVOICE_PDF_TEMPLATES } from '../../constants/invoicePdfTemplates';
 
 const { Text, Paragraph } = Typography;
@@ -40,61 +40,128 @@ function ThumbnailModern() {
   );
 }
 
+function ThumbnailBranded() {
+  return (
+    <div style={{ height: 72, background: '#fafafa', borderRadius: 4, padding: 6 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+        <div style={{ width: 22, height: 22, background: '#0099DD', borderRadius: 2 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ height: 5, background: '#434343', width: '70%', marginBottom: 3 }} />
+          <div style={{ height: 3, background: '#bfbfbf', width: '50%' }} />
+        </div>
+        <div
+          style={{
+            width: 48,
+            height: 18,
+            background: '#4A4A4A',
+            transform: 'skewX(-12deg)',
+            borderLeft: '3px solid #0099DD',
+          }}
+        />
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', height: 22 }}>
+        <div style={{ flex: 1.2, background: '#0099DD', borderRadius: '1px 0 0 1px' }} />
+        <div style={{ flex: 0.8, background: '#4A4A4A', borderRadius: '0 1px 1px 0' }} />
+      </div>
+    </div>
+  );
+}
+
 const THUMB = {
+  branded: ThumbnailBranded,
   classic: ThumbnailClassic,
   minimal: ThumbnailMinimal,
   modern: ThumbnailModern,
 };
 
+/**
+ * Form-controlled template picker (value + onChange from Form.Item).
+ */
 const InvoicePdfTemplateTiles = ({ value, onChange, onPreviewPdf }) => {
+  const activeId = value || INVOICE_PDF_TEMPLATES[0]?.id;
+  const activeMeta = INVOICE_PDF_TEMPLATES.find((t) => t.id === activeId);
+
+  const handleSelect = (id) => {
+    if (typeof onChange === 'function') {
+      onChange(id);
+    }
+  };
+
   return (
-    <Row gutter={[12, 12]}>
-      {INVOICE_PDF_TEMPLATES.map((t) => {
-        const selected = value === t.id;
-        const Thumb = THUMB[t.id] || ThumbnailClassic;
-        return (
-          <Col xs={24} md={8} key={t.id}>
-            <Card
-              size="small"
-              hoverable
-              onClick={() => onChange(t.id)}
-              styles={{
-                body: { padding: 12 },
-              }}
-              style={{
-                cursor: 'pointer',
-                borderColor: selected ? '#1677ff' : undefined,
-                borderWidth: selected ? 2 : 1,
-                boxShadow: selected ? '0 0 0 1px rgba(22,119,255,0.2)' : undefined,
-              }}
-            >
-              <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                <Thumb />
-                <div>
-                  <Text strong>{t.name}</Text>
-                  <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 4, fontSize: 12 }}>
-                    {t.description}
-                  </Paragraph>
-                </div>
-                <Button
-                  type="link"
+    <div>
+      {activeMeta && (
+        <div style={{ marginBottom: 12 }}>
+          <Text type="secondary">Current selection: </Text>
+          <Tag icon={<CheckCircleFilled />} color="processing">
+            {activeMeta.name}
+          </Tag>
+        </div>
+      )}
+
+      <Radio.Group
+        value={activeId}
+        onChange={(e) => handleSelect(e.target.value)}
+        style={{ width: '100%' }}
+      >
+        <Row gutter={[12, 12]}>
+          {INVOICE_PDF_TEMPLATES.map((t) => {
+            const selected = activeId === t.id;
+            const Thumb = THUMB[t.id] || ThumbnailClassic;
+            return (
+              <Col xs={24} sm={12} lg={6} key={t.id}>
+                <Card
                   size="small"
-                  icon={<FilePdfOutlined />}
-                  style={{ padding: 0, alignSelf: 'flex-start' }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPreviewPdf(t.id);
+                  hoverable
+                  onClick={() => handleSelect(t.id)}
+                  styles={{ body: { padding: 12 } }}
+                  style={{
+                    cursor: 'pointer',
+                    borderColor: selected ? '#1677ff' : '#d9d9d9',
+                    borderWidth: selected ? 2 : 1,
+                    background: selected ? '#f0f5ff' : '#fff',
+                    boxShadow: selected ? '0 0 0 2px rgba(22,119,255,0.15)' : undefined,
                   }}
                 >
-                  Preview sample PDF
-                </Button>
-              </Space>
-            </Card>
-          </Col>
-        );
-      })}
-    </Row>
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Radio value={t.id} onClick={(e) => e.stopPropagation()}>
+                        <span style={{ fontWeight: selected ? 600 : 400 }}>{selected ? 'Selected' : 'Select'}</span>
+                      </Radio>
+                      {selected && (
+                        <Tag color="blue" icon={<CheckCircleFilled />} style={{ margin: 0 }}>
+                          Active
+                        </Tag>
+                      )}
+                    </div>
+                    <Thumb />
+                    <div>
+                      <Text strong>{t.name}</Text>
+                      <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 4, fontSize: 12 }}>
+                        {t.description}
+                      </Paragraph>
+                    </div>
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<FilePdfOutlined />}
+                      style={{ padding: 0, alignSelf: 'flex-start' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPreviewPdf?.(t.id);
+                      }}
+                    >
+                      Preview sample PDF
+                    </Button>
+                  </Space>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+      </Radio.Group>
+    </div>
   );
 };
 
 export default InvoicePdfTemplateTiles;
+

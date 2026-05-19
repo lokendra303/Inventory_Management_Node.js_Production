@@ -762,6 +762,9 @@ class SalesInvoiceController {
         'sales'
       );
 
+      await invoicePDFService.enrichSalesPartyDetails(institutionId, standardInvoice, invoiceData);
+      invoicePDFService._ensureSalesShippingAddress(standardInvoice.partyDetails);
+
       res.json({
         success: true,
         data: standardInvoice

@@ -19,7 +19,9 @@ class InvoiceTemplateService {
         metadata: {
           type,
           generatedAt: new Date().toISOString(),
-          institutionId
+          institutionId,
+          customerId: invoiceData.customerId || null,
+          vendorId: invoiceData.vendorId || null,
         }
       };
 
@@ -35,38 +37,50 @@ class InvoiceTemplateService {
    */
   async getInvoiceHeader(institutionId) {
     try {
-      const [institution] = await db.query(`
-        SELECT 
-          name as company_name,
-          email
-        FROM institutions 
-        WHERE id = ?
-      `, [institutionId]);
+      const rows = await db.query(
+        `SELECT
+           COALESCE(ip.company_name, i.name) AS company_name,
+           COALESCE(ip.address, i.address) AS address,
+           COALESCE(ip.phone, i.mobile) AS phone,
+           COALESCE(ip.email, i.email) AS email,
+           ip.logo_path,
+           i.city,
+           i.state,
+           i.postal_code,
+           i.tax_id
+         FROM institutions i
+         LEFT JOIN institution_profiles ip
+           ON ip.institution_id COLLATE utf8mb4_unicode_ci = i.id COLLATE utf8mb4_unicode_ci
+         WHERE i.id COLLATE utf8mb4_unicode_ci = ?
+         LIMIT 1`,
+        [institutionId]
+      );
+      const row = Array.isArray(rows) ? rows[0] : rows;
 
-      if (institution) {
+      if (row) {
         return {
-          companyName: institution.company_name || 'Your Company Name',
+          companyName: row.company_name || 'Company Name',
           address: {
-            line1: '',
-            city: '',
-            state: '',
+            line1: row.address || '',
+            city: row.city || '',
+            state: row.state || '',
             country: '',
-            postalCode: ''
+            postalCode: row.postal_code || '',
           },
           contact: {
-            phone: '',
-            email: institution.email || '',
-            website: ''
+            phone: row.phone || '',
+            email: row.email || '',
+            website: '',
           },
           taxInfo: {
-            taxId: '',
-            registrationNumber: ''
+            taxId: row.tax_id || '',
+            registrationNumber: '',
           },
           branding: {
-            logoUrl: '',
+            logoUrl: row.logo_path || '',
             stampUrl: '',
-            signatureUrl: ''
-          }
+            signatureUrl: '',
+          },
         };
       }
       return this.getDefaultHeader();
@@ -81,6 +95,7 @@ class InvoiceTemplateService {
    */
   async getInvoiceDetails(invoiceData, type) {
     return {
+      type: type === 'purchase' ? 'purchase' : 'sales',
       invoiceNumber: invoiceData.invoiceNumber || await this.generateInvoiceNumber(type),
       invoiceDate: invoiceData.invoiceDate || new Date().toISOString().split('T')[0],
       dueDate: invoiceData.dueDate || this.calculateDueDate(invoiceData.paymentTerms),
@@ -100,7 +115,8 @@ class InvoiceTemplateService {
     try {
       if (type === 'purchase' && invoiceData.vendorId) {
         return await this.getVendorDetails(institutionId, invoiceData.vendorId);
-      } else if (type === 'sales' && invoiceData.customerId) {
+      }
+      if (type === 'sales' && invoiceData.customerId) {
         return await this.getCustomerDetails(institutionId, invoiceData.customerId);
       }
       return this.getManualPartyDetails(invoiceData, type);
@@ -424,7 +440,10 @@ class InvoiceTemplateService {
   getInvoiceFooter(invoiceData) {
     return {
       notes: invoiceData.notes || '',
-      terms: invoiceData.terms || 'Payment due within specified terms. Late payments may incur charges.',
+      terms:
+        invoiceData.terms ||
+        invoiceData.notes ||
+        'Payment due within specified terms. Late payments may incur charges.',
       bankDetails: invoiceData.bankDetails || null,
       authorizedSignatory: {
         name: invoiceData.authorizedBy || '',

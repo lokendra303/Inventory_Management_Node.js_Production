@@ -1,6 +1,10 @@
 const PDFDocument = require('pdfkit');
 const logger = require('../../utils/logger');
 const db = require('../../database/connection');
+const { formatDocumentAmount } = require('../../utils/currencyFormat');
+const { drawStampSignature } = require('./invoicePdfDrawShared');
+const { loadPdfFooterAssets } = require('../../utils/pdfFooterAssets');
+const invoicePDFService = require('./invoicePDF.service');
 
 class PurchaseOrderPDFService {
   async generatePDFBuffer(poData, institutionId = null) {
@@ -12,8 +16,9 @@ class PurchaseOrderPDFService {
         const [settings] = await db.query(
           `SELECT ip.*, i.city, i.state
              FROM institution_profiles ip
-             LEFT JOIN institutions i ON i.id = ip.institution_id
-            WHERE ip.institution_id = ?
+             LEFT JOIN institutions i
+               ON i.id COLLATE utf8mb4_unicode_ci = ip.institution_id COLLATE utf8mb4_unicode_ci
+            WHERE ip.institution_id COLLATE utf8mb4_unicode_ci = ?
             LIMIT 1`,
           [institutionId]
         );
@@ -62,6 +67,14 @@ class PurchaseOrderPDFService {
           logger.warn('Could not load vendor details');
         }
       }
+    }
+
+    let footerProfile = companySettings;
+    let stampBuffer = null;
+    let signatureBuffer = null;
+    if (institutionId) {
+      footerProfile = (await invoicePDFService.loadCompanyProfileForPdf(institutionId)) || companySettings;
+      ({ stampBuffer, signatureBuffer } = await loadPdfFooterAssets(invoicePDFService, footerProfile, 'po'));
     }
 
     return new Promise((resolve, reject) => {
@@ -315,13 +328,24 @@ class PurchaseOrderPDFService {
 
         const totX = 350;
         doc.fontSize(9).font('Helvetica');
-        doc.text('Subtotal:',  totX, y); doc.text(`${poData.currency || ''} ${subtotal.toFixed(2)}`,  480, y); y += 16;
+        const poCcy = poData.currency || 'USD';
+        doc.text('Subtotal:', totX, y);
+        doc.text(formatDocumentAmount(subtotal, poCcy), 480, y);
+        y += 16;
         if (totalTax > 0) {
-          doc.text('Tax:',     totX, y); doc.text(`${poData.currency || ''} ${totalTax.toFixed(2)}`,   480, y); y += 16;
+          doc.text('Tax:', totX, y);
+          doc.text(formatDocumentAmount(totalTax, poCcy), 480, y);
+          y += 16;
         }
-        doc.moveTo(totX, y).lineTo(545, y).stroke(); y += 6;
+        doc.moveTo(totX, y).lineTo(545, y).stroke();
+        y += 6;
         doc.fontSize(11).font('Helvetica-Bold');
-        doc.text('Grand Total:', totX, y); doc.text(`${poData.currency || ''} ${grandTotal.toFixed(2)}`, 480, y);
+        doc.text('Grand Total:', totX, y);
+        doc.text(formatDocumentAmount(grandTotal, poCcy), 480, y);
+
+        if (stampBuffer || signatureBuffer) {
+          drawStampSignature(doc, y + 28, footerProfile, stampBuffer, signatureBuffer);
+        }
 
         doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
 

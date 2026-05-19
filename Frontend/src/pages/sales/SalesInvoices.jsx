@@ -9,6 +9,7 @@ import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity, formatAmount } from '../../utils/numberFormat';
+import { formatCommercialDocAmount, formatDocumentAmount, getRateColumnHeader } from '../../utils/currency';
 import { mediaUrl } from '../../config/appConfig';
 
 const STATUS_CONFIG = {
@@ -83,15 +84,38 @@ const SalesInvoices = () => {
                 {data.header.taxInfo.taxId && <p style={{ margin: '5px 0', fontSize: '11px' }}>Tax ID: {data.header.taxInfo.taxId}</p>}
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <div>
-                <h4 style={{ margin: '0 0 10px 0' }}>Customer Details</h4>
+            <div style={{ display: 'flex', marginBottom: '20px' }}>
+              <div style={{ flex: '0 0 220px' }}>
+                <h4 style={{ margin: '0 0 8px 0' }}>Bill to</h4>
                 <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>{data.partyDetails.name}</strong></p>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.line1}</p>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.city}, {data.partyDetails.billingAddress.state}</p>
-                <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.contact.phone}</p>
+                {data.partyDetails.billingAddress?.line1 && (
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.billingAddress.line1}</p>
+                )}
+                <p style={{ margin: '3px 0', fontSize: '13px' }}>
+                  {[data.partyDetails.billingAddress?.city, data.partyDetails.billingAddress?.state, data.partyDetails.billingAddress?.postalCode]
+                    .filter(Boolean)
+                    .join(', ')}
+                </p>
+                {data.partyDetails.contact?.phone && (
+                  <p style={{ margin: '3px 0', fontSize: '13px' }}>Phone: {data.partyDetails.contact.phone}</p>
+                )}
               </div>
-              <div style={{ textAlign: 'right' }}>
+              <div style={{ flex: '0 0 200px', marginLeft: '48px' }}>
+                <h4 style={{ margin: '0 0 8px 0' }}>Ship to</h4>
+                {data.partyDetails.shippingAddress?.line1 ? (
+                  <>
+                    <p style={{ margin: '3px 0', fontSize: '13px' }}>{data.partyDetails.shippingAddress.line1}</p>
+                    <p style={{ margin: '3px 0', fontSize: '13px' }}>
+                      {[data.partyDetails.shippingAddress.city, data.partyDetails.shippingAddress.state, data.partyDetails.shippingAddress.postalCode]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </p>
+                  </>
+                ) : (
+                  <p style={{ margin: '3px 0', fontSize: '12px', color: '#888' }}>Same as bill to</p>
+                )}
+              </div>
+              <div style={{ flex: '1 1 auto', textAlign: 'right', marginLeft: 'auto' }}>
                 <h3 style={{ margin: '0 0 10px 0' }}>SALES INVOICE</h3>
                 <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Invoice #:</strong> {data.details.invoiceNumber}</p>
                 <p style={{ margin: '3px 0', fontSize: '13px' }}><strong>Date:</strong> {new Date(data.details.invoiceDate).toLocaleDateString()}</p>
@@ -101,7 +125,7 @@ const SalesInvoices = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '12px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f0f0f0' }}>
-                  {['#','Item','Qty','Rate','Tax %','Tax Amt','Amount'].map(h => <th key={h} style={{ border: '1px solid #ddd', padding: '8px', textAlign: h === '#' || h === 'Item' ? 'left' : 'right' }}>{h}</th>)}
+                  {['#','Item','Qty',getRateColumnHeader(data.details.currency),'Tax %','Tax Amt','Amount'].map(h => <th key={h} style={{ border: '1px solid #ddd', padding: '8px', textAlign: h === '#' || h === 'Item' ? 'left' : 'right' }}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -119,10 +143,10 @@ const SalesInvoices = () => {
               </tbody>
             </table>
             <div style={{ textAlign: 'right', marginTop: '20px' }}>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {data.details.currency} {formatAmount(data.totals.subtotal)}</p>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {data.details.currency} {formatAmount(data.totals.totalTaxAmount)}</p>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Discount:</strong> {data.details.currency} {formatAmount(data.totals.totalDiscountAmount)}</p>
-              <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {data.details.currency} {formatAmount(data.totals.grandTotal)}</h3>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Subtotal:</strong> {formatDocumentAmount(data.totals.subtotal, data.details.currency)}</p>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Tax:</strong> {formatDocumentAmount(data.totals.totalTaxAmount, data.details.currency)}</p>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}><strong>Discount:</strong> {formatDocumentAmount(data.totals.totalDiscountAmount, data.details.currency)}</p>
+              <h3 style={{ margin: '10px 0', fontSize: '16px' }}><strong>Grand Total:</strong> {formatDocumentAmount(data.totals.grandTotal, data.details.currency)}</h3>
               <p style={{ margin: '5px 0', fontSize: '12px', fontStyle: 'italic' }}>Amount in words: {data.totals.amountInWords}</p>
             </div>
             {(data.partyDetails.bankDetails?.bankName || data.partyDetails.bankDetails?.accountNumber) && (
@@ -222,7 +246,8 @@ const SalesInvoices = () => {
     { title: 'Customer',     dataIndex: 'customer_name',  key: 'customer_name',  width: 140, ellipsis: true },
     { title: 'Invoice Date', dataIndex: 'invoice_date',   key: 'invoice_date',   width: 110, render: d => new Date(d).toLocaleDateString() },
     { title: 'Due Date',     dataIndex: 'due_date',       key: 'due_date',       width: 100, render: d => d ? new Date(d).toLocaleDateString() : '-', responsive: ['sm'] },
-    { title: 'Amount',       dataIndex: 'total_amount',   key: 'total_amount',   width: 115, render: v => <span style={{ fontWeight: 600 }}>{formatCurrency(v)}</span> },
+    { title: 'Amount',       dataIndex: 'total_amount',   key: 'total_amount',   width: 115,
+      render: (v, record) => <span style={{ fontWeight: 600 }}>{formatCommercialDocAmount(v, record)}</span> },
     { title: 'Status',       dataIndex: 'status',         key: 'status',         width: 120,
       render: s => { const c = STATUS_CONFIG[s] || {}; return <Tag color={c.color || 'default'} style={{ fontWeight: 600 }}>{c.label || s?.toUpperCase()}</Tag>; }
     },

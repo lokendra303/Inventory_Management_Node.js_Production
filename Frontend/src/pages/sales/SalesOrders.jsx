@@ -8,7 +8,7 @@ import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { useTaxRates } from '../../hooks/useTaxRates';
-import { getCurrencies, formatDocumentAmount } from '../../utils/currency';
+import { getCurrencies, formatDocumentAmount, formatCommercialDocAmount } from '../../utils/currency';
 import { useCommercialDocumentCurrency } from '../../hooks/useCommercialDocumentCurrency';
 import {
   amountInDocumentCurrency,
@@ -202,7 +202,8 @@ const SalesOrders = () => {
         return <span style={{ color: colors[status] || "black" }}>{status?.toUpperCase()}</span>;
       },
     },
-    { title: "Total", dataIndex: "total_amount", key: "total_amount", width: 110, render: (val) => formatCurrency(val) },
+    { title: "Total", dataIndex: "total_amount", key: "total_amount", width: 110,
+      render: (val, record) => formatCommercialDocAmount(val, record) },
     { title: "Order Date", dataIndex: "order_date", key: "order_date", width: 110 },
     {
       title: "Actions", key: "actions", width: 180,
@@ -1039,7 +1040,7 @@ const SalesOrders = () => {
               <strong>Order Date:</strong> {selectedSOForView.order_date}<br />
               <strong>Expected Ship Date:</strong> {selectedSOForView.expected_ship_date}<br />
               <strong>Currency:</strong> {selectedSOForView.currency}<br />
-              <strong>Total Amount:</strong> {formatCurrency(selectedSOForView.total_amount)}
+              <strong>Total Amount:</strong> {formatDocumentAmount(selectedSOForView.total_amount, selectedSOForView.currency)}
               {selectedSOForView.status === 'cancelled' && selectedSOForView.cancellation_reason && (
                 <div style={{ marginTop: 12, padding: 12, backgroundColor: '#fff2e8', border: '1px solid #ffbb96', borderRadius: 4 }}>
                   <strong style={{ color: '#d4380d' }}>Cancellation Reason:</strong>
@@ -1054,11 +1055,14 @@ const SalesOrders = () => {
                 { title: 'HSN', dataIndex: 'hsn_code', key: 'hsn_code', width: 80, render: v => v || '-' },
                 { title: 'Qty', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 70 },
                 { title: 'Shipped', dataIndex: 'quantity_shipped', key: 'quantity_shipped', width: 80, render: v => v || 0 },
-                { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', width: 100, render: v => formatCurrency(v) },
+                { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', width: 100,
+                  render: v => formatDocumentAmount(v, selectedSOForView?.currency) },
                 { title: 'Discount', dataIndex: 'discount_rate', key: 'discount_rate', width: 80, render: v => v > 0 ? <Tag color="orange">{v}%</Tag> : '-' },
                 { title: 'Tax', dataIndex: 'tax_rate', key: 'tax_rate', width: 70, render: v => v > 0 ? <Tag color="blue">{v}%</Tag> : '-' },
-                { title: 'Tax Amt', dataIndex: 'tax_amount', key: 'tax_amount', width: 90, render: v => v > 0 ? formatCurrency(v) : '-' },
-                { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100, render: v => formatCurrency(v) },
+                { title: 'Tax Amt', dataIndex: 'tax_amount', key: 'tax_amount', width: 90,
+                  render: v => v > 0 ? formatDocumentAmount(v, selectedSOForView?.currency) : '-' },
+                { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 100,
+                  render: v => formatDocumentAmount(v, selectedSOForView?.currency) },
                 { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: v => v?.toUpperCase() },
               ]}
             />

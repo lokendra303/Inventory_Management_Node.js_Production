@@ -2,9 +2,51 @@
  * Shared invoice PDF drawing: line item table with pagination (used by all templates).
  */
 
+const { formatDocumentAmount, formatNumber, getRateColumnHeader } = require('../../utils/currencyFormat');
+
+const pdfAmount = (amount, currencyCode) => formatDocumentAmount(amount, currencyCode, { pdf: true });
+
+/** Upper-left logo slot (all templates). */
+const INVOICE_LOGO_BOX = {
+  x: 50,
+  y: 26,
+  width: 80,
+  height: 59,
+  gapAfter: 14,
+};
+
+/**
+ * Draw company logo fixed at upper-left; return X where header text should start.
+ * @returns {{ contentX: number, topY: number, bottomY: number, hasLogo: boolean }}
+ */
+function drawCompanyLogoTopLeft(doc, logoBuffer) {
+  const { x, y, width, height, gapAfter } = INVOICE_LOGO_BOX;
+  if (logoBuffer) {
+    doc.image(logoBuffer, x, y, { width, height });
+    return {
+      contentX: x + width + gapAfter,
+      topY: y,
+      bottomY: y + height,
+      hasLogo: true,
+    };
+  }
+  return {
+    contentX: x,
+    topY: y,
+    bottomY: y,
+    hasLogo: false,
+  };
+}
+
 function formatShortDate(d) {
   if (!d) return 'N/A';
   return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/** DD/MM/YYYY — matches on-screen sales invoice preview. */
+function formatDisplayDate(d) {
+  if (!d) return 'N/A';
+  return new Date(d).toLocaleDateString('en-GB');
 }
 
 /**
@@ -12,11 +54,16 @@ function formatShortDate(d) {
  * @param {number} startY
  * @param {object} standardInvoice
  * @param {object} opts
- * @param {'classic'|'minimal'|'modern'} opts.variant
+ * @param {'classic'|'classic-sales'|'minimal'|'modern'} opts.variant
  * @returns {{ y: number, pageNumber: number }}
  */
 function drawInvoiceLineItems(doc, startY, standardInvoice, opts) {
   const { variant, invoiceNumber } = opts;
+
+  if (variant === 'classic-sales') {
+    return drawClassicSalesLineItems(doc, startY, standardInvoice, invoiceNumber);
+  }
+
   const col1 = 50;
   const col2 = 80;
   const col3 = 270;
@@ -105,45 +152,161 @@ function drawInvoiceLineItems(doc, startY, standardInvoice, opts) {
     doc.text(itemName, col2 + 5, rowY + 4, { width: 180 });
     doc.text(item.hsn_code || '-', col3 + 5, rowY + 4, { width: 60 });
     doc.text(parseFloat(item.quantity || 0).toFixed(2), col4, rowY + 4, { width: 60, align: 'right' });
-    doc.text(parseFloat(item.unitAmount || 0).toFixed(2), col5, rowY + 4, { width: 40, align: 'right' });
-    doc.text(parseFloat(item.netAmount || 0).toFixed(2), col6, rowY + 4, { width: 85, align: 'right' });
+    const lineCcy = standardInvoice.details?.currency || 'USD';
+    doc.text(pdfAmount(item.unitAmount, lineCcy), col5, rowY + 4, { width: 40, align: 'right' });
+    doc.text(pdfAmount(item.netAmount, lineCcy), col6, rowY + 4, { width: 85, align: 'right' });
     y += rowHeight;
   });
 
   return { y: y + 10, pageNumber };
 }
 
-function drawTotalsBlock(doc, y, standardInvoice) {
-  const currency = standardInvoice.details?.currency || 'USD';
-  const pageRight = 545;
-  const valueColWidth = 95;
-  const valueX = pageRight - valueColWidth;
-  const labelWidth = 110;
-  const labelX = valueX - labelWidth - 8;
+/** Column boundaries for classic sales invoice table (50–545 pt). */
+const CLASSIC_SALES_TABLE = {
+  bounds: [50, 76, 258, 312, 368, 414, 468, 545],
+  pad: 6,
+  baseHeaders: ['#', 'Item', 'Qty', null, 'Tax %', 'Tax Amt', 'Amount'],
+};
 
-  const moneyRow = (label, amountStr, yPos, options = {}) => {
-    const { size = 9, valueBold = false } = options;
-    doc.fontSize(size).font('Helvetica-Bold').fillColor('#000').text(`${label}:`, labelX, yPos, { width: labelWidth, align: 'right' });
-    doc.font(valueBold ? 'Helvetica-Bold' : 'Helvetica').text(amountStr, valueX, yPos, { width: valueColWidth, align: 'right' });
+function classicSalesCellInner(colIndex) {
+  const left = CLASSIC_SALES_TABLE.bounds[colIndex];
+  const right = CLASSIC_SALES_TABLE.bounds[colIndex + 1];
+  const pad = CLASSIC_SALES_TABLE.pad;
+  return {
+    x: left + pad,
+    width: right - left - pad * 2,
+    align: colIndex <= 1 ? 'left' : 'right',
+  };
+}
+
+/** Sales invoice table: #, Item, Qty, Rate, Tax %, Tax Amt, Amount (matches UI preview). */
+function drawClassicSalesLineItems(doc, startY, standardInvoice, invoiceNumber) {
+  const { bounds, baseHeaders } = CLASSIC_SALES_TABLE;
+  const tableLeft = bounds[0];
+  const tableRight = bounds[bounds.length - 1];
+
+  const itemCount = (standardInvoice.lineItems || []).length;
+  const rowHeight = itemCount > 30 ? 14 : itemCount > 20 ? 16 : 18;
+  const fontSize = itemCount > 30 ? 7 : itemCount > 20 ? 7.5 : 8;
+  const headerFontSize = itemCount > 30 ? 8 : 9;
+  const headerRowH = 20;
+  const lineCcy = standardInvoice.details?.currency || 'USD';
+  const headers = baseHeaders.map((label) => label ?? getRateColumnHeader(lineCcy));
+
+  let y = startY;
+  let pageNumber = 1;
+
+  const drawTableHeader = (yPos) => {
+    doc.fontSize(headerFontSize).font('Helvetica-Bold');
+    doc.rect(tableLeft, yPos, tableRight - tableLeft, headerRowH).fillAndStroke('#000000', '#000000');
+    doc.fillColor('#ffffff');
+    headers.forEach((label, i) => {
+      const cell = classicSalesCellInner(i);
+      doc.text(label, cell.x, yPos + 6, { width: cell.width, align: cell.align });
+    });
+    doc.fillColor('#000000');
+    return yPos + headerRowH;
+  };
+
+  const strokeRow = (rowY) => {
+    doc.strokeColor('#000').lineWidth(0.5);
+    for (let i = 0; i < bounds.length - 1; i++) {
+      doc.rect(bounds[i], rowY, bounds[i + 1] - bounds[i], rowHeight).stroke();
+    }
+  };
+
+  const drawDataCell = (colIndex, text, rowY) => {
+    const cell = classicSalesCellInner(colIndex);
+    doc.text(String(text ?? ''), cell.x, rowY + 4, { width: cell.width, align: cell.align });
+  };
+
+  y = drawTableHeader(y);
+  doc.font('Helvetica').fontSize(fontSize);
+
+  (standardInvoice.lineItems || []).forEach((item) => {
+    if (y > 680) {
+      doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
+      doc.addPage();
+      pageNumber++;
+      y = 50;
+      doc.fontSize(12).font('Helvetica-Bold').text(`Invoice: ${invoiceNumber}`, 50, y);
+      y += 25;
+      y = drawTableHeader(y);
+      doc.font('Helvetica').fontSize(fontSize);
+    }
+
+    const rowY = y;
+    strokeRow(rowY);
+
+    const taxRate = parseFloat(item.taxRate || 0);
+    const taxAmount = parseFloat(item.taxAmount || 0);
+    const itemName =
+      (item.itemName || '').length > 34 ? `${(item.itemName || '').substring(0, 31)}...` : item.itemName || '';
+
+    doc.fillColor('#000');
+    drawDataCell(0, item.sno || '', rowY);
+    drawDataCell(1, itemName, rowY);
+    drawDataCell(2, parseFloat(item.quantity || 0).toFixed(2), rowY);
+    drawDataCell(3, formatNumber(item.unitAmount), rowY);
+    drawDataCell(4, taxRate > 0 ? `${taxRate}%` : '-', rowY);
+    drawDataCell(5, taxRate > 0 ? pdfAmount(taxAmount, lineCcy) : '-', rowY);
+    drawDataCell(6, pdfAmount(item.netAmount, lineCcy), rowY);
+    y += rowHeight;
+  });
+
+  return { y: y + 10, pageNumber };
+}
+
+function drawTotalsBlock(doc, y, standardInvoice, options = {}) {
+  const currency = standardInvoice.details?.currency || 'USD';
+
+  let labelX;
+  let labelWidth;
+  let valueX;
+  let valueWidth;
+
+  if (options.classicSalesTable) {
+    const amountCell = classicSalesCellInner(6);
+    const labelGap = 10;
+    labelWidth = 88;
+    valueX = amountCell.x;
+    valueWidth = amountCell.width;
+    labelX = valueX - labelGap - labelWidth;
+  } else {
+    const pageRight = 545;
+    valueWidth = 95;
+    valueX = pageRight - valueWidth;
+    labelWidth = 110;
+    labelX = valueX - labelWidth - 8;
+  }
+
+  const moneyRow = (label, amountStr, yPos, rowOptions = {}) => {
+    const { size = 9, valueBold = false } = rowOptions;
+    doc.fontSize(size).font('Helvetica-Bold').fillColor('#000').text(`${label}:`, labelX, yPos, {
+      width: labelWidth,
+      align: 'right',
+    });
+    doc.font(valueBold ? 'Helvetica-Bold' : 'Helvetica').text(amountStr, valueX, yPos, {
+      width: valueWidth,
+      align: 'right',
+    });
   };
 
   let yy = y;
-  moneyRow('Subtotal', `${currency} ${parseFloat(standardInvoice.totals?.subtotal || 0).toFixed(2)}`, yy);
+  moneyRow('Subtotal', pdfAmount(standardInvoice.totals?.subtotal, currency), yy);
   yy += 15;
-  moneyRow('Tax', `${currency} ${parseFloat(standardInvoice.totals?.totalTaxAmount || 0).toFixed(2)}`, yy);
+  moneyRow('Tax', pdfAmount(standardInvoice.totals?.totalTaxAmount, currency), yy);
   yy += 15;
-  moneyRow('Discount', `${currency} ${parseFloat(standardInvoice.totals?.totalDiscountAmount || 0).toFixed(2)}`, yy);
+  moneyRow('Discount', pdfAmount(standardInvoice.totals?.totalDiscountAmount, currency), yy);
   yy += 15;
-  moneyRow(
-    'Grand Total',
-    `${currency} ${parseFloat(standardInvoice.totals?.grandTotal || 0).toFixed(2)}`,
-    yy,
-    { size: 11, valueBold: true }
-  );
+  moneyRow('Grand Total', pdfAmount(standardInvoice.totals?.grandTotal, currency), yy, {
+    size: 11,
+    valueBold: true,
+  });
   yy += 22;
 
   const wordsLeft = 50;
-  const wordsWidth = pageRight - wordsLeft;
+  const wordsWidth = 545 - wordsLeft;
   doc.fontSize(8).font('Helvetica-Bold').fillColor('#000');
   const titleH = doc.heightOfString('Amount in words', { width: wordsWidth });
   doc.text('Amount in words', wordsLeft, yy, { width: wordsWidth });
@@ -172,7 +335,11 @@ function drawPartyBankBox(doc, startY, standardInvoice) {
   doc.rect(50, y0, 491, 120).fillAndStroke('#f9f9f9', '#ddd');
 
   let ty = y0 + 15;
-  doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Vendor Bank Details', 60, ty);
+  const bankTitle =
+    standardInvoice?.details?.type === 'sales' || standardInvoice?.metadata?.type === 'sales'
+      ? 'Customer Bank Details'
+      : 'Vendor Bank Details';
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text(bankTitle, 60, ty);
   ty += 18;
 
   doc.fontSize(8).font('Helvetica');
@@ -214,7 +381,10 @@ function drawStampSignature(doc, y, companySettings, stampBuffer, signatureBuffe
 }
 
 module.exports = {
+  INVOICE_LOGO_BOX,
+  drawCompanyLogoTopLeft,
   formatShortDate,
+  formatDisplayDate,
   drawInvoiceLineItems,
   drawTotalsBlock,
   drawPartyBankBox,

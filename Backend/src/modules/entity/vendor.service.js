@@ -195,18 +195,39 @@ class VendorService {
    */
   async getVendor(institutionId, vendorId) {
     const vendors = await db.query(
-      'SELECT * FROM vendors WHERE institution_id = ? AND id = ?',
+      `SELECT * FROM vendors
+        WHERE institution_id COLLATE utf8mb4_unicode_ci = ?
+          AND id COLLATE utf8mb4_unicode_ci = ?`,
       [institutionId, vendorId]
     );
 
-    if (!vendors[0]) return null;
-    
-    const vendor = vendors[0];
-    
-    // Fetch addresses from normalized table
+    const vendor = Array.isArray(vendors) ? vendors[0] : vendors;
+    if (!vendor) return null;
+
+    const { loadVendorAddressesFromTable } = require('../../utils/partyAddressLoader');
+    const { billing, shipping } = await loadVendorAddressesFromTable(vendorId);
+
+    vendor.billing_attention = billing.attention;
+    vendor.billing_country = billing.country;
+    vendor.billing_address1 = billing.line1;
+    vendor.billing_address2 = billing.line2;
+    vendor.billing_city = billing.city;
+    vendor.billing_state = billing.state;
+    vendor.billing_pin_code = billing.postalCode;
+
+    vendor.shipping_attention = shipping.attention;
+    vendor.shipping_country = shipping.country;
+    vendor.shipping_address1 = shipping.line1;
+    vendor.shipping_address2 = shipping.line2;
+    vendor.shipping_city = shipping.city;
+    vendor.shipping_state = shipping.state;
+    vendor.shipping_pin_code = shipping.postalCode;
+
     const addresses = await db.query(
-      'SELECT * FROM addresses WHERE entity_type = ? AND entity_id = ?',
-      ['vendor', vendorId]
+      `SELECT * FROM addresses
+        WHERE entity_type = 'vendor'
+          AND entity_id COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci`,
+      [vendorId]
     );
     
     // Fetch bank details from normalized table
@@ -216,15 +237,19 @@ class VendorService {
     );
     
     // Map addresses back to vendor object for backward compatibility
-    addresses.forEach(addr => {
-      const prefix = addr.address_type; // 'billing' or 'shipping'
-      vendor[`${prefix}_attention`] = addr.attention;
-      vendor[`${prefix}_country`] = addr.country;
-      vendor[`${prefix}_address1`] = addr.address1;
-      vendor[`${prefix}_address2`] = addr.address2;
-      vendor[`${prefix}_city`] = addr.city;
-      vendor[`${prefix}_state`] = addr.state;
-      vendor[`${prefix}_pin_code`] = addr.pin_code;
+    const addressList = Array.isArray(addresses) ? addresses : addresses ? [addresses] : [];
+    addressList.forEach((addr) => {
+      const prefix = String(addr.address_type || '').toLowerCase();
+      if (prefix !== 'billing' && prefix !== 'shipping') return;
+      if (!vendor[`${prefix}_address1`]) {
+        vendor[`${prefix}_attention`] = addr.attention;
+        vendor[`${prefix}_country`] = addr.country;
+        vendor[`${prefix}_address1`] = addr.address1;
+        vendor[`${prefix}_address2`] = addr.address2;
+        vendor[`${prefix}_city`] = addr.city;
+        vendor[`${prefix}_state`] = addr.state;
+        vendor[`${prefix}_pin_code`] = addr.pin_code;
+      }
     });
     
     // Map bank details back to vendor object for backward compatibility

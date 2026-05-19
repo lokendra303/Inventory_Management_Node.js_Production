@@ -6,6 +6,11 @@ const multi = require('./companySettingsMulti.service');
 const { resolveUploadAbsolutePath } = require('../../shared/storage/fileStorage');
 const { normalizeInvoicePdfTemplate } = require('../invoice/invoicePdfTemplate.constants');
 const invoicePDFService = require('../invoice/invoicePDF.service');
+const {
+  parsePdfFooterOptions,
+  normalizePdfFooterOptionsInput,
+  normalizeDocType,
+} = require('../../utils/pdfFooterOptions');
 
 class CompanySettingsController {
   async getInstitutionProfile(institutionId) {
@@ -22,7 +27,7 @@ class CompanySettingsController {
       [institutionId]
     );
 
-    const values = [
+    const coreValues = [
       payload.companyName ?? null,
       payload.address ?? null,
       payload.phone ?? null,
@@ -34,24 +39,35 @@ class CompanySettingsController {
       payload.authorizedSignatoryName ?? null,
       payload.authorizedSignatoryDesignation ?? null,
       normalizeInvoicePdfTemplate(payload.invoicePdfTemplate),
-      institutionId,
     ];
+    const footerJson = JSON.stringify(
+      normalizePdfFooterOptionsInput(payload.pdfFooterOptions ?? null)
+    );
 
     if (existing) {
-      await db.query(
-        `UPDATE institution_profiles
-         SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?
-         WHERE institution_id = ?`,
-        values
-      );
+      if (payload.pdfFooterOptions != null) {
+        await db.query(
+          `UPDATE institution_profiles
+           SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?, pdf_footer_options = ?
+           WHERE institution_id = ?`,
+          [...coreValues, footerJson, institutionId]
+        );
+      } else {
+        await db.query(
+          `UPDATE institution_profiles
+           SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?
+           WHERE institution_id = ?`,
+          [...coreValues, institutionId]
+        );
+      }
       return;
     }
 
     await db.query(
       `INSERT INTO institution_profiles
-       (company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, authorized_signatory_name, authorized_signatory_designation, invoice_pdf_template, institution_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      values
+       (company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, authorized_signatory_name, authorized_signatory_designation, invoice_pdf_template, pdf_footer_options, institution_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [...coreValues, footerJson, institutionId]
     );
   }
 
@@ -77,9 +93,11 @@ class CompanySettingsController {
         authorized_signatory_name: profile?.authorized_signatory_name ?? null,
         authorized_signatory_designation: profile?.authorized_signatory_designation ?? null,
         invoice_pdf_template: normalizeInvoicePdfTemplate(profile?.invoice_pdf_template),
+        pdf_footer_options: profile?.pdf_footer_options ?? null,
       };
 
       const data = await multi.attachMultiToSettingsRow(institutionId, profileFirst);
+      data.pdf_footer_options = parsePdfFooterOptions(data.pdf_footer_options);
 
       res.json({
         success: true,
@@ -98,10 +116,20 @@ class CompanySettingsController {
     try {
       const { institutionId } = req;
       const template = normalizeInvoicePdfTemplate(req.params.template);
-      const sample = invoicePDFService.getSampleStandardInvoice();
-      const buf = await invoicePDFService.generatePDFBuffer(sample, institutionId, { template });
+      const rawType = String(req.params.docType || req.query.docType || 'sales').toLowerCase();
+      const docType = rawType === 'purchase' ? 'purchase' : 'sales';
+      const sample = institutionId
+        ? await invoicePDFService.buildPreviewStandardInvoice(institutionId, docType)
+        : invoicePDFService.getSampleStandardInvoice(docType);
+      const buf = await invoicePDFService.generatePDFBuffer(sample, institutionId, {
+        template,
+        docType: normalizeDocType(docType === 'purchase' ? 'pi' : 'si'),
+      });
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', 'inline; filename="invoice-template-preview.pdf"');
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="invoice-${docType}-template-preview.pdf"`
+      );
       res.send(buf);
     } catch (error) {
       logger.error('Error generating invoice PDF preview:', error);
@@ -134,6 +162,10 @@ class CompanySettingsController {
         b.invoicePdfTemplate !== undefined
           ? normalizeInvoicePdfTemplate(b.invoicePdfTemplate)
           : normalizeInvoicePdfTemplate(pf.invoice_pdf_template);
+      const pdfFooterOptions =
+        b.pdfFooterOptions !== undefined
+          ? normalizePdfFooterOptionsInput(b.pdfFooterOptions)
+          : undefined;
 
       await this.upsertInstitutionProfile(institutionId, {
         companyName,
@@ -147,6 +179,7 @@ class CompanySettingsController {
         authorizedSignatoryName,
         authorizedSignatoryDesignation,
         invoicePdfTemplate,
+        pdfFooterOptions,
       });
 
       const addressPayload = {
