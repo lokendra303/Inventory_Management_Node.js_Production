@@ -413,19 +413,6 @@ function drawProformaTotalsSummary(doc, y, totals, currency) {
   return y + blockH + 2;
 }
 
-function measurePartyBlockHeight(doc, addr, gst, extraLines = []) {
-  let h = 20;
-  doc.fontSize(size.partyName).font(FONT_BOLD);
-  h += 12;
-  doc.fontSize(size.partyBody).font(FONT);
-  formatAddressLines(addr).forEach((line) => {
-    h += doc.heightOfString(line, { width: WIDTH - 12, lineGap: 0.25 }) + 2;
-  });
-  if (gst) h += 11;
-  h += extraLines.length * 11;
-  return Math.max(h, 58);
-}
-
 /** Height of company name + address block in proforma left column (logo is outside this box). */
 function measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, contentW) {
   let h = 4;
@@ -524,6 +511,7 @@ function drawProformaInvoice(doc, ctx) {
   const sectionGap = 6;
   let shipH = 0;
   let billH = 0;
+  let vendorFromH = 0;
   let sellerStackMinH = measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, contentW);
   if (isSales) {
     shipH = measureTallyPartyColumnHeight(
@@ -547,6 +535,18 @@ function drawProformaInvoice(doc, ctx) {
       partyMinH
     );
     sellerStackMinH += sectionGap + shipH + sectionGap + billH;
+  } else {
+    vendorFromH = measureTallyPartyColumnHeight(
+      doc,
+      party,
+      'billing',
+      partyGst,
+      partyState,
+      [],
+      sellerW,
+      partyMinH
+    );
+    sellerStackMinH += sectionGap + vendorFromH;
   }
 
   const topH = Math.max(metaGridH, sellerStackMinH + 4);
@@ -620,46 +620,31 @@ function drawProformaInvoice(doc, ctx) {
         billExtraForParty
       );
     }
+  } else {
+    if (sy + sectionGap <= y + topH) {
+      sy += 3;
+      strokeHLine(doc, LEFT, LEFT + sellerW, sy);
+      sy += sectionGap - 3;
+    }
+    if (sy + vendorFromH <= y + topH) {
+      drawTallyPartyColumn(
+        doc,
+        LEFT,
+        sy,
+        sellerW,
+        Math.min(vendorFromH, y + topH - sy),
+        'Bill From (Vendor)',
+        party,
+        'billing',
+        partyGst,
+        partyState,
+        []
+      );
+    }
   }
 
   drawTallyMetaGrid(doc, metaX, y, metaW, metaGridRows);
   y += topH;
-
-  const drawPartySection = (title, addr, gst, stateInfo, extraLines = []) => {
-    const blockH = measurePartyBlockHeight(doc, addr, gst, extraLines);
-    box(doc, LEFT, y, WIDTH, blockH);
-    doc.fontSize(size.partyTitle).font(FONT_BOLD).fillColor('#1a1a1a').text(title, LEFT + 6, y + 5);
-    let py = y + 16;
-    doc.fontSize(size.partyName).font(FONT_BOLD).fillColor('#000000').text(party.name || '—', LEFT + 6, py, {
-      width: WIDTH - 12,
-      lineGap: 0.2,
-    });
-    py += 12;
-    doc.fontSize(size.partyBody).font(FONT);
-    formatAddressLines(addr).forEach((line) => {
-      doc.text(line, LEFT + 6, py, { width: WIDTH - 12, lineGap: 0.25 });
-      py += doc.heightOfString(line, { width: WIDTH - 12, lineGap: 0.25 }) + 2;
-    });
-    if (gst) {
-      doc.text(`GSTIN/UIN: ${gst}`, LEFT + 6, py, { width: WIDTH - 12 });
-      py += 11;
-    }
-    if (stateInfo.name || stateInfo.code) {
-      doc.text(`State Name: ${stateInfo.name || '—'}, Code: ${stateInfo.code || '—'}`, LEFT + 6, py, {
-        width: WIDTH - 12,
-      });
-      py += 11;
-    }
-    extraLines.forEach((line) => {
-      doc.text(line, LEFT + 6, py, { width: WIDTH - 12 });
-      py += 11;
-    });
-    y += blockH;
-  };
-
-  if (!isSales) {
-    drawPartySection('Bill From (Vendor)', party.billingAddress, partyGst, partyState);
-  }
 
   const hasDiscount = invoiceHasDiscount(lineItems, totals);
   const itemColCount = proformaColRoles(hasDiscount).length;
