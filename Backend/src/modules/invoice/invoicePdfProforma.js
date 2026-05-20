@@ -81,6 +81,18 @@ function hsnOf(item) {
   return item.hsnCode || item.hsn_code || '';
 }
 
+/** Pre-discount line value (qty × rate before line discount). Sums to `totals.subtotal` / Sub Total. */
+function lineGrossAmount(item) {
+  const lt = Number(item.lineTotal ?? item.line_total);
+  if (Number.isFinite(lt) && lt >= 0) return lt;
+  const taxable = Number(item.taxableAmount ?? item.taxable_amount ?? 0) || 0;
+  const disc = Number(item.discountAmount ?? item.discount_amount ?? 0) || 0;
+  if (taxable || disc) return taxable + disc;
+  const qty = normalizeQuantity(item.quantity);
+  const unit = Number(item.unitAmount ?? item.unit_amount ?? item.unitCost ?? item.unit_cost ?? 0) || 0;
+  return qty * unit;
+}
+
 function normalizeUnit(raw) {
   return normalizeInvoiceUnit(raw, 'PCS');
 }
@@ -105,6 +117,14 @@ function formatQtyAmount(value, currency) {
       ? num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       : formatNumber(num);
   return grouped;
+}
+
+/** Short tag for column headers: INR, $, or ISO code. */
+function proformaTableCurrencyTag(currency) {
+  const code = String(currency || 'INR').toUpperCase();
+  if (code === 'INR') return 'INR';
+  if (code === 'USD') return '$';
+  return code;
 }
 
 function pdfAmount(amount, currencyCode) {
@@ -305,24 +325,27 @@ function remeasureProformaTableRows(doc, tableRows, colWidths, defaultRowH) {
   });
 }
 
-function buildProformaItemHeaders(hasDiscount) {
+function buildProformaItemHeaders(hasDiscount, currency) {
+  const cur = proformaTableCurrencyTag(currency);
+  const rateH = `Rate\n(${cur})`;
+  const amountH = `Amount\n(${cur})`;
   if (!hasDiscount) {
-    return ['SI\nNo.', 'Description of\nGoods and Services', 'HSN/SAC', 'Quantity', 'Rate', 'per', 'Amount'];
+    return ['SI\nNo.', 'Description of\nGoods and Services', 'HSN/SAC', 'Quantity', rateH, 'per', amountH];
   }
   return [
     'SI\nNo.',
     'Description of\nGoods and Services',
     'HSN/SAC',
     'Quantity',
-    'Rate',
+    rateH,
     'Disc.\n%',
     'per',
-    'Amount',
+    amountH,
   ];
 }
 
 function buildProformaLineCells(item, idx, currency, hasDiscount) {
-  const taxable = item.taxableAmount ?? item.lineTotal ?? 0;
+  const gross = lineGrossAmount(item);
   const unit = normalizeUnit(item.unit);
   const qty = normalizeQuantity(item.quantity);
   const discRate = Number(item.discountRate || item.discount_rate || 0);
@@ -342,7 +365,7 @@ function buildProformaLineCells(item, idx, currency, hasDiscount) {
   }
   base.push(
     { text: unit, align: 'center', fontSize: size.tableBody },
-    { text: pdfAmount(taxable, currency), align: 'right', fontSize: size.tableAmount }
+    { text: formatQtyAmount(gross, currency), align: 'right', fontSize: size.tableAmount }
   );
   return base;
 }
@@ -365,21 +388,29 @@ function drawProformaTotalsSummary(doc, y, totals, currency) {
   }
   summaryRows.push(['Grand Total', grand]);
 
-  const valueW = 130;
-  const labelX = LEFT + WIDTH - valueW - 118;
-  const blockH = summaryRows.length * 15 + 10;
+  const rightPad = 8;
+  const colGap = 5;
+  const valueW = 100;
+  const labelW = 86;
+  const valueX = LEFT + WIDTH - rightPad - valueW;
+  const labelX = valueX - colGap - labelW;
+
+  const rowH = 12;
+  const padTop = 3;
+  const padBottom = 3;
+  const blockH = summaryRows.length * rowH + padTop + padBottom;
   box(doc, LEFT, y, WIDTH, blockH);
 
-  let ry = y + 6;
+  let ry = y + padTop;
   summaryRows.forEach(([label, amount]) => {
     const isGrand = label === 'Grand Total';
     doc.fontSize(isGrand ? size.tableHead : size.tableBody).font(isGrand ? FONT_BOLD : FONT).fillColor('#000000');
-    doc.text(label, labelX, ry, { width: 110, align: 'right' });
-    doc.text(pdfAmount(amount, currency), LEFT + WIDTH - valueW - 6, ry, { width: valueW, align: 'right' });
-    ry += 15;
+    doc.text(label, labelX, ry, { width: labelW, align: 'right' });
+    doc.text(pdfAmount(amount, currency), valueX, ry, { width: valueW, align: 'right' });
+    ry += rowH;
   });
 
-  return y + blockH + 4;
+  return y + blockH + 2;
 }
 
 function measurePartyBlockHeight(doc, addr, gst, extraLines = []) {
@@ -615,7 +646,7 @@ function drawProformaInvoice(doc, ctx) {
   const itemColCount = proformaColRoles(hasDiscount).length;
   const amountColIdx = itemColCount - 1;
   const itemRowH = row.itemDefault;
-  const itemHeaders = buildProformaItemHeaders(hasDiscount);
+  const itemHeaders = buildProformaItemHeaders(hasDiscount, currency);
 
   const itemTableRows = [
     {
@@ -661,14 +692,17 @@ function drawProformaInvoice(doc, ctx) {
   if (totalTax > 0 && !hasDiscount) {
     itemTableRows.push({
       _height: itemRowH,
-      cells: footerRow('IGST', pdfAmount(totalTax, currency)),
+      cells: footerRow('IGST', formatQtyAmount(totalTax, currency)),
     });
   }
 
   itemTableRows.push({
     _height: itemRowH,
     cells: (() => {
-      const cells = footerRow('Total', pdfAmount(totals.grandTotal, currency));
+      const tableAmountTotal =
+        Number(totals.subtotal) ||
+        lineItems.reduce((s, it) => s + lineGrossAmount(it), 0);
+      const cells = footerRow('Total', formatQtyAmount(tableAmountTotal, currency));
       cells[3] = {
         text: formatLineQty(sumQty(lineItems)),
         align: 'right',
