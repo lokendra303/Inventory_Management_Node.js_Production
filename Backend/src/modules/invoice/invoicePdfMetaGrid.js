@@ -155,7 +155,7 @@ function strokeHLine(doc, x1, x2, y) {
   doc.restore();
 }
 
-function measureTallyPartyColumnHeight(doc, party, addressKey, gst, stateInfo, extraLines, panelW) {
+function measureTallyPartyColumnHeight(doc, party, addressKey, gst, stateInfo, extraLines, panelW, minPanelH = 56) {
   const innerW = panelW - 12;
   let h = 16;
   if (party?.name) {
@@ -170,7 +170,7 @@ function measureTallyPartyColumnHeight(doc, party, addressKey, gst, stateInfo, e
   if (gst) h += 11;
   if (stateInfo?.name || stateInfo?.code) h += 11;
   h += extraLines.filter(Boolean).length * 11;
-  return Math.max(h, 56);
+  return Math.max(h, minPanelH);
 }
 
 /**

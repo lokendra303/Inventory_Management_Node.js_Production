@@ -428,9 +428,9 @@ function measurePartyBlockHeight(doc, addr, gst, extraLines = []) {
 
 /** Height of company name + address block in proforma left column (logo is outside this box). */
 function measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, contentW) {
-  let h = 8;
+  let h = 4;
   doc.fontSize(size.companyName).font(FONT_BOLD);
-  h += doc.heightOfString(cs.companyName || 'Company', { width: contentW, lineGap: 0.2 }) + 4;
+  h += doc.heightOfString(cs.companyName || 'Company', { width: contentW, lineGap: 0.2 }) + 3;
   doc.fontSize(size.body).font(FONT);
   const lines = [
     cs.address,
@@ -519,15 +519,37 @@ function drawProformaInvoice(doc, ctx) {
   const shipStateForParty = isSales ? gstStateFromGstin(partyGst, party.shippingAddress?.state) : {};
   const billExtraForParty = isSales && partyState.name ? [`Place of Supply: ${partyState.name}`] : [];
 
+  /** Proforma: short party blocks — no 56pt floor (see measureTallyPartyColumnHeight minPanelH). */
+  const partyMinH = 26;
+  const sectionGap = 6;
+  let shipH = 0;
+  let billH = 0;
   let sellerStackMinH = measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, contentW);
   if (isSales) {
-    const sectionGap = 10;
-    const shipH = measureTallyPartyColumnHeight(doc, party, 'shipping', partyGst, shipStateForParty, [], sellerW);
-    const billH = measureTallyPartyColumnHeight(doc, party, 'billing', partyGst, partyState, billExtraForParty, sellerW);
+    shipH = measureTallyPartyColumnHeight(
+      doc,
+      party,
+      'shipping',
+      partyGst,
+      shipStateForParty,
+      [],
+      sellerW,
+      partyMinH
+    );
+    billH = measureTallyPartyColumnHeight(
+      doc,
+      party,
+      'billing',
+      partyGst,
+      partyState,
+      billExtraForParty,
+      sellerW,
+      partyMinH
+    );
     sellerStackMinH += sectionGap + shipH + sectionGap + billH;
   }
 
-  const topH = Math.max(metaGridH, sellerStackMinH + 8);
+  const topH = Math.max(metaGridH, sellerStackMinH + 4);
 
   box(doc, LEFT, y, sellerW, topH);
   box(doc, metaX, y, metaW, topH);
@@ -537,7 +559,7 @@ function drawProformaInvoice(doc, ctx) {
   doc.fontSize(size.companyName).font(FONT_BOLD).fillColor('#000000');
   const nameH = doc.heightOfString(cs.companyName || 'Company', { width: contentW, lineGap: 0.2 });
   doc.text(cs.companyName || 'Company', sx, sy, { width: contentW, lineGap: 0.2 });
-  sy += nameH + 4;
+  sy += nameH + 3;
 
   doc.fontSize(size.body).font(FONT).fillColor('#000000');
   const sellerLines = [
@@ -558,13 +580,10 @@ function drawProformaInvoice(doc, ctx) {
   });
 
   if (isSales) {
-    const sectionGap = 10;
-    const shipH = measureTallyPartyColumnHeight(doc, party, 'shipping', partyGst, shipStateForParty, [], sellerW);
-    const billH = measureTallyPartyColumnHeight(doc, party, 'billing', partyGst, partyState, billExtraForParty, sellerW);
     if (sy + sectionGap <= y + topH) {
-      sy += 4;
+      sy += 3;
       strokeHLine(doc, LEFT, LEFT + sellerW, sy);
-      sy += sectionGap - 4;
+      sy += sectionGap - 3;
     }
     if (sy + shipH <= y + topH) {
       drawTallyPartyColumn(
@@ -582,9 +601,9 @@ function drawProformaInvoice(doc, ctx) {
       );
       sy += shipH;
     }
-    if (sy + 6 <= y + topH) {
+    if (sy + 4 <= y + topH) {
       strokeHLine(doc, LEFT, LEFT + sellerW, sy);
-      sy += 6;
+      sy += 4;
     }
     if (sy + billH <= y + topH) {
       drawTallyPartyColumn(
