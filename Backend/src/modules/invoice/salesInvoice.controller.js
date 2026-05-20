@@ -420,17 +420,17 @@ class SalesInvoiceController {
 
       const result = await db.transaction(async (connection) => {
         // Get invoice details
-        const [invoice] = await connection.execute(`
+        const [invoiceRows] = await connection.execute(`
           SELECT * FROM sales_invoices 
           WHERE id = ? AND institution_id = ? AND status = 'draft'
         `, [id, institutionId]);
-
+        const invoice = invoiceRows[0];
         if (!invoice) {
           throw new Error('Invoice not found or already posted');
         }
 
         // Get invoice lines for COGS calculation
-        const lines = await connection.execute(`
+        const [lineRows] = await connection.execute(`
           SELECT sil.*, i.cost_price
           FROM sales_invoice_lines sil
           LEFT JOIN items i ON sil.item_id = i.id
@@ -439,7 +439,7 @@ class SalesInvoiceController {
 
         // Calculate COGS
         let totalCOGS = 0;
-        for (const line of lines) {
+        for (const line of lineRows) {
           totalCOGS += (line.cost_price || 0) * line.quantity;
         }
 
@@ -448,7 +448,7 @@ class SalesInvoiceController {
           UPDATE sales_invoices 
           SET status = 'posted', updated_by = ?, updated_at = NOW()
           WHERE id = ?
-        `, [user.userId, id]);
+        `, [user?.userId || null, id]);
 
         // Create accounting entries
         const entries = [
@@ -501,7 +501,7 @@ class SalesInvoiceController {
             institutionId, 'sales_invoice', id, invoice.invoice_number,
             invoice.invoice_date, entry.account_code, entry.account_name,
             entry.debit_amount, entry.credit_amount,
-            `Sales Invoice: ${invoice.invoice_number}`, user.userId
+            `Sales Invoice: ${invoice.invoice_number}`, user?.userId || null
           ]);
         }
 
@@ -559,11 +559,11 @@ class SalesInvoiceController {
 
       const result = await db.transaction(async (connection) => {
         // Get current invoice
-        const [invoice] = await connection.execute(`
+        const [invoiceRows] = await connection.execute(`
           SELECT * FROM sales_invoices 
           WHERE id = ? AND institution_id = ? AND status IN ('posted', 'partially_paid')
         `, [id, institutionId]);
-
+        const invoice = invoiceRows[0];
         if (!invoice) {
           throw new Error('Invoice not found or cannot accept payments');
         }
@@ -642,10 +642,11 @@ class SalesInvoiceController {
 
       const result = await db.transaction(async (connection) => {
         // Block editing non-draft invoices
-        const [existing] = await connection.execute(
+        const [existingRows] = await connection.execute(
           'SELECT status, so_id FROM sales_invoices WHERE id = ? AND institution_id = ?',
           [id, institutionId]
         );
+        const existing = existingRows[0];
         if (!existing) throw new Error('Invoice not found');
         if (existing.status !== 'draft') throw new Error('Only draft invoices can be edited');
         if (existing.so_id) throw new Error('System-generated invoices cannot be edited');
