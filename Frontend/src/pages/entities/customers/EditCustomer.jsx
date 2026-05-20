@@ -20,6 +20,7 @@ import {
 import { UploadOutlined, InfoCircleOutlined, LinkOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import apiService from '../../../services/apiService';
+import { copyBillingToShipping } from '../../../utils/addressFormUtils';
 
 const EditCustomer = () => {
   const [form] = Form.useForm();
@@ -521,7 +522,12 @@ const EditCustomer = () => {
                         <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '600' }}>
                           Shipping Address
                         </h4>
-                        <Button type="link" size="small" style={{ padding: 0 }}>
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0 }}
+                          onClick={() => copyBillingToShipping(form)}
+                        >
                           📋 Copy billing address
                         </Button>
                       </div>
