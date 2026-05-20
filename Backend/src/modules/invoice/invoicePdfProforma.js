@@ -466,8 +466,8 @@ function drawProformaInvoice(doc, ctx) {
     align: 'right',
   });
   const titleBandH = 24;
-  /** Minimal gap under logo/title before bordered blocks (was logoH+6 + 4, too tall). */
-  y = titleRowY + Math.max(titleBandH, logoBuffer ? HEADER_LOGO_H + 1 : 0) + (logoBuffer ? 1 : 0);
+  /** Table starts flush under logo slot (no extra band under logo); without logo, keep title row height. */
+  y = titleRowY + (logoBuffer ? HEADER_LOGO_H : titleBandH);
 
   const metaW = Math.round(WIDTH * 0.44);
   const sellerW = WIDTH - metaW;
@@ -501,7 +501,7 @@ function drawProformaInvoice(doc, ctx) {
   box(doc, LEFT, y, sellerW, topH);
   box(doc, metaX, y, metaW, topH);
 
-  let sy = y + 4;
+  let sy = y + 2;
 
   doc.fontSize(size.companyName).font(FONT_BOLD).fillColor('#000000');
   const nameH = doc.heightOfString(cs.companyName || 'Company', { width: contentW, lineGap: 0.2 });
