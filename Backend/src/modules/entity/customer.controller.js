@@ -1,4 +1,5 @@
 const customerService = require('./customer.service');
+const entityTransactionHistory = require('./entityTransactionHistory.service');
 const logger = require('../../utils/logger');
 const AuditUtils = require('../../utils/auditUtils');
 
@@ -140,6 +141,29 @@ class CustomerController {
       res.json({ success: true, data: priceList });
     } catch (error) {
       res.json({ success: true, data: null });
+    }
+  }
+
+  async getCustomerTransactions(req, res) {
+    try {
+      const { id: customerId } = req.params;
+      const { limit, offset } = req.query;
+      const data = await entityTransactionHistory.getCustomerTransactionHistory(
+        req.institutionId,
+        customerId,
+        { limit, offset }
+      );
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Failed to get customer transaction history', {
+        error: error.message,
+        institutionId: req.institutionId,
+        customerId: req.params.id,
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to load transaction history',
+      });
     }
   }
 

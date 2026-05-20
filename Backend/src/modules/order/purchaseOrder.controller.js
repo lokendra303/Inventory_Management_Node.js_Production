@@ -1,5 +1,6 @@
 const purchaseOrderService = require('./purchaseOrder.service');
 const vendorService = require('../entity/vendor.service');
+const entityTransactionHistory = require('../entity/entityTransactionHistory.service');
 const poConfirmationService = require('./poConfirmation.service');
 const purchaseOrderPDFService = require('../invoice/purchaseOrderPDF.service');const emailService = require('../../services/emailService');
 const logger = require('../../utils/logger');
@@ -353,6 +354,29 @@ class PurchaseOrderController {
       res.status(400).json({
         success: false,
         error: error.message
+      });
+    }
+  }
+
+  async getVendorTransactions(req, res) {
+    try {
+      const vendorId = req.params.id || req.params.vendorId;
+      const { limit, offset } = req.query;
+      const data = await entityTransactionHistory.getVendorTransactionHistory(
+        req.institutionId,
+        vendorId,
+        { limit, offset }
+      );
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Failed to get vendor transaction history', {
+        error: error.message,
+        institutionId: req.institutionId,
+        vendorId: req.params.id,
+      });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to load transaction history',
       });
     }
   }

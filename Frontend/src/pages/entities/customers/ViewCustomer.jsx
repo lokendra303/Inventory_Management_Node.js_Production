@@ -9,7 +9,8 @@ import {
   Space,
   Divider,
   Spin,
-  message
+  message,
+  Tabs,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -22,10 +23,12 @@ import {
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiService from '../../../services/apiService';
+import EntityTransactionHistory from '../../../components/entities/EntityTransactionHistory';
 
 const ViewCustomer = () => {
   const [customer, setCustomer] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('profile');
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -85,6 +88,21 @@ const ViewCustomer = () => {
         </Button>
       </div>
 
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        style={{ marginBottom: 16 }}
+        items={[
+          { key: 'profile', label: 'Profile' },
+          { key: 'transactions', label: 'Transaction History' },
+        ]}
+      />
+
+      {activeTab === 'transactions' ? (
+        <Card style={{ marginBottom: 24 }}>
+          <EntityTransactionHistory entityType="customer" entityId={id} />
+        </Card>
+      ) : (
       <Row gutter={[24, 24]}>
         <Col xs={24} lg={16}>
           <Card title="Customer Information" style={{ marginBottom: '24px' }}>
@@ -238,17 +256,18 @@ const ViewCustomer = () => {
               >
                 Edit Customer
               </Button>
-              <Button 
-                block 
+              <Button
+                block
                 icon={<BankOutlined />}
-                onClick={() => message.info('Performance metrics coming soon')}
+                onClick={() => setActiveTab('transactions')}
               >
-                View Performance
+                Transaction History
               </Button>
             </Space>
           </Card>
         </Col>
       </Row>
+      )}
     </div>
   );
 };

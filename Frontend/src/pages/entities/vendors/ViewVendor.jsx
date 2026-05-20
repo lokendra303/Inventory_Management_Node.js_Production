@@ -14,6 +14,7 @@ import {
 import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiService from '../../../services/apiService';
+import EntityTransactionHistory from '../../../components/entities/EntityTransactionHistory';
 
 const ViewVendor = () => {
   const { vendorId } = useParams();
@@ -248,7 +249,16 @@ const ViewVendor = () => {
               </div>
             </Card>
           )
-        }
+        },
+        {
+          key: 'transactions',
+          label: 'Transaction History',
+          children: (
+            <Card>
+              <EntityTransactionHistory entityType="vendor" entityId={vendorId} />
+            </Card>
+          ),
+        },
       ]} />
     </div>
   );

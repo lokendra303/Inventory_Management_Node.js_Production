@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Table, Tag, message, Modal, Input, DatePicker, Select, Row, Col, Tooltip } from 'antd';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Card, Button, Table, Tag, message, Modal, Input, DatePicker, Select, Tooltip } from 'antd';
 import {
   FileTextOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined,
   EditOutlined, PrinterOutlined, MailOutlined, SearchOutlined, ReloadOutlined,
-  CheckCircleOutlined
+  CheckCircleOutlined, ClockCircleOutlined, FormOutlined, FilterOutlined,
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import InvoicePdfViewModal from '../../components/business/InvoicePdfViewModal';
+import InvoiceListStatCards, { aggregateInvoiceStatusBreakdown } from '../../components/business/InvoiceListStatCards';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatCommercialDocAmount } from '../../utils/currency';
 import { assertPdfBlob, printPdfBlob } from '../../utils/printPdfBlob';
@@ -23,6 +24,7 @@ const STATUS_CONFIG = {
 const SalesInvoices = () => {
   const { formatCurrency } = useCurrency();
   const [invoices, setInvoices]                         = useState([]);
+  const [statusBreakdown, setStatusBreakdown]           = useState([]);
   const [loading, setLoading]                           = useState(true);
   const [pagination, setPagination]                     = useState({ current: 1, pageSize: 10, total: 0 });
   const [modalVisible, setModalVisible]                 = useState(false);
@@ -55,7 +57,22 @@ const SalesInvoices = () => {
     } finally { setLoading(false); }
   }, [pagination.current, pagination.pageSize]);
 
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const params = {};
+      if (fromDate) params.dateFrom = fromDate.format('YYYY-MM-DD');
+      if (toDate) params.dateTo = toDate.format('YYYY-MM-DD');
+      const response = await apiService.get('/sales-invoices/analytics/summary', { params });
+      if (response.success) {
+        setStatusBreakdown(response.data?.statusBreakdown || []);
+      }
+    } catch {
+      /* non-blocking */
+    }
+  }, [fromDate, toDate]);
+
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
+  useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
   const handleViewInvoice = (record) => {
     setViewInvoiceId(record.id);
@@ -128,9 +145,78 @@ const SalesInvoices = () => {
     return textMatch && statusMatch && dateMatch;
   });
 
-  /* summary counts */
-  const paidCount    = invoices.filter(i => i.status === 'paid').length;
-  const pendingCount = invoices.filter(i => ['draft','posted','partially_paid'].includes(i.status)).length;
+  const hasActiveFilters = Boolean(searchText || statusFilter || fromDate || toDate);
+
+  const summary = useMemo(
+    () => aggregateInvoiceStatusBreakdown(statusBreakdown),
+    [statusBreakdown]
+  );
+
+  const filteredSummary = useMemo(() => {
+    let total = 0;
+    let balance = 0;
+    for (const inv of filteredInvoices) {
+      total += Number(inv.total_amount) || 0;
+      balance += Number(inv.balance_amount) || 0;
+    }
+    return { count: filteredInvoices.length, total, balance };
+  }, [filteredInvoices]);
+
+  const statCards = useMemo(() => {
+    const fmt = (n) => formatCurrency(n);
+    const base = [
+      {
+        label: 'All Invoices',
+        value: summary.totalCount,
+        sub: 'Billed',
+        subValue: fmt(summary.totalAmount),
+        gradient: 'linear-gradient(135deg,#667eea,#764ba2)',
+        shadow: 'rgba(102,126,234,0.35)',
+        icon: <FileTextOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      },
+      {
+        label: 'Collected',
+        value: summary.paidCount,
+        sub: 'Received',
+        subValue: fmt(summary.collectedAmount),
+        gradient: 'linear-gradient(135deg,#11998e,#38ef7d)',
+        shadow: 'rgba(17,153,142,0.35)',
+        icon: <CheckCircleOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      },
+      {
+        label: 'Receivable',
+        value: summary.outstandingCount,
+        sub: 'Balance due',
+        subValue: fmt(summary.outstandingBalance),
+        gradient: 'linear-gradient(135deg,#f7971e,#ffd200)',
+        shadow: 'rgba(247,151,30,0.35)',
+        icon: <ClockCircleOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      },
+    ];
+    if (hasActiveFilters) {
+      base.push({
+        label: 'Matching filters',
+        value: filteredSummary.count,
+        sub: 'Amount in list',
+        subValue: fmt(filteredSummary.total),
+        hint: filteredSummary.balance > 0 ? `Due: ${fmt(filteredSummary.balance)}` : null,
+        gradient: 'linear-gradient(135deg,#4facfe,#00f2fe)',
+        shadow: 'rgba(79,172,254,0.35)',
+        icon: <FilterOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      });
+    } else {
+      base.push({
+        label: 'Draft',
+        value: summary.draftCount,
+        sub: 'Not posted',
+        subValue: fmt(summary.draftAmount),
+        gradient: 'linear-gradient(135deg,#f093fb,#f5576c)',
+        shadow: 'rgba(245,87,108,0.35)',
+        icon: <FormOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      });
+    }
+    return base;
+  }, [summary, filteredSummary, hasActiveFilters, formatCurrency]);
 
   const columns = [
     { title: 'Invoice #',    dataIndex: 'invoice_number', key: 'invoice_number', width: 130, ellipsis: true,
@@ -193,22 +279,7 @@ const SalesInvoices = () => {
         </Button>
       </div>
 
-      {/* Summary Strip */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-        {[
-          { label: 'Total',    value: invoices.length,  gradient: 'linear-gradient(135deg,#667eea,#764ba2)', shadow: 'rgba(102,126,234,0.3)' },
-          { label: 'Paid',     value: paidCount,        gradient: 'linear-gradient(135deg,#11998e,#38ef7d)', shadow: 'rgba(17,153,142,0.3)' },
-          { label: 'Pending',  value: pendingCount,     gradient: 'linear-gradient(135deg,#f7971e,#ffd200)', shadow: 'rgba(247,151,30,0.3)' },
-          { label: 'Filtered', value: filteredInvoices.length, gradient: 'linear-gradient(135deg,#f093fb,#f5576c)', shadow: 'rgba(245,87,108,0.3)' },
-        ].map(s => (
-          <Col xs={12} sm={6} key={s.label}>
-            <div style={{ background: s.gradient, borderRadius: 12, padding: '12px 16px', boxShadow: `0 3px 12px ${s.shadow}` }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{s.value}</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)' }}>{s.label}</div>
-            </div>
-          </Col>
-        ))}
-      </Row>
+      <InvoiceListStatCards cards={statCards} />
 
       {/* Filter + Table */}
       <Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} bodyStyle={{ padding: 0 }}>
@@ -221,7 +292,7 @@ const SalesInvoices = () => {
           <Select placeholder="All Statuses" value={statusFilter} onChange={setStatusFilter} style={{ width: 150 }} allowClear>
             {Object.entries(STATUS_CONFIG).map(([v, c]) => <Select.Option key={v} value={v}>{c.label}</Select.Option>)}
           </Select>
-          <Button icon={<ReloadOutlined />} onClick={fetchInvoices} loading={loading} style={{ borderRadius: 8 }}>Refresh</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => { fetchInvoices(); fetchAnalytics(); }} loading={loading} style={{ borderRadius: 8 }}>Refresh</Button>
         </div>
         <Table columns={columns} dataSource={filteredInvoices} loading={loading}
           pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: pagination.total, showSizeChanger: true, size: 'small' }}

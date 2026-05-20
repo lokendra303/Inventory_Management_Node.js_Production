@@ -18,6 +18,12 @@ router.post('/',
   purchaseOrderController.createVendor
 );
 
+// GET /api/vendors/:id/transactions
+router.get('/:id/transactions',
+  requirePermission('vendor_view'),
+  purchaseOrderController.getVendorTransactions
+);
+
 // GET /api/vendors/:id
 router.get('/:id',
   requirePermission('vendor_view'),

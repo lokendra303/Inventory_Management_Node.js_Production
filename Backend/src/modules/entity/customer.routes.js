@@ -18,6 +18,12 @@ router.post('/',
   customerController.createCustomer
 );
 
+// GET /api/customers/:id/transactions
+router.get('/:id/transactions',
+  requirePermission('customer_view'),
+  customerController.getCustomerTransactions
+);
+
 // GET /api/customers/:id
 router.get('/:id',
   requirePermission('customer_view'),
