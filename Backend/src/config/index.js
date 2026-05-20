@@ -40,6 +40,19 @@ function resolvePublicBaseUrl() {
   return `http://127.0.0.1:${port}`;
 }
 
+/** Public URL for stored upload paths (nginx often proxies only /api, not /uploads). */
+function resolveUploadPublicUrl(relativePath) {
+  const raw = String(relativePath || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const p = raw.startsWith('/') ? raw : `/${raw}`;
+  const base = resolvePublicBaseUrl().replace(/\/$/, '');
+  if (p.startsWith('/uploads/')) {
+    return `${base}/api${p}`;
+  }
+  return `${base}${p}`;
+}
+
 module.exports = {
   server: {
     port: process.env.PORT || 5000,
@@ -52,6 +65,7 @@ module.exports = {
   },
 
   resolvePublicBaseUrl,
+  resolveUploadPublicUrl,
   
   database: {
     host: process.env.DB_HOST ,

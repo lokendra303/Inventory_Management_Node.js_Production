@@ -6,11 +6,7 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 
 module.exports = function setupProxy(app) {
   const target = process.env.REACT_APP_PROXY_TARGET || 'http://localhost:5000';
-  app.use(
-    '/uploads',
-    createProxyMiddleware({
-      target,
-      changeOrigin: true,
-    })
-  );
+  const proxyOpts = { target, changeOrigin: true };
+  app.use('/uploads', createProxyMiddleware(proxyOpts));
+  app.use('/api/uploads', createProxyMiddleware(proxyOpts));
 };

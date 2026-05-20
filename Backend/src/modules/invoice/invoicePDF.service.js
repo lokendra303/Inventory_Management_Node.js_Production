@@ -5,7 +5,7 @@ const { resolveUploadAbsolutePath } = require('../../shared/storage/fileStorage'
 const logger = require('../../utils/logger');
 const db = require('../../database/connection');
 const axios = require('axios');
-const { resolvePublicBaseUrl } = require('../../config');
+const { resolveUploadPublicUrl } = require('../../config');
 const { normalizeInvoicePdfTemplate } = require('./invoicePdfTemplate.constants');
 const {
   formatShortDate,
@@ -604,7 +604,7 @@ class InvoicePDFService {
     }
 
     try {
-      const fullUrl = raw.startsWith('http') ? raw : `${resolvePublicBaseUrl()}${raw.startsWith('/') ? '' : '/'}${raw}`;
+      const fullUrl = raw.startsWith('http') ? raw : resolveUploadPublicUrl(raw);
       const response = await axios.get(fullUrl, { responseType: 'arraybuffer', timeout: 10000 });
       return Buffer.from(response.data);
     } catch (err) {

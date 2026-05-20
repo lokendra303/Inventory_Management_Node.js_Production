@@ -50,11 +50,13 @@ class Server {
 
     // Serve static uploads (BEFORE authentication)
     // Support both current and legacy upload locations.
-    this.app.use(
-      '/uploads',
+    const uploadStatic = [
       express.static(path.join(__dirname, '..', 'uploads')),
-      express.static(path.join(__dirname, 'uploads'))
-    );
+      express.static(path.join(__dirname, 'uploads')),
+    ];
+    this.app.use('/uploads', ...uploadStatic);
+    // Live reverse proxies often forward only /api — mirror uploads under /api/uploads
+    this.app.use('/api/uploads', ...uploadStatic);
 
     // Request logging
     this.app.use((req, res, next) => {

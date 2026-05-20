@@ -41,8 +41,11 @@ export function getApiBaseUrl() {
 }
 
 export function getServerOrigin() {
-  const explicit = stripTrailingSlash(process.env.REACT_APP_SERVER_ORIGIN);
-  if (explicit) return explicit;
+  let explicit = stripTrailingSlash(process.env.REACT_APP_SERVER_ORIGIN);
+  if (explicit) {
+    explicit = explicit.replace(/\/api\/?$/i, '');
+    return explicit;
+  }
   const api = getApiBaseUrl();
   if (api.startsWith('/')) {
     return typeof window !== 'undefined' ? window.location.origin : '';
@@ -61,18 +64,24 @@ export function getMobileScannerOrigin() {
 }
 
 /**
- * Absolute or same-origin URL for /uploads/... paths from the API.
+ * Absolute URL for /uploads/... paths.
+ * Uses API base + path (e.g. https://host/api/uploads/...) so live nginx that only proxies /api still works.
  */
 export function mediaUrl(path, { cacheBust = false } = {}) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
   const p = path.startsWith('/') ? path : `/${path}`;
-  const api = getApiBaseUrl();
-  if (api.startsWith('/') && typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    return cacheBust ? `${p}?t=${Date.now()}` : p;
+  const q = cacheBust ? `?t=${Date.now()}` : '';
+  if (p.startsWith('/uploads/')) {
+    const api = stripTrailingSlash(getApiBaseUrl());
+    if (api.startsWith('http')) {
+      return `${api}${p}${q}`;
+    }
+    if (api.startsWith('/')) {
+      return `${api}${p}${q}`;
+    }
   }
   const base = getServerOrigin().replace(/\/$/, '');
-  const q = cacheBust ? `?t=${Date.now()}` : '';
   return `${base}${p}${q}`;
 }
 
