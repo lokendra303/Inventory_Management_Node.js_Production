@@ -420,34 +420,40 @@ function drawBankDetailsFooter(doc, footerY, title, rows, options = {}) {
   if (!hasBankRows(rows)) return footerY;
 
   let ty = footerY;
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(title, leftX, ty, { width });
-  ty += 14;
-  doc.fontSize(8).font('Helvetica');
+  doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1a1a1a').text(title, leftX, ty, { width });
+  ty += 15;
+  doc.fontSize(8.5).font('Helvetica').fillColor('#000000');
 
   rows.forEach(([label, val]) => {
     if (val == null || String(val).trim() === '') return;
     doc.font('Helvetica-Bold').text(`${label}: `, leftX, ty, { continued: true, width });
-    doc.font('Helvetica').text(String(val), { width: width - 10 });
-    ty += 12;
+    doc.font('Helvetica').text(String(val), { width: width - 10, lineGap: 0.25 });
+    ty += 13;
   });
 
-  doc.fillColor('#000');
+  doc.fillColor('#000000');
   return ty;
 }
 
-/** Tally/proforma compact bank block (6.5pt). @returns {number} bottom Y */
-function drawTallyBankBlock(doc, x, startY, title, rows, maxWidth) {
+/** Tally/proforma bank block. @returns {number} bottom Y */
+function drawTallyBankBlock(doc, x, startY, title, rows, maxWidth, options = {}) {
   if (!hasBankRows(rows)) return startY;
-  doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000').text(title, x, startY);
-  let by = startY + 9;
-  doc.fontSize(6.5).font('Helvetica');
+  const titleSize = options.titleSize ?? 8;
+  const bodySize = options.bodySize ?? 7.5;
+  doc.fontSize(titleSize).font('Helvetica-Bold').fillColor('#1a1a1a').text(title, x, startY, {
+    width: maxWidth,
+  });
+  let by = startY + 12;
   rows.forEach(([label, val]) => {
     if (val == null || String(val).trim() === '') return;
-    doc.font('Helvetica-Bold').text(`${label}: `, x, by, { continued: true });
-    doc.font('Helvetica').text(String(val), { width: maxWidth });
-    by += 10;
+    doc.fontSize(bodySize).font('Helvetica-Bold').fillColor('#1a1a1a').text(`${label}: `, x, by, {
+      continued: true,
+      width: maxWidth,
+    });
+    doc.font('Helvetica').fillColor('#000000').text(String(val), { width: maxWidth, lineGap: 0.25 });
+    by += 11;
   });
-  doc.fillColor('#000');
+  doc.fillColor('#000000');
   return by;
 }
 

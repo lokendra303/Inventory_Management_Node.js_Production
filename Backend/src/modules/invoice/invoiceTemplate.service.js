@@ -302,21 +302,35 @@ class InvoiceTemplateService {
    */
   calculateTotals(lines, currencyCode = 'USD') {
     const formattedLines = this.formatLineItems(lines);
-    
+
     const subtotal = formattedLines.reduce((sum, line) => sum + line.lineTotal, 0);
     const totalDiscountAmount = formattedLines.reduce((sum, line) => sum + line.discountAmount, 0);
     const totalTaxableAmount = formattedLines.reduce((sum, line) => sum + line.taxableAmount, 0);
     const totalTaxAmount = formattedLines.reduce((sum, line) => sum + line.taxAmount, 0);
-    const grandTotal = formattedLines.reduce((sum, line) => sum + line.netAmount, 0);
-    const roundedGrand = this.roundAmount(grandTotal);
+    const sumLineNets = formattedLines.reduce((sum, line) => sum + line.netAmount, 0);
+
+    const rSub = this.roundAmount(subtotal);
+    const rDisc = this.roundAmount(totalDiscountAmount);
+    const rt = this.roundAmount(totalTaxableAmount);
+    const rta = this.roundAmount(totalTaxAmount);
+    const fromLineNets = this.roundAmount(sumLineNets);
+    /** Grand total shown on PDF (Taxable + tax after 2dp) so it matches the GST summary block. */
+    const fromTaxStack = this.roundAmount(rt + rta);
+    const grandTotal = fromTaxStack;
+    if (Math.abs(fromTaxStack - fromLineNets) > 0.02) {
+      logger.warn('Invoice totals: rounded taxable+tax differs from sum of line net amounts', {
+        fromTaxStack,
+        fromLineNets,
+      });
+    }
 
     return {
-      subtotal: this.roundAmount(subtotal),
-      totalDiscountAmount: this.roundAmount(totalDiscountAmount),
-      totalTaxableAmount: this.roundAmount(totalTaxableAmount),
-      totalTaxAmount: this.roundAmount(totalTaxAmount),
-      grandTotal: roundedGrand,
-      amountInWords: this.convertAmountToWords(roundedGrand, currencyCode)
+      subtotal: rSub,
+      totalDiscountAmount: rDisc,
+      totalTaxableAmount: rt,
+      totalTaxAmount: rta,
+      grandTotal,
+      amountInWords: this.convertAmountToWords(grandTotal, currencyCode),
     };
   }
 

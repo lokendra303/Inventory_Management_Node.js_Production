@@ -2,13 +2,8 @@
  * Tally-style bordered invoice meta grid (shared by classic & proforma templates).
  */
 
-const LINE = 0.45;
-const FONT = 'Helvetica';
-const FONT_BOLD = 'Helvetica-Bold';
-const META_LABEL_SIZE = 6;
-const META_VALUE_SIZE = 7;
-const META_VALUE_PAD_TOP = 9;
-const META_CELL_PAD = 4;
+const T = require('./invoicePdfTallyTypography');
+const { FONT, FONT_BOLD, LINE, size, row, pad } = T;
 
 function formatTallyDate(d) {
   if (!d) return '';
@@ -18,7 +13,7 @@ function formatTallyDate(d) {
   return `${dt.getDate()}-${months[dt.getMonth()]}-${String(dt.getFullYear()).slice(-2)}`;
 }
 
-function clipMetaValue(value, maxLen = 42) {
+function clipMetaValue(value, maxLen = 48) {
   const s = String(value || '').trim();
   if (!s) return '';
   if (s.length <= maxLen) return s;
@@ -27,44 +22,44 @@ function clipMetaValue(value, maxLen = 42) {
 
 function box(doc, x, y, w, h) {
   doc.save();
-  doc.lineWidth(LINE).strokeColor('#000000').rect(x, y, w, h).stroke();
+  doc.lineWidth(LINE).strokeColor('#1a1a1a').rect(x, y, w, h).stroke();
   doc.restore();
 }
 
 function strokeVLine(doc, x, y1, y2) {
   doc.save();
-  doc.lineWidth(LINE).strokeColor('#000000');
+  doc.lineWidth(LINE).strokeColor('#1a1a1a');
   doc.moveTo(x, y1).lineTo(x, y2).stroke();
   doc.restore();
 }
 
 function measureMetaRowHeight(doc, cells, colWidths) {
-  const pad = META_CELL_PAD;
-  let maxH = 18;
+  const cellPad = pad.cell;
+  let maxH = row.metaMin;
   cells.forEach((cell, i) => {
     const cw = colWidths[i] || colWidths[0];
     const value = cell.value || '';
-    doc.fontSize(META_VALUE_SIZE).font(FONT);
-    const valueH = value ? doc.heightOfString(value, { width: cw - pad * 2, lineGap: 0 }) : 0;
-    const h = META_VALUE_PAD_TOP + Math.max(valueH, 7) + 4;
+    doc.fontSize(size.metaValue).font(FONT);
+    const valueH = value ? doc.heightOfString(value, { width: cw - cellPad * 2, lineGap: 0.3 }) : 0;
+    const h = pad.metaValueTop + Math.max(valueH, 8) + 5;
     if (h > maxH) maxH = h;
   });
-  return Math.min(maxH, 36);
+  return Math.min(maxH, 40);
 }
 
 function drawMetaLabeledCell(doc, x, y, w, h, label, value) {
-  const pad = META_CELL_PAD;
-  doc.fontSize(META_LABEL_SIZE).font(FONT_BOLD).fillColor('#000000');
-  doc.text(label, x + pad, y + 2, { width: w - pad * 2, lineGap: 0 });
+  const cellPad = pad.cell;
+  doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
+  doc.text(label, x + cellPad, y + pad.metaLabelTop, { width: w - cellPad * 2, lineGap: 0.2 });
 
-  const valueText = clipMetaValue(value, w < 140 ? 28 : 48);
+  const valueText = clipMetaValue(value, w < 140 ? 32 : 52);
   if (valueText) {
-    doc.fontSize(META_VALUE_SIZE).font(FONT);
-    const maxValueH = Math.max(7, h - META_VALUE_PAD_TOP - 3);
-    doc.text(valueText, x + pad, y + META_VALUE_PAD_TOP, {
-      width: w - pad * 2,
+    doc.fontSize(size.metaValue).font(FONT).fillColor('#000000');
+    const maxValueH = Math.max(8, h - pad.metaValueTop - 4);
+    doc.text(valueText, x + cellPad, y + pad.metaValueTop, {
+      width: w - cellPad * 2,
       height: maxValueH,
-      lineGap: 0,
+      lineGap: 0.25,
       ellipsis: true,
     });
   }
@@ -86,7 +81,7 @@ function buildTallyMetaGridRows(standardInvoice, party = {}) {
     party.shippingAddress?.city ||
     party.billingAddress?.city ||
     '';
-  const termsDelivery = clipMetaValue(details.deliveryTerms || '', 55);
+  const termsDelivery = clipMetaValue(details.deliveryTerms || '', 60);
 
   return [
     {
@@ -137,60 +132,98 @@ function measureMetaGridHeight(doc, rows, totalWidth) {
   const halfMeta = totalWidth / 2;
   const colWidthsTwo = [halfMeta, halfMeta];
   let h = 0;
-  rows.forEach((row) => {
-    const cols = row.cells.length === 1 ? [totalWidth] : colWidthsTwo;
-    row._height = measureMetaRowHeight(doc, row.cells, cols);
-    h += row._height;
+  rows.forEach((rowDef) => {
+    const cols = rowDef.cells.length === 1 ? [totalWidth] : colWidthsTwo;
+    rowDef._height = measureMetaRowHeight(doc, rowDef.cells, cols);
+    h += rowDef._height;
   });
   return h;
 }
 
 function strokeHLine(doc, x1, x2, y) {
   doc.save();
-  doc.lineWidth(LINE).strokeColor('#000000');
+  doc.lineWidth(LINE).strokeColor('#1a1a1a');
   doc.moveTo(x1, y).lineTo(x2, y).stroke();
   doc.restore();
 }
 
+function measureTallyPartyColumnHeight(doc, party, addressKey, gst, stateInfo, extraLines, panelW) {
+  const innerW = panelW - 12;
+  let h = 16;
+  if (party?.name) {
+    doc.fontSize(size.partyName).font(FONT_BOLD);
+    h += doc.heightOfString(party.name, { width: innerW, lineGap: 0.2 }) + 3;
+  }
+  const addr = addressKey === 'shipping' ? party?.shippingAddress : party?.billingAddress;
+  doc.fontSize(size.partyBody).font(FONT);
+  formatAddressLines(addr).forEach((line) => {
+    h += doc.heightOfString(line, { width: innerW, lineGap: 0.25 }) + 2;
+  });
+  if (gst) h += 11;
+  if (stateInfo?.name || stateInfo?.code) h += 11;
+  h += extraLines.filter(Boolean).length * 11;
+  return Math.max(h, 56);
+}
+
 /**
- * Draw one Tally-style party panel (Consignee / Buyer / Supplier) inside a fixed box.
+ * Draw party content inside a column (title + name + address + GST).
  */
-function drawClassicPartyPanel(doc, x, y, w, h, title, party, addressKey, extraLines = []) {
-  const pad = 4;
-  const innerW = w - pad * 2;
+function drawTallyPartyColumn(
+  doc,
+  x,
+  y,
+  w,
+  h,
+  title,
+  party,
+  addressKey,
+  gst,
+  stateInfo,
+  extraLines = []
+) {
+  const cellPad = pad.cell + 2;
+  const innerW = w - cellPad * 2;
   const addr = addressKey === 'shipping' ? party.shippingAddress || {} : party.billingAddress || {};
-  const gst = party.taxInfo?.gstin || '';
 
-  doc.fontSize(6.5).font(FONT_BOLD).fillColor('#000000');
-  doc.text(title, x + pad, y + 3, { width: innerW, lineGap: 0 });
+  doc.fontSize(size.partyTitle).font(FONT_BOLD).fillColor('#1a1a1a');
+  doc.text(title, x + cellPad, y + 5, { width: innerW, lineGap: 0.2 });
 
-  let py = y + 12;
-  const maxY = y + h - 4;
+  let py = y + 16;
+  const maxY = y + h - 5;
 
   if (party.name && py < maxY) {
-    doc.fontSize(7.5).font(FONT_BOLD);
-    const nameH = doc.heightOfString(party.name, { width: innerW, lineGap: 0 });
+    doc.fontSize(size.partyName).font(FONT_BOLD).fillColor('#000000');
+    const nameH = doc.heightOfString(party.name, { width: innerW, lineGap: 0.2 });
     if (py + nameH <= maxY) {
-      doc.text(party.name, x + pad, py, { width: innerW, lineGap: 0 });
-      py += nameH + 2;
+      doc.text(party.name, x + cellPad, py, { width: innerW, lineGap: 0.2 });
+      py += nameH + 3;
     }
   }
 
-  doc.fontSize(6.5).font(FONT);
+  doc.fontSize(size.partyBody).font(FONT).fillColor('#000000');
   formatAddressLines(addr).forEach((line) => {
     if (py >= maxY) return;
-    const lh = doc.heightOfString(line, { width: innerW, lineGap: 0.2 });
+    const lh = doc.heightOfString(line, { width: innerW, lineGap: 0.25 });
     if (py + lh > maxY) return;
-    doc.text(line, x + pad, py, { width: innerW, lineGap: 0.2 });
-    py += lh + 1;
+    doc.text(line, x + cellPad, py, { width: innerW, lineGap: 0.25 });
+    py += lh + 2;
   });
 
   if (gst && py < maxY) {
     const line = `GSTIN/UIN: ${gst}`;
     const lh = doc.heightOfString(line, { width: innerW });
     if (py + lh <= maxY) {
-      doc.text(line, x + pad, py, { width: innerW });
-      py += lh + 1;
+      doc.text(line, x + cellPad, py, { width: innerW });
+      py += lh + 2;
+    }
+  }
+
+  if ((stateInfo?.name || stateInfo?.code) && py < maxY) {
+    const line = `State Name: ${stateInfo.name || '—'}, Code: ${stateInfo.code || '—'}`;
+    const lh = doc.heightOfString(line, { width: innerW });
+    if (py + lh <= maxY) {
+      doc.text(line, x + cellPad, py, { width: innerW });
+      py += lh + 2;
     }
   }
 
@@ -198,28 +231,139 @@ function drawClassicPartyPanel(doc, x, y, w, h, title, party, addressKey, extraL
     if (py >= maxY) return;
     const lh = doc.heightOfString(line, { width: innerW });
     if (py + lh > maxY) return;
-    doc.text(line, x + pad, py, { width: innerW });
-    py += lh + 1;
+    doc.text(line, x + cellPad, py, { width: innerW });
+    py += lh + 2;
+  });
+
+  doc.fillColor('#000000');
+}
+
+/**
+ * One row: Consignee (Ship to) left | Buyer (Bill to) right — Tally style.
+ * @returns {number} bottom Y
+ */
+function drawTallyShipBillPartyRow(doc, y, party, options = {}) {
+  const left = options.left ?? T.LEFT;
+  const width = options.width ?? T.WIDTH;
+  const halfW = Math.floor(width / 2);
+  const partyGst = options.partyGst || party?.taxInfo?.gstin || '';
+  const shipState = options.shipStateInfo || {};
+  const billState = options.billStateInfo || {};
+  const billExtra = options.billExtraLines || [];
+
+  const shipH = measureTallyPartyColumnHeight(
+    doc,
+    party,
+    'shipping',
+    partyGst,
+    shipState,
+    [],
+    halfW
+  );
+  const billH = measureTallyPartyColumnHeight(doc, party, 'billing', partyGst, billState, billExtra, halfW);
+  const blockH = Math.max(shipH, billH, 58);
+
+  box(doc, left, y, width, blockH);
+  strokeVLine(doc, left + halfW, y, y + blockH);
+
+  drawTallyPartyColumn(
+    doc,
+    left,
+    y,
+    halfW,
+    blockH,
+    'Consignee (Ship to)',
+    party,
+    'shipping',
+    partyGst,
+    shipState,
+    []
+  );
+  drawTallyPartyColumn(
+    doc,
+    left + halfW,
+    y,
+    halfW,
+    blockH,
+    'Buyer (Bill to)',
+    party,
+    'billing',
+    partyGst,
+    billState,
+    billExtra
+  );
+
+  return y + blockH;
+}
+
+/**
+ * Draw one Tally-style party panel (Ship to / Bill to / Supplier) inside a fixed box.
+ */
+function drawClassicPartyPanel(doc, x, y, w, h, title, party, addressKey, extraLines = []) {
+  const cellPad = pad.cell + 2;
+  const innerW = w - cellPad * 2;
+  const addr = addressKey === 'shipping' ? party.shippingAddress || {} : party.billingAddress || {};
+  const gst = party.taxInfo?.gstin || '';
+
+  doc.fontSize(size.partyTitle).font(FONT_BOLD).fillColor('#1a1a1a');
+  doc.text(title, x + cellPad, y + 4, { width: innerW, lineGap: 0.2 });
+
+  let py = y + 14;
+  const maxY = y + h - 5;
+
+  if (party.name && py < maxY) {
+    doc.fontSize(size.partyName).font(FONT_BOLD).fillColor('#000000');
+    const nameH = doc.heightOfString(party.name, { width: innerW, lineGap: 0.2 });
+    if (py + nameH <= maxY) {
+      doc.text(party.name, x + cellPad, py, { width: innerW, lineGap: 0.2 });
+      py += nameH + 3;
+    }
+  }
+
+  doc.fontSize(size.partyBody).font(FONT).fillColor('#000000');
+  formatAddressLines(addr).forEach((line) => {
+    if (py >= maxY) return;
+    const lh = doc.heightOfString(line, { width: innerW, lineGap: 0.25 });
+    if (py + lh > maxY) return;
+    doc.text(line, x + cellPad, py, { width: innerW, lineGap: 0.25 });
+    py += lh + 2;
+  });
+
+  if (gst && py < maxY) {
+    const line = `GSTIN/UIN: ${gst}`;
+    const lh = doc.heightOfString(line, { width: innerW });
+    if (py + lh <= maxY) {
+      doc.text(line, x + cellPad, py, { width: innerW });
+      py += lh + 2;
+    }
+  }
+
+  extraLines.filter(Boolean).forEach((line) => {
+    if (py >= maxY) return;
+    const lh = doc.heightOfString(line, { width: innerW });
+    if (py + lh > maxY) return;
+    doc.text(line, x + cellPad, py, { width: innerW });
+    py += lh + 2;
   });
 
   doc.fillColor('#000000');
 }
 
 function measureClassicPartyPanelMinHeight(doc, party, addressKey, extraLines = [], panelW) {
-  const innerW = panelW - 8;
-  let h = 14;
+  const innerW = panelW - 12;
+  let h = 18;
   if (party?.name) {
-    doc.fontSize(7.5).font(FONT_BOLD);
-    h += doc.heightOfString(party.name, { width: innerW }) + 2;
+    doc.fontSize(size.partyName).font(FONT_BOLD);
+    h += doc.heightOfString(party.name, { width: innerW, lineGap: 0.2 }) + 3;
   }
   const addr = addressKey === 'shipping' ? party?.shippingAddress : party?.billingAddress;
-  doc.fontSize(6.5).font(FONT);
+  doc.fontSize(size.partyBody).font(FONT);
   formatAddressLines(addr).forEach((line) => {
-    h += doc.heightOfString(line, { width: innerW, lineGap: 0.2 }) + 1;
+    h += doc.heightOfString(line, { width: innerW, lineGap: 0.25 }) + 2;
   });
-  if (party?.taxInfo?.gstin) h += 10;
-  h += extraLines.filter(Boolean).length * 10;
-  return Math.min(Math.max(h, 48), 120);
+  if (party?.taxInfo?.gstin) h += 11;
+  h += extraLines.filter(Boolean).length * 11;
+  return Math.min(Math.max(h, 56), 130);
 }
 
 /**
@@ -227,8 +371,8 @@ function measureClassicPartyPanelMinHeight(doc, party, addressKey, extraLines = 
  * @returns {number} bottom Y
  */
 function drawClassicPartyMetaBand(doc, y, standardInvoice, party = {}, options = {}) {
-  const LEFT = options.leftX ?? 50;
-  const WIDTH = options.totalWidth ?? 495;
+  const LEFT = options.leftX ?? T.LEFT;
+  const WIDTH = options.totalWidth ?? T.WIDTH;
   const META_RATIO = options.metaRatio ?? 0.44;
   const metaW = Math.round(WIDTH * META_RATIO);
   const partyW = WIDTH - metaW;
@@ -247,7 +391,7 @@ function drawClassicPartyMetaBand(doc, y, standardInvoice, party = {}, options =
     partyMinH = measureClassicPartyPanelMinHeight(doc, party, 'billing', [], partyW);
   }
 
-  const blockH = Math.max(metaH, partyMinH, 108);
+  const blockH = Math.max(metaH, partyMinH, 112);
 
   box(doc, LEFT, y, WIDTH, blockH);
   strokeVLine(doc, metaX, y, y + blockH);
@@ -284,23 +428,24 @@ function drawTallyMetaGrid(doc, x, y, totalWidth, rows) {
   const halfMeta = totalWidth / 2;
   const colWidthsTwo = [halfMeta, halfMeta];
 
-  rows.forEach((row) => {
-    if (row._height) return;
-    const cols = row.cells.length === 1 ? [totalWidth] : colWidthsTwo;
-    row._height = measureMetaRowHeight(doc, row.cells, cols);
+  rows.forEach((rowDef) => {
+    if (!rowDef._height) {
+      const cols = rowDef.cells.length === 1 ? [totalWidth] : colWidthsTwo;
+      rowDef._height = measureMetaRowHeight(doc, rowDef.cells, cols);
+    }
   });
 
   let metaY = y;
-  rows.forEach((row) => {
-    const rowH = row._height;
-    const spanFull = row.cells.length === 1;
+  rows.forEach((rowDef) => {
+    const rowH = rowDef._height;
+    const spanFull = rowDef.cells.length === 1;
     box(doc, x, metaY, totalWidth, rowH);
 
     if (spanFull) {
-      drawMetaLabeledCell(doc, x, metaY, totalWidth, rowH, row.cells[0].label, row.cells[0].value);
+      drawMetaLabeledCell(doc, x, metaY, totalWidth, rowH, rowDef.cells[0].label, rowDef.cells[0].value);
     } else {
       let mx = x;
-      row.cells.forEach((cell, i) => {
+      rowDef.cells.forEach((cell, i) => {
         const cw = colWidthsTwo[i];
         if (i > 0) strokeVLine(doc, mx, metaY, metaY + rowH);
         drawMetaLabeledCell(doc, mx, metaY, cw, rowH, cell.label, cell.value);
@@ -318,10 +463,14 @@ module.exports = {
   clipMetaValue,
   buildTallyMetaGridRows,
   drawTallyMetaGrid,
+  drawTallyShipBillPartyRow,
+  drawTallyPartyColumn,
   drawClassicPartyMetaBand,
   measureMetaGridHeight,
+  measureTallyPartyColumnHeight,
   drawMetaLabeledCell,
   measureMetaRowHeight,
   box,
   strokeVLine,
+  strokeHLine,
 };
