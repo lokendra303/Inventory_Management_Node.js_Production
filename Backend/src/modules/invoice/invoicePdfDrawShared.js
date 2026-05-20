@@ -371,8 +371,12 @@ function isSalesStandardInvoice(standardInvoice) {
 }
 
 function buildCompanyBankRows(companySettings) {
+  const holder =
+    companySettings?.account_holder_name ||
+    companySettings?.accountHolderName ||
+    null;
   return [
-    ["A/c Holder's Name", companySettings?.company_name],
+    ["A/c Holder's Name", holder],
     ['Bank Name', companySettings?.bank_name],
     ['A/c No.', companySettings?.account_number],
     [
@@ -493,7 +497,7 @@ function drawStampSignature(doc, y, companySettings, stampBuffer, signatureBuffe
   }
 
   const hasLeftBank = isSales
-    ? Boolean(companySettings?.bank_name) || Boolean(companySettings?.account_number)
+    ? hasBankRows(buildCompanyBankRows(companySettings))
     : hasBankRows(buildVendorBankRows(standardInvoice?.partyDetails));
 
   if (stampBuffer && !hasLeftBank) {

@@ -32,9 +32,12 @@ class CompanySettingsController {
       payload.address ?? null,
       payload.phone ?? null,
       payload.email ?? null,
+      payload.taxId ?? null,
       payload.bankName ?? null,
+      payload.accountHolderName ?? null,
       payload.accountNumber ?? null,
       payload.ifscCode ?? null,
+      payload.branchName ?? null,
       payload.swiftCode ?? null,
       payload.authorizedSignatoryName ?? null,
       payload.authorizedSignatoryDesignation ?? null,
@@ -48,14 +51,14 @@ class CompanySettingsController {
       if (payload.pdfFooterOptions != null) {
         await db.query(
           `UPDATE institution_profiles
-           SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?, pdf_footer_options = ?
+           SET company_name = ?, address = ?, phone = ?, email = ?, tax_id = ?, bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, branch_name = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?, pdf_footer_options = ?
            WHERE institution_id = ?`,
           [...coreValues, footerJson, institutionId]
         );
       } else {
         await db.query(
           `UPDATE institution_profiles
-           SET company_name = ?, address = ?, phone = ?, email = ?, bank_name = ?, account_number = ?, ifsc_code = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?
+           SET company_name = ?, address = ?, phone = ?, email = ?, tax_id = ?, bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, branch_name = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?
            WHERE institution_id = ?`,
           [...coreValues, institutionId]
         );
@@ -65,8 +68,8 @@ class CompanySettingsController {
 
     await db.query(
       `INSERT INTO institution_profiles
-       (company_name, address, phone, email, bank_name, account_number, ifsc_code, swift_code, authorized_signatory_name, authorized_signatory_designation, invoice_pdf_template, pdf_footer_options, institution_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (company_name, address, phone, email, tax_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code, authorized_signatory_name, authorized_signatory_designation, invoice_pdf_template, pdf_footer_options, institution_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [...coreValues, footerJson, institutionId]
     );
   }
@@ -79,15 +82,23 @@ class CompanySettingsController {
       await multi.migrateLegacyRows(institutionId);
 
       const profile = await this.getInstitutionProfile(institutionId);
+      const [instRow] = await db.query(
+        'SELECT tax_id FROM institutions WHERE id = ? LIMIT 1',
+        [institutionId]
+      );
+      const institutionTaxId = instRow?.tax_id ?? null;
 
       const profileFirst = {
         company_name: profile?.company_name ?? null,
         address: profile?.address ?? null,
         phone: profile?.phone ?? null,
         email: profile?.email ?? null,
+        tax_id: (profile?.tax_id && String(profile.tax_id).trim()) || institutionTaxId || null,
         bank_name: profile?.bank_name ?? null,
+        account_holder_name: profile?.account_holder_name ?? null,
         account_number: profile?.account_number ?? null,
         ifsc_code: profile?.ifsc_code ?? null,
+        branch_name: profile?.branch_name ?? null,
         swift_code: profile?.swift_code ?? null,
         logo_path: profile?.logo_path ?? null,
         authorized_signatory_name: profile?.authorized_signatory_name ?? null,
@@ -152,9 +163,16 @@ class CompanySettingsController {
       const address = b.address !== undefined ? b.address : pf.address;
       const phone = b.phone !== undefined ? b.phone : pf.phone;
       const email = b.email !== undefined ? b.email : pf.email;
+      const taxId =
+        b.taxId !== undefined
+          ? (b.taxId && String(b.taxId).trim()) || null
+          : pf.tax_id ?? null;
       const bankName = b.bankName !== undefined ? b.bankName : pf.bank_name;
+      const accountHolderName =
+        b.accountHolderName !== undefined ? b.accountHolderName : pf.account_holder_name;
       const accountNumber = b.accountNumber !== undefined ? b.accountNumber : pf.account_number;
       const ifscCode = b.ifscCode !== undefined ? b.ifscCode : pf.ifsc_code;
+      const branchName = b.branchName !== undefined ? b.branchName : pf.branch_name;
       const swiftCode = b.swiftCode !== undefined ? b.swiftCode : pf.swift_code;
       const authorizedSignatoryName = b.authorizedSignatoryName !== undefined ? b.authorizedSignatoryName : pf.authorized_signatory_name;
       const authorizedSignatoryDesignation = b.authorizedSignatoryDesignation !== undefined ? b.authorizedSignatoryDesignation : pf.authorized_signatory_designation;
@@ -172,15 +190,25 @@ class CompanySettingsController {
         address,
         phone,
         email,
+        taxId,
         bankName,
+        accountHolderName,
         accountNumber,
         ifscCode,
+        branchName,
         swiftCode,
         authorizedSignatoryName,
         authorizedSignatoryDesignation,
         invoicePdfTemplate,
         pdfFooterOptions,
       });
+
+      if (taxId !== undefined) {
+        await db.query('UPDATE institutions SET tax_id = ?, updated_at = NOW() WHERE id = ?', [
+          taxId,
+          institutionId,
+        ]);
+      }
 
       const addressPayload = {
         address,

@@ -82,9 +82,12 @@ const CompanySettings = () => {
           address: response.data.address || '',
           phone: response.data.phone,
           email: response.data.email,
+          taxId: response.data.tax_id || '',
           bankName: response.data.bank_name,
+          accountHolderName: response.data.account_holder_name || '',
           accountNumber: response.data.account_number,
           ifscCode: response.data.ifsc_code,
+          branchName: response.data.branch_name || '',
           swiftCode: response.data.swift_code,
           authorizedSignatoryName: response.data.authorized_signatory_name,
           authorizedSignatoryDesignation: response.data.authorized_signatory_designation,
@@ -425,6 +428,15 @@ const CompanySettings = () => {
               <Input allowClear />
             </Form.Item>
           </Col>
+          <Col xs={24} md={12}>
+            <Form.Item
+              name="taxId"
+              label="GSTIN / Tax ID"
+              extra="Shown on invoice PDF header and seller block (GSTIN/UIN)."
+            >
+              <Input placeholder="e.g. 27AAAAA0000A1Z5" allowClear maxLength={15} />
+            </Form.Item>
+          </Col>
           <Col span={24}>
             <Form.Item
               name="address"
@@ -476,13 +488,27 @@ const CompanySettings = () => {
       </Card>
 
       <Card size="small" title="Bank details" style={{ marginTop: 16 }} styles={{ header: { fontWeight: 600 } }}>
-        <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 16 }}>Optional.</Paragraph>
+        <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 16 }}>
+          Optional. Used on invoice PDF footers. Account holder is separate from registered company name.
+        </Paragraph>
         <Row gutter={[20, 0]}>
+          <Col xs={24} md={12}>
+            <Form.Item
+              name="accountHolderName"
+              label="Account holder name"
+              extra="Legal name on the bank account (may differ from company name)."
+            >
+              <Input placeholder="As per bank records" allowClear />
+            </Form.Item>
+          </Col>
           <Col xs={24} md={12}>
             <Form.Item name="bankName" label="Bank name"><Input allowClear /></Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item name="accountNumber" label="Account number"><Input allowClear /></Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item name="branchName" label="Branch"><Input allowClear /></Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item name="ifscCode" label="IFSC"><Input allowClear /></Form.Item>

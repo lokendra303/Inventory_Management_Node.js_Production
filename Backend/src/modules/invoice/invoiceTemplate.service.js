@@ -46,10 +46,12 @@ class InvoiceTemplateService {
            COALESCE(ip.phone, i.mobile) AS phone,
            COALESCE(ip.email, i.email) AS email,
            ip.logo_path,
+           COALESCE(NULLIF(TRIM(ip.tax_id), ''), i.tax_id) AS tax_id,
+           ip.account_holder_name,
+           ip.branch_name,
            i.city,
            i.state,
-           i.postal_code,
-           i.tax_id
+           i.postal_code
          FROM institutions i
          LEFT JOIN institution_profiles ip
            ON ip.institution_id COLLATE utf8mb4_unicode_ci = i.id COLLATE utf8mb4_unicode_ci
