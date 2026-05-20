@@ -395,10 +395,9 @@ function measurePartyBlockHeight(doc, addr, gst, extraLines = []) {
   return Math.max(h, 58);
 }
 
-/** Height of company name + address block in proforma left column (matches drawing). */
-function measureProformaSellerCompanyBlock(doc, logoBuffer, cs, sellerGst, sellerState, contentW) {
+/** Height of company name + address block in proforma left column (logo is outside this box). */
+function measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, contentW) {
   let h = 8;
-  if (logoBuffer) h += 38 + 6;
   doc.fontSize(size.companyName).font(FONT_BOLD);
   h += doc.heightOfString(cs.companyName || 'Company', { width: contentW, lineGap: 0.2 }) + 4;
   doc.fontSize(size.body).font(FONT);
@@ -442,15 +441,33 @@ function drawProformaInvoice(doc, ctx) {
 
   let y = T.MARGIN + 6;
 
-  doc.fontSize(size.title).font(FONT_BOLD).fillColor('#1a1a1a').text(docTitle, LEFT, y, {
+  const HEADER_LOGO_W = 64;
+  const HEADER_LOGO_H = 46;
+  const titleRowY = y;
+
+  if (logoBuffer) {
+    try {
+      doc.image(logoBuffer, LEFT + 2, titleRowY, {
+        fit: [HEADER_LOGO_W, HEADER_LOGO_H],
+        align: 'left',
+        valign: 'top',
+      });
+    } catch {
+      /* ignore bad image */
+    }
+  }
+
+  doc.fontSize(size.title).font(FONT_BOLD).fillColor('#1a1a1a').text(docTitle, LEFT, titleRowY, {
     width: WIDTH,
     align: 'center',
   });
-  doc.fontSize(size.titleSub).font(FONT).fillColor('#444444').text('(ORIGINAL FOR RECIPIENT)', LEFT, y + 2, {
+  doc.fontSize(size.titleSub).font(FONT).fillColor('#444444').text('(ORIGINAL FOR RECIPIENT)', LEFT, titleRowY + 2, {
     width: WIDTH - 4,
     align: 'right',
   });
-  y += 24;
+  const titleBandH = 24;
+  /** Minimal gap under logo/title before bordered blocks (was logoH+6 + 4, too tall). */
+  y = titleRowY + Math.max(titleBandH, logoBuffer ? HEADER_LOGO_H + 1 : 0) + (logoBuffer ? 1 : 0);
 
   const metaW = Math.round(WIDTH * 0.44);
   const sellerW = WIDTH - metaW;
@@ -467,13 +484,11 @@ function drawProformaInvoice(doc, ctx) {
   const metaGridH = metaGridRows.reduce((sum, row) => sum + row._height, 0);
   const sx = LEFT + 8;
   const contentW = sellerW - 16;
-  const LOGO_W = 52;
-  const LOGO_H = 38;
 
   const shipStateForParty = isSales ? gstStateFromGstin(partyGst, party.shippingAddress?.state) : {};
   const billExtraForParty = isSales && partyState.name ? [`Place of Supply: ${partyState.name}`] : [];
 
-  let sellerStackMinH = measureProformaSellerCompanyBlock(doc, logoBuffer, cs, sellerGst, sellerState, contentW);
+  let sellerStackMinH = measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, contentW);
   if (isSales) {
     const sectionGap = 10;
     const shipH = measureTallyPartyColumnHeight(doc, party, 'shipping', partyGst, shipStateForParty, [], sellerW);
@@ -486,16 +501,7 @@ function drawProformaInvoice(doc, ctx) {
   box(doc, LEFT, y, sellerW, topH);
   box(doc, metaX, y, metaW, topH);
 
-  let sy = y + 8;
-
-  if (logoBuffer) {
-    try {
-      doc.image(logoBuffer, sx, sy, { fit: [LOGO_W, LOGO_H], align: 'left', valign: 'top' });
-      sy += LOGO_H + 6;
-    } catch {
-      /* ignore bad image */
-    }
-  }
+  let sy = y + 4;
 
   doc.fontSize(size.companyName).font(FONT_BOLD).fillColor('#000000');
   const nameH = doc.heightOfString(cs.companyName || 'Company', { width: contentW, lineGap: 0.2 });

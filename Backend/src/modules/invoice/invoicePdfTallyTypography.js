@@ -38,7 +38,7 @@ const size = {
 };
 
 const row = {
-  metaMin: 20,
+  metaMin: 15,
   itemDefault: 18,
   itemHeader: 28,
   taxData: 16,
@@ -51,8 +51,8 @@ const row = {
 
 const pad = {
   cell: 4,
-  metaLabelTop: 3,
-  metaValueTop: 11,
+  metaLabelTop: 2,
+  metaValueTop: 9,
   tableTop: 5,
 };
 

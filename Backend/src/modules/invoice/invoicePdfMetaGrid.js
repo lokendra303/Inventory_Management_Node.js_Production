@@ -35,28 +35,36 @@ function strokeVLine(doc, x, y1, y2) {
 
 function measureMetaRowHeight(doc, cells, colWidths) {
   const cellPad = pad.cell;
+  const gapAfterLabel = 1;
+  const bottomPad = 2;
   let maxH = row.metaMin;
   cells.forEach((cell, i) => {
     const cw = colWidths[i] || colWidths[0];
     const value = cell.value || '';
+    doc.fontSize(size.metaLabel).font(FONT_BOLD);
+    const labelH = doc.heightOfString(cell.label || '', { width: cw - cellPad * 2, lineGap: 0.2 });
     doc.fontSize(size.metaValue).font(FONT);
-    const valueH = value ? doc.heightOfString(value, { width: cw - cellPad * 2, lineGap: 0.3 }) : 0;
-    const h = pad.metaValueTop + Math.max(valueH, 8) + 5;
+    const valueH = value ? doc.heightOfString(value, { width: cw - cellPad * 2, lineGap: 0.25 }) : 0;
+    const valueStart = Math.max(pad.metaValueTop, pad.metaLabelTop + labelH + gapAfterLabel);
+    const h = valueStart + (value ? Math.max(valueH, 6) : 0) + bottomPad;
     if (h > maxH) maxH = h;
   });
-  return Math.min(maxH, 40);
+  return Math.min(maxH, 32);
 }
 
 function drawMetaLabeledCell(doc, x, y, w, h, label, value) {
   const cellPad = pad.cell;
   doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
+  const labelH = doc.heightOfString(label || '', { width: w - cellPad * 2, lineGap: 0.2 });
   doc.text(label, x + cellPad, y + pad.metaLabelTop, { width: w - cellPad * 2, lineGap: 0.2 });
 
   const valueText = clipMetaValue(value, w < 140 ? 32 : 52);
+  const gapAfterLabel = 1;
+  const valueY = y + Math.max(pad.metaValueTop, pad.metaLabelTop + labelH + gapAfterLabel);
   if (valueText) {
     doc.fontSize(size.metaValue).font(FONT).fillColor('#000000');
-    const maxValueH = Math.max(8, h - pad.metaValueTop - 4);
-    doc.text(valueText, x + cellPad, y + pad.metaValueTop, {
+    const maxValueH = Math.max(6, h - (valueY - y) - 2);
+    doc.text(valueText, x + cellPad, valueY, {
       width: w - cellPad * 2,
       height: maxValueH,
       lineGap: 0.25,
