@@ -584,9 +584,10 @@ function drawProformaInvoice(doc, ctx) {
   const metaColWidths = [halfMeta, halfMeta];
   const metaGridRows = buildTallyMetaGridRows(standardInvoice, party);
 
+  const metaGridOptions = { inline: true };
   metaGridRows.forEach((row) => {
     const cols = row.cells.length === 1 ? [metaW] : metaColWidths;
-    row._height = measureMetaRowHeight(doc, row.cells, cols);
+    row._height = measureMetaRowHeight(doc, row.cells, cols, metaGridOptions);
   });
 
   const metaGridH = metaGridRows.reduce((sum, row) => sum + row._height, 0);
@@ -733,7 +734,7 @@ function drawProformaInvoice(doc, ctx) {
     }
   }
 
-  drawTallyMetaGrid(doc, metaX, y, metaW, metaGridRows);
+  drawTallyMetaGrid(doc, metaX, y, metaW, metaGridRows, metaGridOptions);
   y += topH;
 
   const hasDiscount = invoiceHasDiscount(lineItems, totals);
