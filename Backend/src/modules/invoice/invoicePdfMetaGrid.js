@@ -34,7 +34,8 @@ function strokeVLine(doc, x, y1, y2) {
 }
 
 const META_INLINE_MIN_H = 11;
-const META_INLINE_MAX_H = 18;
+const META_INLINE_TOP_PAD = 3;
+const META_INLINE_BOTTOM_PAD = 3;
 
 /** Single-line "Label: value" cell (compact meta grid). */
 function measureMetaInlineCellHeight(doc, w, label, value) {
@@ -43,15 +44,19 @@ function measureMetaInlineCellHeight(doc, w, label, value) {
   const labelText = String(label || '').trim();
   const valueText = clipMetaValue(value, innerW < 120 ? 36 : 64);
   const line = valueText ? `${labelText}: ${valueText}` : `${labelText}:`;
-  doc.fontSize(size.metaValue).font(FONT);
+  // Bold label prefix is wider than value-only measure — use label font so wrapped rows are tall enough.
+  doc.fontSize(size.metaLabel).font(FONT_BOLD);
   const textH = doc.heightOfString(line, { width: innerW, lineGap: 0.15 });
-  return Math.max(META_INLINE_MIN_H, Math.min(META_INLINE_MAX_H, 4 + textH + 3));
+  return Math.max(
+    META_INLINE_MIN_H,
+    META_INLINE_TOP_PAD + textH + META_INLINE_BOTTOM_PAD
+  );
 }
 
 function drawMetaInlineCell(doc, x, y, w, h, label, value) {
   const cellPad = pad.cell;
   const innerW = w - cellPad * 2;
-  const ty = y + 3;
+  const ty = y + META_INLINE_TOP_PAD;
   const labelText = String(label || '').trim();
   const valueText = clipMetaValue(value, innerW < 120 ? 36 : 64);
   doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
@@ -64,8 +69,36 @@ function drawMetaInlineCell(doc, x, y, w, h, label, value) {
   }
 }
 
+/** True when this row should use single-line "Label: value" cells. */
+function metaRowUsesInlineLayout(options, cellCount) {
+  if (options.inline) return true;
+  if (options.inlineSingleColumn) return cellCount === 1;
+  return false;
+}
+
+function metaRowLayoutOptions(options, cellCount) {
+  return { ...options, inline: metaRowUsesInlineLayout(options, cellCount) };
+}
+
+function measureMetaStackedCellHeight(doc, w, label, value) {
+  const cellPad = pad.cell;
+  const innerW = w - cellPad * 2;
+  const gapAfterLabel = 1;
+  const bottomPad = 2;
+  const heading = `${String(label || '').trim()}:`;
+  const valueText = clipMetaValue(value, w < 140 ? 32 : 52);
+  doc.fontSize(size.metaLabel).font(FONT_BOLD);
+  const labelH = doc.heightOfString(heading, { width: innerW, lineGap: 0.2 });
+  doc.fontSize(size.metaValue).font(FONT);
+  const valueH = valueText
+    ? doc.heightOfString(valueText, { width: innerW, lineGap: 0.25 })
+    : 0;
+  const valueStart = Math.max(pad.metaValueTop, pad.metaLabelTop + labelH + gapAfterLabel);
+  return valueStart + (valueText ? Math.max(valueH, 6) : 0) + bottomPad;
+}
+
 function measureMetaRowHeight(doc, cells, colWidths, options = {}) {
-  if (options.inline) {
+  if (metaRowUsesInlineLayout(options, cells.length)) {
     let maxH = META_INLINE_MIN_H;
     cells.forEach((cell, i) => {
       const cw = colWidths[i] || colWidths[0];
@@ -75,22 +108,13 @@ function measureMetaRowHeight(doc, cells, colWidths, options = {}) {
     return maxH;
   }
 
-  const cellPad = pad.cell;
-  const gapAfterLabel = 1;
-  const bottomPad = 2;
   let maxH = row.metaMin;
   cells.forEach((cell, i) => {
     const cw = colWidths[i] || colWidths[0];
-    const value = cell.value || '';
-    doc.fontSize(size.metaLabel).font(FONT_BOLD);
-    const labelH = doc.heightOfString(cell.label || '', { width: cw - cellPad * 2, lineGap: 0.2 });
-    doc.fontSize(size.metaValue).font(FONT);
-    const valueH = value ? doc.heightOfString(value, { width: cw - cellPad * 2, lineGap: 0.25 }) : 0;
-    const valueStart = Math.max(pad.metaValueTop, pad.metaLabelTop + labelH + gapAfterLabel);
-    const h = valueStart + (value ? Math.max(valueH, 6) : 0) + bottomPad;
+    const h = measureMetaStackedCellHeight(doc, cw, cell.label, cell.value);
     if (h > maxH) maxH = h;
   });
-  return Math.min(maxH, 32);
+  return maxH;
 }
 
 function drawMetaLabeledCell(doc, x, y, w, h, label, value, options = {}) {
@@ -100,9 +124,10 @@ function drawMetaLabeledCell(doc, x, y, w, h, label, value, options = {}) {
   }
 
   const cellPad = pad.cell;
+  const heading = `${String(label || '').trim()}:`;
   doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
-  const labelH = doc.heightOfString(label || '', { width: w - cellPad * 2, lineGap: 0.2 });
-  doc.text(label, x + cellPad, y + pad.metaLabelTop, { width: w - cellPad * 2, lineGap: 0.2 });
+  const labelH = doc.heightOfString(heading, { width: w - cellPad * 2, lineGap: 0.2 });
+  doc.text(heading, x + cellPad, y + pad.metaLabelTop, { width: w - cellPad * 2, lineGap: 0.2 });
 
   const valueText = clipMetaValue(value, w < 140 ? 32 : 52);
   const gapAfterLabel = 1;
@@ -182,13 +207,14 @@ function formatAddressLines(addr) {
 }
 
 /** Measure meta grid height (sets row._height on each row). */
-function measureMetaGridHeight(doc, rows, totalWidth) {
+function measureMetaGridHeight(doc, rows, totalWidth, options = {}) {
   const halfMeta = totalWidth / 2;
   const colWidthsTwo = [halfMeta, halfMeta];
   let h = 0;
   rows.forEach((rowDef) => {
     const cols = rowDef.cells.length === 1 ? [totalWidth] : colWidthsTwo;
-    rowDef._height = measureMetaRowHeight(doc, rowDef.cells, cols);
+    const rowOpts = metaRowLayoutOptions(options, rowDef.cells.length);
+    rowDef._height = measureMetaRowHeight(doc, rowDef.cells, cols, rowOpts);
     h += rowDef._height;
   });
   return h;
@@ -485,7 +511,8 @@ function drawTallyMetaGrid(doc, x, y, totalWidth, rows, options = {}) {
   rows.forEach((rowDef) => {
     if (!rowDef._height) {
       const cols = rowDef.cells.length === 1 ? [totalWidth] : colWidthsTwo;
-      rowDef._height = measureMetaRowHeight(doc, rowDef.cells, cols, options);
+      const rowOpts = metaRowLayoutOptions(options, rowDef.cells.length);
+      rowDef._height = measureMetaRowHeight(doc, rowDef.cells, cols, rowOpts);
     }
   });
 
@@ -493,16 +520,26 @@ function drawTallyMetaGrid(doc, x, y, totalWidth, rows, options = {}) {
   rows.forEach((rowDef) => {
     const rowH = rowDef._height;
     const spanFull = rowDef.cells.length === 1;
+    const rowOpts = metaRowLayoutOptions(options, rowDef.cells.length);
     box(doc, x, metaY, totalWidth, rowH);
 
     if (spanFull) {
-      drawMetaLabeledCell(doc, x, metaY, totalWidth, rowH, rowDef.cells[0].label, rowDef.cells[0].value, options);
+      drawMetaLabeledCell(
+        doc,
+        x,
+        metaY,
+        totalWidth,
+        rowH,
+        rowDef.cells[0].label,
+        rowDef.cells[0].value,
+        rowOpts
+      );
     } else {
       let mx = x;
       rowDef.cells.forEach((cell, i) => {
         const cw = colWidthsTwo[i];
         if (i > 0) strokeVLine(doc, mx, metaY, metaY + rowH);
-        drawMetaLabeledCell(doc, mx, metaY, cw, rowH, cell.label, cell.value, options);
+        drawMetaLabeledCell(doc, mx, metaY, cw, rowH, cell.label, cell.value, rowOpts);
         mx += cw;
       });
     }
@@ -524,6 +561,7 @@ module.exports = {
   measureTallyPartyColumnHeight,
   drawMetaLabeledCell,
   measureMetaRowHeight,
+  metaRowLayoutOptions,
   box,
   strokeVLine,
   strokeHLine,

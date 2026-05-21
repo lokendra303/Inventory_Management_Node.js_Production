@@ -10,6 +10,7 @@ const {
   drawTallyMetaGrid,
   drawTallyPartyColumn,
   measureMetaRowHeight,
+  metaRowLayoutOptions,
   measureTallyPartyColumnHeight,
   strokeHLine,
 } = require('./invoicePdfMetaGrid');
@@ -584,10 +585,12 @@ function drawProformaInvoice(doc, ctx) {
   const metaColWidths = [halfMeta, halfMeta];
   const metaGridRows = buildTallyMetaGridRows(standardInvoice, party);
 
-  const metaGridOptions = { inline: true };
+  /** Full-width rows: "Label: value" on one line; two-column rows: heading + value below. */
+  const metaGridOptions = { inlineSingleColumn: true };
   metaGridRows.forEach((row) => {
     const cols = row.cells.length === 1 ? [metaW] : metaColWidths;
-    row._height = measureMetaRowHeight(doc, row.cells, cols, metaGridOptions);
+    const rowOpts = metaRowLayoutOptions(metaGridOptions, row.cells.length);
+    row._height = measureMetaRowHeight(doc, row.cells, cols, rowOpts);
   });
 
   const metaGridH = metaGridRows.reduce((sum, row) => sum + row._height, 0);
