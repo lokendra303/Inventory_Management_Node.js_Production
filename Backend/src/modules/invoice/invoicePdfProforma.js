@@ -692,20 +692,13 @@ function drawProformaInvoice(doc, ctx) {
     return cells;
   };
 
-  const totalTax = Number(totals.totalTaxAmount) || 0;
-  if (totalTax > 0 && !hasDiscount) {
-    itemTableRows.push({
-      _height: itemRowH,
-      cells: footerRow('IGST', formatQtyAmount(totalTax, currency)),
-    });
-  }
+  const tableAmountTotal =
+    Number(totals.subtotal) || lineItems.reduce((s, it) => s + lineGrossAmount(it), 0);
 
+  /** Table footer: quantity + line gross total only — tax and grand total go in the summary block below. */
   itemTableRows.push({
     _height: itemRowH,
     cells: (() => {
-      const tableAmountTotal =
-        Number(totals.subtotal) ||
-        lineItems.reduce((s, it) => s + lineGrossAmount(it), 0);
       const cells = footerRow('Total', formatQtyAmount(tableAmountTotal, currency));
       cells[3] = {
         text: formatLineQty(sumQty(lineItems)),
@@ -727,9 +720,7 @@ function drawProformaInvoice(doc, ctx) {
 
   y = drawGridTable(doc, LEFT, y, itemCols, itemTableRows, itemRowH);
 
-  if (hasDiscount) {
-    y = drawProformaTotalsSummary(doc, y, totals, currency);
-  }
+  y = drawProformaTotalsSummary(doc, y, totals, currency);
 
   const wordsH = row.words;
   box(doc, LEFT, y, WIDTH, wordsH);

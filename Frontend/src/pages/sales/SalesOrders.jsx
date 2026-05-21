@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Card, Table, Button, Space, Modal, Form, Input, Select,
-  InputNumber, message, DatePicker, Tag,
+  Table, Button, Space, Modal, Form, Input, Select,
+  InputNumber, message, DatePicker, Tag, Tooltip, Avatar,
 } from "antd";
-import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined,
+  ReloadOutlined, ShoppingCartOutlined, FileTextOutlined, CheckCircleOutlined,
+  SendOutlined, CloseCircleOutlined,
+} from "@ant-design/icons";
 import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -20,12 +24,22 @@ import DocumentTotalsSummary from '../../components/business/DocumentTotalsSumma
 import CommercialExchangeRateField from '../../components/business/CommercialExchangeRateField';
 import { assertPdfBlob, printPdfBlob } from '../../utils/printPdfBlob';
 import DocumentMetaFields from '../../components/business/DocumentMetaFields';
+import InvoiceListStatCards from '../../components/business/InvoiceListStatCards';
 import {
   emptyDocumentMetaForm,
   formatDocumentMetaForApi,
 } from '../../constants/documentMetaFields';
 
 const DEFAULT_SO_LINE = { discountRate: 0, taxRateId: undefined };
+
+const SO_STATUS_CONFIG = {
+  draft: { color: 'default', label: 'Draft' },
+  confirmed: { color: 'processing', label: 'Confirmed' },
+  partially_shipped: { color: 'warning', label: 'Partial ship' },
+  shipped: { color: 'cyan', label: 'Shipped' },
+  delivered: { color: 'success', label: 'Delivered' },
+  cancelled: { color: 'error', label: 'Cancelled' },
+};
 
 const SalesOrders = () => {
   const { formatCurrency } = useCurrency();
@@ -200,27 +214,188 @@ const SalesOrders = () => {
     }
   };
 
+  const filteredSOs = useMemo(() => sos.filter((so) => {
+    const textMatch = !searchText
+      || so.so_number?.toLowerCase().includes(searchText.toLowerCase())
+      || so.customer_name?.toLowerCase().includes(searchText.toLowerCase());
+    const dateMatch = (!fromDate || !toDate) || (() => {
+      const d = new Date(so.order_date);
+      return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate();
+    })();
+    const statusMatch = !statusFilter || so.status === statusFilter;
+    return textMatch && dateMatch && statusMatch;
+  }), [sos, searchText, fromDate, toDate, statusFilter]);
+
+  const soStats = useMemo(() => {
+    const openStatuses = ['confirmed', 'partially_shipped', 'shipped'];
+    return {
+      total: sos.length,
+      draft: sos.filter((s) => s.status === 'draft').length,
+      open: sos.filter((s) => openStatuses.includes(s.status)).length,
+      cancelled: sos.filter((s) => s.status === 'cancelled').length,
+      value: sos.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0),
+    };
+  }, [sos]);
+
+  const statCards = useMemo(() => {
+    const cards = [
+      {
+        label: 'All orders',
+        value: soStats.total,
+        sub: 'Order value',
+        subValue: formatCurrency(soStats.value),
+        gradient: 'linear-gradient(135deg,#667eea,#764ba2)',
+        shadow: 'rgba(102,126,234,0.35)',
+        icon: <ShoppingCartOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      },
+      {
+        label: 'Draft',
+        value: soStats.draft,
+        sub: 'Awaiting confirm',
+        subValue: soStats.draft ? 'Action needed' : 'None',
+        gradient: 'linear-gradient(135deg,#f7971e,#ffd200)',
+        shadow: 'rgba(247,151,30,0.35)',
+        icon: <FileTextOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      },
+      {
+        label: 'In progress',
+        value: soStats.open,
+        sub: 'Confirmed / shipped',
+        subValue: `${soStats.open} active`,
+        gradient: 'linear-gradient(135deg,#11998e,#38ef7d)',
+        shadow: 'rgba(17,153,142,0.35)',
+        icon: <SendOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      },
+      {
+        label: 'Cancelled',
+        value: soStats.cancelled,
+        sub: 'Closed lost',
+        subValue: soStats.cancelled ? 'Review' : 'None',
+        gradient: 'linear-gradient(135deg,#f093fb,#f5576c)',
+        shadow: 'rgba(245,87,108,0.35)',
+        icon: <CloseCircleOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      },
+    ];
+    if (searchText || statusFilter || fromDate || toDate) {
+      cards.push({
+        label: 'Matching filters',
+        value: filteredSOs.length,
+        sub: 'In table below',
+        subValue: 'Filtered view',
+        gradient: 'linear-gradient(135deg,#4facfe,#00f2fe)',
+        shadow: 'rgba(79,172,254,0.35)',
+        icon: <SearchOutlined style={{ fontSize: 22, color: '#fff' }} />,
+      });
+    }
+    return cards;
+  }, [soStats, filteredSOs.length, searchText, statusFilter, fromDate, toDate, formatCurrency]);
+
+  const formatOrderDate = (d) => {
+    if (!d) return '—';
+    const m = moment(d);
+    return m.isValid() ? m.format('DD MMM YYYY') : '—';
+  };
+
   const columns = [
-    { title: "SO Number", dataIndex: "so_number", key: "so_number", width: 130, ellipsis: true },
-    { title: "Customer", dataIndex: "customer_name", key: "customer_name", width: 150, ellipsis: true },
-    { title: "Status", dataIndex: "status", key: "status", width: 100,
+    {
+      title: 'SO #',
+      dataIndex: 'so_number',
+      key: 'so_number',
+      width: 120,
+      render: (v) => (
+        <span style={{ fontWeight: 700, color: '#667eea', fontFamily: 'monospace' }}>{v}</span>
+      ),
+    },
+    {
+      title: 'Customer',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      ellipsis: true,
+      render: (name) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar size={32} style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', flexShrink: 0, fontSize: 13 }}>
+            {(name || '?').charAt(0).toUpperCase()}
+          </Avatar>
+          <span style={{ fontWeight: 500, color: '#1a1a2e' }}>{name || '—'}</span>
+        </div>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
       render: (status) => {
-        const colors = { draft: "gray", confirmed: "blue", shipped: "green", delivered: "green", cancelled: "red" };
-        return <span style={{ color: colors[status] || "black" }}>{status?.toUpperCase()}</span>;
+        const cfg = SO_STATUS_CONFIG[status] || { color: 'default', label: status };
+        return (
+          <Tag color={cfg.color} style={{ borderRadius: 20, fontWeight: 600, margin: 0 }}>
+            {cfg.label || status}
+          </Tag>
+        );
       },
     },
-    { title: "Total", dataIndex: "total_amount", key: "total_amount", width: 110,
-      render: (val, record) => formatCommercialDocAmount(val, record) },
-    { title: "Order Date", dataIndex: "order_date", key: "order_date", width: 110 },
     {
-      title: "Actions", key: "actions", width: 180,
+      title: 'Total',
+      dataIndex: 'total_amount',
+      key: 'total_amount',
+      width: 115,
+      align: 'right',
+      render: (val, record) => (
+        <span style={{ fontWeight: 600 }}>{formatCommercialDocAmount(val, record)}</span>
+      ),
+    },
+    {
+      title: 'Order date',
+      dataIndex: 'order_date',
+      key: 'order_date',
+      width: 115,
+      render: formatOrderDate,
+      sorter: (a, b) => new Date(a.order_date) - new Date(b.order_date),
+      defaultSortOrder: 'descend',
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 200,
       render: (_, record) => (
-        <Space size={4} wrap>
-          <Button size="small" onClick={() => viewSO(record)}>View</Button>
-          {record.status === "draft" && <Button size="small" type="primary" onClick={() => confirmSO(record)}>Confirm</Button>}
-          {record.status === "confirmed" && <Button size="small" onClick={() => shipSO(record)}>Ship</Button>}
-          {record.status === "draft" && <Button size="small" danger onClick={() => cancelSO(record)}>Cancel</Button>}
-        </Space>
+        <span onClick={(e) => e.stopPropagation()}>
+          <Space size={4} wrap>
+            {record.status === 'draft' && (
+              <Tooltip title="Confirm order">
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  onClick={(e) => { e.stopPropagation(); confirmSO(record); }}
+                >
+                  Confirm
+                </Button>
+              </Tooltip>
+            )}
+            {record.status === 'confirmed' && (
+              <Tooltip title="Mark as shipped">
+                <Button
+                  size="small"
+                  icon={<SendOutlined />}
+                  onClick={(e) => { e.stopPropagation(); shipSO(record); }}
+                >
+                  Ship
+                </Button>
+              </Tooltip>
+            )}
+            {record.status === 'draft' && (
+              <Tooltip title="Cancel order">
+                <Button
+                  size="small"
+                  danger
+                  onClick={(e) => { e.stopPropagation(); cancelSO(record); }}
+                >
+                  Cancel
+                </Button>
+              </Tooltip>
+            )}
+          </Space>
+        </span>
       ),
     },
   ];
@@ -487,37 +662,124 @@ const SalesOrders = () => {
   }, []);
 
   return (
-    <div style={{ padding: '16px' }}>
-      <h1 style={{ fontSize: '20px', marginBottom: 16 }}>Sales Orders</h1>
-      <Card>
-        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>Create SO</Button>
-          <Input placeholder="Search SO or customer..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: '100%', maxWidth: 220 }} allowClear />
-          <DatePicker placeholder="From Date" value={fromDate} onChange={date => setFromDate(date)} style={{ width: 140 }} allowClear />
-          <DatePicker placeholder="To Date" value={toDate} onChange={date => setToDate(date)} style={{ width: 140 }} allowClear />
-          <Select placeholder="All Statuses" value={statusFilter} onChange={val => setStatusFilter(val)} style={{ width: 150 }} allowClear>
-            <Select.Option value="draft">Draft</Select.Option>
-            <Select.Option value="confirmed">Confirmed</Select.Option>
-            <Select.Option value="shipped">Shipped</Select.Option>
-            <Select.Option value="delivered">Delivered</Select.Option>
-            <Select.Option value="cancelled">Cancelled</Select.Option>
+    <div style={{ padding: '16px 16px 32px', background: '#f5f6fa', minHeight: '100vh' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 12,
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          marginBottom: 20,
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              fontSize: 'clamp(18px,4vw,26px)',
+              fontWeight: 700,
+              margin: 0,
+              color: '#1a1a2e',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <ShoppingCartOutlined style={{ fontSize: 22, color: '#667eea' }} />
+            Sales Orders
+          </h1>
+          <p style={{ margin: '4px 0 0', color: '#888', fontSize: 13 }}>
+            Create and track customer orders — click a row to view details
+          </p>
+        </div>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          size="large"
+          onClick={openCreateModal}
+          style={{ borderRadius: 10, height: 42, fontWeight: 600 }}
+        >
+          Create SO
+        </Button>
+      </div>
+
+      <InvoiceListStatCards cards={statCards} />
+
+      <div
+        style={{
+          borderRadius: 16,
+          background: '#fff',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '16px 20px',
+            borderBottom: '1px solid #f0f0f0',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 10,
+            alignItems: 'center',
+          }}
+        >
+          <Input
+            placeholder="Search SO or customer..."
+            prefix={<SearchOutlined style={{ color: '#bbb' }} />}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            allowClear
+            style={{ width: 220, borderRadius: 8 }}
+          />
+          <DatePicker
+            placeholder="From date"
+            value={fromDate}
+            onChange={(date) => setFromDate(date)}
+            style={{ width: 130, borderRadius: 8 }}
+            allowClear
+          />
+          <DatePicker
+            placeholder="To date"
+            value={toDate}
+            onChange={(date) => setToDate(date)}
+            style={{ width: 130, borderRadius: 8 }}
+            allowClear
+          />
+          <Select
+            placeholder="All statuses"
+            value={statusFilter}
+            onChange={(val) => setStatusFilter(val)}
+            style={{ width: 150 }}
+            allowClear
+          >
+            {Object.entries(SO_STATUS_CONFIG).map(([value, cfg]) => (
+              <Select.Option key={value} value={value}>{cfg.label}</Select.Option>
+            ))}
           </Select>
-        </Space>
+          <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} style={{ borderRadius: 8 }}>
+            Refresh
+          </Button>
+        </div>
         <Table
           columns={columns}
-          dataSource={sos.filter(so => {
-            const textMatch = !searchText || so.so_number?.toLowerCase().includes(searchText.toLowerCase()) || so.customer_name?.toLowerCase().includes(searchText.toLowerCase());
-            const dateMatch = (!fromDate || !toDate) || (() => { const d = new Date(so.order_date); return d >= fromDate.startOf('day').toDate() && d <= toDate.endOf('day').toDate(); })();
-            const statusMatch = !statusFilter || so.status === statusFilter;
-            return textMatch && dateMatch && statusMatch;
-          })}
+          dataSource={filteredSOs}
           loading={loading}
           rowKey="id"
+          size="middle"
+          onRow={(record) => ({
+            onClick: () => viewSO(record),
+            style: { cursor: 'pointer' },
+          })}
+          rowClassName={(_, index) => (index % 2 === 0 ? 'table-row-light' : '')}
           scroll={{ x: 'max-content' }}
-          size="small"
-          pagination={{ size: 'small' }}
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} orders`,
+            size: 'small',
+          }}
         />
-      </Card>
+      </div>
 
       <Modal title="Create Sales Order" open={modalVisible} onCancel={() => { setModalVisible(false); setSelectedPriceListId(null); setPriceListItemMap({}); form.resetFields(); }} footer={null} width="min(800px, 96vw)" style={{ top: 16 }}>
         <Form form={form} layout="vertical" onFinish={handleCreateSO}>

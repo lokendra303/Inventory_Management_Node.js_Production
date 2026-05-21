@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown, Alert, Typography, Checkbox, Grid } from 'antd';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown, Alert, Typography, Checkbox } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, CheckOutlined, ThunderboltOutlined, SettingOutlined, ImportOutlined, DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
@@ -12,6 +12,7 @@ import { isOpeningStockReceipt, getInventoryLogReferenceDisplay } from '../../ut
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
 import ViewModeToggle from '../../components/common/ViewModeToggle';
 import ItemCatalogGrid from '../../components/inventory/ItemCatalogGrid';
+import CompositeBomSection from '../../components/inventory/CompositeBomSection';
 import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -26,19 +27,6 @@ const VARIANT_MATRIX_LABEL_STYLE = {
   color: '#64748b',
   textTransform: 'uppercase',
   letterSpacing: 0.4
-};
-const BOM_FIELD_LABEL_STYLE = {
-  fontSize: 11,
-  fontWeight: 700,
-  color: '#64748b',
-  textTransform: 'uppercase',
-  letterSpacing: 0.4,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  minHeight: 22,
-  lineHeight: '22px',
-  marginBottom: 8
 };
 const VARIANT_MATRIX_ACTION_STYLE = {
   padding: 0,
@@ -397,7 +385,6 @@ function buildItemsCsvTemplate() {
 }
 
 const Items = () => {
-  const screens = Grid.useBreakpoint();
   const location = useLocation();
   const { user, sessionSecondsLeft } = useAuth();
   const { currency } = useCurrency();
@@ -4776,7 +4763,7 @@ const viewItem = async (item) => {
                   </Col>
                   <Col xs={24} sm={8}>
                     <Form.Item name="category" label="Category">
-                    {canViewCategories ? (
+                      {canViewCategories ? (
                       <Select
                         placeholder={categories.length ? 'Select category' : 'Select or add a category'}
                         allowClear
@@ -4834,14 +4821,14 @@ const viewItem = async (item) => {
                           </Select.Option>
                         ))}
                       </Select>
-                    ) : (
-                      <Input placeholder="Enter category name" />
-                    )}
+                      ) : (
+                        <Input placeholder="Enter category name" />
+                      )}
                     </Form.Item>
                   </Col>
                   <Col xs={24} sm={8}>
                     <Form.Item name="unit" label="Unit" initialValue="pcs">
-                    <Select 
+                      <Select 
                       placeholder="Select unit"
                       allowClear
                       dropdownRender={(menu) => (
@@ -4956,194 +4943,12 @@ const viewItem = async (item) => {
                   </Col>
                 </Row>
                 {watchedItemType === 'composite' && (
-                  <div style={{ marginBottom: 16, border: '1px solid #e6e8f0', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
-                    <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                        BOM components ({compositeComponents.length})
-                        <Tooltip title="Bill of Materials: lists each part (existing SKU) that makes up one unit of this kit/composite parent.">
-                          <InfoCircleOutlined style={{ color: '#94a3b8', cursor: 'help' }} />
-                        </Tooltip>
-                      </span>
-                      <Button
-                        type="primary"
-                        onClick={() => setCompositeComponents((prev) => [...prev, { itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }])}
-                        style={{
-                          fontWeight: 600,
-                          background: '#4f46e5',
-                          borderColor: '#4338ca',
-                          color: '#fff',
-                          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
-                        }}
-                      >
-                        + Add component
-                      </Button>
-                    </div>
-                    <div
-                      style={{
-                        padding: '12px 14px',
-                        borderBottom: '1px solid #f0f0f0',
-                        background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
-                        fontSize: 12,
-                        color: '#475569',
-                        lineHeight: 1.65
-                      }}
-                    >
-                      <div style={{ fontWeight: 700, color: '#334155', marginBottom: 8 }}>What each field means</div>
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        <li>
-                          <AntText strong>Component item</AntText>
-                          {' — '}Pick another item already in your catalog (<AntText strong>simple</AntText> or <AntText strong>variant</AntText> only).
-                          It is not duplicated or overwritten; this row only defines the relationship to this kit.
-                        </li>
-                        <li style={{ marginTop: 6 }}>
-                          <AntText strong>Qty per 1 kit</AntText>
-                          {' — '}How many units of that component are consumed to build{' '}
-                          <AntText strong>one</AntText> unit of this parent (e.g. 4 screws per assembled panel).
-                          Scale mentally: selling 10 kits would need{' '}
-                          <AntText style={{ fontStyle: 'italic' }}>10 × qty</AntText> of each line.
-                        </li>
-                        <li style={{ marginTop: 6 }}>
-                          <AntText strong>Consume when</AntText>
-                          {' — '}When integrated fulfilment consumes component stock:&nbsp;
-                          <AntText strong>Shipment</AntText>
-                          {' '}when dispatching/leaving warehouse;{' '}
-                          <AntText strong>Order</AntText>
-                          {' '}when the sales order is placed or confirmed—use whichever matches how you allocate stock.
-                          (You can still sell components on their own; this table only drives the kit recipe.)
-                        </li>
-                      </ul>
-                    </div>
-                    {compositeComponents.length === 0 ? (
-                      <div style={{ padding: 14, fontSize: 13, color: '#64748b' }}>
-                        Add at least one row. Each row is one line on the BOM for this composite item.
-                      </div>
-                    ) : (
-                      <div style={{ maxHeight: 340, overflowY: 'auto', padding: '12px 14px 14px' }}>
-                        {compositeComponents.map((row, idx) => {
-                          const controlTopOffset = 22 + 8; // label minHeight + marginBottom — aligns delete with inputs on sm+
-                          const deletePaddingTop = screens.sm ? controlTopOffset : 0;
-                          return (
-                            <div
-                              key={`bom-${idx}`}
-                              style={{
-                                marginBottom: idx < compositeComponents.length - 1 ? 16 : 0,
-                                paddingBottom: idx < compositeComponents.length - 1 ? 16 : 0,
-                                borderBottom: idx < compositeComponents.length - 1 ? '1px solid #f1f5f9' : 'none',
-                              }}
-                            >
-                              <Row gutter={16} align="top">
-                                <Col xs={24} sm={11} style={{ flex: '1 1 0', minWidth: 0 }}>
-                                  <div style={BOM_FIELD_LABEL_STYLE}>
-                                    Component item
-                                    <Tooltip title="Search by SKU or name. Cannot be another composite or a service item.">
-                                      <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
-                                    </Tooltip>
-                                  </div>
-                                  <Select
-                                    showSearch
-                                    optionFilterProp="children"
-                                    value={row.itemId || undefined}
-                                    placeholder="Select item — part of this kit"
-                                    popupMatchSelectWidth={false}
-                                    style={{ width: '100%', display: 'block' }}
-                                    size="middle"
-                                    onChange={(value) =>
-                                      setCompositeComponents((prev) => prev.map((x, i) => (i === idx ? { ...x, itemId: value } : x)))
-                                    }
-                                  >
-                                    {items
-                                      .filter((itemRow) => itemRow.id !== editingItem?.id && itemRow.status === 'active')
-                                      .map((itemRow) => (
-                                        <Select.Option key={itemRow.id} value={itemRow.id}>
-                                          <span>{itemRow.sku}</span>
-                                          {' — '}
-                                          <span style={{ color: '#64748b' }}>{itemRow.name}</span>
-                                        </Select.Option>
-                                      ))}
-                                  </Select>
-                                </Col>
-                                <Col xs={12} sm={6}>
-                                  <div style={BOM_FIELD_LABEL_STYLE}>
-                                    Qty per 1 kit
-                                    <Tooltip title="Whole-number or fractional quantities allowed (e.g. 0.5 kg per kit).">
-                                      <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
-                                    </Tooltip>
-                                  </div>
-                                  <InputNumber
-                                    min={0.0001}
-                                    step={0.0001}
-                                    style={{ width: '100%' }}
-                                    size="middle"
-                                    value={row.quantityRequired}
-                                    placeholder="e.g. 1"
-                                    onChange={(value) =>
-                                      setCompositeComponents((prev) => prev.map((x, i) => (i === idx ? { ...x, quantityRequired: value } : x)))
-                                    }
-                                  />
-                                </Col>
-                                <Col xs={12} sm={5}>
-                                  <div style={BOM_FIELD_LABEL_STYLE}>
-                                    Consume when
-                                    <Tooltip title="Shipment: consume when goods ship. Order: consume at order/booking stage. Pick what matches your process.">
-                                      <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
-                                    </Tooltip>
-                                  </div>
-                                  <Select
-                                    value={row.consumptionTiming || 'shipment'}
-                                    style={{ width: '100%', display: 'block' }}
-                                    size="middle"
-                                    onChange={(value) =>
-                                      setCompositeComponents((prev) => prev.map((x, i) => (i === idx ? { ...x, consumptionTiming: value } : x)))
-                                    }
-                                    options={[
-                                      { value: 'shipment', label: 'Shipment' },
-                                      { value: 'order', label: 'Order' }
-                                    ]}
-                                  />
-                                </Col>
-                                <Col
-                                  xs={24}
-                                  sm={2}
-                                  style={{
-                                    flex: '0 0 auto',
-                                    width: 48,
-                                    maxWidth: screens.sm ? 48 : undefined,
-                                    display: 'flex',
-                                    justifyContent: screens.sm ? 'center' : 'flex-end',
-                                    paddingTop: deletePaddingTop,
-                                  }}
-                                >
-                                  <Tooltip title="Remove this BOM line">
-                                    <Button
-                                      danger
-                                      type="text"
-                                      size="middle"
-                                      aria-label={`Remove BOM row ${idx + 1}`}
-                                      icon={<DeleteOutlined />}
-                                      onClick={() => setCompositeComponents((prev) => prev.filter((_, i) => i !== idx))}
-                                    />
-                                  </Tooltip>
-                                </Col>
-                              </Row>
-                              <div
-                                style={{
-                                  fontSize: 11,
-                                  color: '#94a3b8',
-                                  marginTop: 8,
-                                  lineHeight: 1.4,
-                                  paddingLeft: 0,
-                                  clear: 'both',
-                                }}
-                              >
-                                <AntText type="secondary">Consume when:</AntText>{' '}
-                                Shipment = dispatch gate · Order = earlier commitment (matches the dropdown in this row).
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <CompositeBomSection
+                    components={compositeComponents}
+                    onComponentsChange={setCompositeComponents}
+                    catalogItems={items}
+                    excludeItemId={editingItem?.id}
+                  />
                 )}
                 <Row gutter={16}>
                   <Col span={24}>
