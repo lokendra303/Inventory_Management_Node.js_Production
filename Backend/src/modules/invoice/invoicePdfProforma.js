@@ -185,7 +185,6 @@ function drawGridTableRowCells(doc, x, cy, colWidths, rowDef, defaultRowH) {
       height: textH,
       align: cell.align || 'left',
       lineGap: 0.35,
-      ellipsis: true,
     });
     cellX += cw;
   });
@@ -232,18 +231,25 @@ function drawGridTableBodyPlain(doc, x, y, colWidths, rows, defaultRowH = row.it
   return y + bodyH;
 }
 
-/** Item blank area (vertical lines only); grows into spare page space above totals/footer. */
-const PROFORMA_MIN_BODY_ROWS = 7;
-const PROFORMA_MAX_BLANK_ROWS = 16;
+/** Max row height for a single line item (description wrap). */
+const PROFORMA_ITEM_ROW_MAX_H = 64;
+
 
 /** Compact blocks below item table (proforma-only; smaller than shared `row.*`). */
-const PROFORMA_WORDS_H = 18;
-const PROFORMA_TAX_WORDS_H = 15;
+const PROFORMA_WORDS_MIN_H = 18;
+const PROFORMA_TAX_WORDS_MIN_H = 15;
+const PROFORMA_WORDS_PAD_H = 4;
+const PROFORMA_WORDS_GAP = 2;
+const PROFORMA_WORDS_EOE_W = 46;
 const PROFORMA_FOOTER_MIN_H = 50;
 
 /** A4 page height (pt). */
 const PAGE_H = 841.89;
 const PAGE_BOTTOM = PAGE_H - T.MARGIN - 8;
+
+/** Proforma title sits closer to the top edge than the generic page margin. */
+const PROFORMA_TOP_Y = 10;
+const PROFORMA_TITLE_BAND_H = 20;
 
 /** Blank rows below line items: vertical guides only (no horizontal row lines). */
 function drawProformaBlankBody(doc, x, y, colWidths, h) {
@@ -268,28 +274,146 @@ function measureProformaFooterBoxHeight(bankRows) {
   return Math.min(58, Math.max(PROFORMA_FOOTER_MIN_H, 44 + bankLines * 8));
 }
 
+function proformaCurrencyLabel(currency) {
+  return String(currency || 'INR').toUpperCase() === 'INR' ? 'INR' : currency;
+}
+
+function proformaWordsInnerWidth() {
+  return WIDTH - 10;
+}
+
+function proformaWordsLabelWidth() {
+  return WIDTH - PROFORMA_WORDS_EOE_W - 14;
+}
+
+/** Stacked: label row (full width) + wrapped amount text row — avoids breaking "(in words)". */
+function measureProformaAmountWordsRowHeight(doc, amountWords, currency) {
+  const innerW = proformaWordsInnerWidth();
+  const labelW = proformaWordsLabelWidth();
+  const labelText = 'Amount Chargeable (in words)';
+  const valueBody = String(amountWords || '').trim();
+  const ccyLabel = proformaCurrencyLabel(currency);
+  const valueText = valueBody ? `${ccyLabel} ${valueBody}` : '';
+
+  doc.fontSize(size.wordsLabel).font(FONT_BOLD);
+  const labelH = doc.heightOfString(labelText, { width: labelW, lineGap: 0.15 });
+  let valueH = 0;
+  if (valueText) {
+    doc.fontSize(size.wordsBody).font(FONT);
+    valueH = doc.heightOfString(valueText, { width: innerW, lineGap: 0.25 });
+  }
+  const bodyH = labelH + (valueText ? PROFORMA_WORDS_GAP + valueH : 0);
+  return Math.max(PROFORMA_WORDS_MIN_H, PROFORMA_WORDS_PAD_H * 2 + bodyH);
+}
+
+/** Stacked label + tax amount in words (same layout as chargeable row). */
+function measureProformaTaxWordsRowHeight(doc, taxAmount, currency) {
+  const innerW = proformaWordsInnerWidth();
+  const labelW = proformaWordsLabelWidth();
+  const labelText = 'Tax Amount (in words)';
+  const taxWords = invoiceTemplateService.convertAmountToWords(Number(taxAmount) || 0, currency);
+  const valueText = `${proformaCurrencyLabel(currency)} ${taxWords}`;
+
+  doc.fontSize(size.wordsLabel).font(FONT_BOLD);
+  const labelH = doc.heightOfString(labelText, { width: labelW, lineGap: 0.15 });
+  doc.fontSize(size.wordsBody).font(FONT);
+  const valueH = doc.heightOfString(valueText, { width: innerW, lineGap: 0.25 });
+  return Math.max(PROFORMA_TAX_WORDS_MIN_H, PROFORMA_WORDS_PAD_H * 2 + labelH + PROFORMA_WORDS_GAP + valueH);
+}
+
+function sumTaxFromLineItems(lineItems) {
+  return buildHsnTaxSummary(lineItems).reduce((sum, row) => sum + (Number(row.tax) || 0), 0);
+}
+
 /** Height of all blocks drawn after the item table (summary, words, HSN grid, footer). */
-function measureProformaBelowItemTableHeight(totals, lineItems, bankRows) {
+function measureProformaBelowItemTableHeight(doc, totals, lineItems, bankRows, currency) {
   const taxRows = buildHsnTaxSummary(lineItems).length;
   const taxTableH = row.taxHead1 + row.taxHead2 + taxRows * row.taxData + row.taxData;
+  const amountWords = (totals?.amountInWords || '').trim();
   return (
     measureProformaTotalsSummaryHeight(totals) +
-    PROFORMA_WORDS_H +
+    measureProformaAmountWordsRowHeight(doc, amountWords, currency) +
     taxTableH +
-    PROFORMA_TAX_WORDS_H +
+    measureProformaTaxWordsRowHeight(doc, sumTaxFromLineItems(lineItems), currency) +
     measureProformaFooterBoxHeight(bankRows) +
     8
   );
 }
 
-/** Blank body: use spare page space (min 7 rows, max 16), still fits footer blocks on page 1. */
-function computeProformaItemBlankHeight(itemStartY, headerH, bodyContentH, itemFooterRowH, defaultRowH, totals, lineItems, bankRows) {
-  const belowH = measureProformaBelowItemTableHeight(totals, lineItems, bankRows);
+/**
+ * Use spare page space to grow rows that need taller cells (long descriptions) first.
+ * Remaining slack is returned as item-table blank filler (see computeProformaItemBlankHeight).
+ */
+function expandProformaItemRowsWithAvailableSpace(doc, tableRows, colWidths, defaultRowH, ctx) {
+  if (!tableRows || tableRows.length < 3) return;
+  const footerIdx = tableRows.length - 1;
+  const headerH = tableRows[0]._height || row.itemHeader;
+  const footerH = tableRows[footerIdx]._height || defaultRowH;
+  let bodyH = 0;
+  for (let i = 1; i < footerIdx; i++) {
+    bodyH += tableRows[i]._height || defaultRowH;
+  }
+  const belowH = measureProformaBelowItemTableHeight(
+    doc,
+    ctx.totals,
+    ctx.lineItems,
+    ctx.bankRows,
+    ctx.currency
+  );
+  const slack = PAGE_BOTTOM - belowH - ctx.itemStartY - headerH - bodyH - footerH;
+  if (slack <= 1) return;
+
+  const extras = [];
+  let totalWant = 0;
+  for (let i = 1; i < footerIdx; i++) {
+    const wantH = measureItemRowHeight(doc, tableRows[i].cells, colWidths, defaultRowH);
+    const cur = tableRows[i]._height || defaultRowH;
+    const extra = Math.max(0, wantH - cur);
+    extras.push(extra);
+    totalWant += extra;
+  }
+  if (totalWant <= 0) return;
+
+  let budget = Math.min(slack, totalWant);
+  for (let i = 1; i < footerIdx; i++) {
+    const extra = extras[i - 1];
+    if (extra <= 0 || budget <= 0) continue;
+    const add = Math.min(extra, Math.ceil((extra / totalWant) * budget));
+    tableRows[i]._height = (tableRows[i]._height || defaultRowH) + add;
+    budget -= add;
+  }
+  for (let i = 1; i < footerIdx && budget > 0; i++) {
+    if (extras[i - 1] <= 0) continue;
+    const cur = tableRows[i]._height || defaultRowH;
+    const cap = measureItemRowHeight(doc, tableRows[i].cells, colWidths, defaultRowH);
+    const room = Math.max(0, cap - cur);
+    const add = Math.min(room, budget);
+    if (add > 0) {
+      tableRows[i]._height = cur + add;
+      budget -= add;
+    }
+  }
+}
+
+/**
+ * Blank area between last line item and Total row — fills remaining page 1 space
+ * after rows are sized for content (single-page layout when items fit).
+ */
+function computeProformaItemBlankHeight(
+  itemStartY,
+  headerH,
+  bodyContentH,
+  itemFooterRowH,
+  totals,
+  lineItems,
+  bankRows,
+  doc,
+  currency
+) {
+  const belowH = measureProformaBelowItemTableHeight(doc, totals, lineItems, bankRows, currency);
   const fixedH = headerH + bodyContentH + itemFooterRowH;
-  const availableBlank = PAGE_BOTTOM - belowH - itemStartY - fixedH;
-  const minBlankH = Math.max(0, PROFORMA_MIN_BODY_ROWS * defaultRowH - bodyContentH);
-  const maxBlankH = Math.max(minBlankH, PROFORMA_MAX_BLANK_ROWS * defaultRowH - bodyContentH);
-  return Math.max(minBlankH, Math.min(maxBlankH, Math.max(0, availableBlank)));
+  const slack = PAGE_BOTTOM - belowH - itemStartY - fixedH;
+  return Math.max(0, slack);
 }
 
 function drawProformaItemTable(doc, x, y, colWidths, headerRows, bodyRows, footerRows, defaultRowH, blankH) {
@@ -329,8 +453,8 @@ function sumQty(lineItems) {
   return (lineItems || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0);
 }
 
-function measureItemRowHeight(doc, cells, colWidths, minH = row.itemDefault) {
-  let maxH = minH;
+function measureItemRowHeight(doc, cells, colWidths, minH = row.itemDefault, maxH = PROFORMA_ITEM_ROW_MAX_H) {
+  let rowH = minH;
   cells.forEach((cell, i) => {
     const cw = colWidths[i] || colWidths[colWidths.length - 1];
     const fs = cell.fontSize ?? (cell.bold ? size.tableHead : size.tableBody);
@@ -338,9 +462,9 @@ function measureItemRowHeight(doc, cells, colWidths, minH = row.itemDefault) {
     const text = String(cell.text ?? '');
     if (!text) return;
     const h = doc.heightOfString(text, { width: cw - pad.cell * 2, lineGap: 0.35 });
-    maxH = Math.max(maxH, Math.ceil(h) + 10);
+    rowH = Math.max(rowH, Math.ceil(h) + pad.tableTop + 6);
   });
-  return Math.min(maxH, 40);
+  return Math.min(rowH, maxH);
 }
 
 function invoiceHasDiscount(lineItems, totals) {
@@ -581,7 +705,7 @@ function drawProformaInvoice(doc, ctx) {
   const partyGst = party.taxInfo?.gstin || '';
   const partyState = gstStateFromGstin(partyGst, party.billingAddress?.state);
 
-  let y = T.MARGIN + 6;
+  let y = PROFORMA_TOP_Y;
 
   const titleRowY = y;
   doc.fontSize(size.title).font(FONT_BOLD).fillColor('#1a1a1a').text(docTitle, LEFT, titleRowY, {
@@ -592,8 +716,7 @@ function drawProformaInvoice(doc, ctx) {
     width: WIDTH - 4,
     align: 'right',
   });
-  const titleBandH = 24;
-  y = titleRowY + titleBandH;
+  y = titleRowY + PROFORMA_TITLE_BAND_H;
 
   const metaW = Math.round(WIDTH * 0.44);
   const sellerW = WIDTH - metaW;
@@ -602,8 +725,8 @@ function drawProformaInvoice(doc, ctx) {
   const metaColWidths = [halfMeta, halfMeta];
   const metaGridRows = buildTallyMetaGridRows(standardInvoice, party);
 
-  /** Full-width rows: "Label: value" on one line; two-column rows: heading + value below. */
-  const metaGridOptions = { inlineSingleColumn: true };
+  /** Stacked label + wrapped value so long references/terms expand row height dynamically. */
+  const metaGridOptions = {};
   metaGridRows.forEach((row) => {
     const cols = row.cells.length === 1 ? [metaW] : metaColWidths;
     const rowOpts = metaRowLayoutOptions(metaGridOptions, row.cells.length);
@@ -826,62 +949,103 @@ function drawProformaInvoice(doc, ctx) {
     })(),
   });
 
-  const itemCols = computeProformaItemColWidths(doc, itemTableRows, hasDiscount);
-  remeasureProformaTableRows(doc, itemTableRows, itemCols, itemRowH);
-
-  const headerRows = itemTableRows.slice(0, 1);
-  const footerRows = itemTableRows.slice(-1);
-  const bodyRows = itemTableRows.slice(1, -1);
-  const headerH = headerRows.reduce((s, r) => s + (r._height || itemRowH), 0);
-  const bodyContentH = bodyRows.reduce((s, r) => s + (r._height || itemRowH), 0);
-  const itemFooterRowH = footerRows.reduce((s, r) => s + (r._height || itemRowH), 0);
   const bankRowsForMeasure = isSales
     ? buildCompanyBankRows({
         ...companySettings,
         company_name: companySettings?.company_name || cs.companyName,
       })
     : buildVendorBankRows(party);
-  const blankH = computeProformaItemBlankHeight(
-    y,
-    headerH,
-    bodyContentH,
-    itemFooterRowH,
-    itemRowH,
+
+  const itemCols = computeProformaItemColWidths(doc, itemTableRows, hasDiscount);
+  remeasureProformaTableRows(doc, itemTableRows, itemCols, itemRowH);
+  expandProformaItemRowsWithAvailableSpace(doc, itemTableRows, itemCols, itemRowH, {
+    itemStartY: y,
     totals,
     lineItems,
-    bankRowsForMeasure
-  );
-  const itemTableH = headerH + bodyContentH + blankH + itemFooterRowH;
+    bankRows: bankRowsForMeasure,
+    currency,
+  });
 
-  if (y + itemTableH > PAGE_BOTTOM - measureProformaBelowItemTableHeight(totals, lineItems, bankRowsForMeasure)) {
+  const headerRows = itemTableRows.slice(0, 1);
+  const footerRows = itemTableRows.slice(-1);
+  const bodyRows = itemTableRows.slice(1, -1);
+  const headerH = headerRows.reduce((s, r) => s + (r._height || itemRowH), 0);
+  const itemFooterRowH = footerRows.reduce((s, r) => s + (r._height || itemRowH), 0);
+  let bodyContentHAdj = bodyRows.reduce((s, r) => s + (r._height || itemRowH), 0);
+  let blankH = computeProformaItemBlankHeight(
+    y,
+    headerH,
+    bodyContentHAdj,
+    itemFooterRowH,
+    totals,
+    lineItems,
+    bankRowsForMeasure,
+    doc,
+    currency
+  );
+  let itemTableH = headerH + bodyContentHAdj + blankH + itemFooterRowH;
+
+  if (
+    y + itemTableH >
+    PAGE_BOTTOM - measureProformaBelowItemTableHeight(doc, totals, lineItems, bankRowsForMeasure, currency)
+  ) {
     doc.addPage();
-    y = T.MARGIN + 20;
+    y = PROFORMA_TOP_Y + 8;
+    expandProformaItemRowsWithAvailableSpace(doc, itemTableRows, itemCols, itemRowH, {
+      itemStartY: y,
+      totals,
+      lineItems,
+      bankRows: bankRowsForMeasure,
+      currency,
+    });
+    bodyContentHAdj = bodyRows.reduce((s, r) => s + (r._height || itemRowH), 0);
+    blankH = computeProformaItemBlankHeight(
+      y,
+      headerH,
+      bodyContentHAdj,
+      itemFooterRowH,
+      totals,
+      lineItems,
+      bankRowsForMeasure,
+      doc,
+      currency
+    );
+    itemTableH = headerH + bodyContentHAdj + blankH + itemFooterRowH;
   }
 
-  const blankHFinal = computeProformaItemBlankHeight(
-    y,
-    headerH,
-    bodyContentH,
-    itemFooterRowH,
-    itemRowH,
-    totals,
-    lineItems,
-    bankRowsForMeasure
-  );
+  const blankHFinal = blankH;
+  bodyContentHAdj = bodyRows.reduce((s, r) => s + (r._height || itemRowH), 0);
   y = drawProformaItemTable(doc, LEFT, y, itemCols, headerRows, bodyRows, footerRows, itemRowH, blankHFinal);
 
   y = drawProformaTotalsSummary(doc, y, totals, currency);
 
-  box(doc, LEFT, y, WIDTH, PROFORMA_WORDS_H);
   const amountWords = (totals.amountInWords || '').trim();
-  const ccyLabel = String(currency).toUpperCase() === 'INR' ? 'INR' : currency;
-  doc.fontSize(size.wordsLabel).font(FONT_BOLD).fillColor('#1a1a1a').text('Amount Chargeable (in words)', LEFT + 5, y + 4);
-  doc.fontSize(size.wordsBody).font(FONT).fillColor('#000000').text(`${ccyLabel} ${amountWords}`, LEFT + 120, y + 4, {
-    width: WIDTH - 200,
-    lineGap: 0.25,
+  const amountWordsH = measureProformaAmountWordsRowHeight(doc, amountWords, currency);
+  const innerW = proformaWordsInnerWidth();
+  const labelW = proformaWordsLabelWidth();
+  const ccyLabel = proformaCurrencyLabel(currency);
+  const amountValueText = amountWords ? `${ccyLabel} ${amountWords}` : '';
+
+  box(doc, LEFT, y, WIDTH, amountWordsH);
+  let amountTy = y + PROFORMA_WORDS_PAD_H;
+  doc.fontSize(size.wordsLabel).font(FONT_BOLD).fillColor('#1a1a1a');
+  const labelLineH = doc.heightOfString('Amount Chargeable (in words)', { width: labelW, lineGap: 0.15 });
+  doc.text('Amount Chargeable (in words)', LEFT + 5, amountTy, { width: labelW, lineGap: 0.15 });
+  doc.fontSize(size.footerSmall).fillColor('#000000').text('E. & O.E', RIGHT - PROFORMA_WORDS_EOE_W, amountTy, {
+    width: PROFORMA_WORDS_EOE_W - 6,
+    align: 'right',
   });
-  doc.fontSize(size.footerSmall).text('E. & O.E', RIGHT - 46, y + 4, { width: 40, align: 'right' });
-  y += PROFORMA_WORDS_H;
+  amountTy += labelLineH + PROFORMA_WORDS_GAP;
+  if (amountValueText) {
+    doc.fontSize(size.wordsBody).font(FONT).fillColor('#000000');
+    doc.text(amountValueText, LEFT + 5, amountTy, {
+      width: innerW,
+      lineGap: 0.25,
+      height: Math.max(6, y + amountWordsH - PROFORMA_WORDS_PAD_H - amountTy),
+      ellipsis: true,
+    });
+  }
+  y += amountWordsH;
 
   const taxSummary = buildHsnTaxSummary(lineItems);
   /** HSN | Taxable | IGST (Rate | Amount) — no separate Total Tax column (same as IGST when single tax). */
@@ -948,11 +1112,24 @@ function drawProformaInvoice(doc, ctx) {
   doc.text(pdfAmount(sumTax, currency), tx3 + taxColW[2] + 2, ty + 3, { width: taxColW[3] - 4, align: 'right' });
   y += taxTableH;
 
-  box(doc, LEFT, y, WIDTH, PROFORMA_TAX_WORDS_H);
+  const taxWordsH = measureProformaTaxWordsRowHeight(doc, sumTax, currency);
   const taxWords = invoiceTemplateService.convertAmountToWords(sumTax, currency);
-  doc.fontSize(size.wordsLabel).font(FONT_BOLD).fillColor('#1a1a1a').text('Tax Amount (in words):', LEFT + 5, y + 3);
-  doc.fontSize(size.wordsBody).font(FONT).text(`${ccyLabel} ${taxWords}`, LEFT + 112, y + 3, { width: WIDTH - 118, lineGap: 0.25 });
-  y += PROFORMA_TAX_WORDS_H;
+  const taxValueText = `${ccyLabel} ${taxWords}`;
+
+  box(doc, LEFT, y, WIDTH, taxWordsH);
+  let taxTy = y + PROFORMA_WORDS_PAD_H;
+  doc.fontSize(size.wordsLabel).font(FONT_BOLD).fillColor('#1a1a1a');
+  const taxLabelH = doc.heightOfString('Tax Amount (in words)', { width: labelW, lineGap: 0.15 });
+  doc.text('Tax Amount (in words)', LEFT + 5, taxTy, { width: labelW, lineGap: 0.15 });
+  taxTy += taxLabelH + PROFORMA_WORDS_GAP;
+  doc.fontSize(size.wordsBody).font(FONT).fillColor('#000000');
+  doc.text(taxValueText, LEFT + 5, taxTy, {
+    width: innerW,
+    lineGap: 0.25,
+    height: Math.max(6, y + taxWordsH - PROFORMA_WORDS_PAD_H - taxTy),
+    ellipsis: true,
+  });
+  y += taxWordsH;
 
   const bankTitle = isSales ? "Company's Bank Details:" : "Vendor's Bank Details:";
   const bankRows = bankRowsForMeasure;
