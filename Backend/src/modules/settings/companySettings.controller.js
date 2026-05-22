@@ -12,6 +12,12 @@ const {
   normalizeDocType,
 } = require('../../utils/pdfFooterOptions');
 
+function normalizeTaxId(taxId) {
+  if (taxId == null || taxId === '') return null;
+  const normalized = String(taxId).trim().toUpperCase();
+  return normalized || null;
+}
+
 class CompanySettingsController {
   async getInstitutionProfile(institutionId) {
     const [profile] = await db.query(
@@ -93,7 +99,9 @@ class CompanySettingsController {
         address: profile?.address ?? null,
         phone: profile?.phone ?? null,
         email: profile?.email ?? null,
-        tax_id: (profile?.tax_id && String(profile.tax_id).trim()) || institutionTaxId || null,
+        tax_id: normalizeTaxId(
+          (profile?.tax_id && String(profile.tax_id).trim()) || institutionTaxId || null
+        ),
         bank_name: profile?.bank_name ?? null,
         account_holder_name: profile?.account_holder_name ?? null,
         account_number: profile?.account_number ?? null,
@@ -165,8 +173,8 @@ class CompanySettingsController {
       const email = b.email !== undefined ? b.email : pf.email;
       const taxId =
         b.taxId !== undefined
-          ? (b.taxId && String(b.taxId).trim()) || null
-          : pf.tax_id ?? null;
+          ? normalizeTaxId(b.taxId)
+          : normalizeTaxId(pf.tax_id) ?? null;
       const bankName = b.bankName !== undefined ? b.bankName : pf.bank_name;
       const accountHolderName =
         b.accountHolderName !== undefined ? b.accountHolderName : pf.account_holder_name;

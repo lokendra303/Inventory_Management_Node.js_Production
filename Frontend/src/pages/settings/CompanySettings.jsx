@@ -82,7 +82,7 @@ const CompanySettings = () => {
           address: response.data.address || '',
           phone: response.data.phone,
           email: response.data.email,
-          taxId: response.data.tax_id || '',
+          taxId: (response.data.tax_id || '').toUpperCase(),
           bankName: response.data.bank_name,
           accountHolderName: response.data.account_holder_name || '',
           accountNumber: response.data.account_number,
@@ -148,6 +148,9 @@ const CompanySettings = () => {
   const handleSaveSettings = async () => {
     try {
       const values = await form.validateFields();
+      if (values.taxId) {
+        values.taxId = String(values.taxId).trim().toUpperCase();
+      }
       setLoading(true);
       const response = await apiService.put('/company-settings', values);
       if (response.success) {
@@ -433,8 +436,14 @@ const CompanySettings = () => {
               name="taxId"
               label="GSTIN / Tax ID"
               extra="Shown on invoice PDF header and seller block (GSTIN/UIN)."
+              normalize={(value) => (value ? String(value).trim().toUpperCase() : value)}
             >
-              <Input placeholder="e.g. 27AAAAA0000A1Z5" allowClear maxLength={15} />
+              <Input
+                placeholder="e.g. 27AAAAA0000A1Z5"
+                allowClear
+                maxLength={15}
+                style={{ textTransform: 'uppercase' }}
+              />
             </Form.Item>
           </Col>
           <Col span={24}>
