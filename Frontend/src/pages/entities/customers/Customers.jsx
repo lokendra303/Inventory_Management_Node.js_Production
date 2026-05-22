@@ -23,6 +23,7 @@ import {
   MailOutlined,
   PhoneOutlined,
   ReloadOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import apiService from '../../../services/apiService';
@@ -64,7 +65,8 @@ const Customers = () => {
           customer.display_name?.toLowerCase().includes(searchText.toLowerCase()) ||
           customer.company_name?.toLowerCase().includes(searchText.toLowerCase()) ||
           customer.email?.toLowerCase().includes(searchText.toLowerCase()) ||
-          customer.customer_code?.toLowerCase().includes(searchText.toLowerCase())
+          customer.customer_code?.toLowerCase().includes(searchText.toLowerCase()) ||
+          customer.gstin?.toLowerCase().includes(searchText.toLowerCase())
       ),
     [customers, searchText]
   );
@@ -222,6 +224,20 @@ const Customers = () => {
           <Tag style={{ borderRadius: 6, fontFamily: 'monospace', margin: 0 }}>{code}</Tag>
         ) : (
           '—'
+        ),
+    },
+    {
+      title: 'GSTIN',
+      dataIndex: 'gstin',
+      key: 'gstin',
+      width: 160,
+      render: (gstin) =>
+        gstin ? (
+          <Tag icon={<IdcardOutlined />} style={{ borderRadius: 6, margin: 0, fontFamily: 'monospace' }}>
+            {gstin}
+          </Tag>
+        ) : (
+          <span style={{ color: '#bbb' }}>—</span>
         ),
     },
     {

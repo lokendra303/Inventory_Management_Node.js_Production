@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const { normalizeGstin } = require('../../utils/gstinUtils');
 
 /**
  * VendorService - Handles vendor management with normalized database structure
@@ -16,11 +17,22 @@ const logger = require('../../utils/logger');
  * - Easier to maintain and extend
  */
 class VendorService {
+  async ensureColumns() {
+    try {
+      await db.query(
+        "ALTER TABLE vendors ADD COLUMN gstin VARCHAR(20) NULL COMMENT 'GST identification number' AFTER pan"
+      );
+    } catch (e) {
+      if (e.errno !== 1060) throw e;
+    }
+  }
+
   /**
    * Create a new vendor with addresses and bank details
    * Uses database transaction to ensure data consistency
    */
   async createVendor(institutionId, vendorData, userId) {
+    await this.ensureColumns();
     return await db.transaction(async (connection) => {
       const vendorId = uuidv4();
       const finalVendorCode = vendorData.vendorCode || `VEN-${Date.now()}`;
@@ -34,7 +46,8 @@ class VendorService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
         [vendorId, institutionId, finalVendorCode, vendorData.displayName, vendorData.companyName, 
          vendorData.salutation, vendorData.firstName, vendorData.lastName, vendorData.email, 
-         vendorData.workPhone, vendorData.mobilePhone, vendorData.pan, vendorData.gstin, 
+         vendorData.workPhone, vendorData.mobilePhone, vendorData.pan,
+         normalizeGstin(vendorData.gstin), 
          vendorData.msmeRegistered ? 1 : 0, vendorData.currency, vendorData.paymentTerms, 
          vendorData.tds, vendorData.websiteUrl, vendorData.department, vendorData.designation, 
          vendorData.remarks]
@@ -81,6 +94,7 @@ class VendorService {
    * Uses replace strategy: deletes existing addresses/bank details and recreates them
    */
   async updateVendor(institutionId, vendorId, updateData, userId) {
+    await this.ensureColumns();
     return await db.transaction(async (connection) => {
       const updateFields = [];
       const updateValues = [];
@@ -110,7 +124,10 @@ class VendorService {
         if (updateData[field] !== undefined) {
           const dbField = fieldMapping[field] || field;
           updateFields.push(`${dbField} = ?`);
-          updateValues.push(field === 'msmeRegistered' ? (updateData[field] ? 1 : 0) : updateData[field]);
+          let value = updateData[field];
+          if (field === 'msmeRegistered') value = updateData[field] ? 1 : 0;
+          else if (field === 'gstin') value = normalizeGstin(updateData[field]);
+          updateValues.push(value);
         }
       }
 

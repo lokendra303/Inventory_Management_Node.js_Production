@@ -19,6 +19,7 @@ import { UploadOutlined, InfoCircleOutlined, LinkOutlined } from '@ant-design/ic
 import { useNavigate } from 'react-router-dom';
 import apiService from '../../../services/apiService';
 import { copyBillingToShipping } from '../../../utils/addressFormUtils';
+import { GstinFormField } from '../../../components/entities/GstinFormField';
 
 const NewVendor = () => {
   const [form] = Form.useForm();
@@ -312,6 +313,9 @@ const NewVendor = () => {
                           }}
                         />
                       </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <GstinFormField partyType="vendor" />
                     </Col>
                   </Row>
 

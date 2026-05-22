@@ -21,6 +21,7 @@ import { UploadOutlined, InfoCircleOutlined, LinkOutlined, ArrowLeftOutlined } f
 import { useNavigate, useParams } from 'react-router-dom';
 import apiService from '../../../services/apiService';
 import { copyBillingToShipping } from '../../../utils/addressFormUtils';
+import { GstinFormField } from '../../../components/entities/GstinFormField';
 
 const EditCustomer = () => {
   const [form] = Form.useForm();
@@ -353,6 +354,12 @@ const EditCustomer = () => {
                         <Input placeholder="Enter PAN" />
                       </Form.Item>
                     </Col>
+                    <Col xs={24} md={12}>
+                      <GstinFormField partyType="customer" />
+                    </Col>
+                  </Row>
+
+                  <Row gutter={[16, 16]}>
                     <Col xs={24} md={12}>
                       <Form.Item 
                         label={

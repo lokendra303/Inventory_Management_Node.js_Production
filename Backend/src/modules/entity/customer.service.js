@@ -1,10 +1,18 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const { normalizeGstin } = require('../../utils/gstinUtils');
 
 class CustomerService {
   async ensureColumns() {
     try { await db.query('ALTER TABLE customers ADD COLUMN price_list_id VARCHAR(36) DEFAULT NULL'); } catch (e) {
+      if (e.errno !== 1060) throw e;
+    }
+    try {
+      await db.query(
+        "ALTER TABLE customers ADD COLUMN gstin VARCHAR(20) NULL COMMENT 'GST identification number' AFTER pan"
+      );
+    } catch (e) {
       if (e.errno !== 1060) throw e;
     }
   }
@@ -24,7 +32,8 @@ class CustomerService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
         [customerId, institutionId, finalCustomerCode, customerData.displayName, customerData.companyName, 
          customerData.salutation, customerData.firstName, customerData.lastName, customerData.email, 
-         customerData.workPhone, customerData.mobilePhone, customerData.pan, customerData.gstin, 
+         customerData.workPhone, customerData.mobilePhone, customerData.pan,
+         normalizeGstin(customerData.gstin), 
          customerData.msmeRegistered ? 1 : 0, customerData.currency, customerData.paymentTerms, 
          customerData.tds, customerData.websiteUrl, customerData.department, customerData.designation, 
          customerData.remarks, customerData.creditLimit || 0, customerData.priceListId || null]
@@ -96,7 +105,10 @@ class CustomerService {
         if (updateData[field] !== undefined) {
           const dbField = fieldMapping[field] || field;
           updateFields.push(`${dbField} = ?`);
-          updateValues.push(field === 'msmeRegistered' ? (updateData[field] ? 1 : 0) : updateData[field]);
+          let value = updateData[field];
+          if (field === 'msmeRegistered') value = updateData[field] ? 1 : 0;
+          else if (field === 'gstin') value = normalizeGstin(updateData[field]);
+          updateValues.push(value);
         }
       }
 
