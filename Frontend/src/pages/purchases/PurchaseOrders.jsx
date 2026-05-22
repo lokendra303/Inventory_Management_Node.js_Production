@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, Select, InputNumber, message, DatePicker, Tag } from 'antd';
-import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons';
+import InvoicePdfViewModal from '../../components/business/InvoicePdfViewModal';
 import moment from 'moment';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -45,6 +46,7 @@ const PurchaseOrders = () => {
   const [emailModalVisible, setEmailModalVisible] = useState(false);
   const [emailAddress, setEmailAddress] = useState('');
   const [selectedPOForEmail, setSelectedPOForEmail] = useState(null);
+  const [poPdfPreview, setPoPdfPreview] = useState({ id: null, poNumber: '' });
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
   const [selectedPOForCancel, setSelectedPOForCancel] = useState(null);
@@ -956,6 +958,18 @@ const PurchaseOrders = () => {
         onCancel={() => { setViewModalVisible(false); setSelectedPOForView(null); setPOHistory([]); }}
         footer={[
           <Button key="email" icon={<MailOutlined />} onClick={() => handleEmailPO(selectedPOForView)}>Email</Button>,
+          <Button
+            key="preview"
+            icon={<EyeOutlined />}
+            onClick={() =>
+              setPoPdfPreview({
+                id: selectedPOForView?.id || null,
+                poNumber: selectedPOForView?.po_number || '',
+              })
+            }
+          >
+            Preview
+          </Button>,
           <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={() => printPO(selectedPOForView)}>Print</Button>,
           <Button key="download" icon={<DownloadOutlined />} onClick={() => downloadPDF(selectedPOForView)}>PDF</Button>,
           <Button key="close" onClick={() => { setViewModalVisible(false); setSelectedPOForView(null); setPOHistory([]); }}>Close</Button>
@@ -1011,6 +1025,14 @@ const PurchaseOrders = () => {
           </div>
         )}
       </Modal>
+
+      <InvoicePdfViewModal
+        open={!!poPdfPreview.id}
+        onClose={() => setPoPdfPreview({ id: null, poNumber: '' })}
+        invoiceId={poPdfPreview.id}
+        apiBase="/purchase-orders"
+        title={poPdfPreview.poNumber ? `Purchase Order ${poPdfPreview.poNumber}` : 'Purchase Order'}
+      />
 
       <Modal
         title="Email Purchase Order"
