@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
-const { normalizeGstin } = require('../../utils/gstinUtils');
+const { normalizeGstin, normalizePan } = require('../../utils/gstinUtils');
 
 class CustomerService {
   async ensureColumns() {
@@ -32,7 +32,7 @@ class CustomerService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
         [customerId, institutionId, finalCustomerCode, customerData.displayName, customerData.companyName, 
          customerData.salutation, customerData.firstName, customerData.lastName, customerData.email, 
-         customerData.workPhone, customerData.mobilePhone, customerData.pan,
+         customerData.workPhone, customerData.mobilePhone, normalizePan(customerData.pan),
          normalizeGstin(customerData.gstin), 
          customerData.msmeRegistered ? 1 : 0, customerData.currency, customerData.paymentTerms, 
          customerData.tds, customerData.websiteUrl, customerData.department, customerData.designation, 
@@ -108,6 +108,7 @@ class CustomerService {
           let value = updateData[field];
           if (field === 'msmeRegistered') value = updateData[field] ? 1 : 0;
           else if (field === 'gstin') value = normalizeGstin(updateData[field]);
+          else if (field === 'pan') value = normalizePan(updateData[field]);
           updateValues.push(value);
         }
       }

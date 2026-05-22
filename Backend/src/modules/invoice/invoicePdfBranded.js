@@ -69,7 +69,10 @@ function drawParallelogramCompanyBanner(doc, x, y, companyStrings) {
     contentLines.push({ text: `Email: ${companyStrings.email}`, bold: false, size: 7.5 });
   }
   if (companyStrings?.taxId) {
-    contentLines.push({ text: `Tax ID: ${companyStrings.taxId}`, bold: false, size: 7 });
+    contentLines.push({ text: `GSTIN: ${companyStrings.taxId}`, bold: false, size: 7 });
+  }
+  if (companyStrings?.pan) {
+    contentLines.push({ text: `PAN: ${companyStrings.pan}`, bold: false, size: 7 });
   }
 
   const lineH = 11;
@@ -503,7 +506,10 @@ function drawBrandedCompanyBlock(doc, x, startY, companyStrings, width = 260) {
     y = drawLines(doc, [`Email: ${companyStrings.email}`], x, y, width, 10);
   }
   if (companyStrings.taxId) {
-    y = drawLines(doc, [`Tax ID / GSTIN: ${companyStrings.taxId}`], x, y, width, 10);
+    y = drawLines(doc, [`GSTIN: ${companyStrings.taxId}`], x, y, width, 10);
+  }
+  if (companyStrings.pan) {
+    y = drawLines(doc, [`PAN: ${companyStrings.pan}`], x, y, width, 10);
   }
   doc.fillColor('#000');
   return y;

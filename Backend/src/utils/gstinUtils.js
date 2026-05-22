@@ -8,4 +8,10 @@ function normalizeGstin(value) {
   return v || null;
 }
 
-module.exports = { normalizeGstin };
+/** Normalize optional PAN for storage (uppercase, trimmed; empty -> null). */
+function normalizePan(value) {
+  const v = String(value ?? '').trim().toUpperCase();
+  return v || null;
+}
+
+module.exports = { normalizeGstin, normalizePan };

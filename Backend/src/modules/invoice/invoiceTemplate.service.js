@@ -47,6 +47,10 @@ class InvoiceTemplateService {
            COALESCE(ip.email, i.email) AS email,
            ip.logo_path,
            COALESCE(NULLIF(TRIM(ip.tax_id), ''), i.tax_id) AS tax_id,
+           ip.pan,
+           ip.cin,
+           ip.tan,
+           ip.website,
            ip.account_holder_name,
            ip.branch_name,
            i.city,
@@ -74,11 +78,12 @@ class InvoiceTemplateService {
           contact: {
             phone: row.phone || '',
             email: row.email || '',
-            website: '',
+            website: row.website || '',
           },
           taxInfo: {
             taxId: row.tax_id || '',
-            registrationNumber: '',
+            pan: row.pan ? String(row.pan).trim().toUpperCase() : '',
+            registrationNumber: row.cin ? String(row.cin).trim().toUpperCase() : '',
           },
           branding: {
             logoUrl: row.logo_path || '',

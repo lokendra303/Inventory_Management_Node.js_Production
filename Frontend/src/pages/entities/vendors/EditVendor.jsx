@@ -20,6 +20,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import apiService from '../../../services/apiService';
 import { copyBillingToShipping } from '../../../utils/addressFormUtils';
 import { GstinFormField } from '../../../components/entities/GstinFormField';
+import { PanFormField } from '../../../components/entities/PanFormField';
 
 const EditVendor = () => {
   const [form] = Form.useForm();
@@ -306,16 +307,7 @@ const EditVendor = () => {
                 <Card style={{ marginTop: '0px', borderTop: 'none' }}>
                   <Row gutter={[16, 16]}>
                     <Col xs={24} md={12}>
-                      <Form.Item label="PAN" name="pan">
-                        <Input 
-                          placeholder="Enter PAN" 
-                          style={{ textTransform: 'uppercase' }}
-                          onChange={(e) => {
-                            const value = e.target.value.toUpperCase();
-                            form.setFieldsValue({ pan: value });
-                          }}
-                        />
-                      </Form.Item>
+                      <PanFormField name="pan" />
                     </Col>
                     <Col xs={24} md={12}>
                       <GstinFormField partyType="vendor" />

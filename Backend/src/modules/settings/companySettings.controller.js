@@ -11,10 +11,29 @@ const {
   normalizePdfFooterOptionsInput,
   normalizeDocType,
 } = require('../../utils/pdfFooterOptions');
+const { normalizePan } = require('../../utils/gstinUtils');
 
 function normalizeTaxId(taxId) {
   if (taxId == null || taxId === '') return null;
   const normalized = String(taxId).trim().toUpperCase();
+  return normalized || null;
+}
+
+function normalizeCin(value) {
+  if (value == null || value === '') return null;
+  const normalized = String(value).trim().toUpperCase();
+  return normalized || null;
+}
+
+function normalizeTan(value) {
+  if (value == null || value === '') return null;
+  const normalized = String(value).trim().toUpperCase();
+  return normalized || null;
+}
+
+function normalizeWebsite(value) {
+  if (value == null || value === '') return null;
+  const normalized = String(value).trim();
   return normalized || null;
 }
 
@@ -39,6 +58,10 @@ class CompanySettingsController {
       payload.phone ?? null,
       payload.email ?? null,
       payload.taxId ?? null,
+      payload.pan ?? null,
+      payload.cin ?? null,
+      payload.tan ?? null,
+      payload.website ?? null,
       payload.bankName ?? null,
       payload.accountHolderName ?? null,
       payload.accountNumber ?? null,
@@ -57,14 +80,14 @@ class CompanySettingsController {
       if (payload.pdfFooterOptions != null) {
         await db.query(
           `UPDATE institution_profiles
-           SET company_name = ?, address = ?, phone = ?, email = ?, tax_id = ?, bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, branch_name = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?, pdf_footer_options = ?
+           SET company_name = ?, address = ?, phone = ?, email = ?, tax_id = ?, pan = ?, cin = ?, tan = ?, website = ?, bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, branch_name = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?, pdf_footer_options = ?
            WHERE institution_id = ?`,
           [...coreValues, footerJson, institutionId]
         );
       } else {
         await db.query(
           `UPDATE institution_profiles
-           SET company_name = ?, address = ?, phone = ?, email = ?, tax_id = ?, bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, branch_name = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?
+           SET company_name = ?, address = ?, phone = ?, email = ?, tax_id = ?, pan = ?, cin = ?, tan = ?, website = ?, bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, branch_name = ?, swift_code = ?, authorized_signatory_name = ?, authorized_signatory_designation = ?, invoice_pdf_template = ?
            WHERE institution_id = ?`,
           [...coreValues, institutionId]
         );
@@ -74,8 +97,8 @@ class CompanySettingsController {
 
     await db.query(
       `INSERT INTO institution_profiles
-       (company_name, address, phone, email, tax_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code, authorized_signatory_name, authorized_signatory_designation, invoice_pdf_template, pdf_footer_options, institution_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (company_name, address, phone, email, tax_id, pan, cin, tan, website, bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code, authorized_signatory_name, authorized_signatory_designation, invoice_pdf_template, pdf_footer_options, institution_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [...coreValues, footerJson, institutionId]
     );
   }
@@ -102,6 +125,10 @@ class CompanySettingsController {
         tax_id: normalizeTaxId(
           (profile?.tax_id && String(profile.tax_id).trim()) || institutionTaxId || null
         ),
+        pan: normalizePan(profile?.pan) ?? null,
+        cin: profile?.cin ?? null,
+        tan: profile?.tan ?? null,
+        website: profile?.website ?? null,
         bank_name: profile?.bank_name ?? null,
         account_holder_name: profile?.account_holder_name ?? null,
         account_number: profile?.account_number ?? null,
@@ -175,6 +202,11 @@ class CompanySettingsController {
         b.taxId !== undefined
           ? normalizeTaxId(b.taxId)
           : normalizeTaxId(pf.tax_id) ?? null;
+      const pan = b.pan !== undefined ? normalizePan(b.pan) : normalizePan(pf.pan) ?? null;
+      const cin = b.cin !== undefined ? normalizeCin(b.cin) : normalizeCin(pf.cin) ?? null;
+      const tan = b.tan !== undefined ? normalizeTan(b.tan) : normalizeTan(pf.tan) ?? null;
+      const website =
+        b.website !== undefined ? normalizeWebsite(b.website) : normalizeWebsite(pf.website) ?? null;
       const bankName = b.bankName !== undefined ? b.bankName : pf.bank_name;
       const accountHolderName =
         b.accountHolderName !== undefined ? b.accountHolderName : pf.account_holder_name;
@@ -199,6 +231,10 @@ class CompanySettingsController {
         phone,
         email,
         taxId,
+        pan,
+        cin,
+        tan,
+        website,
         bankName,
         accountHolderName,
         accountNumber,

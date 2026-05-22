@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom';
 import apiService from '../../../services/apiService';
 import { copyBillingToShipping } from '../../../utils/addressFormUtils';
 import { GstinFormField } from '../../../components/entities/GstinFormField';
+import { PanFormField } from '../../../components/entities/PanFormField';
 
 const NewCustomer = () => {
   const [form] = Form.useForm();
@@ -274,19 +275,7 @@ const NewCustomer = () => {
                 <Card style={{ marginTop: '0px', borderTop: 'none' }}>
                   <Row gutter={[16, 16]}>
                     <Col xs={24} md={12}>
-                      <Form.Item 
-                        label={
-                          <span>
-                            PAN
-                            <Tooltip title="Permanent Account Number">
-                              <InfoCircleOutlined style={{ marginLeft: '8px', color: '#999' }} />
-                            </Tooltip>
-                          </span>
-                        } 
-                        name="pan"
-                      >
-                        <Input placeholder="Enter PAN" />
-                      </Form.Item>
+                      <PanFormField name="pan" />
                     </Col>
                     <Col xs={24} md={12}>
                       <GstinFormField partyType="customer" />

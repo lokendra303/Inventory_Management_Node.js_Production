@@ -534,11 +534,13 @@ function proformaSellerDetailLines(cs, sellerGst, sellerState) {
     cs.address,
     cs.cityLine,
     sellerGst ? `GSTIN/UIN: ${sellerGst}` : '',
+    cs.pan ? `PAN: ${cs.pan}` : '',
     sellerState.name || sellerState.code
       ? `State Name: ${sellerState.name || '—'}, Code: ${sellerState.code || '—'}`
       : '',
     cs.phone || '',
     cs.email ? `E-Mail: ${cs.email}` : '',
+    cs.website ? `Website: ${cs.website}` : '',
   ].filter(Boolean);
 }
 

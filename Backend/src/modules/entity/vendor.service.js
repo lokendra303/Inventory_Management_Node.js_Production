@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
-const { normalizeGstin } = require('../../utils/gstinUtils');
+const { normalizeGstin, normalizePan } = require('../../utils/gstinUtils');
 
 /**
  * VendorService - Handles vendor management with normalized database structure
@@ -46,7 +46,7 @@ class VendorService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
         [vendorId, institutionId, finalVendorCode, vendorData.displayName, vendorData.companyName, 
          vendorData.salutation, vendorData.firstName, vendorData.lastName, vendorData.email, 
-         vendorData.workPhone, vendorData.mobilePhone, vendorData.pan,
+         vendorData.workPhone, vendorData.mobilePhone, normalizePan(vendorData.pan),
          normalizeGstin(vendorData.gstin), 
          vendorData.msmeRegistered ? 1 : 0, vendorData.currency, vendorData.paymentTerms, 
          vendorData.tds, vendorData.websiteUrl, vendorData.department, vendorData.designation, 
@@ -127,6 +127,7 @@ class VendorService {
           let value = updateData[field];
           if (field === 'msmeRegistered') value = updateData[field] ? 1 : 0;
           else if (field === 'gstin') value = normalizeGstin(updateData[field]);
+          else if (field === 'pan') value = normalizePan(updateData[field]);
           updateValues.push(value);
         }
       }

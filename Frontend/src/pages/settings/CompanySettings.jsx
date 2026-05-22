@@ -35,6 +35,7 @@ import apiService from '../../services/apiService';
 import { mediaUrl } from '../../config/appConfig';
 import InvoicePreview from '../../components/business/InvoicePreview';
 import InvoicePdfTemplateTiles from '../../components/business/InvoicePdfTemplateTiles';
+import { PanFormField } from '../../components/entities/PanFormField';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { INVOICE_PDF_TEMPLATES } from '../../constants/invoicePdfTemplates';
 import './CompanySettings.css';
@@ -150,6 +151,15 @@ const CompanySettings = () => {
       const values = await form.validateFields();
       if (values.taxId) {
         values.taxId = String(values.taxId).trim().toUpperCase();
+      }
+      if (values.pan) {
+        values.pan = String(values.pan).trim().toUpperCase();
+      }
+      if (values.cin) {
+        values.cin = String(values.cin).trim().toUpperCase();
+      }
+      if (values.tan) {
+        values.tan = String(values.tan).trim().toUpperCase();
       }
       setLoading(true);
       const response = await apiService.put('/company-settings', values);
@@ -444,6 +454,34 @@ const CompanySettings = () => {
                 maxLength={15}
                 style={{ textTransform: 'uppercase' }}
               />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <PanFormField name="pan" extra="Shown on invoices and purchase order PDF footers." />
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item
+              name="cin"
+              label="CIN"
+              extra="Corporate Identification Number (company registration)."
+              normalize={(value) => (value ? String(value).trim().toUpperCase() : value)}
+            >
+              <Input placeholder="e.g. U12345MH2020PTC123456" allowClear maxLength={21} style={{ textTransform: 'uppercase' }} />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item
+              name="tan"
+              label="TAN"
+              extra="Tax Deduction Account Number (optional)."
+              normalize={(value) => (value ? String(value).trim().toUpperCase() : value)}
+            >
+              <Input placeholder="e.g. MUMB12345A" allowClear maxLength={10} style={{ textTransform: 'uppercase' }} />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item name="website" label="Website" rules={[{ type: 'url', message: 'Enter a valid URL (https://…)' }]}>
+              <Input placeholder="https://www.example.com" allowClear />
             </Form.Item>
           </Col>
           <Col span={24}>

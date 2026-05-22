@@ -51,7 +51,7 @@ class PurchaseOrderPDFService {
         );
         if (inst && company) {
           company.registration_number =
-            inst.registration_number || company.registration_number || null;
+            inst.registration_number || company.cin || company.registration_number || null;
           if (!company.tax_id && inst.tax_id) company.tax_id = inst.tax_id;
         }
       } catch (err) {

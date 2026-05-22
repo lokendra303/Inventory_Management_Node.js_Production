@@ -52,6 +52,10 @@ class InvoicePDFService {
            ip.phone,
            ip.email AS profile_email,
            ip.tax_id AS profile_tax_id,
+           ip.pan AS profile_pan,
+           ip.cin AS profile_cin,
+           ip.tan AS profile_tan,
+           ip.website AS profile_website,
            ip.bank_name,
            ip.account_holder_name,
            ip.account_number,
@@ -91,6 +95,10 @@ class InvoicePDFService {
         (row.profile_tax_id && String(row.profile_tax_id).trim()) ||
         (row.institution_tax_id && String(row.institution_tax_id).trim()) ||
         null,
+      pan: row.profile_pan ? String(row.profile_pan).trim().toUpperCase() : null,
+      cin: row.profile_cin ? String(row.profile_cin).trim().toUpperCase() : null,
+      tan: row.profile_tan ? String(row.profile_tan).trim().toUpperCase() : null,
+      website: row.profile_website ? String(row.profile_website).trim() : null,
       bank_name: row.bank_name || null,
       account_holder_name: row.account_holder_name || null,
       account_number: row.account_number || null,
@@ -133,11 +141,13 @@ class InvoicePDFService {
       contact: {
         phone: companySettings.phone || standardInvoice.header?.contact?.phone || '',
         email: companySettings.email || standardInvoice.header?.contact?.email || '',
-        website: standardInvoice.header?.contact?.website || '',
+        website: companySettings.website || standardInvoice.header?.contact?.website || '',
       },
       taxInfo: {
         taxId: companySettings.tax_id || standardInvoice.header?.taxInfo?.taxId || '',
-        registrationNumber: standardInvoice.header?.taxInfo?.registrationNumber || '',
+        pan: companySettings.pan || standardInvoice.header?.taxInfo?.pan || '',
+        registrationNumber:
+          companySettings.cin || standardInvoice.header?.taxInfo?.registrationNumber || '',
       },
       branding: {
         logoUrl: companySettings.logo_path || standardInvoice.header?.branding?.logoUrl || '',
@@ -202,7 +212,11 @@ class InvoicePDFService {
       ry += 12;
     }
     if (cs.taxId) {
-      doc.fontSize(8).text(`Tax ID: ${cs.taxId}`, rightX, ry, { width: rightW, align: 'right' });
+      doc.fontSize(8).text(`GSTIN: ${cs.taxId}`, rightX, ry, { width: rightW, align: 'right' });
+      ry += 12;
+    }
+    if (cs.pan) {
+      doc.fontSize(8).text(`PAN: ${cs.pan}`, rightX, ry, { width: rightW, align: 'right' });
       ry += 12;
     }
     doc.fillColor('#000');
@@ -633,6 +647,10 @@ class InvoicePDFService {
       phone: companySettings?.phone || standardInvoice.header?.contact?.phone || '',
       email: companySettings?.email || standardInvoice.header?.contact?.email || '',
       taxId: companySettings?.tax_id || standardInvoice.header?.taxInfo?.taxId || '',
+      pan: companySettings?.pan || standardInvoice.header?.taxInfo?.pan || '',
+      cin: companySettings?.cin || standardInvoice.header?.taxInfo?.registrationNumber || '',
+      tan: companySettings?.tan || '',
+      website: companySettings?.website || standardInvoice.header?.contact?.website || '',
     };
   }
 
@@ -708,7 +726,11 @@ class InvoicePDFService {
       ty += 12;
     }
     if (cs.taxId) {
-      doc.fontSize(8).text(`Tax ID: ${cs.taxId}`, tx, ty, { width: 300 });
+      doc.fontSize(8).text(`GSTIN: ${cs.taxId}`, tx, ty, { width: 300 });
+      ty += 12;
+    }
+    if (cs.pan) {
+      doc.fontSize(8).text(`PAN: ${cs.pan}`, tx, ty, { width: 300 });
       ty += 12;
     }
     return Math.max(ty, header.bottomY) + 14;
@@ -731,7 +753,11 @@ class InvoicePDFService {
       y += 12;
     }
     if (cs.taxId) {
-      doc.fontSize(8).text(`Tax ID: ${cs.taxId}`, textLeft, y);
+      doc.fontSize(8).text(`GSTIN: ${cs.taxId}`, textLeft, y);
+      y += 12;
+    }
+    if (cs.pan) {
+      doc.fontSize(8).text(`PAN: ${cs.pan}`, textLeft, y);
       y += 12;
     }
 
