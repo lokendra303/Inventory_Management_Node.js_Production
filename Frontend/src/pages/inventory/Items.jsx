@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown, Alert, Typography, Checkbox } from 'antd';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown, Alert, Typography, Checkbox, Radio } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, CheckOutlined, ThunderboltOutlined, SettingOutlined, ImportOutlined, DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
@@ -17,6 +17,24 @@ import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { filterSelectOption } from '../../utils/selectFilter';
+import {
+  assessImportRowIssues,
+  buildDuplicateSkuKeysInFile,
+  checkSkuAvailableForImport,
+  CSV_IMPORT_SKU_AUTO_RULE,
+  CSV_IMPORT_SKU_FROM_FILE,
+  ensureCategoryForImport,
+  ensureImportDropdownOption,
+  ensureItemGroupForImport,
+  ensureUnitForImport,
+  isImportRowReady,
+  isSkuRequiredForImport,
+  IMPORT_PREVIEW_CELL_MISMATCH_STYLE,
+  IMPORT_PREVIEW_ROW_STYLE,
+  resolveImportCustomFields,
+  validateImportRowBeforeOpen,
+  parseImportNumeric,
+} from './importItemHelpers';
 
 const VARIANT_MATRIX_GRID_TEMPLATE = 'minmax(0, 2.2fr) minmax(0, 1.5fr) minmax(0, 1.35fr) minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(64px, 0.6fr)';
 const VARIANT_MATRIX_MIN_WIDTH = '100%';
@@ -201,7 +219,7 @@ function parseExcelBufferToRows(buffer, options = {}) {
 }
 
 const CSV_IMPORT_CORE_TARGETS = [
-  { id: 'sku', label: 'SKU', group: 'Core', required: true },
+  { id: 'sku', label: 'SKU', group: 'Core', required: false },
   { id: 'name', label: 'Name', group: 'Core', required: true },
   { id: 'description', label: 'Description', group: 'Core' },
   { id: 'barcode', label: 'Barcode', group: 'Core' },
@@ -342,29 +360,6 @@ function buildInitialCsvMapping(headers, fieldConfigs) {
   return mapping;
 }
 
-function resolveUnitForImport(raw, unitOptions) {
-  const s = String(raw ?? '').trim();
-  if (!s) return 'pcs';
-  const lower = s.toLowerCase();
-  const byId = unitOptions.find((u) => u.id === s);
-  if (byId) return byId.id;
-  const byName = unitOptions.find((u) => (u.name || '').toLowerCase() === lower || (u.symbol || '').toLowerCase() === lower);
-  if (byName) return byName.id;
-  return s;
-}
-
-function coerceImportedCustomValue(raw, fieldType) {
-  const str = String(raw ?? '').trim();
-  if (str === '') return undefined;
-  const t = String(fieldType || 'text').toLowerCase();
-  if (t === 'number' || t === 'decimal') {
-    const n = Number(str.replace(/,/g, ''));
-    if (!Number.isFinite(n)) return undefined;
-    return t === 'number' ? Math.round(n) : n;
-  }
-  return str;
-}
-
 function parseNumericImport(v) {
   if (v === undefined || v === null || v === '') return 0;
   const n = Number(String(v).replace(/,/g, '').trim());
@@ -398,6 +393,7 @@ const Items = () => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [itemFormOpenedFromImport, setItemFormOpenedFromImport] = useState(false);
+  const [importCustomFieldsPreview, setImportCustomFieldsPreview] = useState([]);
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -469,13 +465,15 @@ const Items = () => {
     headerLineNumber: 1,
     headers: [],
     rows: [],
-    csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+    csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
     itemType: 'simple',
     fieldConfigs: [],
     mapping: {},
     defaultWarehouseId: undefined,
     result: null,
     addedRowIndexes: {},
+    skuSource: CSV_IMPORT_SKU_FROM_FILE,
+    importSkuRuleId: undefined,
   });
 
   const normalizeOptionalText = (value) => {
@@ -781,6 +779,45 @@ const Items = () => {
       }
     } catch (e) {
       showSkuGenerationError(e);
+    } finally {
+      setSkuGenerating(false);
+    }
+  };
+
+  const autoGenerateSkuForImport = async (ruleIdOverride) => {
+    const ruleId = ruleIdOverride || selectedSkuRuleId;
+    const selectedRule = (ruleId ? skuRules.find((r) => r.id === ruleId) : null)
+      || skuRules.find((r) => !!r.is_default)
+      || skuRules[0]
+      || null;
+    if (!selectedRule) {
+      message.warning('No SKU rule available. Map SKU from file or create a rule under SKU settings.');
+      return false;
+    }
+    setSelectedSkuRuleId(selectedRule.id);
+    const ctx = { ...buildSkuGenerationContext(), ruleId: selectedRule.id };
+    if (!ensureSkuRuleRequirements(selectedRule, ctx, 'Auto-generate SKU')) return false;
+    setSkuGenerating(true);
+    try {
+      const generated = await skuGeneratorService.generateSku(ctx);
+      const sku = generated?.sku || '';
+      if (!sku) {
+        message.warning('SKU rule did not return a SKU. Generate manually or check the rule.');
+        return false;
+      }
+      form.setFieldsValue({ sku });
+      form.validateFields(['sku']).catch(() => {});
+      setLastAppliedSkuRule({
+        id: selectedRule.id,
+        name: selectedRule.name,
+        scope: selectedRule.scope,
+        scopeValue: selectedRule.scope_value,
+      });
+      message.success(`Auto-generated SKU: ${sku} (Rule: ${selectedRule.name})`);
+      return true;
+    } catch (e) {
+      showSkuGenerationError(e);
+      return false;
     } finally {
       setSkuGenerating(false);
     }
@@ -1178,6 +1215,15 @@ const Items = () => {
   ];
 
   const fetchDropdownOptions = async () => {
+    const snapshot = {
+      manufacturers: [],
+      brands: [],
+      units: [],
+      vendors: [],
+      itemTypes: [],
+      itemGroups: [],
+      variantLibrary: [],
+    };
     try {
       // Use Promise.allSettled to handle individual failures gracefully
       const results = await Promise.allSettled([
@@ -1194,37 +1240,44 @@ const Items = () => {
       
       if (manufacturersRes.status === 'fulfilled') {
         const manufacturers = Array.isArray(manufacturersRes.value) ? manufacturersRes.value : (manufacturersRes.value?.data || []);
+        snapshot.manufacturers = manufacturers;
         setManufacturerOptions(manufacturers);
       }
       
       if (brandsRes.status === 'fulfilled') {
         const brands = Array.isArray(brandsRes.value) ? brandsRes.value : (brandsRes.value?.data || []);
+        snapshot.brands = brands;
         setBrandOptions(brands);
       }
       
       if (unitsRes.status === 'fulfilled') {
         const units = Array.isArray(unitsRes.value) ? unitsRes.value : (unitsRes.value?.data || []);
+        snapshot.units = units;
         setUnitOptions(units);
       }
       
       if (vendorsRes.status === 'fulfilled') {
         const vendors = Array.isArray(vendorsRes.value) ? vendorsRes.value : (vendorsRes.value?.data || []);
+        snapshot.vendors = vendors;
         setVendorOptions(vendors);
       }
 
       if (itemTypesRes.status === 'fulfilled') {
         const types = Array.isArray(itemTypesRes.value) ? itemTypesRes.value : (itemTypesRes.value?.data || []);
+        snapshot.itemTypes = types;
         setItemTypes(types);
       }
 
       if (itemGroupsRes.status === 'fulfilled') {
         const groups = Array.isArray(itemGroupsRes.value) ? itemGroupsRes.value : (itemGroupsRes.value?.data || []);
+        snapshot.itemGroups = groups;
         setItemGroups(groups);
       }
 
       if (variantLibraryRes.status === 'fulfilled') {
         const library = Array.isArray(variantLibraryRes.value) ? variantLibraryRes.value : (variantLibraryRes.value?.data || []);
-        setVariantLibrary(Array.isArray(library) ? library : []);
+        snapshot.variantLibrary = Array.isArray(library) ? library : [];
+        setVariantLibrary(snapshot.variantLibrary);
       }
 
       // Load tax rates from new tax module
@@ -1235,6 +1288,7 @@ const Items = () => {
     } catch (error) {
       console.error('Dropdown fetch error:', error);
     }
+    return snapshot;
   };
 
   const fetchWarehouseTypes = async () => {
@@ -1376,13 +1430,15 @@ const Items = () => {
       headerLineNumber: 1,
       headers: [],
       rows: [],
-      csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+      csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
       itemType: 'simple',
       fieldConfigs: [],
       mapping: {},
       defaultWarehouseId: undefined,
       result: null,
       addedRowIndexes: {},
+      skuSource: CSV_IMPORT_SKU_FROM_FILE,
+      importSkuRuleId: undefined,
     });
     activeImportRowIndexRef.current = null;
     setItemFormOpenedFromImport(false);
@@ -1391,6 +1447,7 @@ const Items = () => {
   const closeItemFormReturnToImport = useCallback(() => {
     setModalVisible(false);
     setItemFormOpenedFromImport(false);
+    setImportCustomFieldsPreview([]);
     activeImportRowIndexRef.current = null;
     setEditingItem(null);
     setImageUrl('');
@@ -1408,9 +1465,20 @@ const Items = () => {
     form.resetFields();
   }, [form]);
 
-  const openCsvImportModal = useCallback(() => {
+  const openCsvImportModal = useCallback(async () => {
     const firstWh = warehouses?.[0]?.id;
     csvImportExcelBufferRef.current = null;
+    let importSkuRuleId;
+    try {
+      const rules = await skuGeneratorService.listRules();
+      const list = Array.isArray(rules) ? rules : [];
+      setSkuRules(list);
+      const defaultRule = list.find((r) => !!r.is_default) || list[0];
+      importSkuRuleId = defaultRule?.id;
+      if (defaultRule?.id) setSelectedSkuRuleId(defaultRule.id);
+    } catch {
+      setSkuRules([]);
+    }
     setCsvImportModal({
       open: true,
       busy: false,
@@ -1420,13 +1488,15 @@ const Items = () => {
       headerLineNumber: 1,
       headers: [],
       rows: [],
-      csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+      csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
       itemType: 'simple',
       fieldConfigs: [],
       mapping: {},
       defaultWarehouseId: firstWh,
       result: null,
       addedRowIndexes: {},
+      skuSource: CSV_IMPORT_SKU_FROM_FILE,
+      importSkuRuleId,
     });
     activeImportRowIndexRef.current = null;
     setItemFormOpenedFromImport(false);
@@ -1460,7 +1530,7 @@ const Items = () => {
               headerLineNumber,
               headers: [],
               rows: [],
-              csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+              csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
               mapping: {},
               result: null,
             };
@@ -1480,7 +1550,7 @@ const Items = () => {
             headerLineNumber,
             headers,
             rows: limited,
-            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
             mapping: buildInitialCsvMapping(headers, prev.fieldConfigs || []),
             result: null,
           };
@@ -1510,7 +1580,7 @@ const Items = () => {
             headerLineNumber,
             headers: [],
             rows: [],
-            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
             mapping: {},
             result: null,
           };
@@ -1530,7 +1600,7 @@ const Items = () => {
           headerLineNumber,
           headers,
           rows: limited,
-          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
           mapping: buildInitialCsvMapping(headers, prev.fieldConfigs || []),
           result: null,
         };
@@ -1557,7 +1627,7 @@ const Items = () => {
             csvImportFileLineCount: sheetRowCount,
             headers: [],
             rows: [],
-            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
             mapping: {},
             result: null,
           };
@@ -1575,7 +1645,7 @@ const Items = () => {
           csvImportFileLineCount: sheetRowCount,
           headers,
           rows: limited,
-          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
           mapping: buildInitialCsvMapping(headers, prev.fieldConfigs || []),
           result: null,
         };
@@ -1593,7 +1663,7 @@ const Items = () => {
             csvImportFileLineCount: fileLineCount,
             headers: [],
             rows: [],
-            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
             mapping: {},
             result: null,
           };
@@ -1611,7 +1681,7 @@ const Items = () => {
           csvImportFileLineCount: fileLineCount,
           headers,
           rows: limited,
-          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false },
+          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
           mapping: buildInitialCsvMapping(headers, prev.fieldConfigs || []),
           result: null,
         };
@@ -1705,7 +1775,8 @@ const Items = () => {
         upc: values.upc,
         ean: values.ean,
         isbn: values.isbn,
-        mpn: values.mpn
+        mpn: values.mpn,
+        supplierCode: normalizeOptionalText(values.supplierCode) || null,
       };
       if (itemData.type === 'composite') {
         const normalizedComponents = normalizeCompositeComponents(compositeComponents);
@@ -1769,14 +1840,17 @@ const Items = () => {
         setSelectedSkuRuleId(null);
         setLastAppliedSkuRule(null);
         form.resetFields();
-      } else if (itemFormOpenedFromImport && csvImportModal.open) {
+      } else if (itemFormOpenedFromImport && activeImportRowIndexRef.current != null) {
         const savedRowIndex = activeImportRowIndexRef.current;
         closeItemFormReturnToImport();
-        setCsvImportModal((prev) => {
-          const nextAdded = { ...prev.addedRowIndexes };
-          if (savedRowIndex != null) nextAdded[String(savedRowIndex)] = true;
-          return { ...prev, addedRowIndexes: nextAdded };
-        });
+        setCsvImportModal((prev) => ({
+          ...prev,
+          open: true,
+          addedRowIndexes: {
+            ...(prev.addedRowIndexes || {}),
+            ...(savedRowIndex != null ? { [String(savedRowIndex)]: true } : {}),
+          },
+        }));
         message.success('Item saved. Import list is still open — pick the next row.');
       } else {
         // Keep form open for rapid multi-item entry (not from CSV import).
@@ -2737,9 +2811,16 @@ const viewItem = async (item) => {
       itemType,
       fieldConfigs,
       defaultWarehouseId,
+      skuSource,
+      importSkuRuleId,
     } = csvImportModal;
-    if (!mapping?.sku || !mapping?.name) {
-      message.error('Map both SKU and Name to file columns first');
+    const skuFromFile = isSkuRequiredForImport(skuSource);
+    if (!mapping?.name) {
+      message.error('Map Name to a file column first');
+      return;
+    }
+    if (skuFromFile && !mapping?.sku) {
+      message.error('Map SKU to a file column, or switch to Auto-generate SKU using rules');
       return;
     }
     if (!CSV_IMPORT_SUPPORTED_ITEM_TYPES.includes(itemType)) {
@@ -2758,60 +2839,212 @@ const viewItem = async (item) => {
       return String(v).trim();
     };
 
-    const openingStock = parseNumericImport(getCell(row, mapping.openingStock));
-    const openingValue = parseNumericImport(getCell(row, mapping.openingValue));
-    if (openingStock > 0 && !defaultWarehouseId) {
-      message.error('Select a default warehouse for opening stock, or clear opening stock on this row');
+    const duplicateSkuKeys = buildDuplicateSkuKeysInFile(rows, mapping);
+    const preflight = validateImportRowBeforeOpen({
+      row,
+      mapping,
+      fieldConfigs,
+      defaultWarehouseId,
+      duplicateSkuKeys,
+      skuSource,
+      hasSkuRules: skuRules.length > 0,
+    });
+    preflight.warnings.forEach((w) => message.warning(w, 6));
+    if (!preflight.ok) {
+      Modal.error({
+        title: 'Cannot open this row',
+        content: (
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {preflight.errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        ),
+      });
       return;
     }
 
-    const skuText = getCell(row, mapping.sku);
+    const skuText = mapping.sku ? getCell(row, mapping.sku) : '';
     const nameText = getCell(row, mapping.name) || skuText;
+    const willAutoSku = !skuFromFile && !normalizeOptionalText(skuText);
+
+    if (normalizeOptionalText(skuText)) {
+      const skuCheck = await checkSkuAvailableForImport(skuText);
+      if (!skuCheck.available) {
+        message.error(skuCheck.error || `SKU "${skuText}" already exists. Change the SKU in the file or form before saving.`);
+        return;
+      }
+    } else if (willAutoSku && skuRules.length === 0) {
+      message.error('No SKU rules configured. Create a rule or map SKU from the file.');
+      return;
+    }
+
+    const stockParsed = parseImportNumeric(getCell(row, mapping.openingStock));
+    const valueParsed = parseImportNumeric(getCell(row, mapping.openingValue));
+    if (stockParsed.invalid) {
+      message.warning(`Opening stock is not a valid number; using 0.`);
+    }
+    if (valueParsed.invalid) {
+      message.warning(`Opening value is not a valid number; it will be ignored.`);
+    }
+    const openingStock = stockParsed.value || 0;
+    const openingValue = valueParsed.invalid ? 0 : (valueParsed.value || 0);
+
     const costRaw = getCell(row, mapping.costPrice);
     const sellRaw = getCell(row, mapping.sellingPrice);
     const mrpRaw = getCell(row, mapping.mrp);
-
-    const customFieldsObj = {};
-    for (const c of fieldConfigs || []) {
-      const fn = c.field_name || c.fieldName;
-      if (!fn) continue;
-      const col = mapping[`cf:${fn}`];
-      if (!col) continue;
-      const raw = row[col];
-      if (raw === undefined || raw === null || String(raw).trim() === '') continue;
-      const coerced = coerceImportedCustomValue(raw, c.field_type || c.fieldType);
-      if (coerced !== undefined) customFieldsObj[fn] = coerced;
-    }
+    const supplierCodeStr = getCell(row, mapping.supplierCode);
 
     const groupName = getCell(row, mapping.itemGroupName);
-    let itemGroupId = null;
-    if (groupName) {
-      const g = itemGroups.find((ig) => (ig.name || '').toLowerCase() === groupName.toLowerCase());
-      if (g) itemGroupId = g.id;
-    }
-
     const brandStr = getCell(row, mapping.brand);
-    const brandId = brandStr
-      ? brandOptions.find((b) => (b.name || '').toLowerCase() === brandStr.toLowerCase())?.id
-      : undefined;
-
     const mfrStr = getCell(row, mapping.manufacturer);
-    const manufacturerId = mfrStr
-      ? manufacturerOptions.find((m) => (m.name || '').toLowerCase() === mfrStr.toLowerCase())?.id
-      : undefined;
+    const unitRaw = getCell(row, mapping.unit);
+    const categoryStr = getCell(row, mapping.category);
 
-    const unitId = resolveUnitForImport(getCell(row, mapping.unit), unitOptions);
-
-    const L = parseNumericImport(getCell(row, mapping.dimLength));
-    const W = parseNumericImport(getCell(row, mapping.dimWidth));
-    const H = parseNumericImport(getCell(row, mapping.dimHeight));
+    const dimL = parseImportNumeric(getCell(row, mapping.dimLength), { emptyAsZero: false });
+    const dimW = parseImportNumeric(getCell(row, mapping.dimWidth), { emptyAsZero: false });
+    const dimH = parseImportNumeric(getCell(row, mapping.dimHeight), { emptyAsZero: false });
 
     const finalWarehouseId = openingStock > 0 ? defaultWarehouseId : undefined;
 
-    const resolvedItemType = itemTypes.find((t) => t.name === itemType)?.name
-      || itemTypes.find((t) => t.name === 'simple')?.name
-      || itemTypes[0]?.name
-      || itemType;
+    const hidePrep = message.loading('Preparing import row...', 0);
+    let itemGroupId = null;
+    let brandId;
+    let manufacturerId;
+    let unitId;
+    let resolvedCategory = normalizeOptionalText(categoryStr);
+    let customFieldsObj = {};
+    let customPreview = [];
+    const createdForImport = [];
+    let resolvedItemType = itemType;
+
+    try {
+      const customResolved = await resolveImportCustomFields({
+        row,
+        mapping,
+        fieldConfigs,
+        itemType,
+        getCell,
+        canManageItems,
+      });
+      if (customResolved.errors.length) {
+        Modal.error({
+          title: 'Custom field issues',
+          content: (
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {customResolved.errors.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          ),
+        });
+        return;
+      }
+      customFieldsObj = customResolved.customFields;
+      customPreview = customResolved.preview;
+      createdForImport.push(...customResolved.created);
+
+      if (customResolved.created.length) {
+        try {
+          const cfgRes = await apiService.get(`/items/field-config/${itemType}`);
+          const rawCfg = cfgRes?.success ? (cfgRes.data || []) : [];
+          setCsvImportModal((prev) => ({
+            ...prev,
+            fieldConfigs: dedupeItemFieldConfigs(rawCfg),
+          }));
+        } catch {
+          /* keep existing field config */
+        }
+      }
+
+      const snapshot = await fetchDropdownOptions();
+      resolvedItemType = snapshot.itemTypes.find((t) => t.name === itemType)?.name
+        || snapshot.itemTypes.find((t) => t.name === 'simple')?.name
+        || itemType;
+
+      let manufacturers = snapshot.manufacturers;
+      let brands = snapshot.brands;
+      let units = snapshot.units;
+      let groups = snapshot.itemGroups;
+
+      if (mfrStr) {
+        const mfrRes = await ensureImportDropdownOption({
+          value: mfrStr,
+          options: manufacturers,
+          postPath: '/manufacturers',
+          getPath: '/manufacturers',
+          buildBody: (name) => ({ name }),
+        });
+        manufacturers = mfrRes.options;
+        manufacturerId = mfrRes.id;
+        if (mfrRes.created) createdForImport.push(`manufacturer "${mfrRes.createdLabel}"`);
+      }
+
+      if (brandStr) {
+        const brandRes = await ensureImportDropdownOption({
+          value: brandStr,
+          options: brands,
+          postPath: '/brands',
+          getPath: '/brands',
+          buildBody: (name) => ({ name, manufacturer_id: manufacturerId || null }),
+        });
+        brands = brandRes.options;
+        brandId = brandRes.id;
+        if (brandRes.created) createdForImport.push(`brand "${brandRes.createdLabel}"`);
+      }
+
+      const unitRes = await ensureUnitForImport(unitRaw, units);
+      units = unitRes.options;
+      unitId = unitRes.id;
+      if (unitRes.created) createdForImport.push(`unit "${unitRes.createdLabel}"`);
+
+      const groupRes = await ensureItemGroupForImport(groupName, groups, canManageItems);
+      groups = groupRes.groups;
+      itemGroupId = groupRes.id;
+      if (groupRes.created) createdForImport.push(`item group "${groupRes.createdLabel}"`);
+
+      let categoryList = categories;
+      if (canViewCategories) {
+        try {
+          const catRes = await apiService.get('/categories');
+          if (catRes?.success && Array.isArray(catRes.data)) categoryList = catRes.data;
+        } catch { /* use in-memory list */ }
+      }
+      const catRes = await ensureCategoryForImport(
+        resolvedCategory,
+        categoryList,
+        canManageCategories,
+        canViewCategories
+      );
+      if (catRes.name) resolvedCategory = catRes.name;
+      if (catRes.created) createdForImport.push(`category "${catRes.createdLabel}"`);
+      setCategories(catRes.categoryList);
+
+      setManufacturerOptions(manufacturers);
+      setBrandOptions(brands);
+      setUnitOptions(units);
+      setItemGroups(groups);
+
+      if (createdForImport.length) {
+        message.success(`Prepared for import: ${createdForImport.join(', ')}`);
+      }
+
+      if (mfrStr && !manufacturerId) {
+        message.warning(`Manufacturer "${mfrStr}" could not be linked. Add it manually in the form.`);
+      }
+      if (brandStr && !brandId) {
+        message.warning(`Brand "${brandStr}" could not be linked. Add it manually in the form.`);
+      }
+      if (!unitId) {
+        message.error('No unit could be resolved. Add a unit in Settings, then try again.');
+        return;
+      }
+      if (groupName && !itemGroupId) {
+        message.warning(`Item group "${groupName}" was not found or created.`);
+      }
+    } finally {
+      hidePrep();
+    }
 
     setEditingItem(null);
     setEditingWarehouseSummaries([]);
@@ -2827,20 +3060,22 @@ const viewItem = async (item) => {
     setLastAppliedSkuRule(null);
     setSelectedSkuRuleId(null);
     setExistingCustomFields(customFieldsObj);
+    setImportCustomFieldsPreview(customPreview);
     setVariantMatrixEdits([]);
     setCompositeComponents([]);
 
-    await fetchDropdownOptions();
     await loadSkuRules();
 
-    const minSl = parseNumericImport(getCell(row, mapping.minStockLevel));
-    const maxSl = parseNumericImport(getCell(row, mapping.maxStockLevel));
+    const minSl = parseImportNumeric(getCell(row, mapping.minStockLevel), { emptyAsZero: false });
+    const maxSl = parseImportNumeric(getCell(row, mapping.maxStockLevel), { emptyAsZero: false });
+    const trackInventory = resolvedItemType !== 'service'
+      && (openingStock > 0 || !!finalWarehouseId);
 
     activeImportRowIndexRef.current = rowIndex;
 
     form.setFieldsValue({
       type: resolvedItemType,
-      trackInventory: true,
+      trackInventory,
       itemGroupId,
       purchaseAccount: 'cogs',
       purchaseTaxRate: 0,
@@ -2848,16 +3083,17 @@ const viewItem = async (item) => {
       sku: normalizeOptionalText(skuText),
       name: normalizeOptionalText(nameText),
       description: normalizeOptionalText(getCell(row, mapping.description)),
-      category: normalizeOptionalText(getCell(row, mapping.category)),
+      category: resolvedCategory,
       unit: unitId,
+      supplierCode: normalizeOptionalText(supplierCodeStr),
       costPrice: costRaw !== '' ? parseNumericImport(costRaw) : undefined,
       sellingPrice: sellRaw !== '' ? normalizeOptionalNumber(parseNumericImport(sellRaw), { allowZero: false }) : undefined,
       mrp: mrpRaw !== '' ? normalizeOptionalNumber(parseNumericImport(mrpRaw), { allowZero: false }) : undefined,
       taxRate: normalizeTaxRateForForm(parseNumericImport(getCell(row, mapping.taxRate))),
       brand: brandId,
       manufacturer: manufacturerId,
-      minStockLevel: normalizeOptionalNumber(minSl),
-      maxStockLevel: normalizeOptionalNumber(maxSl),
+      minStockLevel: normalizeOptionalNumber(minSl.value),
+      maxStockLevel: normalizeOptionalNumber(maxSl.value),
       barcode: normalizeOptionalText(getCell(row, mapping.barcode)),
       batchNumber: normalizeOptionalText(getCell(row, mapping.batchNumber))?.toUpperCase(),
       hsnCode: normalizeOptionalText(getCell(row, mapping.hsnCode)),
@@ -2868,18 +3104,23 @@ const viewItem = async (item) => {
       warehouseId: finalWarehouseId,
       defaultBinId: null,
       weight: normalizeOptionalNumber(parseNumericImport(getCell(row, mapping.weight)), { allowZero: false }),
-      length: normalizeOptionalNumber(L, { allowZero: false }),
-      width: normalizeOptionalNumber(W, { allowZero: false }),
-      height: normalizeOptionalNumber(H, { allowZero: false }),
+      length: normalizeOptionalNumber(dimL.invalid ? undefined : dimL.value, { allowZero: false }),
+      width: normalizeOptionalNumber(dimW.invalid ? undefined : dimW.value, { allowZero: false }),
+      height: normalizeOptionalNumber(dimH.invalid ? undefined : dimH.value, { allowZero: false }),
       upc: normalizeOptionalText(getCell(row, mapping.upc)),
       ean: normalizeOptionalText(getCell(row, mapping.ean)),
       isbn: normalizeOptionalText(getCell(row, mapping.isbn)),
       mpn: normalizeOptionalText(getCell(row, mapping.mpn)),
     });
     fetchBinsForWarehouse(finalWarehouseId);
+    if (importSkuRuleId) setSelectedSkuRuleId(importSkuRuleId);
     setItemFormOpenedFromImport(true);
     setModalVisible(true);
-    message.info('Review mapped values, then save. You will return to the import list for the next row.');
+    if (willAutoSku) {
+      await autoGenerateSkuForImport(importSkuRuleId);
+    } else {
+      message.info('Review the form and save. Dropdown values from the file were created or matched automatically where possible.');
+    }
   };
 
   const fetchDrafts = async () => {
@@ -3151,11 +3392,12 @@ const viewItem = async (item) => {
   }, [itemTypes]);
 
   const csvImportMappingRows = useMemo(() => {
+    const skuRequired = isSkuRequiredForImport(csvImportModal.skuSource);
     const core = CSV_IMPORT_CORE_TARGETS.map((t) => ({
       key: t.id,
       group: t.group,
       label: t.label,
-      required: !!t.required,
+      required: t.id === 'sku' ? skuRequired : !!t.required,
     }));
     const custom = (csvImportModal.fieldConfigs || []).map((c) => ({
       key: `cf:${c.field_name || c.fieldName}`,
@@ -3164,29 +3406,106 @@ const viewItem = async (item) => {
       required: Boolean(c.is_required),
     }));
     return [...core, ...custom];
-  }, [csvImportModal.fieldConfigs]);
+  }, [csvImportModal.fieldConfigs, csvImportModal.skuSource]);
+
+  const csvImportIssueContext = useMemo(() => {
+    const { rows, mapping, defaultWarehouseId, fieldConfigs, skuSource } = csvImportModal;
+    const duplicateSkuKeys = buildDuplicateSkuKeysInFile(rows, mapping);
+    const existingSkuKeys = new Set(
+      (items || [])
+        .map((i) => String(i.sku || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+    return {
+      mapping,
+      fieldConfigs: fieldConfigs || [],
+      defaultWarehouseId,
+      duplicateSkuKeys,
+      existingSkuKeys,
+      skuSource: skuSource || CSV_IMPORT_SKU_FROM_FILE,
+      hasSkuRules: skuRules.length > 0,
+    };
+  }, [
+    csvImportModal.rows,
+    csvImportModal.mapping,
+    csvImportModal.defaultWarehouseId,
+    csvImportModal.fieldConfigs,
+    csvImportModal.skuSource,
+    items,
+    skuRules.length,
+  ]);
+
+  const csvImportRowsWithAssessment = useMemo(() => {
+    const { rows } = csvImportModal;
+    if (!rows?.length) return [];
+    const ctx = csvImportIssueContext;
+    return rows.map((row, idx) => {
+      const added = !!csvImportModal.addedRowIndexes?.[String(idx)];
+      const issues = assessImportRowIssues({
+        row,
+        mapping: ctx.mapping,
+        fieldConfigs: ctx.fieldConfigs,
+        defaultWarehouseId: ctx.defaultWarehouseId,
+        duplicateSkuKeys: ctx.duplicateSkuKeys,
+        existingSkuKeys: ctx.existingSkuKeys,
+        brandOptions,
+        manufacturerOptions,
+        unitOptions,
+        canManageItems,
+        skuSource: ctx.skuSource,
+        hasSkuRules: ctx.hasSkuRules,
+      });
+      const level = added ? 'added' : issues.level;
+      return {
+        ...row,
+        _rowIndex: String(idx),
+        _importIssues: issues,
+        _importLevel: level,
+      };
+    });
+  }, [
+    csvImportModal.rows,
+    csvImportModal.addedRowIndexes,
+    csvImportIssueContext,
+    brandOptions,
+    manufacturerOptions,
+    unitOptions,
+    canManageItems,
+  ]);
+
+  const csvImportIssueStats = useMemo(() => {
+    let errors = 0;
+    let warnings = 0;
+    let added = 0;
+    csvImportRowsWithAssessment.forEach((r) => {
+      if (r._importLevel === 'added') added += 1;
+      else if (r._importLevel === 'error') errors += 1;
+      else if (r._importLevel === 'warning') warnings += 1;
+    });
+    return { errors, warnings, added, total: csvImportRowsWithAssessment.length };
+  }, [csvImportRowsWithAssessment]);
 
   const csvImportPreviewRows = useMemo(() => {
-    const { rows, mapping, csvImportPreviewFilters: pf } = csvImportModal;
-    if (!rows?.length) return [];
-    return rows
-      .map((row, idx) => ({ ...row, _rowIndex: String(idx) }))
-      .filter((r) => {
-        if (pf?.hideMissingSku && !csvImportRowHasMappedValue(r, mapping, 'sku')) return false;
-        if (pf?.hideMissingName && !csvImportRowHasMappedValue(r, mapping, 'name')) return false;
-        if (pf?.onlyReady
-          && (!csvImportRowHasMappedValue(r, mapping, 'sku') || !csvImportRowHasMappedValue(r, mapping, 'name'))) {
-          return false;
-        }
-        return true;
-      });
-  }, [csvImportModal.rows, csvImportModal.mapping, csvImportModal.csvImportPreviewFilters]);
+    const { mapping, csvImportPreviewFilters: pf } = csvImportModal;
+    const skuSource = csvImportModal.skuSource || CSV_IMPORT_SKU_FROM_FILE;
+    return csvImportRowsWithAssessment.filter((r) => {
+      if (pf?.hideMissingSku && !csvImportRowHasMappedValue(r, mapping, 'sku')) return false;
+      if (pf?.hideMissingName && !csvImportRowHasMappedValue(r, mapping, 'name')) return false;
+      if (pf?.onlyReady && !isImportRowReady(r, mapping, skuSource)) return false;
+      if (pf?.onlyIssues && r._importLevel !== 'error' && r._importLevel !== 'warning') return false;
+      return true;
+    });
+  }, [csvImportRowsWithAssessment, csvImportModal.mapping, csvImportModal.csvImportPreviewFilters, csvImportModal.skuSource]);
 
   const csvImportReadyChecklist = useMemo(() => {
     const m = csvImportModal.mapping || {};
+    const skuSource = csvImportModal.skuSource || CSV_IMPORT_SKU_FROM_FILE;
+    const autoSku = skuSource === CSV_IMPORT_SKU_AUTO_RULE;
     const reqCustom = (csvImportModal.fieldConfigs || []).filter((c) => c.is_required || c.isRequired);
     return {
-      skuMapped: !!m.sku,
+      skuMapped: autoSku || !!m.sku,
+      skuAutoRule: autoSku,
+      skuRuleReady: autoSku ? skuRules.length > 0 && !!(csvImportModal.importSkuRuleId || skuRules.find((r) => r.is_default)) : true,
       nameMapped: !!m.name,
       requiredCustom: reqCustom.map((c) => {
         const fn = c.field_name || c.fieldName;
@@ -3197,7 +3516,7 @@ const viewItem = async (item) => {
         };
       }),
     };
-  }, [csvImportModal.mapping, csvImportModal.fieldConfigs]);
+  }, [csvImportModal.mapping, csvImportModal.fieldConfigs, csvImportModal.skuSource, csvImportModal.importSkuRuleId, skuRules]);
 
   return (
     <div style={{ padding: '24px', background: '#f0f2f5', minHeight: '100vh' }}>
@@ -3536,7 +3855,7 @@ const viewItem = async (item) => {
               <AntText strong>.xls</AntText>
               ) are supported — Excel uses the{' '}
               <AntText strong>first worksheet</AntText>
-              {' '}only. Then map each column to an app field (including custom fields for the selected item type). Prices use your current item currency (
+              {' '}only. Map columns to app fields. Choose <AntText strong>SKU from file</AntText> or <AntText strong>Auto-generate SKU</AntText> (SKU column optional). When you use <AntText strong>Add in form</AntText>, missing master data is created where allowed and SKU is generated from your rule if configured. Prices use your current item currency (
               <AntText strong>{priceCurrency}</AntText>
               ) and are converted to USD for the API like the item form. Use <AntText strong>Add in form</AntText> on each row — this list stays open while you add items one by one. After each save you return here; saved rows show <AntText strong>Added</AntText>. Simple and Service types only (up to 5,000 data rows).
             </span>
@@ -3569,6 +3888,46 @@ const viewItem = async (item) => {
               }))}
               onChange={(v) => setCsvImportModal((prev) => ({ ...prev, defaultWarehouseId: v || undefined, result: null }))}
             />
+          </Col>
+        </Row>
+
+        <Row gutter={12} style={{ marginBottom: 12 }}>
+          <Col xs={24}>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>SKU for imported items</div>
+            <Radio.Group
+              value={csvImportModal.skuSource || CSV_IMPORT_SKU_FROM_FILE}
+              disabled={csvImportModal.busy}
+              onChange={(e) => {
+                const next = e.target.value;
+                setCsvImportModal((prev) => ({
+                  ...prev,
+                  skuSource: next,
+                  result: null,
+                }));
+              }}
+            >
+              <Radio value={CSV_IMPORT_SKU_FROM_FILE}>From file column (map SKU — required per row)</Radio>
+              <Radio value={CSV_IMPORT_SKU_AUTO_RULE}>Auto-generate using SKU rules (SKU column optional / leave blank)</Radio>
+            </Radio.Group>
+            {csvImportModal.skuSource === CSV_IMPORT_SKU_AUTO_RULE && (
+              <div style={{ marginTop: 10, maxWidth: 480 }}>
+                <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>SKU rule for import</div>
+                <Select
+                  style={{ width: '100%' }}
+                  placeholder={skuRules.length ? 'Select SKU rule' : 'No rules — create in SKU settings'}
+                  disabled={csvImportModal.busy || !skuRules.length}
+                  value={csvImportModal.importSkuRuleId}
+                  options={skuRules.map((r) => ({
+                    value: r.id,
+                    label: `${r.name}${r.is_default ? ' [Default]' : ''}${r.scope === 'category' ? ` (${r.scope_value})` : ''}`,
+                  }))}
+                  onChange={(v) => setCsvImportModal((prev) => ({ ...prev, importSkuRuleId: v }))}
+                />
+                <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                  Each row opens the item form with Name (required). SKU is generated automatically from this rule when the file SKU cell is empty.
+                </AntText>
+              </div>
+            )}
           </Col>
         </Row>
 
@@ -3660,12 +4019,21 @@ const viewItem = async (item) => {
           <div style={{ marginTop: 16 }}>
             <AntText strong style={{ display: 'block', marginBottom: 8 }}>Add-item requirements (mapping)</AntText>
             <Space wrap size={[8, 8]} style={{ marginBottom: 10 }}>
-              <Tag
-                icon={csvImportReadyChecklist.skuMapped ? <CheckOutlined /> : <CloseOutlined />}
-                color={csvImportReadyChecklist.skuMapped ? 'success' : 'default'}
-              >
-                SKU column mapped
-              </Tag>
+              {csvImportReadyChecklist.skuAutoRule ? (
+                <Tag
+                  icon={csvImportReadyChecklist.skuRuleReady ? <CheckOutlined /> : <CloseOutlined />}
+                  color={csvImportReadyChecklist.skuRuleReady ? 'processing' : 'warning'}
+                >
+                  Auto SKU (rule)
+                </Tag>
+              ) : (
+                <Tag
+                  icon={csvImportReadyChecklist.skuMapped ? <CheckOutlined /> : <CloseOutlined />}
+                  color={csvImportReadyChecklist.skuMapped ? 'success' : 'default'}
+                >
+                  SKU column mapped
+                </Tag>
+              )}
               <Tag
                 icon={csvImportReadyChecklist.nameMapped ? <CheckOutlined /> : <CloseOutlined />}
                 color={csvImportReadyChecklist.nameMapped ? 'success' : 'default'}
@@ -3683,7 +4051,11 @@ const viewItem = async (item) => {
               ))}
             </Space>
             <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-              Preview shows loaded rows (after filters). <AntText strong>Ready</AntText> means the row has non-empty SKU and Name in the mapped columns. Use <AntText strong>Add in form</AntText> to open the item form with this row’s mapped values — complete missing fields and save.
+              Preview shows loaded rows (after filters). <AntText strong>Ready</AntText> means Name is mapped and filled
+              {csvImportModal.skuSource === CSV_IMPORT_SKU_AUTO_RULE
+                ? ' (SKU may be blank — generated from your rule on Add in form).'
+                : ', and SKU is mapped and filled.'}
+              {' '}Use <AntText strong>Add in form</AntText> per row.
             </AntText>
             <Space wrap style={{ marginBottom: 8 }}>
               <AntText strong>Preview filters:</AntText>
@@ -3733,16 +4105,58 @@ const viewItem = async (item) => {
                   }));
                 }}
               >
-                Only ready rows (SKU + Name)
+                Only ready rows (Name{csvImportModal.skuSource === CSV_IMPORT_SKU_AUTO_RULE ? '' : ' + SKU'})
+              </Checkbox>
+              <Checkbox
+                checked={!!csvImportModal.csvImportPreviewFilters?.onlyIssues}
+                disabled={csvImportModal.busy}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setCsvImportModal((prev) => ({
+                    ...prev,
+                    csvImportPreviewFilters: {
+                      ...prev.csvImportPreviewFilters,
+                      onlyIssues: checked,
+                    },
+                  }));
+                }}
+              >
+                Only rows with issues
               </Checkbox>
             </Space>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8, fontSize: 12 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: '#fff1f0', border: '1px solid #ffccc7' }} />
+                <AntText type="secondary">Blocking mismatch</AntText>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: '#fffbe6', border: '1px solid #ffe58f' }} />
+                <AntText type="secondary">Warning / will auto-fix</AntText>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: '#f6ffed', border: '1px solid #b7eb8f' }} />
+                <AntText type="secondary">Added</AntText>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: '#ffccc7', border: '1px solid #ff7875' }} />
+                <AntText type="secondary">Mismatched cell</AntText>
+              </span>
+            </div>
             <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
               Showing {csvImportPreviewRows.length} of {csvImportModal.rows.length} row(s) in preview
-              {Object.keys(csvImportModal.addedRowIndexes || {}).length > 0 && (
+              {csvImportIssueStats.errors > 0 && (
                 <>
-                  {' '}·{' '}
-                  <AntText strong>{Object.keys(csvImportModal.addedRowIndexes).length}</AntText>
-                  {' '}row(s) added so far
+                  {' '}· <AntText type="danger" strong>{csvImportIssueStats.errors}</AntText> blocking
+                </>
+              )}
+              {csvImportIssueStats.warnings > 0 && (
+                <>
+                  {' '}· <AntText style={{ color: '#d48806' }} strong>{csvImportIssueStats.warnings}</AntText> warning(s)
+                </>
+              )}
+              {csvImportIssueStats.added > 0 && (
+                <>
+                  {' '}· <AntText type="success" strong>{csvImportIssueStats.added}</AntText> added
                 </>
               )}
             </AntText>
@@ -3758,6 +4172,9 @@ const viewItem = async (item) => {
                 showSizeChanger: true,
                 showTotal: (t) => `Preview ${t} row(s)`,
               }}
+              onRow={(record) => ({
+                style: IMPORT_PREVIEW_ROW_STYLE[record._importLevel] || IMPORT_PREVIEW_ROW_STYLE.ok,
+              })}
               columns={[
                 {
                   title: 'Line',
@@ -3767,16 +4184,62 @@ const viewItem = async (item) => {
                   render: (v) => (v != null ? v : '—'),
                 },
                 {
-                  title: 'Ready',
-                  key: 'ready',
-                  width: 72,
+                  title: 'Issues',
+                  key: 'issues',
+                  width: 168,
                   fixed: 'left',
                   render: (_, r) => {
-                    const ok = csvImportRowHasMappedValue(r, csvImportModal.mapping, 'sku')
-                      && csvImportRowHasMappedValue(r, csvImportModal.mapping, 'name');
-                    return ok
-                      ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} title="Has SKU and Name" />
-                      : <CloseOutlined style={{ color: '#d9d9d9', fontSize: 14 }} title="Missing SKU or Name" />;
+                    if (r._importLevel === 'added') {
+                      return <Tag color="success" style={{ margin: 0 }}>Added</Tag>;
+                    }
+                    const iss = r._importIssues;
+                    if (!iss || r._importLevel === 'ok') {
+                      return (
+                        <Tag color="success" style={{ margin: 0 }} icon={<CheckCircleOutlined />}>
+                          OK
+                        </Tag>
+                      );
+                    }
+                    const tip = (
+                      <div style={{ maxWidth: 360 }}>
+                        {iss.errors?.length > 0 && (
+                          <div style={{ marginBottom: iss.warnings?.length ? 8 : 0 }}>
+                            <AntText strong type="danger">Blocking</AntText>
+                            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                              {iss.errors.map((e) => (
+                                <li key={e}>{e}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {iss.warnings?.length > 0 && (
+                          <div>
+                            <AntText strong style={{ color: '#d48806' }}>Warnings</AntText>
+                            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                              {iss.warnings.map((w) => (
+                                <li key={w}>{w}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    );
+                    if (r._importLevel === 'error') {
+                      return (
+                        <Tooltip title={tip}>
+                          <Tag color="error" style={{ margin: 0, cursor: 'help' }} icon={<CloseOutlined />}>
+                            Blocked
+                          </Tag>
+                        </Tooltip>
+                      );
+                    }
+                    return (
+                      <Tooltip title={tip}>
+                        <Tag color="warning" style={{ margin: 0, cursor: 'help' }} icon={<WarningOutlined />}>
+                          Review
+                        </Tag>
+                      </Tooltip>
+                    );
                   },
                 },
                 {
@@ -3787,17 +4250,23 @@ const viewItem = async (item) => {
                   render: (_, r) => {
                     const rowKey = String(r._rowIndex);
                     if (csvImportModal.addedRowIndexes?.[rowKey]) {
-                      return <Tag color="success" style={{ margin: 0 }}>Added</Tag>;
+                      return null;
                     }
+                    const canOpen = r._importIssues?.ok;
+                    const tip = canOpen
+                      ? 'Open add-item form with mapped values'
+                      : (r._importIssues?.errors?.[0] || 'Fix blocking issues before opening the form');
                     return (
-                      <Button
-                        type="link"
-                        size="small"
-                        disabled={csvImportModal.busy || !canManageItems}
-                        onClick={() => openAddItemFromImportRow(Number(r._rowIndex))}
-                      >
-                        Add in form
-                      </Button>
+                      <Tooltip title={tip}>
+                        <Button
+                          type="link"
+                          size="small"
+                          disabled={csvImportModal.busy || !canManageItems || !canOpen}
+                          onClick={() => openAddItemFromImportRow(Number(r._rowIndex))}
+                        >
+                          Add in form
+                        </Button>
+                      </Tooltip>
                     );
                   },
                 },
@@ -3806,10 +4275,23 @@ const viewItem = async (item) => {
                   key: h,
                   ellipsis: true,
                   width: 118,
+                  onCell: (record) => {
+                    if (record._importIssues?.mismatchColumns?.includes(h)) {
+                      return { style: IMPORT_PREVIEW_CELL_MISMATCH_STYLE };
+                    }
+                    return {};
+                  },
                   render: (_, r) => {
                     const v = r[h];
                     if (v === undefined || v === null) return '';
-                    return String(v);
+                    const text = String(v);
+                    const mismatch = r._importIssues?.mismatchColumns?.includes(h);
+                    if (!mismatch) return text;
+                    return (
+                      <Tooltip title="Value does not match system rules or master data">
+                        <span style={{ fontWeight: 600, color: '#cf1322' }}>{text}</span>
+                      </Tooltip>
+                    );
                   },
                 })),
               ]}
@@ -3990,6 +4472,23 @@ const viewItem = async (item) => {
 
           {/* ── Section: Basic Info ── */}
           <div style={sectionStyle}>
+            {itemFormOpenedFromImport && importCustomFieldsPreview.length > 0 && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 14 }}
+                message="Custom fields from import"
+                description={
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                    {importCustomFieldsPreview.map((f) => (
+                      <Tag key={f.key} style={{ margin: 0 }}>
+                        {f.label}: <strong>{String(f.value)}</strong>
+                      </Tag>
+                    ))}
+                  </div>
+                }
+              />
+            )}
             <div style={sectionHeader}>
               <span style={sectionIconStyle}><AppstoreOutlined /></span>
               Basic Information
@@ -5280,6 +5779,11 @@ const viewItem = async (item) => {
               <Col xs={24} sm={8}>
                 <Form.Item name="hsnCode" label="HSN Code">
                   <Input placeholder="Enter HSN Code" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="supplierCode" label="Supplier Code">
+                  <Input placeholder="Supplier / vendor code" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={8}>
