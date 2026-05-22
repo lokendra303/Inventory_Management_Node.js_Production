@@ -1,20 +1,23 @@
 import apiService from '../../services/apiService';
+import {
+  CSV_IMPORT_SKU_FROM_FILE,
+  CSV_IMPORT_SKU_AUTO_RULE,
+  CSV_IMPORT_DEFAULTABLE_CORE_IDS,
+} from './importConstants';
 
-/** SKU column required in file mapping */
-export const CSV_IMPORT_SKU_FROM_FILE = 'from_file';
-/** SKU generated via SKU rules when opening Add in form (file SKU column optional) */
-export const CSV_IMPORT_SKU_AUTO_RULE = 'auto_rule';
+export { CSV_IMPORT_SKU_FROM_FILE, CSV_IMPORT_SKU_AUTO_RULE, CSV_IMPORT_DEFAULTABLE_CORE_IDS };
 
 export function isSkuRequiredForImport(skuSource = CSV_IMPORT_SKU_FROM_FILE) {
   return skuSource !== CSV_IMPORT_SKU_AUTO_RULE;
 }
 
-export function isImportRowReady(row, mapping, skuSource = CSV_IMPORT_SKU_FROM_FILE) {
-  const getCell = createImportRowGetCell(row);
-  if (!mapping?.name || !getCell(mapping.name)) return false;
+export function isImportRowReady(row, mapping, skuSource = CSV_IMPORT_SKU_FROM_FILE, importDefaults = {}) {
+  const name = pickImportValue(row, mapping, importDefaults, 'name');
+  if (!name) return false;
   if (!isSkuRequiredForImport(skuSource)) return true;
-  if (!mapping?.sku) return false;
-  return !!getCell(mapping.sku);
+  const sku = pickImportValue(row, mapping, importDefaults, 'sku');
+  if (!mapping?.sku && !importDefaults?.sku) return !!sku;
+  return !!sku;
 }
 
 export function findMasterOptionByName(options, name, keys = ['name']) {
@@ -105,27 +108,28 @@ export function validateImportRowBeforeOpen({
   duplicateSkuKeys = new Set(),
   skuSource = CSV_IMPORT_SKU_FROM_FILE,
   hasSkuRules = true,
+  importDefaults = {},
 }) {
   const getCell = createImportRowGetCell(row);
+  const pick = (fieldKey) => pickImportValue(row, mapping, importDefaults, fieldKey);
   const errors = [];
   const warnings = [];
   const skuFromFile = isSkuRequiredForImport(skuSource);
 
-  const sku = skuFromFile && mapping?.sku ? getCell(mapping.sku) : '';
-  const nameCol = mapping?.name;
-  const name = nameCol ? getCell(nameCol) : '';
+  const sku = skuFromFile ? pick('sku') : pick('sku');
+  const name = pick('name');
 
-  if (!nameCol) {
-    errors.push('Name column is not mapped in the import dialog.');
+  if (!mapping?.name && !importDefaults?.name) {
+    errors.push('Name column is not mapped (map a column or set a default name for all rows).');
   } else if (!name) {
-    errors.push('This row has no Name value in the mapped column.');
+    errors.push('This row has no Name value (file cell empty and no default name).');
   }
 
   if (skuFromFile) {
-    if (!mapping?.sku) {
-      errors.push('SKU column is not mapped (required when using SKU from file).');
+    if (!mapping?.sku && !importDefaults?.sku) {
+      errors.push('SKU column is not mapped (map a column or set a default SKU for all rows).');
     } else if (!sku) {
-      errors.push('This row has no SKU value in the mapped column.');
+      errors.push('This row has no SKU (file cell empty and no default SKU).');
     }
   } else {
     if (!hasSkuRules) {
@@ -137,7 +141,7 @@ export function validateImportRowBeforeOpen({
     }
   }
 
-  const skuForDup = mapping?.sku ? getCell(mapping.sku) : '';
+  const skuForDup = pick('sku');
   if (skuForDup && duplicateSkuKeys.has(skuForDup.toLowerCase())) {
     warnings.push(`SKU "${skuForDup}" appears more than once in this file. Only the first save will succeed unless you change SKUs.`);
   }
@@ -149,16 +153,18 @@ export function validateImportRowBeforeOpen({
     if (!required) continue;
     const label = c.field_label || c.fieldLabel || fn;
     const col = mapping[`cf:${fn}`];
-    if (!col) {
-      errors.push(`Required custom field "${label}" is not mapped to a file column.`);
+    const cfKey = `cf:${fn}`;
+    const effective = pick(cfKey);
+    if (!mapping[cfKey] && !importDefaults[cfKey]) {
+      errors.push(`Required custom field "${label}" is not mapped and has no import default.`);
       continue;
     }
-    if (!getCell(col)) {
-      errors.push(`Required custom field "${label}" is empty on this row.`);
+    if (!effective) {
+      errors.push(`Required custom field "${label}" is empty on this row (map, or set an import default).`);
     }
   }
 
-  const stockCell = getCell(mapping.openingStock);
+  const stockCell = pick('openingStock');
   const stockParsed = parseImportNumeric(stockCell);
   if (stockParsed.invalid) {
     warnings.push(`Opening stock "${stockCell}" is not a valid number; it will be treated as 0.`);
@@ -179,6 +185,26 @@ export function createImportRowGetCell(row) {
   };
 }
 
+/**
+ * File column wins when mapped and non-empty; otherwise use import-wide default.
+ * @param {string} fieldKey - mapping key (e.g. "category", "cf:color")
+ */
+export function pickImportValue(row, mapping = {}, importDefaults = {}, fieldKey) {
+  const getCell = createImportRowGetCell(row);
+  const col = mapping?.[fieldKey];
+  if (col) {
+    const fromFile = getCell(col);
+    if (fromFile !== '') return fromFile;
+  }
+  const d = importDefaults?.[fieldKey];
+  if (d === undefined || d === null) return '';
+  return String(d).trim();
+}
+
+export function countImportDefaultsSet(importDefaults = {}) {
+  return Object.values(importDefaults).filter((v) => v !== undefined && v !== null && String(v).trim() !== '').length;
+}
+
 function pushMismatchColumn(mismatchColumns, col) {
   if (col && !mismatchColumns.includes(col)) mismatchColumns.push(col);
 }
@@ -197,8 +223,10 @@ export function assessImportRowIssues({
   canManageItems = false,
   skuSource = CSV_IMPORT_SKU_FROM_FILE,
   hasSkuRules = true,
+  importDefaults = {},
 }) {
   const getCell = createImportRowGetCell(row);
+  const pick = (fieldKey) => pickImportValue(row, mapping, importDefaults, fieldKey);
   const mismatchColumns = [];
   const skuFromFile = isSkuRequiredForImport(skuSource);
 
@@ -210,28 +238,27 @@ export function assessImportRowIssues({
     duplicateSkuKeys,
     skuSource,
     hasSkuRules,
+    importDefaults,
   });
 
   const errors = [...base.errors];
   const warnings = [...base.warnings];
 
-  const sku = mapping?.sku ? getCell(row, mapping.sku) : '';
-  const name = mapping?.name ? getCell(row, mapping.name) : '';
+  const sku = pick('sku');
+  const name = pick('name');
 
   if (skuFromFile) {
-    if (!mapping.sku) {
-      errors.push('SKU column is not mapped in the import dialog.');
-    } else if (!sku) {
-      pushMismatchColumn(mismatchColumns, mapping.sku);
+    if (!sku && (mapping?.sku || importDefaults?.sku)) {
+      if (mapping?.sku) pushMismatchColumn(mismatchColumns, mapping.sku);
     }
   } else if (mapping?.sku && !sku) {
     pushMismatchColumn(mismatchColumns, mapping.sku);
   }
 
-  if (!mapping.name) {
-    errors.push('Name column is not mapped in the import dialog.');
+  if (!mapping?.name && !importDefaults?.name) {
+    errors.push('Name column is not mapped (map a column or set a default name).');
   } else if (!name) {
-    pushMismatchColumn(mismatchColumns, mapping.name);
+    if (mapping?.name) pushMismatchColumn(mismatchColumns, mapping.name);
   }
 
   if (sku && existingSkuKeys.has(sku.toLowerCase())) {
@@ -243,52 +270,51 @@ export function assessImportRowIssues({
     pushMismatchColumn(mismatchColumns, mapping.sku);
   }
 
-  const stockCell = getCell(mapping.openingStock);
+  const stockCell = pick('openingStock');
   const stockParsed = parseImportNumeric(stockCell);
   if (stockParsed.invalid) {
-    pushMismatchColumn(mismatchColumns, mapping.openingStock);
+    if (mapping?.openingStock) pushMismatchColumn(mismatchColumns, mapping.openingStock);
   }
   if ((stockParsed.value || 0) > 0 && !defaultWarehouseId) {
-    pushMismatchColumn(mismatchColumns, mapping.openingStock);
+    if (mapping?.openingStock) pushMismatchColumn(mismatchColumns, mapping.openingStock);
   }
 
-  const openingValueCell = getCell(mapping.openingValue);
+  const openingValueCell = pick('openingValue');
   if (parseImportNumeric(openingValueCell).invalid) {
     warnings.push(`Opening value "${openingValueCell}" is not a valid number.`);
-    pushMismatchColumn(mismatchColumns, mapping.openingValue);
+    if (mapping?.openingValue) pushMismatchColumn(mismatchColumns, mapping.openingValue);
   }
 
   for (const numericKey of ['costPrice', 'sellingPrice', 'mrp', 'taxRate', 'minStockLevel', 'maxStockLevel', 'weight']) {
-    const col = mapping[numericKey];
-    if (!col) continue;
-    const raw = getCell(col);
-    if (raw && parseImportNumeric(raw, { emptyAsZero: false }).invalid) {
+    const raw = pick(numericKey);
+    if (!raw) continue;
+    if (parseImportNumeric(raw, { emptyAsZero: false }).invalid) {
       warnings.push(`"${numericKey}" value "${raw}" is not a valid number.`);
-      pushMismatchColumn(mismatchColumns, col);
+      if (mapping[numericKey]) pushMismatchColumn(mismatchColumns, mapping[numericKey]);
     }
   }
 
-  const brandStr = getCell(mapping.brand);
+  const brandStr = pick('brand');
   if (brandStr && !findMasterOptionByName(brandOptions, brandStr)) {
     const msg = canManageItems
       ? `Brand "${brandStr}" is not in the list (will be created when you use Add in form).`
       : `Brand "${brandStr}" does not match any brand in the system.`;
     if (canManageItems) warnings.push(msg);
     else errors.push(msg);
-    pushMismatchColumn(mismatchColumns, mapping.brand);
+    if (mapping?.brand) pushMismatchColumn(mismatchColumns, mapping.brand);
   }
 
-  const mfrStr = getCell(mapping.manufacturer);
+  const mfrStr = pick('manufacturer');
   if (mfrStr && !findMasterOptionByName(manufacturerOptions, mfrStr)) {
     const msg = canManageItems
       ? `Manufacturer "${mfrStr}" is not in the list (will be created on Add in form).`
       : `Manufacturer "${mfrStr}" does not match any manufacturer in the system.`;
     if (canManageItems) warnings.push(msg);
     else errors.push(msg);
-    pushMismatchColumn(mismatchColumns, mapping.manufacturer);
+    if (mapping?.manufacturer) pushMismatchColumn(mismatchColumns, mapping.manufacturer);
   }
 
-  const unitStr = getCell(mapping.unit);
+  const unitStr = pick('unit');
   if (unitStr) {
     const unitOk = unitOptions.some((u) => u.id === unitStr)
       || !!findMasterOptionByName(unitOptions, unitStr, ['name', 'symbol', 'id']);
@@ -298,7 +324,7 @@ export function assessImportRowIssues({
         : `Unit "${unitStr}" does not match any unit in the system.`;
       if (canManageItems) warnings.push(msg);
       else errors.push(msg);
-      pushMismatchColumn(mismatchColumns, mapping.unit);
+      if (mapping?.unit) pushMismatchColumn(mismatchColumns, mapping.unit);
     }
   }
 
@@ -306,26 +332,26 @@ export function assessImportRowIssues({
     const fn = c.field_name || c.fieldName;
     if (!fn) continue;
     const label = c.field_label || c.fieldLabel || fn;
-    const col = mapping[`cf:${fn}`];
+    const cfKey = `cf:${fn}`;
+    const col = mapping[cfKey];
     const required = Boolean(c.is_required || c.isRequired);
 
-    if (required && !col) {
+    if (required && !col && !importDefaults[cfKey]) {
       continue;
     }
-    if (!col) continue;
+    if (!col && !importDefaults[cfKey]) continue;
 
-    const raw = row[col];
-    const empty = raw === undefined || raw === null || String(raw).trim() === '';
-    if (required && empty) {
-      pushMismatchColumn(mismatchColumns, col);
+    const effective = pick(cfKey);
+    if (required && !effective) {
+      pushMismatchColumn(mismatchColumns, col || cfKey);
       continue;
     }
-    if (empty) continue;
+    if (!effective) continue;
 
     const fieldType = String(c.field_type || c.fieldType || 'text').toLowerCase();
-    const value = coerceImportedCustomValue(raw, fieldType);
+    const value = coerceImportedCustomValue(effective, fieldType);
     if (value === undefined) {
-      errors.push(`Custom field "${label}": invalid value "${String(raw).trim()}".`);
+      errors.push(`Custom field "${label}": invalid value "${String(effective).trim()}".`);
       pushMismatchColumn(mismatchColumns, col);
       continue;
     }
@@ -472,6 +498,7 @@ export async function resolveImportCustomFields({
   itemType,
   getCell,
   canManageItems,
+  importDefaults = {},
 }) {
   const customFields = {};
   const created = [];
@@ -482,11 +509,14 @@ export async function resolveImportCustomFields({
     const fn = c.field_name || c.fieldName;
     if (!fn) continue;
     const label = c.field_label || c.fieldLabel || fn;
-    const col = mapping[`cf:${fn}`];
-    if (!col) continue;
-
-    const raw = row[col];
-    if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+    const cfKey = `cf:${fn}`;
+    const col = mapping[cfKey];
+    let raw = col ? row[col] : undefined;
+    if (raw === undefined || raw === null || String(raw).trim() === '') {
+      const fromDefault = importDefaults[cfKey];
+      if (fromDefault === undefined || fromDefault === null || String(fromDefault).trim() === '') continue;
+      raw = fromDefault;
+    }
 
     const fieldType = String(c.field_type || c.fieldType || 'text').toLowerCase();
     let value = coerceImportedCustomValue(raw, fieldType);
