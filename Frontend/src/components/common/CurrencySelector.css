@@ -1,0 +1,174 @@
+.currency-selector-wrap {
+  width: 100%;
+}
+
+.currency-selector-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.currency-selector-label-icon {
+  font-size: 11px;
+  color: rgba(167, 139, 250, 0.9);
+}
+
+/* Trigger (sidebar) */
+.currency-selector-select.ant-select {
+  width: 100%;
+}
+
+.currency-selector-select.ant-select .ant-select-selector {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 10px !important;
+  min-height: 38px !important;
+  padding: 4px 10px !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.currency-selector-select.ant-select:not(.ant-select-disabled):hover .ant-select-selector {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(167, 139, 250, 0.45) !important;
+}
+
+.currency-selector-select.ant-select-focused .ant-select-selector,
+.currency-selector-select.ant-select.ant-select-open .ant-select-selector {
+  background: rgba(255, 255, 255, 0.11) !important;
+  border-color: rgba(167, 139, 250, 0.65) !important;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2) !important;
+}
+
+.currency-selector-select .ant-select-selection-item {
+  color: #fff !important;
+  font-weight: 600;
+  line-height: 28px !important;
+}
+
+.currency-selector-select .ant-select-arrow,
+.currency-selector-select .ant-select-clear {
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+
+.currency-selector-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.currency-selector-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.35), rgba(59, 130, 246, 0.25));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  font-weight: 700;
+  color: #e9d5ff;
+  flex-shrink: 0;
+}
+
+.currency-selector-code {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+/* Dropdown panel (portaled to body) */
+.currency-selector-dropdown.ant-select-dropdown {
+  padding: 6px;
+  background: linear-gradient(165deg, #1a1635 0%, #252047 50%, #1e1b3a 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(124, 58, 237, 0.15);
+}
+
+.currency-selector-dropdown .ant-select-item {
+  border-radius: 8px !important;
+  padding: 0 !important;
+  margin-bottom: 2px;
+}
+
+.currency-selector-dropdown .ant-select-item-option-content {
+  width: 100%;
+}
+
+.currency-selector-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: rgba(124, 58, 237, 0.2) !important;
+}
+
+.currency-selector-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(124, 58, 237, 0.32) !important;
+  font-weight: 600;
+}
+
+.currency-selector-dropdown .ant-select-item-option-selected .currency-option-code {
+  color: #e9d5ff;
+}
+
+.currency-selector-dropdown .rc-virtual-list-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.currency-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.currency-option-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 14px;
+  font-weight: 700;
+  color: #c4b5fd;
+  flex-shrink: 0;
+}
+
+.currency-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.currency-option-code {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: 0.03em;
+}
+
+.currency-option-name {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.currency-selector-dropdown .ant-select-item-empty {
+  color: rgba(255, 255, 255, 0.45);
+}

@@ -631,7 +631,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       {renderMenu()}
       {!isCollapsed && (
         <div style={{
-          padding: '12px 16px', flexShrink: 0,
+          padding: '14px 16px 16px', flexShrink: 0,
           borderTop: '1px solid rgba(255,255,255,0.07)',
         }}>
           <CurrencySelector />
