@@ -44,15 +44,17 @@ const META_INLINE_MIN_H = 11;
 const META_INLINE_TOP_PAD = 3;
 const META_INLINE_BOTTOM_PAD = 3;
 
-/** Inline "Label: value" with wrapped text (height must match measureMetaInlineCellHeight). */
-function measureMetaInlineCellHeight(doc, w, label, value) {
+/**
+ * Paragraph-style meta cell: value starts on the same line as "Label:" then wraps below (full width).
+ */
+function measureMetaParagraphCellHeight(doc, w, label, value) {
   const cellPad = pad.cell;
   const innerW = w - cellPad * 2;
   const labelText = String(label || '').trim();
   const valueText = metaValueText(value);
+  const line = valueText ? `${labelText}: ${valueText}` : `${labelText}:`;
   doc.fontSize(size.metaValue).font(FONT);
-  const combined = valueText ? `${labelText}: ${valueText}` : `${labelText}:`;
-  let textH = doc.heightOfString(combined, { width: innerW, lineGap: 0.15 });
+  let textH = doc.heightOfString(line, { width: innerW, lineGap: 0.25 });
   textH = Math.min(textH, META_CELL_MAX_BODY_H);
   return Math.max(
     META_INLINE_MIN_H,
@@ -60,27 +62,35 @@ function measureMetaInlineCellHeight(doc, w, label, value) {
   );
 }
 
-function drawMetaInlineCell(doc, x, y, w, h, label, value) {
+function drawMetaParagraphCell(doc, x, y, w, h, label, value) {
   const cellPad = pad.cell;
   const innerW = w - cellPad * 2;
   const ty = y + META_INLINE_TOP_PAD;
   const maxTextH = Math.max(4, h - META_INLINE_TOP_PAD - META_INLINE_BOTTOM_PAD);
   const labelText = String(label || '').trim();
   const valueText = metaValueText(value);
+  doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
   if (valueText) {
-    doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
-    doc.text(`${labelText}: `, x + cellPad, ty, { continued: true, width: innerW, lineGap: 0.15 });
+    doc.text(`${labelText}: `, x + cellPad, ty, { continued: true, width: innerW, lineGap: 0.25 });
     doc.fontSize(size.metaValue).font(FONT).fillColor('#000000');
     doc.text(valueText, {
       width: innerW,
-      lineGap: 0.15,
+      lineGap: 0.25,
       height: maxTextH,
       ellipsis: true,
     });
   } else {
-    doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
-    doc.text(`${labelText}:`, x + cellPad, ty, { width: innerW, lineGap: 0.15, height: maxTextH });
+    doc.text(`${labelText}:`, x + cellPad, ty, { width: innerW, lineGap: 0.25, height: maxTextH });
   }
+}
+
+/** @deprecated alias */
+function measureMetaInlineCellHeight(doc, w, label, value) {
+  return measureMetaParagraphCellHeight(doc, w, label, value);
+}
+
+function drawMetaInlineCell(doc, x, y, w, h, label, value) {
+  drawMetaParagraphCell(doc, x, y, w, h, label, value);
 }
 
 /** True when this row should use single-line "Label: value" cells. */
@@ -95,21 +105,7 @@ function metaRowLayoutOptions(options, cellCount) {
 }
 
 function measureMetaStackedCellHeight(doc, w, label, value) {
-  const cellPad = pad.cell;
-  const innerW = w - cellPad * 2;
-  const gapAfterLabel = 1;
-  const bottomPad = 2;
-  const heading = `${String(label || '').trim()}:`;
-  const valueText = metaValueText(value);
-  doc.fontSize(size.metaLabel).font(FONT_BOLD);
-  const labelH = doc.heightOfString(heading, { width: innerW, lineGap: 0.2 });
-  doc.fontSize(size.metaValue).font(FONT);
-  let valueH = valueText
-    ? doc.heightOfString(valueText, { width: innerW, lineGap: 0.25 })
-    : 0;
-  valueH = Math.min(valueH, META_CELL_MAX_BODY_H);
-  const valueStart = Math.max(pad.metaValueTop, pad.metaLabelTop + labelH + gapAfterLabel);
-  return valueStart + (valueText ? Math.max(valueH, 6) : 0) + bottomPad;
+  return measureMetaParagraphCellHeight(doc, w, label, value);
 }
 
 function measureMetaRowHeight(doc, cells, colWidths, options = {}) {
@@ -133,30 +129,7 @@ function measureMetaRowHeight(doc, cells, colWidths, options = {}) {
 }
 
 function drawMetaLabeledCell(doc, x, y, w, h, label, value, options = {}) {
-  if (options.inline) {
-    drawMetaInlineCell(doc, x, y, w, h, label, value);
-    return;
-  }
-
-  const cellPad = pad.cell;
-  const heading = `${String(label || '').trim()}:`;
-  doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
-  const labelH = doc.heightOfString(heading, { width: w - cellPad * 2, lineGap: 0.2 });
-  doc.text(heading, x + cellPad, y + pad.metaLabelTop, { width: w - cellPad * 2, lineGap: 0.2 });
-
-  const valueText = metaValueText(value);
-  const gapAfterLabel = 1;
-  const valueY = y + Math.max(pad.metaValueTop, pad.metaLabelTop + labelH + gapAfterLabel);
-  if (valueText) {
-    doc.fontSize(size.metaValue).font(FONT).fillColor('#000000');
-    const maxValueH = Math.max(6, Math.min(META_CELL_MAX_BODY_H, h - (valueY - y) - 2));
-    doc.text(valueText, x + cellPad, valueY, {
-      width: w - cellPad * 2,
-      height: maxValueH,
-      lineGap: 0.25,
-      ellipsis: true,
-    });
-  }
+  drawMetaParagraphCell(doc, x, y, w, h, label, value);
 }
 
 /**
