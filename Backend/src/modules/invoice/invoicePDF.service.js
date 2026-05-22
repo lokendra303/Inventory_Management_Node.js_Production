@@ -575,6 +575,7 @@ class InvoicePDFService {
           postalCode: '411001',
         },
         contact: { phone: '+91 90000 00000', email: 'billing@customer.example' },
+        taxInfo: { gstin: '27AAAAA0000A1Z5', pan: 'AAAAA0000A' },
         taxInfo: { gstin: '27AAAAA0000A1Z5' },
         bankDetails: {
           bankName: 'Sample National Bank',

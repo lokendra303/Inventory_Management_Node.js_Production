@@ -186,7 +186,7 @@ class InvoiceTemplateService {
           postalCode: vendor.shipping_pin_code
         },
         taxInfo: {
-          pan: vendor.pan,
+          pan: vendor.pan ? String(vendor.pan).trim().toUpperCase() : '',
           gstin: vendor.gstin,
           msmeRegistered: vendor.msme_registered
         },
@@ -257,7 +257,7 @@ class InvoiceTemplateService {
           postalCode: customer.shipping_pin_code
         },
         taxInfo: {
-          pan: customer.pan,
+          pan: customer.pan ? String(customer.pan).trim().toUpperCase() : '',
           gstin: customer.gstin
         }
       };

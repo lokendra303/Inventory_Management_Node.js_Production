@@ -415,6 +415,10 @@ function drawBrandedPartyContent(doc, x, startY, width, party, options = {}) {
   if (showGst && party.taxInfo?.gstin) {
     y = drawWrappedText(doc, `GSTIN: ${party.taxInfo.gstin}`, x, y, width);
   }
+  const pan = String(party.taxInfo?.pan || '').trim().toUpperCase();
+  if (pan) {
+    y = drawWrappedText(doc, `PAN: ${pan}`, x, y, width);
+  }
 
   doc.fillColor('#000000');
   return y;

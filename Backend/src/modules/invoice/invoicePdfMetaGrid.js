@@ -206,6 +206,11 @@ function formatAddressLines(addr) {
   return lines;
 }
 
+function formatPartyPanLine(party) {
+  const pan = String(party?.taxInfo?.pan || '').trim().toUpperCase();
+  return pan ? `PAN: ${pan}` : '';
+}
+
 /** Measure meta grid height (sets row._height on each row). */
 function measureMetaGridHeight(doc, rows, totalWidth, options = {}) {
   const halfMeta = totalWidth / 2;
@@ -240,6 +245,7 @@ function measureTallyPartyColumnHeight(doc, party, addressKey, gst, stateInfo, e
     h += doc.heightOfString(line, { width: innerW, lineGap: 0.25 }) + 2;
   });
   if (gst) h += 11;
+  if (formatPartyPanLine(party)) h += 11;
   if (stateInfo?.name || stateInfo?.code) h += 11;
   h += extraLines.filter(Boolean).length * 11;
   return Math.max(h, minPanelH);
@@ -294,6 +300,15 @@ function drawTallyPartyColumn(
     const lh = doc.heightOfString(line, { width: innerW });
     if (py + lh <= maxY) {
       doc.text(line, x + cellPad, py, { width: innerW });
+      py += lh + 2;
+    }
+  }
+
+  const panLine = formatPartyPanLine(party);
+  if (panLine && py < maxY) {
+    const lh = doc.heightOfString(panLine, { width: innerW });
+    if (py + lh <= maxY) {
+      doc.text(panLine, x + cellPad, py, { width: innerW });
       py += lh + 2;
     }
   }
@@ -418,6 +433,15 @@ function drawClassicPartyPanel(doc, x, y, w, h, title, party, addressKey, extraL
     }
   }
 
+  const panLine = formatPartyPanLine(party);
+  if (panLine && py < maxY) {
+    const lh = doc.heightOfString(panLine, { width: innerW });
+    if (py + lh <= maxY) {
+      doc.text(panLine, x + cellPad, py, { width: innerW });
+      py += lh + 2;
+    }
+  }
+
   extraLines.filter(Boolean).forEach((line) => {
     if (py >= maxY) return;
     const lh = doc.heightOfString(line, { width: innerW });
@@ -442,6 +466,7 @@ function measureClassicPartyPanelMinHeight(doc, party, addressKey, extraLines = 
     h += doc.heightOfString(line, { width: innerW, lineGap: 0.25 }) + 2;
   });
   if (party?.taxInfo?.gstin) h += 11;
+  if (formatPartyPanLine(party)) h += 11;
   h += extraLines.filter(Boolean).length * 11;
   return Math.min(Math.max(h, 56), 130);
 }
