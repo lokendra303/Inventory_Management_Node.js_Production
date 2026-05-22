@@ -152,6 +152,46 @@ function box(doc, x, y, w, h) {
   doc.restore();
 }
 
+function strokeProformaTableVerticals(doc, x, y, colWidths, h) {
+  const totalW = colWidths.reduce((a, b) => a + b, 0);
+  const strokeV = (x1, y1, y2) => {
+    doc.save();
+    doc.lineWidth(LINE).strokeColor('#1a1a1a');
+    doc.moveTo(x1, y1).lineTo(x1, y2).stroke();
+    doc.restore();
+  };
+  strokeV(x, y, y + h);
+  strokeV(x + totalW, y, y + h);
+  let cx = x;
+  for (let i = 0; i < colWidths.length - 1; i++) {
+    cx += colWidths[i];
+    strokeV(cx, y, y + h);
+  }
+}
+
+/** Draw one table row's cell text (no borders). */
+function drawGridTableRowCells(doc, x, cy, colWidths, rowDef, defaultRowH) {
+  const rowH = rowDef._height || defaultRowH;
+  let cellX = x;
+  rowDef.cells.forEach((cell, i) => {
+    const cw = colWidths[i] || colWidths[colWidths.length - 1];
+    const cellPad = pad.cell;
+    const padTop = cell.padTop ?? pad.tableTop;
+    const textH = Math.max(10, rowH - padTop - 4);
+    const fs = cell.fontSize ?? (cell.bold ? size.tableHead : size.tableBody);
+    doc.fontSize(fs).font(cell.bold ? FONT_BOLD : FONT).fillColor('#000000');
+    doc.text(String(cell.text ?? ''), cellX + cellPad, cy + padTop, {
+      width: cw - cellPad * 2,
+      height: textH,
+      align: cell.align || 'left',
+      lineGap: 0.35,
+      ellipsis: true,
+    });
+    cellX += cw;
+  });
+  return rowH;
+}
+
 /**
  * Table with column dividers; each row is array of cell objects { text, align, bold, fontSize, padTop }.
  * @returns {number} bottom Y
@@ -173,28 +213,23 @@ function drawGridTable(doc, x, y, colWidths, rows, defaultRowH = row.itemDefault
       doc.restore();
     }
 
-    let cellX = x;
-    rowDef.cells.forEach((cell, i) => {
-      const cw = colWidths[i] || colWidths[colWidths.length - 1];
-      const cellPad = pad.cell;
-      const padTop = cell.padTop ?? pad.tableTop;
-      const textH = Math.max(10, rowH - padTop - 4);
-      const fs = cell.fontSize ?? (cell.bold ? size.tableHead : size.tableBody);
-      doc.fontSize(fs).font(cell.bold ? FONT_BOLD : FONT).fillColor('#000000');
-      doc.text(String(cell.text ?? ''), cellX + cellPad, cy + padTop, {
-        width: cw - cellPad * 2,
-        height: textH,
-        align: cell.align || 'left',
-        lineGap: 0.35,
-        ellipsis: true,
-      });
-      cellX += cw;
-    });
-
+    drawGridTableRowCells(doc, x, cy, colWidths, rowDef, defaultRowH);
     cy += rowH;
   });
 
   return cy;
+}
+
+/** Item line rows: vertical column guides only (no horizontal lines between rows). */
+function drawGridTableBodyPlain(doc, x, y, colWidths, rows, defaultRowH = row.itemDefault) {
+  if (!rows.length) return y;
+  const bodyH = rows.reduce((s, r) => s + (r._height || defaultRowH), 0);
+  strokeProformaTableVerticals(doc, x, y, colWidths, bodyH);
+  let cy = y;
+  rows.forEach((rowDef) => {
+    cy += drawGridTableRowCells(doc, x, cy, colWidths, rowDef, defaultRowH);
+  });
+  return y + bodyH;
 }
 
 /** Item blank area (vertical lines only); grows into spare page space above totals/footer. */
@@ -210,28 +245,15 @@ const PROFORMA_FOOTER_MIN_H = 50;
 const PAGE_H = 841.89;
 const PAGE_BOTTOM = PAGE_H - T.MARGIN - 8;
 
-/** Vertical column dividers through blank body; no horizontal row lines (Tally / pre-printed style). */
+/** Blank rows below line items: vertical guides only (no horizontal row lines). */
 function drawProformaBlankBody(doc, x, y, colWidths, h) {
   if (h <= 0.5) return y;
-  const totalW = colWidths.reduce((a, b) => a + b, 0);
-  const strokeV = (x1, y1, y2) => {
-    doc.save();
-    doc.lineWidth(LINE).strokeColor('#1a1a1a');
-    doc.moveTo(x1, y1).lineTo(x1, y2).stroke();
-    doc.restore();
-  };
-  strokeV(x, y, y + h);
-  strokeV(x + totalW, y, y + h);
-  let cx = x;
-  for (let i = 0; i < colWidths.length - 1; i++) {
-    cx += colWidths[i];
-    strokeV(cx, y, y + h);
-  }
+  strokeProformaTableVerticals(doc, x, y, colWidths, h);
   return y + h;
 }
 
 /**
- * Item grid: header + lines (full row boxes), plain blank body (verticals only), Total row.
+ * Item grid: header box, line rows (verticals only), blank body, Total row box.
  * @returns {number} bottom Y
  */
 function measureProformaTotalsSummaryHeight(totals) {
@@ -276,7 +298,7 @@ function drawProformaItemTable(doc, x, y, colWidths, headerRows, bodyRows, foote
     cy = drawGridTable(doc, x, cy, colWidths, headerRows, defaultRowH);
   }
   if (bodyRows.length) {
-    cy = drawGridTable(doc, x, cy, colWidths, bodyRows, defaultRowH);
+    cy = drawGridTableBodyPlain(doc, x, cy, colWidths, bodyRows, defaultRowH);
   }
   if (blankH > 0.5) {
     cy = drawProformaBlankBody(doc, x, cy, colWidths, blankH);
@@ -343,7 +365,7 @@ const PROFORMA_COL_LIMITS = {
 
 function proformaColRoles(hasDiscount) {
   return hasDiscount
-    ? ['si', 'desc', 'hsn', 'qty', 'rate', 'disc', 'per', 'amount']
+    ? ['si', 'desc', 'hsn', 'qty', 'rate', 'per', 'disc', 'amount']
     : ['si', 'desc', 'hsn', 'qty', 'rate', 'per', 'amount'];
 }
 
@@ -429,8 +451,8 @@ function buildProformaItemHeaders(hasDiscount, currency) {
     'HSN/SAC',
     'Quantity',
     rateH,
-    'Disc.\n%',
     'per',
+    'Disc.\n%',
     amountH,
   ];
 }
@@ -447,6 +469,7 @@ function buildProformaLineCells(item, idx, currency, hasDiscount) {
     { text: formatLineQty(qty), align: 'right', fontSize: size.tableBody },
     { text: formatQtyAmount(item.unitAmount, currency), align: 'right', fontSize: size.tableAmount },
   ];
+  base.push({ text: unit, align: 'center', fontSize: size.tableBody });
   if (hasDiscount) {
     base.push({
       text: discRate > 0 ? `${discRate}%` : '-',
@@ -454,10 +477,7 @@ function buildProformaLineCells(item, idx, currency, hasDiscount) {
       fontSize: size.tableBody,
     });
   }
-  base.push(
-    { text: unit, align: 'center', fontSize: size.tableBody },
-    { text: formatQtyAmount(gross, currency), align: 'right', fontSize: size.tableAmount }
-  );
+  base.push({ text: formatQtyAmount(gross, currency), align: 'right', fontSize: size.tableAmount });
   return base;
 }
 
@@ -504,13 +524,13 @@ function drawProformaTotalsSummary(doc, y, totals, currency) {
   return y + blockH + 2;
 }
 
-/** Height of company name + address block in proforma left column (logo is outside this box). */
-function measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, contentW) {
-  let h = 4;
-  doc.fontSize(size.companyName).font(FONT_BOLD);
-  h += doc.heightOfString(cs.companyName || 'Company', { width: contentW, lineGap: 0.2 }) + 3;
-  doc.fontSize(size.body).font(FONT);
-  const lines = [
+const PROFORMA_HEADER_LOGO_W = 72;
+const PROFORMA_HEADER_LOGO_H = 52;
+const PROFORMA_SELLER_LOGO_PAD = 6;
+const PROFORMA_SELLER_LOGO_GAP = 30;
+
+function proformaSellerDetailLines(cs, sellerGst, sellerState) {
+  return [
     cs.address,
     cs.cityLine,
     sellerGst ? `GSTIN/UIN: ${sellerGst}` : '',
@@ -520,9 +540,20 @@ function measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, cont
     cs.phone || '',
     cs.email ? `E-Mail: ${cs.email}` : '',
   ].filter(Boolean);
-  lines.forEach((line) => {
-    h += doc.heightOfString(line, { width: contentW, lineGap: 0.3 }) + 2;
+}
+
+/** Height of company name + address in proforma seller box (logo sits left of this text). */
+function measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, detailsW, hasLogo) {
+  let h = 4;
+  doc.fontSize(size.companyName).font(FONT_BOLD);
+  h += doc.heightOfString(cs.companyName || 'Company', { width: detailsW, lineGap: 0.2 }) + 3;
+  doc.fontSize(size.body).font(FONT);
+  proformaSellerDetailLines(cs, sellerGst, sellerState).forEach((line) => {
+    h += doc.heightOfString(line, { width: detailsW, lineGap: 0.3 }) + 2;
   });
+  if (hasLogo) {
+    h = Math.max(h, PROFORMA_HEADER_LOGO_H + PROFORMA_SELLER_LOGO_PAD + 4);
+  }
   return h;
 }
 
@@ -550,22 +581,7 @@ function drawProformaInvoice(doc, ctx) {
 
   let y = T.MARGIN + 6;
 
-  const HEADER_LOGO_W = 64;
-  const HEADER_LOGO_H = 46;
   const titleRowY = y;
-
-  if (logoBuffer) {
-    try {
-      doc.image(logoBuffer, LEFT + 2, titleRowY, {
-        fit: [HEADER_LOGO_W, HEADER_LOGO_H],
-        align: 'left',
-        valign: 'top',
-      });
-    } catch {
-      /* ignore bad image */
-    }
-  }
-
   doc.fontSize(size.title).font(FONT_BOLD).fillColor('#1a1a1a').text(docTitle, LEFT, titleRowY, {
     width: WIDTH,
     align: 'center',
@@ -575,8 +591,7 @@ function drawProformaInvoice(doc, ctx) {
     align: 'right',
   });
   const titleBandH = 24;
-  /** Table starts flush under logo slot (no extra band under logo); without logo, keep title row height. */
-  y = titleRowY + (logoBuffer ? HEADER_LOGO_H : titleBandH);
+  y = titleRowY + titleBandH;
 
   const metaW = Math.round(WIDTH * 0.44);
   const sellerW = WIDTH - metaW;
@@ -594,8 +609,11 @@ function drawProformaInvoice(doc, ctx) {
   });
 
   const metaGridH = metaGridRows.reduce((sum, row) => sum + row._height, 0);
-  const sx = LEFT + 8;
-  const contentW = sellerW - 16;
+  const sellerLogoColW = logoBuffer
+    ? PROFORMA_SELLER_LOGO_PAD + PROFORMA_HEADER_LOGO_W + PROFORMA_SELLER_LOGO_GAP
+    : 0;
+  const sellerDetailsLeft = LEFT + (logoBuffer ? sellerLogoColW : 8);
+  const sellerDetailsW = LEFT + sellerW - 8 - sellerDetailsLeft;
 
   const shipStateForParty = isSales ? gstStateFromGstin(partyGst, party.shippingAddress?.state) : {};
   const billExtraForParty = isSales && partyState.name ? [`Place of Supply: ${partyState.name}`] : [];
@@ -606,7 +624,14 @@ function drawProformaInvoice(doc, ctx) {
   let shipH = 0;
   let billH = 0;
   let vendorFromH = 0;
-  let sellerStackMinH = measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, contentW);
+  let sellerStackMinH = measureProformaSellerCompanyBlock(
+    doc,
+    cs,
+    sellerGst,
+    sellerState,
+    sellerDetailsW,
+    !!logoBuffer
+  );
   if (isSales) {
     shipH = measureTallyPartyColumnHeight(
       doc,
@@ -648,28 +673,30 @@ function drawProformaInvoice(doc, ctx) {
   box(doc, LEFT, y, sellerW, topH);
   box(doc, metaX, y, metaW, topH);
 
-  let sy = y + 2;
+  if (logoBuffer) {
+    try {
+      doc.image(logoBuffer, LEFT + PROFORMA_SELLER_LOGO_PAD, y + 4, {
+        fit: [PROFORMA_HEADER_LOGO_W, PROFORMA_HEADER_LOGO_H],
+        align: 'left',
+        valign: 'top',
+      });
+    } catch {
+      /* ignore bad image */
+    }
+  }
+
+  let sy = y + 4;
 
   doc.fontSize(size.companyName).font(FONT_BOLD).fillColor('#000000');
-  const nameH = doc.heightOfString(cs.companyName || 'Company', { width: contentW, lineGap: 0.2 });
-  doc.text(cs.companyName || 'Company', sx, sy, { width: contentW, lineGap: 0.2 });
+  const nameH = doc.heightOfString(cs.companyName || 'Company', { width: sellerDetailsW, lineGap: 0.2 });
+  doc.text(cs.companyName || 'Company', sellerDetailsLeft, sy, { width: sellerDetailsW, lineGap: 0.2 });
   sy += nameH + 3;
 
   doc.fontSize(size.body).font(FONT).fillColor('#000000');
-  const sellerLines = [
-    cs.address,
-    cs.cityLine,
-    sellerGst ? `GSTIN/UIN: ${sellerGst}` : '',
-    sellerState.name || sellerState.code
-      ? `State Name: ${sellerState.name || '—'}, Code: ${sellerState.code || '—'}`
-      : '',
-    cs.phone || '',
-    cs.email ? `E-Mail: ${cs.email}` : '',
-  ].filter(Boolean);
-  sellerLines.forEach((line) => {
-    const lh = doc.heightOfString(line, { width: contentW, lineGap: 0.3 });
+  proformaSellerDetailLines(cs, sellerGst, sellerState).forEach((line) => {
+    const lh = doc.heightOfString(line, { width: sellerDetailsW, lineGap: 0.3 });
     if (sy + lh > y + topH - 4) return;
-    doc.text(line, sx, sy, { width: contentW, lineGap: 0.3 });
+    doc.text(line, sellerDetailsLeft, sy, { width: sellerDetailsW, lineGap: 0.3 });
     sy += lh + 2;
   });
 

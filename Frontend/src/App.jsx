@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { ConfigProvider, Layout, Select, message } from 'antd';
+import { App as AntApp, ConfigProvider, Layout, Select, message } from 'antd';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import { CurrencyProvider } from './contexts/CurrencyContext.jsx';
 import { withPermission } from './components/common/PermissionWrapper.jsx';
@@ -294,9 +294,11 @@ function App() {
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
           <CurrencyProvider>
-            <ErrorBoundary>
-              <AppContent />
-            </ErrorBoundary>
+            <AntApp>
+              <ErrorBoundary>
+                <AppContent />
+              </ErrorBoundary>
+            </AntApp>
           </CurrencyProvider>
         </AuthProvider>
       </Router>

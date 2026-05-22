@@ -70,12 +70,14 @@ const InvoicePdfViewModal = ({ open, onClose, invoiceId, apiBase, title = 'Invoi
           {title}
         </span>
       }
-      destroyOnClose
+      destroyOnHidden
       maskClosable
     >
       {loading && (
         <div style={{ textAlign: 'center', padding: 48 }}>
-          <Spin tip="Generating PDF…" />
+          <Spin tip="Generating PDF…" spinning>
+            <div style={{ minHeight: 80 }} />
+          </Spin>
         </div>
       )}
       {!loading && error && <Alert type="error" showIcon message={error} />}

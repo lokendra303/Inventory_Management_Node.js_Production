@@ -647,8 +647,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         placement="left"
         onClose={onClose}
         open={!collapsed}
-        bodyStyle={{ padding: 0, background: '#0f0c29' }}
-        headerStyle={{ display: 'none' }}
+        styles={{ body: { padding: 0, background: '#0f0c29' }, header: { display: 'none' } }}
         width={260}
       >
         {sidebarContent}

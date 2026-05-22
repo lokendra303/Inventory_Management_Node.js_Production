@@ -3589,7 +3589,7 @@ const viewItem = async (item) => {
           { title: 'Low Stock', value: lowStockCount, icon: <WarningOutlined />, color: '#ff4d4f', bg: '#fff1f0' },
         ].map(s => (
           <Col xs={12} sm={6} key={s.title}>
-            <Card bordered={false} style={{ borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} bodyStyle={{ padding: '18px 20px' }}>
+            <Card variant="borderless" style={{ borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} styles={{ body: { padding: '18px 20px' } }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <div style={{ background: s.bg, borderRadius: 10, padding: 10, fontSize: 22, color: s.color }}>{s.icon}</div>
                 <div>
@@ -3604,9 +3604,9 @@ const viewItem = async (item) => {
 
       {/* Table Card */}
       <Card
-        bordered={false}
+        variant="borderless"
         style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
       >
         <div style={{ padding: '18px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <Space size={6}>
@@ -3843,7 +3843,7 @@ const viewItem = async (item) => {
           resetCsvImportModal();
         }}
         width={1080}
-        destroyOnClose
+        destroyOnHidden
         footer={[
           <Button key="tpl" icon={<DownloadOutlined />} onClick={downloadItemsCsvTemplateFile}>
             Sample CSV
@@ -6367,7 +6367,7 @@ const viewItem = async (item) => {
                 ['Dimensions', viewingItem.dimensions ? `${viewingItem.dimensions.length||0}×${viewingItem.dimensions.width||0}×${viewingItem.dimensions.height||0}` : 'N/A'],
               ]].map((group, gi) => (
                 <Col xs={24} sm={8} key={gi}>
-                  <Card bordered={false} style={{ borderRadius: 12, background: '#fff', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', marginBottom: 12 }} bodyStyle={{ padding: '14px 18px' }}>
+                  <Card variant="borderless" style={{ borderRadius: 12, background: '#fff', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', marginBottom: 12 }} styles={{ body: { padding: '14px 18px' } }}>
                     {group.map(([label, val]) => (
                       <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f5f5f5', fontSize: 13 }}>
                         <span style={{ color: '#8c8c8c' }}>{label}</span>
@@ -6399,7 +6399,7 @@ const viewItem = async (item) => {
                   </div>
                 )}
                 style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden' }}
-                bodyStyle={{ paddingTop: 8 }}
+                styles={{ body: { paddingTop: 8 } }}
               >
                 {(() => {
                   const rows = Array.isArray(viewingItem.variant_rows) && viewingItem.variant_rows.length > 0
@@ -6869,7 +6869,7 @@ const viewItem = async (item) => {
         width="min(1200px, 98vw)"
         style={{ top: 8 }}
         styles={{ body: { background: '#f8f9ff', borderRadius: '0 0 12px 12px', maxHeight: '86vh', overflowY: 'auto', padding: 16 } }}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           {/* --- Existing rules list --- */}

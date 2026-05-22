@@ -282,7 +282,7 @@ const SalesInvoices = () => {
       <InvoiceListStatCards cards={statCards} />
 
       {/* Filter + Table */}
-      <Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} bodyStyle={{ padding: 0 }}>
+      <Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} styles={{ body: { padding: 0 } }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #f5f5f5', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
           <Input placeholder="Search invoice or customer..." prefix={<SearchOutlined style={{ color: '#bbb' }} />}
             value={searchText} onChange={e => setSearchText(e.target.value)}
@@ -313,7 +313,7 @@ const SalesInvoices = () => {
       {/* Create/Edit Modal */}
       <Modal title={<span style={{ fontWeight: 700 }}>{modalMode === 'create' ? <><PlusOutlined style={{ marginRight: 6 }} />Create</> : <><EditOutlined style={{ marginRight: 6 }} />Edit</>} Sales Invoice</span>}
         open={modalVisible} onCancel={() => setModalVisible(false)}
-        width="min(1200px,96vw)" style={{ top: 16 }} footer={null} destroyOnClose>
+        width="min(1200px,96vw)" style={{ top: 16 }} footer={null} destroyOnHidden>
         <InvoiceForm type="sales" invoiceId={selectedInvoiceId}
           onSave={() => { setModalVisible(false); fetchInvoices(); message.success(`Invoice ${modalMode === 'create' ? 'created' : 'updated'}`); }} />
       </Modal>

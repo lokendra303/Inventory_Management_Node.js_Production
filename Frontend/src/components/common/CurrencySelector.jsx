@@ -56,7 +56,7 @@ const CurrencySelector = () => {
       </div>
       <Select
         className="currency-selector-select"
-        popupClassName="currency-selector-dropdown"
+        classNames={{ popup: { root: 'currency-selector-dropdown' } }}
         value={currency}
         onChange={handleCurrencyChange}
         loading={loading}

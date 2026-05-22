@@ -295,14 +295,14 @@ const Dashboard = () => {
       {/* Insight Strip */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} md={8}>
-          <Card bordered={false} style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#f7f9ff)' }} bodyStyle={{ padding: '12px 14px' }}>
+          <Card variant="borderless" style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#f7f9ff)' }} styles={{ body: { padding: '12px 14px' } }}>
             <Text type="secondary" style={{ fontSize: 12 }}>Stock Utilization</Text>
             <div style={{ fontWeight: 700, fontSize: 22, color: '#667eea' }}>{stockUsagePercent}%</div>
             <Text style={{ fontSize: 12, color: '#8c8c8c' }}>Reserved against total stock</Text>
           </Card>
         </Col>
         <Col xs={24} md={8}>
-          <Card bordered={false} style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#f4fffb)' }} bodyStyle={{ padding: '12px 14px' }}>
+          <Card variant="borderless" style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#f4fffb)' }} styles={{ body: { padding: '12px 14px' } }}>
             <Text type="secondary" style={{ fontSize: 12 }}>Availability Health</Text>
             <div style={{ fontWeight: 700, fontSize: 22, color: '#11998e' }}>
               {dashboardData.totalQuantity > 0 ? Math.round((dashboardData.totalAvailable / dashboardData.totalQuantity) * 100) : 0}%
@@ -311,7 +311,7 @@ const Dashboard = () => {
           </Card>
         </Col>
         <Col xs={24} md={8}>
-          <Card bordered={false} style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#fff8f2)' }} bodyStyle={{ padding: '12px 14px' }}>
+          <Card variant="borderless" style={{ ...cardStyle, background: 'linear-gradient(135deg,#ffffff,#fff8f2)' }} styles={{ body: { padding: '12px 14px' } }}>
             <Text type="secondary" style={{ fontSize: 12 }}>Warehouse Status</Text>
             <div style={{ fontWeight: 700, fontSize: 22, color: '#f7971e' }}>
               {dashboardData.activeWarehouses}/{dashboardData.activeWarehouses + dashboardData.inactiveWarehouses}
@@ -353,7 +353,7 @@ const Dashboard = () => {
               </Space>
             }
             style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
-            bodyStyle={{ padding: '12px 16px 16px' }}
+            styles={{ body: { padding: '12px 16px 16px' } }}
           >
             {dashboardData.stockTrend.length === 0 ? (
               <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 13 }}>
@@ -384,7 +384,7 @@ const Dashboard = () => {
           <Card
             title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><DatabaseOutlined style={{ color: '#667eea' }} />Stock Usage</span>}
             style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', height: '100%' }}
-            bodyStyle={{ padding: '16px' }}
+            styles={{ body: { padding: '16px' } }}
           >
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -423,7 +423,7 @@ const Dashboard = () => {
               <Tag color="red">{dashboardData.lowStockCount} items</Tag>
             )}
             style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
-            bodyStyle={{ padding: '0 0 8px' }}
+            styles={{ body: { padding: '0 0 8px' } }}
           >
             {dashboardData.lowStockItems.length > 0 ? (
               <Table
@@ -455,7 +455,7 @@ const Dashboard = () => {
               </span>
             }
             style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
-            bodyStyle={{ padding: '12px 16px 16px' }}
+            styles={{ body: { padding: '12px 16px 16px' } }}
           >
             {dashboardData.stockTrend.length === 0 ? (
               <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 13 }}>
@@ -481,7 +481,7 @@ const Dashboard = () => {
         <Col xs={24} lg={14}>
           <Card
             title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><BarChartOutlined style={{ color: '#667eea' }} />Monthly Sales vs Purchases <span style={{ fontSize: 11, fontWeight: 400, color: '#9ca3af' }}>({dateRange[0].format('DD MMM')} – {dateRange[1].format('DD MMM YYYY')})</span></span>}
-            style={cardStyle} bodyStyle={cardBody}
+            style={cardStyle} styles={{ body: cardBody }}
           >
             {monthlyData.length === 0 ? <EmptyChart /> : (
               <ResponsiveContainer width="100%" height={260}>
@@ -515,7 +515,7 @@ const Dashboard = () => {
         <Col xs={24} lg={10}>
           <Card
             title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><TrophyOutlined style={{ color: '#f7971e' }} />Top 5 Selling Items <span style={{ fontSize: 11, fontWeight: 400, color: '#9ca3af' }}>({dateRange[0].format('DD MMM')} – {dateRange[1].format('DD MMM YYYY')})</span></span>}
-            style={cardStyle} bodyStyle={cardBody}
+            style={cardStyle} styles={{ body: cardBody }}
           >
             {topItems.length === 0 ? <EmptyChart /> : (
               <ResponsiveContainer width="100%" height={260}>
@@ -546,7 +546,7 @@ const Dashboard = () => {
         <Col xs={24} lg={10}>
           <Card
             title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><PieChartOutlined style={{ color: '#764ba2' }} />Stock by Category</span>}
-            style={cardStyle} bodyStyle={cardBody}
+            style={cardStyle} styles={{ body: cardBody }}
           >
             {categoryStock.length === 0 ? <EmptyChart height={300} /> : (
               <ResponsiveContainer width="100%" height={300}>
@@ -586,7 +586,7 @@ const Dashboard = () => {
         <Col xs={24} lg={14}>
           <Card
             title={<span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><DatabaseOutlined style={{ color: '#11998e' }} />Category Stock Value</span>}
-            style={cardStyle} bodyStyle={cardBody}
+            style={cardStyle} styles={{ body: cardBody }}
           >
             {categoryStock.length === 0 ? <EmptyChart height={300} /> : (
               <ResponsiveContainer width="100%" height={300}>
