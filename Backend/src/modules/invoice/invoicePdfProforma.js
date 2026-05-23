@@ -643,7 +643,7 @@ function drawProformaTotalsSummary(doc, y, totals, currency) {
   let ry = y + padTop;
   summaryRows.forEach(([label, amount]) => {
     const isGrand = label === 'Grand Total';
-    doc.fontSize(isGrand ? size.tableHead : size.tableBody).font(isGrand ? FONT_BOLD : FONT).fillColor('#000000');
+    doc.fontSize(isGrand ? size.body : size.tableBody).font(isGrand ? FONT_BOLD : FONT).fillColor('#000000');
     doc.text(label, labelX, ry, { width: labelW, align: 'right' });
     doc.text(pdfAmount(amount, currency), valueX, ry, { width: valueW, align: 'right' });
     ry += rowH;
