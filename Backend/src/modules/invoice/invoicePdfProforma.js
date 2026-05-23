@@ -705,7 +705,7 @@ function remeasureProformaTableRows(doc, tableRows, colWidths, defaultRowH) {
 
 function buildProformaItemHeaders(currency) {
   const cur = proformaTableCurrencyTag(currency);
-  const rateH = `Rate\n(${cur})`;
+  const rateH = `Rate/Unit\n(${cur})`;
   const amountH = `Amount\n(${cur})`;
   return [
     'SI\nNo.',
@@ -713,7 +713,7 @@ function buildProformaItemHeaders(currency) {
     'HSN/SAC',
     'Quantity',
     rateH,
-    'per',
+    'UOM',
     'Discount',
     amountH,
   ];

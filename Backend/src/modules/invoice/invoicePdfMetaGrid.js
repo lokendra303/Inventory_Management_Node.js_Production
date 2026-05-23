@@ -165,7 +165,7 @@ function buildTallyMetaGridRows(standardInvoice, party = {}) {
     },
     { cells: [{ label: 'Delivery Note', value: details.deliveryNote || '' }] },
     { cells: [{ label: 'Mode/Terms of Payment', value: details.paymentTerms || '' }] },
-    { cells: [{ label: 'PO & Date', value: refLine }] },
+    { cells: [{ label: 'PO. No. & Date', value: refLine }] },
     { cells: [{ label: 'Other References', value: details.otherReferences || details.grnNumber || '' }] },
     {
       cells: [
