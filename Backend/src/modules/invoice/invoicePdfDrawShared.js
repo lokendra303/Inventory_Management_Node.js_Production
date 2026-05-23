@@ -379,11 +379,8 @@ function buildCompanyBankRows(companySettings) {
     ["A/c Holder's Name", holder],
     ['Bank Name', companySettings?.bank_name],
     ['A/c No.', companySettings?.account_number],
-    [
-      'Branch & IFSC Code',
-      [companySettings?.branch_name, companySettings?.ifsc_code].filter(Boolean).join(' / ') ||
-        companySettings?.ifsc_code,
-    ],
+    ['Branch', companySettings?.branch_name],
+    ['IFSC Code', companySettings?.ifsc_code],
     ['SWIFT Code', companySettings?.swift_code],
   ];
 }
@@ -400,18 +397,30 @@ function buildVendorBankRows(party) {
     ["A/c Holder's Name", holder],
     ['Bank Name', b.bankName || b.bank_name],
     ['A/c No.', b.accountNumber || b.account_number],
-    [
-      'Branch & IFSC Code',
-      [b.branchName || b.branch_name, b.ifscCode || b.ifsc_code].filter(Boolean).join(' / ') ||
-        b.ifscCode ||
-        b.ifsc_code,
-    ],
+    ['Branch', b.branchName || b.branch_name],
+    ['IFSC Code', b.ifscCode || b.ifsc_code],
     ['SWIFT Code', b.swiftCode || b.swift_code],
   ];
 }
 
 function hasBankRows(rows) {
   return rows.some(([, val]) => val != null && String(val).trim() !== '');
+}
+
+const TALLY_BANK_TITLE_GAP = 12;
+const TALLY_BANK_ROW_STEP = 11;
+
+function countBankDataRows(rows) {
+  return (rows || []).filter(([, val]) => val != null && String(val).trim() !== '').length;
+}
+
+/** Height of Tally/proforma bank block — keep in sync with drawTallyBankBlock. */
+function measureTallyBankBlockHeight(rows, options = {}) {
+  const count = countBankDataRows(rows);
+  if (!count) return 0;
+  const titleGap = options.titleGap ?? TALLY_BANK_TITLE_GAP;
+  const rowStep = options.rowStep ?? TALLY_BANK_ROW_STEP;
+  return titleGap + count * rowStep;
 }
 
 /**
@@ -430,9 +439,10 @@ function drawBankDetailsFooter(doc, footerY, title, rows, options = {}) {
 
   rows.forEach(([label, val]) => {
     if (val == null || String(val).trim() === '') return;
-    doc.font('Helvetica-Bold').text(`${label}: `, leftX, ty, { continued: true, width });
+    const rowY = ty;
+    doc.font('Helvetica-Bold').text(`${label}: `, leftX, rowY, { continued: true, width });
     doc.font('Helvetica').text(String(val), { width: width - 10, lineGap: 0.25 });
-    ty += 13;
+    ty = Math.max(rowY + 13, doc.y + 2);
   });
 
   doc.fillColor('#000000');
@@ -447,15 +457,16 @@ function drawTallyBankBlock(doc, x, startY, title, rows, maxWidth, options = {})
   doc.fontSize(titleSize).font('Helvetica-Bold').fillColor('#1a1a1a').text(title, x, startY, {
     width: maxWidth,
   });
-  let by = startY + 12;
+  let by = startY + TALLY_BANK_TITLE_GAP;
   rows.forEach(([label, val]) => {
     if (val == null || String(val).trim() === '') return;
-    doc.fontSize(bodySize).font('Helvetica-Bold').fillColor('#1a1a1a').text(`${label}: `, x, by, {
+    const rowY = by;
+    doc.fontSize(bodySize).font('Helvetica-Bold').fillColor('#1a1a1a').text(`${label}: `, x, rowY, {
       continued: true,
       width: maxWidth,
     });
     doc.font('Helvetica').fillColor('#000000').text(String(val), { width: maxWidth, lineGap: 0.25 });
-    by += 11;
+    by = Math.max(rowY + TALLY_BANK_ROW_STEP, doc.y + 2);
   });
   doc.fillColor('#000000');
   return by;
@@ -534,6 +545,8 @@ module.exports = {
   isSalesStandardInvoice,
   buildCompanyBankRows,
   buildVendorBankRows,
+  countBankDataRows,
+  measureTallyBankBlockHeight,
   drawBankDetailsFooter,
   drawTallyBankBlock,
   drawCompanyBankFooter,

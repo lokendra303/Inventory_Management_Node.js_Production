@@ -18,6 +18,7 @@ const {
   buildCompanyBankRows,
   buildVendorBankRows,
   drawTallyBankBlock,
+  measureTallyBankBlockHeight,
 } = require('./invoicePdfDrawShared');
 const T = require('./invoicePdfTallyTypography');
 const { LEFT, RIGHT, WIDTH, FONT, FONT_BOLD, LINE, size, row, pad } = T;
@@ -270,8 +271,11 @@ function measureProformaTotalsSummaryHeight(totals) {
 }
 
 function measureProformaFooterBoxHeight(bankRows) {
-  const bankLines = (bankRows || []).filter(([, val]) => val != null && String(val).trim() !== '').length;
-  return Math.min(58, Math.max(PROFORMA_FOOTER_MIN_H, 44 + bankLines * 8));
+  const bankBlockH = measureTallyBankBlockHeight(bankRows);
+  if (!bankBlockH) return PROFORMA_FOOTER_MIN_H;
+  const signBlockH = 28;
+  const bankTopPad = 3;
+  return Math.max(PROFORMA_FOOTER_MIN_H, bankTopPad + bankBlockH + signBlockH + 4);
 }
 
 function proformaCurrencyLabel(currency) {
@@ -1152,12 +1156,12 @@ function drawProformaInvoice(doc, ctx) {
   const sealLabel = isSales ? "Customer's Seal and Signature" : "Vendor's Seal and Signature";
   doc.font(FONT_BOLD).fontSize(size.footerBody).text(sealLabel, LEFT + 4, y + footerH - 11);
 
-  drawTallyBankBlock(doc, footMid + 4, y + 3, bankTitle, bankRows, footRightW, {
+  const bankBottom = drawTallyBankBlock(doc, footMid + 4, y + 3, bankTitle, bankRows, footRightW, {
     titleSize: size.footerTitle,
     bodySize: size.footerBody,
   });
 
-  const signBlockTop = y + footerH - 24;
+  const signBlockTop = Math.max(bankBottom + 4, y + footerH - 24);
   doc.fontSize(size.footerBody).font(FONT_BOLD).fillColor('#1a1a1a').text(`for ${cs.companyName || 'Company'}`, footMid + 4, signBlockTop, {
     width: footRightW,
     align: 'right',
