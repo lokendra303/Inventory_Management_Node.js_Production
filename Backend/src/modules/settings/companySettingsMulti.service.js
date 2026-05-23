@@ -7,6 +7,7 @@ const { resolveUploadAbsolutePath } = require('../../shared/storage/fileStorage'
 
 let tablesReady = false;
 const ADDR_TABLE = 'institution_addresses';
+const BANK_TABLE = 'institution_bank_accounts';
 
 async function ensureTables() {
   if (tablesReady) return;
@@ -14,8 +15,48 @@ async function ensureTables() {
   tablesReady = true;
 }
 
+async function migrateLegacyBankRows(institutionId) {
+  await ensureTables();
+
+  const [bankCnt] = await db.query(
+    'SELECT COUNT(*) AS c FROM institution_bank_accounts WHERE institution_id = ?',
+    [institutionId]
+  );
+  if (Number(bankCnt?.c || 0) > 0) return;
+
+  const [profile] = await db.query(
+    `SELECT bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code
+     FROM institution_profiles WHERE institution_id = ? LIMIT 1`,
+    [institutionId]
+  );
+  const p = profile || {};
+  const hasBank =
+    [p.bank_name, p.account_holder_name, p.account_number, p.ifsc_code, p.branch_name, p.swift_code].some(
+      (v) => v != null && String(v).trim() !== ''
+    );
+  if (!hasBank) return;
+
+  await db.query(
+    `INSERT INTO institution_bank_accounts
+     (id, institution_id, label, bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code, is_default, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+    [
+      uuidv4(),
+      institutionId,
+      'Primary account',
+      p.bank_name || null,
+      p.account_holder_name || null,
+      p.account_number || null,
+      p.ifsc_code || null,
+      p.branch_name || null,
+      p.swift_code || null,
+    ]
+  );
+}
+
 async function migrateLegacyRows(institutionId) {
   await ensureTables();
+  await migrateLegacyBankRows(institutionId);
 
   const [addrCnt] = await db.query(
     'SELECT COUNT(*) AS c FROM institution_addresses WHERE institution_id = ?',
@@ -46,6 +87,17 @@ async function migrateLegacyRows(institutionId) {
       );
     }
   }
+}
+
+async function listBankAccounts(institutionId) {
+  await ensureTables();
+  await migrateLegacyRows(institutionId);
+
+  return db.query(
+    `SELECT id, label, bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code, is_default, sort_order, created_at
+     FROM institution_bank_accounts WHERE institution_id = ? ORDER BY is_default DESC, sort_order ASC, created_at ASC`,
+    [institutionId]
+  );
 }
 
 async function listAddresses(institutionId) {
@@ -84,6 +136,30 @@ async function clearDefaults(institutionId, table) {
   await db.query(`UPDATE ${table} SET is_default = 0 WHERE institution_id = ?`, [institutionId]);
 }
 
+async function syncBankLegacyMirror(institutionId) {
+  const [dbank] = await db.query(
+    `SELECT bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code
+     FROM institution_bank_accounts WHERE institution_id = ? AND is_default = 1 LIMIT 1`,
+    [institutionId]
+  );
+  if (dbank) {
+    await db.query(
+      `UPDATE institution_profiles
+       SET bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, branch_name = ?, swift_code = ?, updated_at = NOW()
+       WHERE institution_id = ?`,
+      [
+        dbank.bank_name || null,
+        dbank.account_holder_name || null,
+        dbank.account_number || null,
+        dbank.ifsc_code || null,
+        dbank.branch_name || null,
+        dbank.swift_code || null,
+        institutionId,
+      ]
+    );
+  }
+}
+
 async function syncLegacyMirror(institutionId) {
   const [da] = await db.query(
     `SELECT address, city, state, country, postal_code
@@ -109,6 +185,7 @@ async function syncLegacyMirror(institutionId) {
       [da.address, da.city || null, da.state || null, da.country || null, da.postal_code || null, institutionId]
     );
   }
+  await syncBankLegacyMirror(institutionId);
 }
 
 async function addAddress(institutionId, { label, address, address_line1, address_line2, city, state, country, postal_code, is_default }) {
@@ -484,23 +561,233 @@ async function deleteSignature(institutionId, sigId) {
   await syncLegacyMirror(institutionId);
 }
 
+async function addBankAccount(
+  institutionId,
+  {
+    label,
+    bank_name,
+    account_holder_name,
+    account_number,
+    ifsc_code,
+    branch_name,
+    swift_code,
+    is_default,
+  }
+) {
+  await ensureTables();
+  const lab = (label || 'Bank account').trim().slice(0, 120);
+  const hasDetail = [bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code].some(
+    (v) => v != null && String(v).trim() !== ''
+  );
+  if (!hasDetail) throw new Error('Enter at least one bank detail (bank name, account number, etc.)');
+
+  const def = !!is_default;
+  if (def) await clearDefaults(institutionId, BANK_TABLE);
+
+  const [maxRow] = await db.query(
+    'SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM institution_bank_accounts WHERE institution_id = ?',
+    [institutionId]
+  );
+  const sort = Number(maxRow?.n ?? 0);
+  const id = uuidv4();
+
+  await db.query(
+    `INSERT INTO institution_bank_accounts
+     (id, institution_id, label, bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code, is_default, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      institutionId,
+      lab,
+      bank_name != null ? String(bank_name).trim() || null : null,
+      account_holder_name != null ? String(account_holder_name).trim() || null : null,
+      account_number != null ? String(account_number).trim() || null : null,
+      ifsc_code != null ? String(ifsc_code).trim() || null : null,
+      branch_name != null ? String(branch_name).trim() || null : null,
+      swift_code != null ? String(swift_code).trim() || null : null,
+      def ? 1 : 0,
+      sort,
+    ]
+  );
+
+  if (!def) {
+    const [c] = await db.query(
+      'SELECT COUNT(*) AS c FROM institution_bank_accounts WHERE institution_id = ? AND is_default = 1',
+      [institutionId]
+    );
+    if (Number(c?.c || 0) === 0) {
+      await db.query(
+        'UPDATE institution_bank_accounts SET is_default = 1 WHERE id = ? AND institution_id = ?',
+        [id, institutionId]
+      );
+    }
+  }
+
+  await syncBankLegacyMirror(institutionId);
+  return id;
+}
+
+async function updateBankAccount(
+  institutionId,
+  bankId,
+  {
+    label,
+    bank_name,
+    account_holder_name,
+    account_number,
+    ifsc_code,
+    branch_name,
+    swift_code,
+    is_default,
+  }
+) {
+  await ensureTables();
+  const [row] = await db.query(
+    'SELECT id FROM institution_bank_accounts WHERE id = ? AND institution_id = ?',
+    [bankId, institutionId]
+  );
+  if (!row) throw new Error('Bank account not found');
+
+  const updates = [];
+  const vals = [];
+  const strField = (col, val) => {
+    if (val === undefined) return;
+    updates.push(`${col} = ?`);
+    vals.push(val != null ? String(val).trim() || null : null);
+  };
+
+  if (label !== undefined) {
+    updates.push('label = ?');
+    vals.push(String(label).trim().slice(0, 120));
+  }
+  strField('bank_name', bank_name);
+  strField('account_holder_name', account_holder_name);
+  strField('account_number', account_number);
+  strField('ifsc_code', ifsc_code);
+  strField('branch_name', branch_name);
+  strField('swift_code', swift_code);
+
+  if (is_default !== undefined && is_default) {
+    await clearDefaults(institutionId, BANK_TABLE);
+    updates.push('is_default = 1');
+  } else if (is_default === false) {
+    updates.push('is_default = 0');
+  }
+
+  if (updates.length === 0) throw new Error('Nothing to update');
+  vals.push(bankId, institutionId);
+  await db.query(
+    `UPDATE institution_bank_accounts SET ${updates.join(', ')} WHERE id = ? AND institution_id = ?`,
+    vals
+  );
+
+  const [defCount] = await db.query(
+    'SELECT COUNT(*) AS c FROM institution_bank_accounts WHERE institution_id = ? AND is_default = 1',
+    [institutionId]
+  );
+  if (Number(defCount?.c || 0) === 0) {
+    const [first] = await db.query(
+      'SELECT id FROM institution_bank_accounts WHERE institution_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
+      [institutionId]
+    );
+    if (first) {
+      await db.query(
+        'UPDATE institution_bank_accounts SET is_default = 1 WHERE id = ? AND institution_id = ?',
+        [first.id, institutionId]
+      );
+    }
+  }
+
+  await syncBankLegacyMirror(institutionId);
+}
+
+async function deleteBankAccount(institutionId, bankId) {
+  await ensureTables();
+  const [row] = await db.query(
+    'SELECT is_default FROM institution_bank_accounts WHERE id = ? AND institution_id = ?',
+    [bankId, institutionId]
+  );
+  if (!row) throw new Error('Bank account not found');
+
+  await db.query('DELETE FROM institution_bank_accounts WHERE id = ? AND institution_id = ?', [bankId, institutionId]);
+
+  if (row.is_default) {
+    const [first] = await db.query(
+      'SELECT id FROM institution_bank_accounts WHERE institution_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
+      [institutionId]
+    );
+    if (first) {
+      await db.query(
+        'UPDATE institution_bank_accounts SET is_default = 1 WHERE id = ? AND institution_id = ?',
+        [first.id, institutionId]
+      );
+    }
+  }
+  await syncBankLegacyMirror(institutionId);
+}
+
+async function upsertDefaultBankFields(institutionId, payload = {}) {
+  await ensureTables();
+  const rows = await listBankAccounts(institutionId);
+  const def = rows.find((r) => r.is_default) || rows[0];
+
+  const normalized = {
+    bank_name: payload.bank_name !== undefined ? String(payload.bank_name || '').trim() : undefined,
+    account_holder_name:
+      payload.account_holder_name !== undefined ? String(payload.account_holder_name || '').trim() : undefined,
+    account_number:
+      payload.account_number !== undefined ? String(payload.account_number || '').trim() : undefined,
+    ifsc_code: payload.ifsc_code !== undefined ? String(payload.ifsc_code || '').trim() : undefined,
+    branch_name: payload.branch_name !== undefined ? String(payload.branch_name || '').trim() : undefined,
+    swift_code: payload.swift_code !== undefined ? String(payload.swift_code || '').trim() : undefined,
+  };
+
+  const hasAny = Object.values(normalized).some((v) => v !== undefined && v);
+  if (!hasAny) return;
+
+  if (def) {
+    await updateBankAccount(institutionId, def.id, {
+      bank_name: normalized.bank_name,
+      account_holder_name: normalized.account_holder_name,
+      account_number: normalized.account_number,
+      ifsc_code: normalized.ifsc_code,
+      branch_name: normalized.branch_name,
+      swift_code: normalized.swift_code,
+    });
+  } else {
+    await addBankAccount(institutionId, {
+      label: 'Primary account',
+      bank_name: normalized.bank_name,
+      account_holder_name: normalized.account_holder_name,
+      account_number: normalized.account_number,
+      ifsc_code: normalized.ifsc_code,
+      branch_name: normalized.branch_name,
+      swift_code: normalized.swift_code,
+      is_default: true,
+    });
+  }
+}
+
 /** Merge multi-rows into legacy fields for PDFs and older clients */
 async function attachMultiToSettingsRow(institutionId, settingsRow) {
   await migrateLegacyRows(institutionId);
 
   const addresses = await listAddresses(institutionId);
+  const bankAccounts = await listBankAccounts(institutionId);
   const stamps = await listStamps(institutionId);
   const signatures = await listSignatures(institutionId);
 
   const base = settingsRow && typeof settingsRow === 'object' ? settingsRow : {};
 
   const defAddr = addresses.find((a) => a.is_default) || addresses[0];
+  const defBank = bankAccounts.find((b) => b.is_default) || bankAccounts[0];
   const defSt = stamps.find((s) => s.is_default) || stamps[0];
   const defSig = signatures.find((s) => s.is_default) || signatures[0];
 
   return {
     ...base,
     addresses,
+    bank_accounts: bankAccounts,
     stamps,
     signatures,
     address: defAddr?.address ?? base.address ?? '',
@@ -510,6 +797,12 @@ async function attachMultiToSettingsRow(institutionId, settingsRow) {
     state: defAddr?.state ?? base.state ?? null,
     country: defAddr?.country ?? base.country ?? null,
     postal_code: defAddr?.postal_code ?? base.postal_code ?? null,
+    bank_name: defBank?.bank_name ?? base.bank_name ?? null,
+    account_holder_name: defBank?.account_holder_name ?? base.account_holder_name ?? null,
+    account_number: defBank?.account_number ?? base.account_number ?? null,
+    ifsc_code: defBank?.ifsc_code ?? base.ifsc_code ?? null,
+    branch_name: defBank?.branch_name ?? base.branch_name ?? null,
+    swift_code: defBank?.swift_code ?? base.swift_code ?? null,
     stamp_path: defSt?.file_path ?? base.stamp_path ?? null,
     signature_path: defSig?.file_path ?? base.signature_path ?? null,
   };
@@ -602,11 +895,15 @@ module.exports = {
   migrateLegacyRows,
   attachMultiToSettingsRow,
   listAddresses,
+  listBankAccounts,
   listStamps,
   listSignatures,
   addAddress,
   updateAddress,
   deleteAddress,
+  addBankAccount,
+  updateBankAccount,
+  deleteBankAccount,
   addStamp,
   updateStamp,
   deleteStamp,
@@ -615,5 +912,7 @@ module.exports = {
   deleteSignature,
   upsertDefaultAddressText,
   upsertDefaultAddressFields,
+  upsertDefaultBankFields,
   syncLegacyMirror,
+  syncBankLegacyMirror,
 };

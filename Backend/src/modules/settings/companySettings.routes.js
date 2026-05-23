@@ -64,6 +64,10 @@ router.post('/addresses', auditLog('company_address_created'), companySettingsCo
 router.put('/addresses/:id', auditLog('company_address_updated'), companySettingsController.updateAddress.bind(companySettingsController));
 router.delete('/addresses/:id', auditLog('company_address_deleted'), companySettingsController.deleteAddress.bind(companySettingsController));
 
+router.post('/bank-accounts', auditLog('company_bank_account_created'), companySettingsController.addBankAccount.bind(companySettingsController));
+router.put('/bank-accounts/:id', auditLog('company_bank_account_updated'), companySettingsController.updateBankAccount.bind(companySettingsController));
+router.delete('/bank-accounts/:id', auditLog('company_bank_account_deleted'), companySettingsController.deleteBankAccount.bind(companySettingsController));
+
 router.patch('/stamps/:id', auditLog('company_stamp_updated'), companySettingsController.patchStamp.bind(companySettingsController));
 router.delete('/stamps/:id', auditLog('company_stamp_deleted'), companySettingsController.deleteStamp.bind(companySettingsController));
 router.patch('/signatures/:id', auditLog('company_signature_updated'), companySettingsController.patchSignature.bind(companySettingsController));

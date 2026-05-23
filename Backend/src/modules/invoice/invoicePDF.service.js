@@ -280,7 +280,7 @@ class InvoicePDFService {
     }
 
     const layout = getSalesPartyColumnLayout(includeSimpleMeta ? {} : fullWidthParty);
-    const billY = drawBrandedPartyColumn(doc, layout.billX, startY, layout.colWidth + 40, 'Bill to:', party, {
+    const billY = drawBrandedPartyColumn(doc, layout.billX, startY, layout.colWidth + 40, 'Billed to:', party, {
       addressKey: 'billing',
       showName: true,
       showContact: true,
@@ -806,7 +806,7 @@ class InvoicePDFService {
       }));
     } else {
       const billW = Math.max(180, layout.metaX - partyLeft - 14);
-      partyY = drawBrandedPartyColumn(doc, partyLeft, partyStartY, billW, 'Bill to:', party, {
+      partyY = drawBrandedPartyColumn(doc, partyLeft, partyStartY, billW, 'Billed to:', party, {
         addressKey: 'billing',
         showName: true,
         showContact: true,
@@ -904,7 +904,7 @@ class InvoicePDFService {
       doc.font('Helvetica').text(formatShortDate(standardInvoice.details?.dueDate), 130, y + 52);
       doc.font('Helvetica-Bold').text('Currency', 300, y + 12);
       doc.font('Helvetica').text(standardInvoice.details?.currency || 'USD', 370, y + 12);
-      doc.font('Helvetica-Bold').text('Bill to', 300, y + 32);
+      doc.font('Helvetica-Bold').text('Billed to', 300, y + 32);
       doc.font('Helvetica').text(standardInvoice.partyDetails?.name || 'N/A', 300, y + 46, { width: 190 });
       y += 80;
     }

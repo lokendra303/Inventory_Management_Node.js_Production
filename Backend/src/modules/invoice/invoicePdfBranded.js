@@ -431,7 +431,7 @@ function drawBrandedPartyContent(doc, x, startY, width, party, options = {}) {
 function drawSalesBillShipColumns(doc, startY, party, options = {}) {
   const {
     showGst = false,
-    billLabel = 'Bill to',
+    billLabel = 'Billed to',
     shipLabel = 'Ship to',
     shipShowName = false,
     columnLayout = {},

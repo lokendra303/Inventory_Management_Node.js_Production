@@ -164,6 +164,8 @@ const extractEntityInfo = (req) => {
     { regex: /\/exchange-rates/,                   type: 'exchange_rate',    idGroup: null },
     { regex: /\/company-settings\/addresses\/([a-f0-9-]{36})/i, type: 'company_address', idGroup: 1 },
     { regex: /\/company-settings\/addresses\/?$/i, type: 'company_address', idGroup: null },
+    { regex: /\/company-settings\/bank-accounts\/([a-f0-9-]{36})/i, type: 'company_bank_account', idGroup: 1 },
+    { regex: /\/company-settings\/bank-accounts\/?$/i, type: 'company_bank_account', idGroup: null },
     { regex: /\/company-settings/,                 type: 'company_settings', idGroup: null },
     { regex: /\/settings/,                         type: 'settings',         idGroup: null },
     // Tax
@@ -447,6 +449,7 @@ const generateDescription = (action, entityInfo, user, req, responseData, change
     exchange_rate:     'Exchange Rate',
     company_settings:  'Company Settings',
     company_address:   'Company address',
+    company_bank_account: 'Company bank account',
     settings:          'Settings',
     tax_rate:          'Tax Rate',
     tax_group:         'Tax Group',

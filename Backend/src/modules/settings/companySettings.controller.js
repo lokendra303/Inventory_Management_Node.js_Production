@@ -267,6 +267,19 @@ class CompanySettingsController {
       if (hasStructuredAddressInput) {
         await multi.upsertDefaultAddressFields(institutionId, addressPayload);
       }
+
+      const bankPayload = {
+        bank_name: bankName,
+        account_holder_name: accountHolderName,
+        account_number: accountNumber,
+        ifsc_code: ifscCode,
+        branch_name: branchName,
+        swift_code: swiftCode,
+      };
+      const hasBankInput = Object.values(bankPayload).some((v) => v != null && String(v).trim() !== '');
+      if (hasBankInput) {
+        await multi.upsertDefaultBankFields(institutionId, bankPayload);
+      }
       await multi.syncLegacyMirror(institutionId);
 
       if (companyName && companyName.trim()) {
@@ -490,6 +503,49 @@ class CompanySettingsController {
     try {
       const { institutionId } = req;
       await multi.deleteSignature(institutionId, req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(400).json({ success: false, error: e.message });
+    }
+  }
+
+  async addBankAccount(req, res) {
+    try {
+      const { institutionId } = req;
+      const id = await multi.addBankAccount(institutionId, req.body);
+      res.locals.auditExtra = { submitted: req.body, createdId: id };
+      res.json({ success: true, data: { id } });
+    } catch (e) {
+      res.status(400).json({ success: false, error: e.message });
+    }
+  }
+
+  async updateBankAccount(req, res) {
+    try {
+      const { institutionId } = req;
+      const beforeRows = await db.query(
+        `SELECT id, label, bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code, is_default
+         FROM institution_bank_accounts WHERE id = ? AND institution_id = ?`,
+        [req.params.id, institutionId]
+      );
+      res.locals.auditExtra = { before: beforeRows[0] || null, submitted: req.body };
+      await multi.updateBankAccount(institutionId, req.params.id, req.body);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(400).json({ success: false, error: e.message });
+    }
+  }
+
+  async deleteBankAccount(req, res) {
+    try {
+      const { institutionId } = req;
+      const rows = await db.query(
+        `SELECT id, label, bank_name, account_holder_name, account_number, ifsc_code, branch_name, swift_code, is_default
+         FROM institution_bank_accounts WHERE id = ? AND institution_id = ?`,
+        [req.params.id, institutionId]
+      );
+      res.locals.auditExtra = { deleted: rows[0] || null };
+      await multi.deleteBankAccount(institutionId, req.params.id);
       res.json({ success: true });
     } catch (e) {
       res.status(400).json({ success: false, error: e.message });

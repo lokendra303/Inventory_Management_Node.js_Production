@@ -30,6 +30,7 @@ import {
   PlusOutlined,
   EnvironmentOutlined,
   FileTextOutlined,
+  BankOutlined,
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { mediaUrl } from '../../config/appConfig';
@@ -64,6 +65,8 @@ const CompanySettings = () => {
   const [activeTab, setActiveTab] = useState('settings');
   const [addrModal, setAddrModal] = useState({ open: false, record: null });
   const [addrForm] = Form.useForm();
+  const [bankModal, setBankModal] = useState({ open: false, record: null });
+  const [bankForm] = Form.useForm();
   const [stampLabel, setStampLabel] = useState('');
   const [sigLabel, setSigLabel] = useState('');
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
@@ -216,6 +219,64 @@ const CompanySettings = () => {
     } catch (e) {
       if (e?.errorFields) return;
       message.error(e.message || e.response?.data?.error || 'Failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openBankModal = (record = null) => {
+    setBankModal({ open: true, record });
+    if (record) {
+      bankForm.setFieldsValue({
+        label: record.label,
+        bank_name: record.bank_name,
+        account_holder_name: record.account_holder_name,
+        account_number: record.account_number,
+        ifsc_code: record.ifsc_code,
+        branch_name: record.branch_name,
+        swift_code: record.swift_code,
+        is_default: !!record.is_default,
+      });
+    } else {
+      bankForm.resetFields();
+      bankForm.setFieldsValue({ is_default: false });
+    }
+  };
+
+  const saveBankModal = async () => {
+    try {
+      const v = await bankForm.validateFields();
+      setLoading(true);
+      if (bankModal.record) {
+        const res = await apiService.put(`/company-settings/bank-accounts/${bankModal.record.id}`, v);
+        if (!res.success) throw new Error(res.error);
+        message.success('Bank account updated');
+      } else {
+        const res = await apiService.post('/company-settings/bank-accounts', v);
+        if (!res.success) throw new Error(res.error);
+        message.success('Bank account added');
+      }
+      setBankModal({ open: false, record: null });
+      await loadSettings();
+      setPreviewRefreshKey((k) => k + 1);
+    } catch (e) {
+      if (e?.errorFields) return;
+      message.error(e.message || e.response?.data?.error || 'Failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteBankAccount = async (id) => {
+    try {
+      setLoading(true);
+      const res = await apiService.delete(`/company-settings/bank-accounts/${id}`);
+      if (!res.success) throw new Error(res.error);
+      message.success('Removed');
+      await loadSettings();
+      setPreviewRefreshKey((k) => k + 1);
+    } catch (e) {
+      message.error(e.response?.data?.error || e.message);
     } finally {
       setLoading(false);
     }
@@ -385,8 +446,37 @@ const CompanySettings = () => {
   const getImageUrl = (p) => mediaUrl(p, { cacheBust: true });
 
   const addresses = settings.addresses || [];
+  const bankAccounts = settings.bank_accounts || [];
   const stamps = settings.stamps || [];
   const signatures = settings.signatures || [];
+
+  const bankColumns = [
+    { title: 'Label', dataIndex: 'label', key: 'label', width: 140, ellipsis: true },
+    { title: 'Bank', dataIndex: 'bank_name', key: 'bank', width: 120, ellipsis: true },
+    { title: 'Account holder', dataIndex: 'account_holder_name', key: 'holder', width: 130, ellipsis: true },
+    { title: 'A/c No.', dataIndex: 'account_number', key: 'ac', width: 110, ellipsis: true },
+    { title: 'IFSC', dataIndex: 'ifsc_code', key: 'ifsc', width: 100, ellipsis: true },
+    {
+      title: 'Default for invoices',
+      dataIndex: 'is_default',
+      key: 'def',
+      width: 150,
+      render: (v) => (v ? <Text type="success">Yes</Text> : <Text type="secondary">No</Text>),
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 140,
+      render: (_, r) => (
+        <Space>
+          <Button type="link" size="small" onClick={() => openBankModal(r)}>Edit</Button>
+          <Popconfirm title="Remove this bank account?" onConfirm={() => deleteBankAccount(r.id)}>
+            <Button type="link" size="small" danger>Remove</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   const addrColumns = [
     { title: 'Label', dataIndex: 'label', key: 'l', width: 160 },
@@ -538,10 +628,36 @@ const CompanySettings = () => {
         </Row>
       </Card>
 
-      <Card size="small" title="Bank details" style={{ marginTop: 16 }} styles={{ header: { fontWeight: 600 } }}>
+      <Card
+        size="small"
+        title={(
+          <Space>
+            <BankOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />
+            <span>Bank accounts</span>
+          </Space>
+        )}
+        style={{ marginTop: 16 }}
+        styles={{ header: { fontWeight: 600 } }}
+        extra={(
+          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openBankModal(null)}>
+            Add bank account
+          </Button>
+        )}
+      >
         <Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 16 }}>
-          Optional. Used on invoice PDF footers. Account holder is separate from registered company name.
+          Add multiple accounts (e.g. current, collection). The default account is printed on invoice PDF footers and
+          synced with the quick-edit fields below when you save.
         </Paragraph>
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={bankAccounts}
+          columns={bankColumns}
+          locale={{ emptyText: 'No bank accounts yet' }}
+          style={{ marginBottom: 20 }}
+        />
+        <Divider style={{ margin: '8px 0 16px' }}>Default account (quick edit)</Divider>
         <Row gutter={[20, 0]}>
           <Col xs={24} md={12}>
             <Form.Item
@@ -795,6 +911,57 @@ const CompanySettings = () => {
           <Form.Item name="address" label="Full address" rules={[{ required: true, message: 'Required' }]}>
             <Input.TextArea rows={4} placeholder="Street, city, state, postal code, country" />
           </Form.Item>
+          <Form.Item name="is_default" label="Default for invoices" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={bankModal.record ? 'Edit bank account' : 'Add bank account'}
+        open={bankModal.open}
+        onCancel={() => setBankModal({ open: false, record: null })}
+        onOk={saveBankModal}
+        confirmLoading={loading}
+        destroyOnClose
+        width={560}
+      >
+        <Form form={bankForm} layout="vertical" style={{ marginTop: 8 }}>
+          <Form.Item name="label" label="Label" rules={[{ required: true, message: 'e.g. Primary, Collection' }]}>
+            <Input placeholder="Primary account, Payroll, …" />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item name="account_holder_name" label="Account holder name">
+                <Input allowClear />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="bank_name" label="Bank name">
+                <Input allowClear />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="account_number" label="Account number">
+                <Input allowClear />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="branch_name" label="Branch">
+                <Input allowClear />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="ifsc_code" label="IFSC">
+                <Input allowClear />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="swift_code" label="SWIFT / BIC">
+                <Input allowClear />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item name="is_default" label="Default for invoices" valuePropName="checked">
             <Switch />
           </Form.Item>

@@ -1001,7 +1001,7 @@ function drawProformaInvoice(doc, ctx) {
         sy,
         sellerW,
         Math.min(billH, y + topH - sy),
-        'Buyer (Bill to)',
+        'Buyer (Billed to)',
         party,
         'billing',
         partyGst,
