@@ -803,7 +803,7 @@ function proformaSellerDetailLines(cs, sellerGst, sellerState) {
     sellerGst ? `GSTIN/UIN: ${sellerGst}` : '',
     cs.pan ? `PAN: ${cs.pan}` : '',
     sellerState.name || sellerState.code
-      ? `State Name: ${sellerState.name || '—'}, Code: ${sellerState.code || '—'}`
+      ? `State Name: ${sellerState.name || '—'}, State Code: ${sellerState.code || '—'}`
       : '',
     cs.phone || '',
     cs.email ? `E-Mail: ${cs.email}` : '',

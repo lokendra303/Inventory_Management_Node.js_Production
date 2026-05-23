@@ -316,7 +316,7 @@ function drawTallyPartyColumn(
   }
 
   if ((stateInfo?.name || stateInfo?.code) && py < maxY) {
-    const line = `State Name: ${stateInfo.name || '—'}, Code: ${stateInfo.code || '—'}`;
+    const line = `State Name: ${stateInfo.name || '—'}, State Code: ${stateInfo.code || '—'}`;
     const lh = doc.heightOfString(line, { width: innerW });
     if (py + lh <= maxY) {
       doc.text(line, x + cellPad, py, { width: innerW });
