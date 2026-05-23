@@ -981,6 +981,23 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
           <Row gutter={[16, 0]}>
             <Col xs={24} sm={12} md={8}>
               <Form.Item
+                name={['documentMeta', 'ewayBillNo']}
+                label="e-Way Bill No."
+                tooltip="Shown on the invoice PDF next to e-Way Bill Date."
+              >
+                <Input placeholder="Optional" allowClear />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item name={['documentMeta', 'ewayBillDate']} label="e-Way Bill Date">
+                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" allowClear />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 0]}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item
                 name={['documentMeta', 'billOfLadingLrRrNo']}
                 label="Bill of Landing/LR-RR No."
                 tooltip="Printed on the invoice PDF (full-width row above Terms of Delivery)."
@@ -992,7 +1009,7 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
 
           <DocumentMetaFields
             docType={type === 'purchase' ? 'purchaseInvoice' : 'salesInvoice'}
-            excludeKeys={['billOfLadingLrRrNo']}
+            excludeKeys={['ewayBillNo', 'ewayBillDate', 'billOfLadingLrRrNo']}
           />
 
           {type === 'sales' && (

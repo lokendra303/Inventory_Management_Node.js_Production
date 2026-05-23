@@ -5,6 +5,7 @@
 
 const META_KEYS = [
   'ewayBillNo',
+  'ewayBillDate',
   'deliveryNote',
   'paymentTerms',
   'referenceNo',
@@ -34,6 +35,7 @@ const PROFILE_KEYS = {
     'deliveryNote',
     'deliveryNoteDate',
     'ewayBillNo',
+    'ewayBillDate',
     'vehicleNumber',
     'billOfLadingLrRrNo',
     'destination',
@@ -118,6 +120,7 @@ function applyDocumentMetaToInvoiceDetails(details, meta, context = {}) {
   return {
     ...d,
     ewayBill: m.ewayBillNo || d.ewayBill || '',
+    ewayBillDate: m.ewayBillDate || d.ewayBillDate || '',
     deliveryNote: m.deliveryNote || d.deliveryNote || '',
     paymentTerms: m.paymentTerms || d.paymentTerms || '',
     reference: m.referenceNo || d.reference || '',

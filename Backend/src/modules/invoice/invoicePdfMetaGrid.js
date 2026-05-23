@@ -157,7 +157,12 @@ function buildTallyMetaGridRows(standardInvoice, party = {}) {
         { label: 'Dated', value: invDate },
       ],
     },
-    { cells: [{ label: 'e-Way Bill No.', value: details.ewayBill || '' }] },
+    {
+      cells: [
+        { label: 'e-Way Bill No.', value: details.ewayBill || '' },
+        { label: 'e-Way Bill Date', value: formatTallyDate(details.ewayBillDate) },
+      ],
+    },
     { cells: [{ label: 'Delivery Note', value: details.deliveryNote || '' }] },
     { cells: [{ label: 'Mode/Terms of Payment', value: details.paymentTerms || '' }] },
     { cells: [{ label: 'PO & Date', value: refLine }] },

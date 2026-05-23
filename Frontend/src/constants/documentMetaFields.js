@@ -5,6 +5,7 @@
 
 const FIELD = {
   ewayBillNo: { key: 'ewayBillNo', span: 12 },
+  ewayBillDate: { key: 'ewayBillDate', span: 12, date: true },
   deliveryNote: { key: 'deliveryNote', span: 12 },
   paymentTerms: { key: 'paymentTerms', span: 12 },
   referenceNo: { key: 'referenceNo', span: 8 },
@@ -27,6 +28,7 @@ export const DOCUMENT_META_PROFILES = {
     panelLabel: 'Invoice / dispatch details (optional)',
     fields: [
       { ...FIELD.ewayBillNo, label: 'e-Way Bill No.' },
+      { ...FIELD.ewayBillDate, label: 'e-Way Bill Date' },
       { ...FIELD.deliveryNote, label: 'Delivery Note' },
       { ...FIELD.paymentTerms, label: 'Mode/Terms of Payment' },
       { ...FIELD.referenceNo, label: 'Reference No.' },
@@ -55,6 +57,7 @@ export const DOCUMENT_META_PROFILES = {
       { ...FIELD.deliveryNote, label: 'Delivery challan no.' },
       { ...FIELD.deliveryNoteDate, label: 'Challan date' },
       { ...FIELD.ewayBillNo, label: 'e-Way Bill No.' },
+      { ...FIELD.ewayBillDate, label: 'e-Way Bill Date' },
       { ...FIELD.vehicleNumber, label: 'Vehicle No.' },
       { ...FIELD.billOfLadingLrRrNo, label: 'Bill of Landing/LR-RR No.' },
       { ...FIELD.destination, label: 'Receipt / ship-to location' },
