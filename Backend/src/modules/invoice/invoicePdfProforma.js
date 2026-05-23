@@ -17,6 +17,7 @@ const {
 const {
   buildCompanyBankRows,
   buildVendorBankRows,
+  countBankDataRows,
   drawTallyBankBlock,
   measureTallyBankBlockHeight,
 } = require('./invoicePdfDrawShared');
@@ -243,6 +244,12 @@ const PROFORMA_WORDS_PAD_H = 4;
 const PROFORMA_WORDS_GAP = 2;
 const PROFORMA_WORDS_EOE_W = 46;
 const PROFORMA_FOOTER_MIN_H = 50;
+const PROFORMA_FOOTER_PAD = 4;
+const PROFORMA_SIGN_COL_MIN_H = 40;
+const PROFORMA_FOOTER_COL_MIN = { decl: 108, bank: 92, sign: 86 };
+const PROFORMA_FOOTER_COL_MAX = { decl: 300, bank: 260, sign: 150 };
+const PROFORMA_DECLARATION_TEXT =
+  'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.';
 
 /** A4 page height (pt). */
 const PAGE_H = 841.89;
@@ -270,12 +277,134 @@ function measureProformaTotalsSummaryHeight(totals) {
   return rows * 12 + 3 + 3 + 2;
 }
 
-function measureProformaFooterBoxHeight(bankRows) {
-  const bankBlockH = measureTallyBankBlockHeight(bankRows);
-  if (!bankBlockH) return PROFORMA_FOOTER_MIN_H;
-  const signBlockH = 28;
-  const bankTopPad = 3;
-  return Math.max(PROFORMA_FOOTER_MIN_H, bankTopPad + bankBlockH + signBlockH + 4);
+function buildProformaFooterContext(isSales, companyName, bankRows) {
+  return {
+    declText: PROFORMA_DECLARATION_TEXT,
+    sealLabel: isSales ? "Customer's Seal and Signature" : "Vendor's Seal and Signature",
+    bankTitle: isSales ? "Company's Bank Details:" : "Vendor's Bank Details:",
+    bankRows: bankRows || [],
+    companyName: companyName || 'Company',
+  };
+}
+
+function measureFooterBankNaturalWidth(doc, ctx) {
+  const { bankTitle, bankRows } = ctx;
+  const titleSize = size.footerTitle;
+  const bodySize = size.footerBody;
+  doc.fontSize(titleSize).font(FONT_BOLD);
+  let maxW = doc.widthOfString(bankTitle);
+  (bankRows || []).forEach(([label, val]) => {
+    if (val == null || String(val).trim() === '') return;
+    doc.fontSize(bodySize).font(FONT_BOLD);
+    const labelW = doc.widthOfString(`${label}: `);
+    doc.font(FONT);
+    const valW = doc.widthOfString(String(val));
+    maxW = Math.max(maxW, labelW + valW);
+  });
+  return maxW + PROFORMA_FOOTER_PAD * 2;
+}
+
+function measureFooterSignNaturalWidth(doc, ctx) {
+  const forText = `for ${ctx.companyName || 'Company'}`;
+  doc.fontSize(size.footerBody).font(FONT_BOLD);
+  const wFor = doc.widthOfString(forText);
+  doc.font(FONT);
+  const wAuth = doc.widthOfString('Authorised Signatory');
+  return Math.max(wFor, wAuth, 62) + PROFORMA_FOOTER_PAD * 2;
+}
+
+function measureFooterDeclNaturalWidth(doc, ctx) {
+  doc.fontSize(size.footerTitle).font(FONT_BOLD);
+  let maxW = doc.widthOfString('Declaration');
+  doc.fontSize(size.footerBody).font(FONT_BOLD);
+  maxW = Math.max(maxW, doc.widthOfString(ctx.sealLabel));
+  doc.font(FONT);
+  const probeW = 128;
+  const declH = doc.heightOfString(ctx.declText, { width: probeW, lineGap: 0.25 });
+  const declLines = Math.max(1, Math.ceil(declH / (size.footerBody * 1.25)));
+  const avgCharsPerLine = ctx.declText.length / declLines;
+  const estLineW = Math.min(
+    WIDTH * 0.48,
+    Math.max(probeW, avgCharsPerLine * size.footerBody * 0.52)
+  );
+  return Math.max(maxW, estLineW) + PROFORMA_FOOTER_PAD * 2;
+}
+
+function distributeProformaFooterColWidths(naturals, mins, maxs, totalWidth) {
+  const n = naturals.length;
+  let widths = naturals.map((nat, i) => Math.min(maxs[i], Math.max(mins[i], nat)));
+  let sum = widths.reduce((a, b) => a + b, 0);
+
+  if (sum < totalWidth) {
+    let extra = totalWidth - sum;
+    const weightSum = naturals.reduce((a, b) => a + Math.max(b, 1), 0);
+    for (let i = 0; i < n; i++) {
+      const room = maxs[i] - widths[i];
+      const add = Math.min(room, (extra * naturals[i]) / weightSum);
+      widths[i] += add;
+    }
+    sum = widths.reduce((a, b) => a + b, 0);
+    if (sum < totalWidth) widths[0] += totalWidth - sum;
+  } else if (sum > totalWidth) {
+    let excess = sum - totalWidth;
+    const slack = widths.map((w, i) => w - mins[i]);
+    for (let pass = 0; pass < 8 && excess > 0.5; pass++) {
+      for (let i = 0; i < n; i++) {
+        if (slack[i] <= 0) continue;
+        const cut = Math.min(slack[i], excess / n);
+        widths[i] -= cut;
+        slack[i] -= cut;
+        excess -= cut;
+      }
+    }
+  }
+
+  return widths;
+}
+
+function computeProformaFooterColWidths(doc, ctx) {
+  const mins = [
+    PROFORMA_FOOTER_COL_MIN.decl,
+    PROFORMA_FOOTER_COL_MIN.bank,
+    PROFORMA_FOOTER_COL_MIN.sign,
+  ];
+  const maxs = [PROFORMA_FOOTER_COL_MAX.decl, PROFORMA_FOOTER_COL_MAX.bank, PROFORMA_FOOTER_COL_MAX.sign];
+  const naturals = [
+    measureFooterDeclNaturalWidth(doc, ctx),
+    countBankDataRows(ctx.bankRows)
+      ? measureFooterBankNaturalWidth(doc, ctx)
+      : PROFORMA_FOOTER_COL_MIN.bank,
+    measureFooterSignNaturalWidth(doc, ctx),
+  ];
+  return distributeProformaFooterColWidths(naturals, mins, maxs, WIDTH);
+}
+
+function measureProformaFooterBoxHeight(doc, ctx, colWidths) {
+  const pad = PROFORMA_FOOTER_PAD;
+  const declInnerW = colWidths[0] - pad * 2;
+  const bankInnerW = colWidths[1] - pad * 2;
+
+  doc.fontSize(size.footerTitle).font(FONT_BOLD);
+  let declH = pad + doc.heightOfString('Declaration', { width: declInnerW }) + 3;
+  doc.fontSize(size.footerBody).font(FONT);
+  declH += doc.heightOfString(ctx.declText, { width: declInnerW, lineGap: 0.25 });
+  declH += pad + 12;
+
+  const bankBlockH = countBankDataRows(ctx.bankRows)
+    ? measureTallyBankBlockHeight(ctx.bankRows)
+    : 0;
+  const bankH = pad + bankBlockH + (bankBlockH ? pad : 0);
+
+  const signH = PROFORMA_SIGN_COL_MIN_H + pad * 2;
+
+  return Math.max(PROFORMA_FOOTER_MIN_H, declH, bankH, signH);
+}
+
+function measureProformaFooterLayout(doc, isSales, companyName, bankRows) {
+  const ctx = buildProformaFooterContext(isSales, companyName, bankRows);
+  const colWidths = computeProformaFooterColWidths(doc, ctx);
+  const footerH = measureProformaFooterBoxHeight(doc, ctx, colWidths);
+  return { ctx, colWidths, footerH };
 }
 
 function proformaCurrencyLabel(currency) {
@@ -339,7 +468,7 @@ function measureProformaBelowItemTableHeight(doc, totals, lineItems, bankRows, c
     measureProformaAmountWordsRowHeight(doc, amountWords, currency) +
     taxTableH +
     measureProformaTaxWordsRowHeight(doc, sumTaxFromLineItems(lineItems), currency) +
-    measureProformaFooterBoxHeight(bankRows) +
+    measureProformaFooterLayout(doc, true, 'Company', bankRows).footerH +
     8
   );
 }
@@ -1153,48 +1282,67 @@ function drawProformaInvoice(doc, ctx) {
   });
   y += taxWordsH;
 
-  const bankTitle = isSales ? "Company's Bank Details:" : "Vendor's Bank Details:";
   const bankRows = bankRowsForMeasure;
-  const footerH = measureProformaFooterBoxHeight(bankRows);
-  const footMid = LEFT + Math.round(WIDTH * 0.52);
-  const footRightW = RIGHT - footMid - 6;
-  const declW = footMid - LEFT - 8;
+  const { ctx: footerCtx, colWidths: footerColW, footerH } = measureProformaFooterLayout(
+    doc,
+    isSales,
+    cs.companyName,
+    bankRows
+  );
+  const footPad = PROFORMA_FOOTER_PAD;
 
   box(doc, LEFT, y, WIDTH, footerH);
-  strokeLine(footMid, y, footMid, y + footerH);
+  strokeProformaTableVerticals(doc, LEFT, y, footerColW, footerH);
 
-  const declText =
-    'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.';
-  doc.fontSize(size.footerTitle).font(FONT_BOLD).fillColor('#1a1a1a').text('Declaration', LEFT + 4, y + 3);
-  doc.font(FONT).fontSize(size.footerBody).fillColor('#000000').text(declText, LEFT + 4, y + 11, {
-    width: declW,
+  let colX = LEFT;
+
+  doc.fontSize(size.footerTitle).font(FONT_BOLD).fillColor('#1a1a1a');
+  doc.text('Declaration', colX + footPad, y + footPad, { width: footerColW[0] - footPad * 2 });
+  doc.font(FONT).fontSize(size.footerBody).fillColor('#000000');
+  doc.text(footerCtx.declText, colX + footPad, y + footPad + 11, {
+    width: footerColW[0] - footPad * 2,
     lineGap: 0.25,
   });
+  doc.font(FONT_BOLD).fontSize(size.footerBody).text(footerCtx.sealLabel, colX + footPad, y + footerH - 12, {
+    width: footerColW[0] - footPad * 2,
+  });
 
-  const sealLabel = isSales ? "Customer's Seal and Signature" : "Vendor's Seal and Signature";
-  doc.font(FONT_BOLD).fontSize(size.footerBody).text(sealLabel, LEFT + 4, y + footerH - 11);
-
-  const bankBottom = drawTallyBankBlock(doc, footMid + 4, y + 3, bankTitle, bankRows, footRightW, {
+  colX += footerColW[0];
+  drawTallyBankBlock(doc, colX + footPad, y + footPad, footerCtx.bankTitle, footerCtx.bankRows, footerColW[1] - footPad * 2, {
     titleSize: size.footerTitle,
     bodySize: size.footerBody,
   });
 
-  const signBlockTop = Math.max(bankBottom + 4, y + footerH - 24);
-  doc.fontSize(size.footerBody).font(FONT_BOLD).fillColor('#1a1a1a').text(`for ${cs.companyName || 'Company'}`, footMid + 4, signBlockTop, {
-    width: footRightW,
-    align: 'right',
-  });
+  colX += footerColW[1];
+  const signInnerW = footerColW[2] - footPad * 2;
+  doc
+    .fontSize(size.footerBody)
+    .font(FONT_BOLD)
+    .fillColor('#1a1a1a')
+    .text(`for ${footerCtx.companyName}`, colX + footPad, y + footPad, {
+      width: signInnerW,
+      align: 'right',
+    });
+
   if (signatureBuffer) {
     try {
-      doc.image(signatureBuffer, RIGHT - 82, signBlockTop - 4, { width: 60, height: 18 });
+      doc.image(signatureBuffer, colX + footerColW[2] - footPad - 60, y + footPad + 14, {
+        width: 56,
+        height: 18,
+      });
     } catch {
       /* ignore */
     }
   }
-  doc.fontSize(size.footerBody).font(FONT).fillColor('#000000').text('Authorised Signatory', footMid + 4, y + footerH - 10, {
-    width: footRightW,
-    align: 'right',
-  });
+
+  doc
+    .fontSize(size.footerBody)
+    .font(FONT)
+    .fillColor('#000000')
+    .text('Authorised Signatory', colX + footPad, y + footerH - footPad - 10, {
+      width: signInnerW,
+      align: 'right',
+    });
 
   y += footerH + 4;
   doc.fontSize(size.disclaimer).fillColor('#555555').text('This is a Computer Generated Invoice', LEFT, y, {
