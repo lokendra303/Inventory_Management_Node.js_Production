@@ -142,7 +142,8 @@ function buildTallyMetaGridRows(standardInvoice, party = {}) {
   const refLine = [details.reference, refDate].filter(Boolean).join(' / ');
   const buyersOrder =
     details.buyersOrderNo || details.soNumber || details.poNumber || '';
-  const buyersOrderDate = formatTallyDate(details.buyersOrderDate) || invDate;
+  const buyersOrderDate = formatTallyDate(details.buyersOrderDate);
+  const buyersOrderLine = [buyersOrder, buyersOrderDate].filter(Boolean).join(' / ');
   const destination =
     details.destination ||
     party.shippingAddress?.city ||
@@ -167,12 +168,7 @@ function buildTallyMetaGridRows(standardInvoice, party = {}) {
     { cells: [{ label: 'Mode/Terms of Payment', value: details.paymentTerms || '' }] },
     { cells: [{ label: 'PO. No. & Date', value: refLine }] },
     { cells: [{ label: 'Other References', value: details.otherReferences || details.grnNumber || '' }] },
-    {
-      cells: [
-        { label: "Buyer's Order No.", value: buyersOrder },
-        { label: 'Dated', value: buyersOrderDate },
-      ],
-    },
+    { cells: [{ label: "Buyer's Order No.", value: buyersOrderLine }] },
     {
       cells: [
         { label: 'Dispatch Doc No.', value: details.dispatchDocNo || '' },
@@ -382,7 +378,7 @@ function drawTallyShipBillPartyRow(doc, y, party, options = {}) {
     y,
     halfW,
     blockH,
-    'Buyer (Bill to)',
+    'Buyer (Billed to)',
     party,
     'billing',
     partyGst,
@@ -514,7 +510,7 @@ function drawClassicPartyMetaBand(doc, y, standardInvoice, party = {}, options =
       y + shipH,
       partyW,
       billH,
-      'Bill to',
+      'Billed to',
       party,
       'billing',
       party.billingAddress?.state ? [`Place of Supply: ${party.billingAddress.state}`] : []
