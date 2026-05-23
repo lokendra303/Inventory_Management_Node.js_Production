@@ -978,7 +978,22 @@ const InvoiceForm = ({ type = 'purchase', invoiceId = null, onSave }) => {
             </Col>
           </Row>
 
-          <DocumentMetaFields docType={type === 'purchase' ? 'purchaseInvoice' : 'salesInvoice'} />
+          <Row gutter={[16, 0]}>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item
+                name={['documentMeta', 'billOfLadingLrRrNo']}
+                label="Bill of Landing/LR-RR No."
+                tooltip="Printed on the invoice PDF (full-width row above Terms of Delivery)."
+              >
+                <Input placeholder="Optional" allowClear />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <DocumentMetaFields
+            docType={type === 'purchase' ? 'purchaseInvoice' : 'salesInvoice'}
+            excludeKeys={['billOfLadingLrRrNo']}
+          />
 
           {type === 'sales' && (
             <Row gutter={[16, 0]}>

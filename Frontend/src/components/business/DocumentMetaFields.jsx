@@ -13,12 +13,14 @@ const DocumentMetaFields = ({
   docType = 'salesInvoice',
   namePrefix = 'documentMeta',
   defaultActive = false,
+  excludeKeys = [],
 }) => {
   const profile = getDocumentMetaProfile(docType);
+  const visibleFields = profile.fields.filter((f) => !excludeKeys.includes(f.key));
 
   const fields = (
     <Row gutter={[12, 0]}>
-      {profile.fields.map((f) => (
+      {visibleFields.map((f) => (
         <Col xs={24} sm={f.span >= 24 ? 24 : 12} md={f.span} key={f.key}>
           <Form.Item
             name={[namePrefix, f.key]}
