@@ -16,6 +16,7 @@ const META_KEYS = [
   'deliveryNoteDate',
   'dispatchMode',
   'vehicleNumber',
+  'billOfLadingLrRrNo',
   'destination',
   'deliveryTerms',
 ];
@@ -34,6 +35,7 @@ const PROFILE_KEYS = {
     'deliveryNoteDate',
     'ewayBillNo',
     'vehicleNumber',
+    'billOfLadingLrRrNo',
     'destination',
     'deliveryTerms',
   ],
@@ -135,6 +137,7 @@ function applyDocumentMetaToInvoiceDetails(details, meta, context = {}) {
     deliveryNoteDate: m.deliveryNoteDate || d.deliveryNoteDate || '',
     dispatchMode: m.dispatchMode || d.dispatchMode || '',
     vehicleNumber: m.vehicleNumber || d.vehicleNumber || '',
+    billOfLadingLrRrNo: m.billOfLadingLrRrNo || d.billOfLadingLrRrNo || '',
     destination: m.destination || d.destination || context.destination || '',
     deliveryTerms: m.deliveryTerms || d.deliveryTerms || '',
     soNumber: context.soNumber || d.soNumber || '',

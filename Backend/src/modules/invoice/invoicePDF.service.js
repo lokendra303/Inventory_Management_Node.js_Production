@@ -223,12 +223,12 @@ class InvoicePDFService {
     return Math.max(header.bottomY, ry) + 10;
   }
 
-  /** Right column: SALES INVOICE title + invoice # / dates (matches UI preview). */
+  /** Right column: TAX INVOICE title + invoice # / dates (matches UI preview). */
   _drawSalesInvoiceMetaRight(doc, startY, standardInvoice, layout) {
     const { metaX, metaWidth } = layout;
     let y = startY;
 
-    doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('SALES INVOICE', metaX, y, {
+    doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('TAX INVOICE', metaX, y, {
       width: metaWidth,
       align: 'right',
     });
@@ -677,7 +677,7 @@ class InvoicePDFService {
       doc.fontSize(18).font('Helvetica-Bold').fillColor('#000').text('PURCHASE INVOICE', 50, y);
       y += 28;
     } else {
-      doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('SALES INVOICE', 50, y, {
+      doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('TAX INVOICE', 50, y, {
         width: 495,
         align: 'center',
       });
@@ -816,7 +816,7 @@ class InvoicePDFService {
 
     let metaY = partyStartY;
     if (isSales) {
-      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text('SALES INVOICE', layout.metaX, metaY, {
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text('TAX INVOICE', layout.metaX, metaY, {
         width: layout.metaWidth,
         align: 'right',
       });
@@ -879,7 +879,7 @@ class InvoicePDFService {
   _renderModern(doc, ctx) {
     const { standardInvoice, companySettings, logoBuffer, stampBuffer, signatureBuffer } = ctx;
     const cs = this._resolveCompanyStrings(standardInvoice, companySettings);
-    const invoiceType = this._isSalesInvoice(standardInvoice) ? 'SALES INVOICE' : 'PURCHASE INVOICE';
+    const invoiceType = this._isSalesInvoice(standardInvoice) ? 'TAX INVOICE' : 'PURCHASE INVOICE';
 
     doc.rect(0, 0, 596, 78).fill('#1e3a5f');
     doc.fillColor('#ffffff');

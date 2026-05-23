@@ -160,7 +160,7 @@ function buildTallyMetaGridRows(standardInvoice, party = {}) {
     { cells: [{ label: 'e-Way Bill No.', value: details.ewayBill || '' }] },
     { cells: [{ label: 'Delivery Note', value: details.deliveryNote || '' }] },
     { cells: [{ label: 'Mode/Terms of Payment', value: details.paymentTerms || '' }] },
-    { cells: [{ label: 'Reference No. & Date.', value: refLine }] },
+    { cells: [{ label: 'PO & Date', value: refLine }] },
     { cells: [{ label: 'Other References', value: details.otherReferences || details.grnNumber || '' }] },
     {
       cells: [
@@ -181,6 +181,14 @@ function buildTallyMetaGridRows(standardInvoice, party = {}) {
       ],
     },
     { cells: [{ label: 'Vehicle No.', value: details.vehicleNumber || '' }] },
+    {
+      cells: [
+        {
+          label: 'Bill of Landing/LR-RR No.',
+          value: details.billOfLadingLrRrNo || '',
+        },
+      ],
+    },
     { cells: [{ label: 'Terms of Delivery', value: termsDelivery }] },
   ];
 }

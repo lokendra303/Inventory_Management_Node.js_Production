@@ -16,6 +16,7 @@ const FIELD = {
   deliveryNoteDate: { key: 'deliveryNoteDate', span: 12, date: true },
   dispatchMode: { key: 'dispatchMode', span: 12 },
   vehicleNumber: { key: 'vehicleNumber', span: 12 },
+  billOfLadingLrRrNo: { key: 'billOfLadingLrRrNo', span: 12 },
   destination: { key: 'destination', span: 12 },
   deliveryTerms: { key: 'deliveryTerms', span: 24, textarea: true },
 };
@@ -37,6 +38,7 @@ export const DOCUMENT_META_PROFILES = {
       { ...FIELD.deliveryNoteDate, label: 'Delivery Note Date' },
       { ...FIELD.dispatchMode, label: 'Dispatched through' },
       { ...FIELD.vehicleNumber, label: 'Vehicle No.' },
+      { ...FIELD.billOfLadingLrRrNo, label: 'Bill of Landing/LR-RR No.' },
       { ...FIELD.destination, label: 'Destination' },
       { ...FIELD.deliveryTerms, label: 'Terms of Delivery' },
     ],
@@ -54,6 +56,7 @@ export const DOCUMENT_META_PROFILES = {
       { ...FIELD.deliveryNoteDate, label: 'Challan date' },
       { ...FIELD.ewayBillNo, label: 'e-Way Bill No.' },
       { ...FIELD.vehicleNumber, label: 'Vehicle No.' },
+      { ...FIELD.billOfLadingLrRrNo, label: 'Bill of Landing/LR-RR No.' },
       { ...FIELD.destination, label: 'Receipt / ship-to location' },
       { ...FIELD.deliveryTerms, label: 'Terms of delivery' },
     ],

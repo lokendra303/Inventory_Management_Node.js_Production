@@ -471,12 +471,6 @@ function measureItemRowHeight(doc, cells, colWidths, minH = row.itemDefault, max
   return Math.min(rowH, maxH);
 }
 
-function invoiceHasDiscount(lineItems, totals) {
-  const totalDisc = Number(totals?.totalDiscountAmount) || 0;
-  if (totalDisc > 0.005) return true;
-  return (lineItems || []).some((item) => Number(item.discountRate || item.discount_rate || 0) > 0);
-}
-
 /** Fixed horizontal padding inside each table column (left + right). */
 const COL_INNER_PAD = pad.cell * 2;
 
@@ -486,15 +480,32 @@ const PROFORMA_COL_LIMITS = {
   hsn: { min: 40, max: 72 },
   qty: { min: 34, max: 58 },
   rate: { min: 44, max: 86 },
-  disc: { min: 30, max: 42 },
+  disc: { min: 38, max: 52 },
   per: { min: 26, max: 40 },
   amount: { min: 58, max: 90 },
 };
 
-function proformaColRoles(hasDiscount) {
-  return hasDiscount
-    ? ['si', 'desc', 'hsn', 'qty', 'rate', 'per', 'disc', 'amount']
-    : ['si', 'desc', 'hsn', 'qty', 'rate', 'per', 'amount'];
+function proformaColRoles() {
+  return ['si', 'desc', 'hsn', 'qty', 'rate', 'per', 'disc', 'amount'];
+}
+
+function proformaItemColAlign(role) {
+  if (role === 'qty' || role === 'rate' || role === 'amount') return 'right';
+  if (role === 'si' || role === 'hsn' || role === 'per' || role === 'disc') return 'center';
+  return 'left';
+}
+
+function formatLineDiscountDisplay(item) {
+  const discRate = parseFloat(item.discountRate ?? item.discount_rate);
+  if (Number.isFinite(discRate) && discRate > 0) {
+    const rounded = Math.round(discRate * 100) / 100;
+    const text =
+      Number.isInteger(rounded) || Math.abs(rounded - Math.round(rounded)) < 0.001
+        ? String(Math.round(rounded))
+        : rounded.toFixed(2).replace(/\.?0+$/, '');
+    return `${text}%`;
+  }
+  return '-';
 }
 
 function measureCellContentWidth(doc, cell) {
@@ -506,8 +517,8 @@ function measureCellContentWidth(doc, cell) {
 }
 
 /** Size numeric/unit columns from cell content; description absorbs remaining width. */
-function computeProformaItemColWidths(doc, tableRows, hasDiscount) {
-  const roles = proformaColRoles(hasDiscount);
+function computeProformaItemColWidths(doc, tableRows) {
+  const roles = proformaColRoles();
   const descIdx = roles.indexOf('desc');
   const natural = roles.map(() => 0);
 
@@ -558,21 +569,15 @@ function computeProformaItemColWidths(doc, tableRows, hasDiscount) {
 
 function remeasureProformaTableRows(doc, tableRows, colWidths, defaultRowH) {
   tableRows.forEach((rowDef, idx) => {
-    if (idx === 0) {
-      rowDef._height = row.itemHeader;
-      return;
-    }
-    rowDef._height = measureItemRowHeight(doc, rowDef.cells, colWidths, defaultRowH);
+    const measured = measureItemRowHeight(doc, rowDef.cells, colWidths, defaultRowH);
+    rowDef._height = idx === 0 ? Math.max(row.itemHeader, measured) : measured;
   });
 }
 
-function buildProformaItemHeaders(hasDiscount, currency) {
+function buildProformaItemHeaders(currency) {
   const cur = proformaTableCurrencyTag(currency);
   const rateH = `Rate\n(${cur})`;
   const amountH = `Amount\n(${cur})`;
-  if (!hasDiscount) {
-    return ['SI\nNo.', 'Description of\nGoods and Services', 'HSN/SAC', 'Quantity', rateH, 'per', amountH];
-  }
   return [
     'SI\nNo.',
     'Description of\nGoods and Services',
@@ -580,33 +585,38 @@ function buildProformaItemHeaders(hasDiscount, currency) {
     'Quantity',
     rateH,
     'per',
-    'Disc.\n%',
+    'Discount',
     amountH,
   ];
 }
 
-function buildProformaLineCells(item, idx, currency, hasDiscount) {
+function buildProformaLineCells(item, idx, currency) {
   const gross = lineGrossAmount(item);
   const unit = normalizeUnit(item.unit);
   const qty = normalizeQuantity(item.quantity);
-  const discRate = Number(item.discountRate || item.discount_rate || 0);
-  const base = [
-    { text: String(idx + 1), align: 'center', fontSize: size.tableBody },
-    { text: (item.itemName || '').trim(), fontSize: size.tableBody },
-    { text: hsnOf(item) || '-', align: 'center', fontSize: size.tableBody },
-    { text: formatLineQty(qty), align: 'right', fontSize: size.tableBody },
-    { text: formatQtyAmount(item.unitAmount, currency), align: 'right', fontSize: size.tableAmount },
-  ];
-  base.push({ text: unit, align: 'center', fontSize: size.tableBody });
-  if (hasDiscount) {
-    base.push({
-      text: discRate > 0 ? `${discRate}%` : '-',
-      align: 'center',
+  const cells = [
+    { text: String(idx + 1), align: proformaItemColAlign('si'), fontSize: size.tableBody },
+    { text: (item.itemName || '').trim(), align: proformaItemColAlign('desc'), fontSize: size.tableBody },
+    { text: hsnOf(item) || '-', align: proformaItemColAlign('hsn'), fontSize: size.tableBody },
+    { text: formatLineQty(qty), align: proformaItemColAlign('qty'), fontSize: size.tableBody },
+    {
+      text: formatQtyAmount(item.unitAmount, currency),
+      align: proformaItemColAlign('rate'),
+      fontSize: size.tableAmount,
+    },
+    { text: unit, align: proformaItemColAlign('per'), fontSize: size.tableBody },
+    {
+      text: formatLineDiscountDisplay(item),
+      align: proformaItemColAlign('disc'),
       fontSize: size.tableBody,
-    });
-  }
-  base.push({ text: formatQtyAmount(gross, currency), align: 'right', fontSize: size.tableAmount });
-  return base;
+    },
+  ];
+  cells.push({
+    text: formatQtyAmount(gross, currency),
+    align: proformaItemColAlign('amount'),
+    fontSize: size.tableAmount,
+  });
+  return cells;
 }
 
 /** Right-aligned subtotal / discount / tax summary before amount in words. */
@@ -700,7 +710,7 @@ function drawProformaInvoice(doc, ctx) {
   const lineItems = standardInvoice.lineItems || [];
   const totals = standardInvoice.totals || {};
 
-  const docTitle = isSales ? 'INVOICE' : 'PURCHASE INVOICE';
+  const docTitle = isSales ? 'TAX INVOICE' : 'PURCHASE INVOICE';
   const sellerGst = cs.taxId || standardInvoice.header?.taxInfo?.taxId || '';
   const sellerState = gstStateFromGstin(
     sellerGst,
@@ -896,11 +906,13 @@ function drawProformaInvoice(doc, ctx) {
   drawTallyMetaGrid(doc, metaX, y, metaW, metaGridRows, metaGridOptions);
   y += topH;
 
-  const hasDiscount = invoiceHasDiscount(lineItems, totals);
-  const itemColCount = proformaColRoles(hasDiscount).length;
-  const amountColIdx = itemColCount - 1;
+  const itemColRoles = proformaColRoles();
+  const itemColCount = itemColRoles.length;
+  const amountColIdx = itemColRoles.indexOf('amount');
+  const discColIdx = itemColRoles.indexOf('disc');
+  const qtyColIdx = itemColRoles.indexOf('qty');
   const itemRowH = row.itemDefault;
-  const itemHeaders = buildProformaItemHeaders(hasDiscount, currency);
+  const itemHeaders = buildProformaItemHeaders(currency);
 
   const itemTableRows = [
     {
@@ -909,7 +921,7 @@ function drawProformaInvoice(doc, ctx) {
         text: h,
         bold: true,
         fontSize: size.tableHead,
-        align: i >= 3 ? 'center' : 'left',
+        align: proformaItemColAlign(itemColRoles[i]),
         padTop: pad.tableTop,
       })),
     },
@@ -917,7 +929,7 @@ function drawProformaInvoice(doc, ctx) {
 
   lineItems.forEach((item, idx) => {
     itemTableRows.push({
-      cells: buildProformaLineCells(item, idx, currency, hasDiscount),
+      cells: buildProformaLineCells(item, idx, currency),
     });
   });
 
@@ -943,9 +955,15 @@ function drawProformaInvoice(doc, ctx) {
     _height: itemRowH,
     cells: (() => {
       const cells = footerRow('Total', formatQtyAmount(tableAmountTotal, currency));
-      cells[3] = {
+      cells[qtyColIdx] = {
         text: formatLineQty(sumQty(lineItems)),
         align: 'right',
+        bold: true,
+        fontSize: size.tableBody,
+      };
+      cells[discColIdx] = {
+        text: '-',
+        align: 'center',
         bold: true,
         fontSize: size.tableBody,
       };
@@ -960,7 +978,7 @@ function drawProformaInvoice(doc, ctx) {
       })
     : buildVendorBankRows(party);
 
-  const itemCols = computeProformaItemColWidths(doc, itemTableRows, hasDiscount);
+  const itemCols = computeProformaItemColWidths(doc, itemTableRows);
   remeasureProformaTableRows(doc, itemTableRows, itemCols, itemRowH);
   expandProformaItemRowsWithAvailableSpace(doc, itemTableRows, itemCols, itemRowH, {
     itemStartY: y,
