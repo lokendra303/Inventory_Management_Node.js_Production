@@ -16,7 +16,7 @@ import {
   Divider,
   InputNumber
 } from 'antd';
-import { UploadOutlined, InfoCircleOutlined, LinkOutlined } from '@ant-design/icons';
+import { UploadOutlined, InfoCircleOutlined, LinkOutlined, PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import apiService from '../../../services/apiService';
 import { copyBillingToShipping } from '../../../utils/addressFormUtils';
@@ -35,6 +35,58 @@ const NewCustomer = () => {
       if (res.success) setPriceLists((res.data || []).filter(pl => pl.pricelist_type === 'sales' || !pl.pricelist_type));
     }).catch(() => {});
   }, []);
+
+  const normalizeAddress = (addr = {}) => ({
+    attention: addr.attention || '',
+    country: addr.country || '',
+    address1: addr.address1 || '',
+    address2: addr.address2 || '',
+    city: addr.city || '',
+    state: addr.state || '',
+    pin_code: addr.pin_code || '',
+  });
+
+  const hasAddressData = (addr = {}) =>
+    ['attention', 'country', 'address1', 'address2', 'city', 'state', 'pin_code']
+      .some((k) => addr[k] != null && String(addr[k]).trim() !== '');
+
+  const buildOrderedAddresses = (primary, extras, selectedKey) => {
+    const all = [
+      { ...primary, _key: 'primary' },
+      ...(extras || []).map((addr, idx) => ({ ...addr, _key: `extra_${idx}` })),
+    ].filter(hasAddressData);
+    if (!all.length) return [];
+    const preferred = selectedKey || all[0]._key;
+    return [
+      ...all.filter((addr) => addr._key === preferred),
+      ...all.filter((addr) => addr._key !== preferred),
+    ].map(({ _key, ...rest }) => rest);
+  };
+  const normalizeBank = (bank = {}) => ({
+    bank_name: bank.bank_name || bank.bankName || '',
+    account_holder_name: bank.account_holder_name || bank.accountHolderName || '',
+    account_number: bank.account_number || bank.accountNumber || '',
+    ifsc_code: bank.ifsc_code || bank.ifscCode || '',
+    branch_name: bank.branch_name || bank.branchName || '',
+    account_type: bank.account_type || bank.accountType || '',
+    swift_code: bank.swift_code || bank.swiftCode || '',
+    iban: bank.iban || '',
+  });
+  const hasBankData = (bank = {}) =>
+    ['bank_name', 'account_holder_name', 'account_number', 'ifsc_code', 'branch_name', 'account_type', 'swift_code', 'iban']
+      .some((k) => bank[k] != null && String(bank[k]).trim() !== '');
+  const buildOrderedBanks = (primary, extras, selectedKey) => {
+    const all = [
+      { ...primary, _key: 'primary' },
+      ...(extras || []).map((bank, idx) => ({ ...bank, _key: `extra_${idx}` })),
+    ].filter(hasBankData);
+    if (!all.length) return [];
+    const preferred = selectedKey || all[0]._key;
+    return [
+      ...all.filter((b) => b._key === preferred),
+      ...all.filter((b) => b._key !== preferred),
+    ].map(({ _key, ...rest }) => rest);
+  };
 
   const handleSave = async () => {
     try {
@@ -85,6 +137,56 @@ const NewCustomer = () => {
         swiftCode: values.swiftCode || '',
         iban: values.iban || ''
       };
+
+      const primaryBilling = normalizeAddress({
+        attention: values.billingAttention,
+        country: values.billingCountry,
+        address1: values.billingAddress1,
+        address2: values.billingAddress2,
+        city: values.billingCity,
+        state: values.billingState,
+        pin_code: values.billingPinCode,
+      });
+      const primaryShipping = normalizeAddress({
+        attention: values.shippingAttention,
+        country: values.shippingCountry,
+        address1: values.shippingAddress1,
+        address2: values.shippingAddress2,
+        city: values.shippingCity,
+        state: values.shippingState,
+        pin_code: values.shippingPinCode,
+      });
+      const extraBilling = Array.isArray(values.billingAddressesExtra)
+        ? values.billingAddressesExtra.map(normalizeAddress)
+        : [];
+      const extraShipping = Array.isArray(values.shippingAddressesExtra)
+        ? values.shippingAddressesExtra.map(normalizeAddress)
+        : [];
+      apiData.billingAddresses = buildOrderedAddresses(
+        primaryBilling,
+        extraBilling,
+        values.defaultBillingAddressKey || 'primary'
+      );
+      apiData.shippingAddresses = buildOrderedAddresses(
+        primaryShipping,
+        extraShipping,
+        values.defaultShippingAddressKey || 'primary'
+      );
+      apiData.bankDetails = buildOrderedBanks(
+        normalizeBank({
+          bank_name: values.bankName,
+          account_holder_name: values.accountHolderName,
+          account_number: values.accountNumber,
+          ifsc_code: values.ifscCode,
+          branch_name: values.branchName,
+          account_type: values.accountType,
+          swift_code: values.swiftCode,
+          iban: values.iban,
+        }),
+        (values.bankDetailsExtra || []).map(normalizeBank),
+        values.defaultBankDetailKey || 'primary'
+      );
+      apiData.defaultBankDetailKey = 'primary';
       
       const response = await apiService.post('/customers', apiData);
       
@@ -392,6 +494,54 @@ const NewCustomer = () => {
                       </Form.Item>
                     </Col>
                   </Row>
+                  <Form.Item noStyle shouldUpdate>
+                    {() => (
+                      <Checkbox
+                        checked={form.getFieldValue('defaultBankDetailKey') === 'primary'}
+                        onChange={() => form.setFieldsValue({ defaultBankDetailKey: 'primary' })}
+                      >
+                        Use this bank account as primary
+                      </Checkbox>
+                    )}
+                  </Form.Item>
+                  <Divider style={{ margin: '12px 0' }} />
+                  <Form.List name="bankDetailsExtra">
+                    {(fields, { add, remove }) => (
+                      <>
+                        {fields.map((field, idx) => (
+                          <Card key={field.key} size="small" style={{ marginBottom: 12 }}>
+                            <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
+                              <b>Additional Bank Account {idx + 1}</b>
+                              <Button type="text" danger icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} />
+                            </Space>
+                            <Row gutter={[16, 16]}>
+                              <Col xs={24} md={12}><Form.Item name={[field.name, 'bank_name']} label="Bank Name"><Input /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name={[field.name, 'account_holder_name']} label="Account Holder Name"><Input /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name={[field.name, 'account_number']} label="Account Number"><Input /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name={[field.name, 'account_type']} label="Account Type"><Select options={accountTypeOptions} /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name={[field.name, 'ifsc_code']} label="IFSC Code"><Input /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name={[field.name, 'branch_name']} label="Branch Name"><Input /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name={[field.name, 'swift_code']} label="SWIFT Code"><Input /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name={[field.name, 'iban']} label="IBAN"><Input /></Form.Item></Col>
+                            </Row>
+                            <Form.Item noStyle shouldUpdate>
+                              {() => (
+                                <Checkbox
+                                  checked={form.getFieldValue('defaultBankDetailKey') === `extra_${idx}`}
+                                  onChange={() => form.setFieldsValue({ defaultBankDetailKey: `extra_${idx}` })}
+                                >
+                                  Use this bank account as primary
+                                </Checkbox>
+                              )}
+                            </Form.Item>
+                          </Card>
+                        ))}
+                        <Button type="dashed" icon={<PlusOutlined />} onClick={() => add()} block>
+                          Add another bank account
+                        </Button>
+                      </>
+                    )}
+                  </Form.List>
                 </Card>
               )
             },
@@ -460,6 +610,53 @@ const NewCustomer = () => {
                           </Form.Item>
                         </Col>
                       </Row>
+                      <Form.Item noStyle shouldUpdate>
+                        {() => (
+                          <Checkbox
+                            checked={form.getFieldValue('defaultBillingAddressKey') === 'primary'}
+                            onChange={() => form.setFieldsValue({ defaultBillingAddressKey: 'primary' })}
+                          >
+                            Use this billing address on invoice
+                          </Checkbox>
+                        )}
+                      </Form.Item>
+                      <Divider style={{ margin: '12px 0' }} />
+                      <Form.List name="billingAddressesExtra">
+                        {(fields, { add, remove }) => (
+                          <>
+                            {fields.map((field, idx) => (
+                              <Card key={field.key} size="small" style={{ marginBottom: 12 }}>
+                                <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
+                                  <b>Additional Billing Address {idx + 1}</b>
+                                  <Button type="text" danger icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} />
+                                </Space>
+                                <Form.Item name={[field.name, 'attention']} label="Attention"><Input /></Form.Item>
+                                <Form.Item name={[field.name, 'country']} label="Country/Region"><Select options={countryOptions} /></Form.Item>
+                                <Form.Item name={[field.name, 'address1']} label="Address"><Input.TextArea rows={2} /></Form.Item>
+                                <Form.Item name={[field.name, 'address2']}><Input.TextArea rows={2} placeholder="Street 2" /></Form.Item>
+                                <Row gutter={12}>
+                                  <Col span={12}><Form.Item name={[field.name, 'city']} label="City"><Input /></Form.Item></Col>
+                                  <Col span={12}><Form.Item name={[field.name, 'state']} label="State"><Select options={stateOptions} /></Form.Item></Col>
+                                </Row>
+                                <Form.Item name={[field.name, 'pin_code']} label="Pin Code"><Input /></Form.Item>
+                                <Form.Item noStyle shouldUpdate>
+                                  {() => (
+                                    <Checkbox
+                                      checked={form.getFieldValue('defaultBillingAddressKey') === `extra_${idx}`}
+                                      onChange={() => form.setFieldsValue({ defaultBillingAddressKey: `extra_${idx}` })}
+                                    >
+                                      Use this billing address on invoice
+                                    </Checkbox>
+                                  )}
+                                </Form.Item>
+                              </Card>
+                            ))}
+                            <Button type="dashed" icon={<PlusOutlined />} onClick={() => add()} block>
+                              Add another billing address
+                            </Button>
+                          </>
+                        )}
+                      </Form.List>
                     </Col>
 
                     <Col xs={24} md={12}>
@@ -529,6 +726,53 @@ const NewCustomer = () => {
                           </Form.Item>
                         </Col>
                       </Row>
+                      <Form.Item noStyle shouldUpdate>
+                        {() => (
+                          <Checkbox
+                            checked={form.getFieldValue('defaultShippingAddressKey') === 'primary'}
+                            onChange={() => form.setFieldsValue({ defaultShippingAddressKey: 'primary' })}
+                          >
+                            Use this shipping address on invoice
+                          </Checkbox>
+                        )}
+                      </Form.Item>
+                      <Divider style={{ margin: '12px 0' }} />
+                      <Form.List name="shippingAddressesExtra">
+                        {(fields, { add, remove }) => (
+                          <>
+                            {fields.map((field, idx) => (
+                              <Card key={field.key} size="small" style={{ marginBottom: 12 }}>
+                                <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
+                                  <b>Additional Shipping Address {idx + 1}</b>
+                                  <Button type="text" danger icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} />
+                                </Space>
+                                <Form.Item name={[field.name, 'attention']} label="Attention"><Input /></Form.Item>
+                                <Form.Item name={[field.name, 'country']} label="Country/Region"><Select options={countryOptions} /></Form.Item>
+                                <Form.Item name={[field.name, 'address1']} label="Address"><Input.TextArea rows={2} /></Form.Item>
+                                <Form.Item name={[field.name, 'address2']}><Input.TextArea rows={2} placeholder="Street 2" /></Form.Item>
+                                <Row gutter={12}>
+                                  <Col span={12}><Form.Item name={[field.name, 'city']} label="City"><Input /></Form.Item></Col>
+                                  <Col span={12}><Form.Item name={[field.name, 'state']} label="State"><Select options={stateOptions} /></Form.Item></Col>
+                                </Row>
+                                <Form.Item name={[field.name, 'pin_code']} label="Pin Code"><Input /></Form.Item>
+                                <Form.Item noStyle shouldUpdate>
+                                  {() => (
+                                    <Checkbox
+                                      checked={form.getFieldValue('defaultShippingAddressKey') === `extra_${idx}`}
+                                      onChange={() => form.setFieldsValue({ defaultShippingAddressKey: `extra_${idx}` })}
+                                    >
+                                      Use this shipping address on invoice
+                                    </Checkbox>
+                                  )}
+                                </Form.Item>
+                              </Card>
+                            ))}
+                            <Button type="dashed" icon={<PlusOutlined />} onClick={() => add()} block>
+                              Add another shipping address
+                            </Button>
+                          </>
+                        )}
+                      </Form.List>
                     </Col>
                   </Row>
                 </Card>

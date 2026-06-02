@@ -4,6 +4,156 @@ const logger = require('../../utils/logger');
 const { normalizeGstin, normalizePan } = require('../../utils/gstinUtils');
 
 class CustomerService {
+  constructor() {
+    this._hasCustomerBankDetailsTable = null;
+  }
+
+  isMissingTableError(error) {
+    return Boolean(error && (error.errno === 1146 || error.code === 'ER_NO_SUCH_TABLE'));
+  }
+
+  async hasCustomerBankDetailsTable() {
+    if (this._hasCustomerBankDetailsTable != null) return this._hasCustomerBankDetailsTable;
+    const rows = await db.query(
+      `SELECT 1 as ok
+         FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = 'customer_bank_details'
+        LIMIT 1`
+    );
+    this._hasCustomerBankDetailsTable = Array.isArray(rows) ? rows.length > 0 : Boolean(rows);
+    return this._hasCustomerBankDetailsTable;
+  }
+
+  hasAnyAddressValue(address = {}) {
+    if (!address || typeof address !== 'object') return false;
+    const fields = ['attention', 'country', 'address1', 'address2', 'city', 'state', 'pin_code'];
+    return fields.some((field) => {
+      const value = address[field];
+      return value != null && String(value).trim() !== '';
+    });
+  }
+
+  normalizeAddressInput(address = {}, fallback = {}) {
+    return {
+      attention: address.attention ?? fallback.attention ?? null,
+      country: address.country ?? fallback.country ?? null,
+      address1: address.address1 ?? fallback.address1 ?? null,
+      address2: address.address2 ?? fallback.address2 ?? null,
+      city: address.city ?? fallback.city ?? null,
+      state: address.state ?? fallback.state ?? null,
+      pin_code: address.pin_code ?? fallback.pin_code ?? null,
+    };
+  }
+
+  normalizeBankInput(bank = {}, fallback = {}) {
+    return {
+      bank_name: bank.bank_name ?? bank.bankName ?? fallback.bank_name ?? fallback.bankName ?? null,
+      account_holder_name: bank.account_holder_name ?? bank.accountHolderName ?? fallback.account_holder_name ?? fallback.accountHolderName ?? null,
+      account_number: bank.account_number ?? bank.accountNumber ?? fallback.account_number ?? fallback.accountNumber ?? null,
+      ifsc_code: bank.ifsc_code ?? bank.ifscCode ?? fallback.ifsc_code ?? fallback.ifscCode ?? null,
+      branch_name: bank.branch_name ?? bank.branchName ?? fallback.branch_name ?? fallback.branchName ?? null,
+      account_type: bank.account_type ?? bank.accountType ?? fallback.account_type ?? fallback.accountType ?? null,
+      swift_code: bank.swift_code ?? bank.swiftCode ?? fallback.swift_code ?? fallback.swiftCode ?? null,
+      iban: bank.iban ?? fallback.iban ?? null,
+    };
+  }
+
+  hasAnyBankValue(bank = {}) {
+    if (!bank || typeof bank !== 'object') return false;
+    const fields = ['bank_name', 'account_holder_name', 'account_number', 'ifsc_code', 'branch_name', 'account_type', 'swift_code', 'iban'];
+    return fields.some((field) => bank[field] != null && String(bank[field]).trim() !== '');
+  }
+
+  async insertBankDetails(connection, institutionId, customerId, inputData = {}) {
+    const primaryBank = this.normalizeBankInput({}, inputData);
+    const extraBanks = Array.isArray(inputData.bankDetails)
+      ? inputData.bankDetails.map((bank) => this.normalizeBankInput(bank))
+      : [];
+    const selectedPrimaryKey = inputData.defaultBankDetailKey || 'primary';
+    const merged = [
+      { ...primaryBank, _key: 'primary' },
+      ...extraBanks.map((bank, idx) => ({ ...bank, _key: `extra_${idx}` })),
+    ].filter((bank) => this.hasAnyBankValue(bank));
+    const ordered = [
+      ...merged.filter((bank) => bank._key === selectedPrimaryKey),
+      ...merged.filter((bank) => bank._key !== selectedPrimaryKey),
+    ];
+    const fallbackPrimary = this.hasAnyBankValue(primaryBank) ? primaryBank : null;
+    const bankToPersist = ordered[0] || fallbackPrimary;
+
+    const hasMultiBankTable = await this.hasCustomerBankDetailsTable();
+    if (hasMultiBankTable) {
+      await connection.execute('DELETE FROM customer_bank_details WHERE institution_id = ? AND customer_id = ?', [institutionId, customerId]);
+      for (let idx = 0; idx < ordered.length; idx += 1) {
+        const bank = ordered[idx];
+        await connection.execute(
+          `INSERT INTO customer_bank_details 
+           (id, institution_id, customer_id, bank_name, account_holder_name, account_number, ifsc_code, account_type, branch_name, swift_code, iban, is_primary, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+          [uuidv4(), institutionId, customerId, bank.bank_name, bank.account_holder_name, bank.account_number, bank.ifsc_code, bank.account_type, bank.branch_name, bank.swift_code, bank.iban, idx === 0 ? 1 : 0]
+        );
+      }
+    } else {
+      logger.warn('customer_bank_details table missing; using legacy bank_details only', { institutionId, customerId });
+    }
+
+    if (!bankToPersist) {
+      // Do not wipe existing bank details when no bank payload is provided.
+      return;
+    }
+
+    await connection.execute('DELETE FROM bank_details WHERE entity_type = ? AND entity_id = ?', ['customer', customerId]);
+    if (bankToPersist) {
+      const primary = bankToPersist;
+      await connection.execute(
+        `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['customer', customerId, primary.bank_name, primary.account_holder_name, primary.account_number, primary.ifsc_code, primary.branch_name, primary.account_type, primary.swift_code, primary.iban]
+      );
+    }
+  }
+
+  async insertAddresses(connection, entityType, entityId, inputData = {}) {
+    const billingFallback = this.normalizeAddressInput({}, {
+      attention: inputData.billingAttention,
+      country: inputData.billingCountry,
+      address1: inputData.billingAddress1,
+      address2: inputData.billingAddress2,
+      city: inputData.billingCity,
+      state: inputData.billingState,
+      pin_code: inputData.billingPinCode,
+    });
+    const shippingFallback = this.normalizeAddressInput({}, {
+      attention: inputData.shippingAttention,
+      country: inputData.shippingCountry,
+      address1: inputData.shippingAddress1,
+      address2: inputData.shippingAddress2,
+      city: inputData.shippingCity,
+      state: inputData.shippingState,
+      pin_code: inputData.shippingPinCode,
+    });
+
+    const billingAddresses = Array.isArray(inputData.billingAddresses) && inputData.billingAddresses.length > 0
+      ? inputData.billingAddresses.map((addr) => this.normalizeAddressInput(addr))
+      : [billingFallback];
+    const shippingAddresses = Array.isArray(inputData.shippingAddresses) && inputData.shippingAddresses.length > 0
+      ? inputData.shippingAddresses.map((addr) => this.normalizeAddressInput(addr))
+      : [shippingFallback];
+    const addressesToInsert = [
+      ...billingAddresses.map((addr) => ({ ...addr, addressType: 'billing' })),
+      ...shippingAddresses.map((addr) => ({ ...addr, addressType: 'shipping' })),
+    ].filter((addr) => this.hasAnyAddressValue(addr));
+
+    for (const addr of addressesToInsert) {
+      await connection.execute(
+        `INSERT INTO addresses (entity_type, entity_id, address_type, attention, country, address1, address2, city, state, pin_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [entityType, entityId, addr.addressType, addr.attention, addr.country, addr.address1, addr.address2, addr.city, addr.state, addr.pin_code]
+      );
+    }
+  }
+
   async ensureColumns() {
     try { await db.query('ALTER TABLE customers ADD COLUMN price_list_id VARCHAR(36) DEFAULT NULL'); } catch (e) {
       if (e.errno !== 1060) throw e;
@@ -39,35 +189,10 @@ class CustomerService {
          customerData.remarks, customerData.creditLimit || 0, customerData.priceListId || null]
       );
 
-      // Create addresses
-      if (customerData.billingAttention || customerData.billingAddress1) {
-        await connection.execute(
-          `INSERT INTO addresses (entity_type, entity_id, address_type, attention, country, address1, address2, city, state, pin_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['customer', customerId, 'billing', customerData.billingAttention, customerData.billingCountry, 
-           customerData.billingAddress1, customerData.billingAddress2, customerData.billingCity, 
-           customerData.billingState, customerData.billingPinCode]
-        );
-      }
+      // Create addresses (supports multiple billing/shipping addresses)
+      await this.insertAddresses(connection, 'customer', customerId, customerData);
       
-      if (customerData.shippingAttention || customerData.shippingAddress1) {
-        await connection.execute(
-          `INSERT INTO addresses (entity_type, entity_id, address_type, attention, country, address1, address2, city, state, pin_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['customer', customerId, 'shipping', customerData.shippingAttention, customerData.shippingCountry, 
-           customerData.shippingAddress1, customerData.shippingAddress2, customerData.shippingCity, 
-           customerData.shippingState, customerData.shippingPinCode]
-        );
-      }
-      
-      // Create bank details (always create, even if empty)
-      await connection.execute(
-        `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ['customer', customerId, customerData.bankName || null, customerData.accountHolderName || null, 
-         customerData.accountNumber || null, customerData.ifscCode || null, customerData.branchName || null, 
-         customerData.accountType || null, customerData.swiftCode || null, customerData.iban || null]
-      );
+      await this.insertBankDetails(connection, institutionId, customerId, customerData);
       
       logger.info('Customer created', { customerId, institutionId, displayName: customerData.displayName, userId });
       return customerId;
@@ -130,36 +255,9 @@ class CustomerService {
       // Update addresses
       await connection.execute('DELETE FROM addresses WHERE entity_type = ? AND entity_id = ?', ['customer', customerId]);
       
-      if (updateData.billingAttention || updateData.billingAddress1) {
-        await connection.execute(
-          `INSERT INTO addresses (entity_type, entity_id, address_type, attention, country, address1, address2, city, state, pin_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['customer', customerId, 'billing', updateData.billingAttention, updateData.billingCountry, 
-           updateData.billingAddress1, updateData.billingAddress2, updateData.billingCity, 
-           updateData.billingState, updateData.billingPinCode]
-        );
-      }
+      await this.insertAddresses(connection, 'customer', customerId, updateData);
       
-      if (updateData.shippingAttention || updateData.shippingAddress1) {
-        await connection.execute(
-          `INSERT INTO addresses (entity_type, entity_id, address_type, attention, country, address1, address2, city, state, pin_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['customer', customerId, 'shipping', updateData.shippingAttention, updateData.shippingCountry, 
-           updateData.shippingAddress1, updateData.shippingAddress2, updateData.shippingCity, 
-           updateData.shippingState, updateData.shippingPinCode]
-        );
-      }
-      
-      // Update bank details (always create, even if empty)
-      await connection.execute('DELETE FROM bank_details WHERE entity_type = ? AND entity_id = ?', ['customer', customerId]);
-      
-      await connection.execute(
-        `INSERT INTO bank_details (entity_type, entity_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, account_type, swift_code, iban)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ['customer', customerId, updateData.bankName || null, updateData.accountHolderName || null, 
-         updateData.accountNumber || null, updateData.ifscCode || null, updateData.branchName || null, 
-         updateData.accountType || null, updateData.swiftCode || null, updateData.iban || null]
-      );
+      await this.insertBankDetails(connection, institutionId, customerId, updateData);
       
       logger.info('Customer updated', { customerId, institutionId, userId });
       return true;
@@ -225,16 +323,35 @@ class CustomerService {
       [customerId]
     );
     
-    // Get bank details
-    const bankDetails = await db.query(
+    let customerBanks = [];
+    if (await this.hasCustomerBankDetailsTable()) {
+      customerBanks = await db.query(
+        'SELECT * FROM customer_bank_details WHERE institution_id = ? AND customer_id = ? ORDER BY is_primary DESC, created_at ASC',
+        [institutionId, customerId]
+      );
+    }
+    const legacyBanks = await db.query(
       'SELECT * FROM bank_details WHERE entity_type = ? AND entity_id = ?',
       ['customer', customerId]
     );
     
     const addressList = Array.isArray(addresses) ? addresses : addresses ? [addresses] : [];
+    customer.billing_addresses = [];
+    customer.shipping_addresses = [];
     addressList.forEach((addr) => {
       const prefix = String(addr.address_type || '').toLowerCase();
       if (prefix !== 'billing' && prefix !== 'shipping') return;
+      const normalizedAddress = {
+        id: addr.id != null ? String(addr.id) : null,
+        attention: addr.attention || '',
+        country: addr.country || '',
+        address1: addr.address1 || '',
+        address2: addr.address2 || '',
+        city: addr.city || '',
+        state: addr.state || '',
+        pin_code: addr.pin_code || '',
+      };
+      customer[`${prefix}_addresses`].push(normalizedAddress);
       if (!customer[`${prefix}_address1`]) {
         customer[`${prefix}_attention`] = addr.attention;
         customer[`${prefix}_country`] = addr.country;
@@ -246,9 +363,23 @@ class CustomerService {
       }
     });
     
-    // Map bank details
-    if (bankDetails[0]) {
-      const bank = bankDetails[0];
+    const bankListRaw = Array.isArray(customerBanks) && customerBanks.length > 0 ? customerBanks : (Array.isArray(legacyBanks) ? legacyBanks : []);
+    customer.bank_details = bankListRaw.map((bank, idx) => ({
+      id: bank.id != null ? String(bank.id) : null,
+      bank_name: bank.bank_name || '',
+      account_holder_name: bank.account_holder_name || '',
+      account_number: bank.account_number || '',
+      ifsc_code: bank.ifsc_code || '',
+      branch_name: bank.branch_name || '',
+      account_type: bank.account_type || '',
+      swift_code: bank.swift_code || '',
+      iban: bank.iban || '',
+      is_primary: Number(bank.is_primary || 0) === 1 || idx === 0,
+    }));
+
+    // Map primary bank details to backward-compatible top-level fields
+    if (customer.bank_details[0]) {
+      const bank = customer.bank_details[0];
       customer.bank_name = bank.bank_name;
       customer.account_holder_name = bank.account_holder_name;
       customer.account_number = bank.account_number;
@@ -290,6 +421,9 @@ class CustomerService {
     
     const bankDetailId = uuidv4();
 
+    if (!(await this.hasCustomerBankDetailsTable())) {
+      throw new Error('Multiple bank accounts are unavailable because customer_bank_details table is missing');
+    }
     await db.query(
       `INSERT INTO customer_bank_details 
        (id, institution_id, customer_id, bank_name, account_holder_name, account_number, ifsc_code, account_type, branch_name, swift_code, iban, is_primary, status) 
@@ -302,6 +436,9 @@ class CustomerService {
   }
 
   async getCustomerBankDetails(institutionId, customerId) {
+    if (!(await this.hasCustomerBankDetailsTable())) {
+      return [];
+    }
     return await db.query(
       'SELECT * FROM customer_bank_details WHERE institution_id = ? AND customer_id = ? ORDER BY is_primary DESC, created_at ASC',
       [institutionId, customerId]
@@ -311,6 +448,9 @@ class CustomerService {
   async updateCustomerBankDetails(institutionId, bankDetailId, bankData) {
     const { bankName, accountHolderName, accountNumber, ifscCode, accountType, branchName, swiftCode, iban } = bankData;
 
+    if (!(await this.hasCustomerBankDetailsTable())) {
+      throw new Error('Multiple bank accounts are unavailable because customer_bank_details table is missing');
+    }
     const result = await db.query(
       `UPDATE customer_bank_details 
        SET bank_name = ?, account_holder_name = ?, account_number = ?, ifsc_code = ?, account_type = ?, branch_name = ?, swift_code = ?, iban = ?, is_primary = ?, updated_at = NOW()
@@ -327,6 +467,9 @@ class CustomerService {
   }
 
   async deleteCustomerBankDetails(institutionId, bankDetailId) {
+    if (!(await this.hasCustomerBankDetailsTable())) {
+      throw new Error('Multiple bank accounts are unavailable because customer_bank_details table is missing');
+    }
     const result = await db.query(
       'DELETE FROM customer_bank_details WHERE id = ? AND institution_id = ?',
       [bankDetailId, institutionId]

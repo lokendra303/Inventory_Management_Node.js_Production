@@ -6,6 +6,56 @@ const { normalizeInvoiceUnit } = require('../../utils/invoiceUnit');
 const { applyDocumentMetaToInvoiceDetails } = require('../../utils/documentMeta');
 
 class InvoiceTemplateService {
+  normalizeAddressRecord(addr = {}) {
+    return {
+      id: addr.id != null ? String(addr.id) : null,
+      attention: addr.attention || '',
+      line1: addr.address1 || '',
+      line2: addr.address2 || '',
+      city: addr.city || '',
+      state: addr.state || '',
+      country: addr.country || '',
+      postalCode: addr.pin_code || '',
+    };
+  }
+
+  hasAddressData(address = {}) {
+    if (!address || typeof address !== 'object') return false;
+    return ['attention', 'line1', 'line2', 'city', 'state', 'country', 'postalCode']
+      .some((key) => address[key] != null && String(address[key]).trim() !== '');
+  }
+
+  async getPartyAddresses(entityType, entityId) {
+    if (!entityId) return { billing: [], shipping: [] };
+    const rows = await db.query(
+      `SELECT id, address_type, attention, country, address1, address2, city, state, pin_code
+       FROM addresses
+       WHERE entity_type = ? AND entity_id = ?
+       ORDER BY id ASC`,
+      [entityType, entityId]
+    );
+    const list = Array.isArray(rows) ? rows : rows ? [rows] : [];
+    const billing = [];
+    const shipping = [];
+    for (const row of list) {
+      const normalized = this.normalizeAddressRecord(row);
+      const type = String(row.address_type || '').toLowerCase();
+      if (type === 'billing') billing.push(normalized);
+      if (type === 'shipping') shipping.push(normalized);
+    }
+    return { billing, shipping };
+  }
+
+  chooseAddressForInvoice(addresses = [], selectedAddressId, fallback = {}) {
+    if (selectedAddressId) {
+      const selected = addresses.find((addr) => String(addr.id) === String(selectedAddressId));
+      if (selected) return { ...selected };
+    }
+    const firstWithData = addresses.find((addr) => this.hasAddressData(addr));
+    if (firstWithData) return { ...firstWithData };
+    return { ...fallback };
+  }
+
   /**
    * Generate standard invoice format with vendor/customer details
    */
@@ -130,11 +180,13 @@ class InvoiceTemplateService {
    */
   async getPartyDetails(institutionId, invoiceData, type) {
     try {
+      const meta = invoiceData.documentMeta ?? invoiceData.document_meta ?? {};
+      const selected = meta.partyAddressSelection || {};
       if (type === 'purchase' && invoiceData.vendorId) {
-        return await this.getVendorDetails(institutionId, invoiceData.vendorId);
+        return await this.getVendorDetails(institutionId, invoiceData.vendorId, selected);
       }
       if (type === 'sales' && invoiceData.customerId) {
-        return await this.getCustomerDetails(institutionId, invoiceData.customerId);
+        return await this.getCustomerDetails(institutionId, invoiceData.customerId, selected);
       }
       return this.getManualPartyDetails(invoiceData, type);
     } catch (error) {
@@ -146,7 +198,7 @@ class InvoiceTemplateService {
   /**
    * Get comprehensive vendor details for invoice
    */
-  async getVendorDetails(institutionId, vendorId) {
+  async getVendorDetails(institutionId, vendorId, selectedAddress = {}) {
     try {
       const vendor = await vendorService.getVendor(institutionId, vendorId);
       
@@ -154,6 +206,26 @@ class InvoiceTemplateService {
         logger.warn('Vendor not found', { vendorId, institutionId });
         return { type: 'vendor', name: 'Unknown Vendor', contact: {}, billingAddress: {} };
       }
+
+      const { billing, shipping } = await this.getPartyAddresses('vendor', vendor.id);
+      const fallbackBilling = {
+        attention: vendor.billing_attention || '',
+        line1: vendor.billing_address1 || '',
+        line2: vendor.billing_address2 || '',
+        city: vendor.billing_city || '',
+        state: vendor.billing_state || '',
+        country: vendor.billing_country || '',
+        postalCode: vendor.billing_pin_code || '',
+      };
+      const fallbackShipping = {
+        attention: vendor.shipping_attention || '',
+        line1: vendor.shipping_address1 || '',
+        line2: vendor.shipping_address2 || '',
+        city: vendor.shipping_city || '',
+        state: vendor.shipping_state || '',
+        country: vendor.shipping_country || '',
+        postalCode: vendor.shipping_pin_code || '',
+      };
 
       return {
         type: 'vendor',
@@ -167,24 +239,18 @@ class InvoiceTemplateService {
           phone: vendor.work_phone || vendor.mobile_phone,
           mobile: vendor.mobile_phone
         },
-        billingAddress: {
-          attention: vendor.billing_attention,
-          line1: vendor.billing_address1,
-          line2: vendor.billing_address2,
-          city: vendor.billing_city,
-          state: vendor.billing_state,
-          country: vendor.billing_country,
-          postalCode: vendor.billing_pin_code
-        },
-        shippingAddress: {
-          attention: vendor.shipping_attention,
-          line1: vendor.shipping_address1,
-          line2: vendor.shipping_address2,
-          city: vendor.shipping_city,
-          state: vendor.shipping_state,
-          country: vendor.shipping_country,
-          postalCode: vendor.shipping_pin_code
-        },
+        billingAddresses: billing,
+        shippingAddresses: shipping,
+        billingAddress: this.chooseAddressForInvoice(
+          billing,
+          selectedAddress.billingAddressId,
+          selectedAddress.billingAddress || fallbackBilling
+        ),
+        shippingAddress: this.chooseAddressForInvoice(
+          shipping,
+          selectedAddress.shippingAddressId,
+          selectedAddress.shippingAddress || fallbackShipping
+        ),
         taxInfo: {
           pan: vendor.pan ? String(vendor.pan).trim().toUpperCase() : '',
           gstin: vendor.gstin,
@@ -218,13 +284,33 @@ class InvoiceTemplateService {
   /**
    * Get customer details for sales invoice
    */
-  async getCustomerDetails(institutionId, customerId) {
+  async getCustomerDetails(institutionId, customerId, selectedAddress = {}) {
     try {
       const customer = await customerService.getCustomer(institutionId, customerId);
       
       if (!customer) {
         throw new Error('Customer not found');
       }
+
+      const { billing, shipping } = await this.getPartyAddresses('customer', customer.id);
+      const fallbackBilling = {
+        attention: customer.billing_attention || '',
+        line1: customer.billing_address1 || '',
+        line2: customer.billing_address2 || '',
+        city: customer.billing_city || '',
+        state: customer.billing_state || '',
+        country: customer.billing_country || '',
+        postalCode: customer.billing_pin_code || '',
+      };
+      const fallbackShipping = {
+        attention: customer.shipping_attention || '',
+        line1: customer.shipping_address1 || '',
+        line2: customer.shipping_address2 || '',
+        city: customer.shipping_city || '',
+        state: customer.shipping_state || '',
+        country: customer.shipping_country || '',
+        postalCode: customer.shipping_pin_code || '',
+      };
 
       return {
         type: 'customer',
@@ -238,24 +324,18 @@ class InvoiceTemplateService {
           phone: customer.work_phone || customer.mobile_phone,
           mobile: customer.mobile_phone
         },
-        billingAddress: {
-          attention: customer.billing_attention,
-          line1: customer.billing_address1,
-          line2: customer.billing_address2,
-          city: customer.billing_city,
-          state: customer.billing_state,
-          country: customer.billing_country,
-          postalCode: customer.billing_pin_code
-        },
-        shippingAddress: {
-          attention: customer.shipping_attention,
-          line1: customer.shipping_address1,
-          line2: customer.shipping_address2,
-          city: customer.shipping_city,
-          state: customer.shipping_state,
-          country: customer.shipping_country,
-          postalCode: customer.shipping_pin_code
-        },
+        billingAddresses: billing,
+        shippingAddresses: shipping,
+        billingAddress: this.chooseAddressForInvoice(
+          billing,
+          selectedAddress.billingAddressId,
+          selectedAddress.billingAddress || fallbackBilling
+        ),
+        shippingAddress: this.chooseAddressForInvoice(
+          shipping,
+          selectedAddress.shippingAddressId,
+          selectedAddress.shippingAddress || fallbackShipping
+        ),
         taxInfo: {
           pan: customer.pan ? String(customer.pan).trim().toUpperCase() : '',
           gstin: customer.gstin
