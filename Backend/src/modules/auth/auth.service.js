@@ -256,11 +256,10 @@ class AuthService {
     };
   }
 
-  // Step 1: validate credentials, generate & email OTP
-  async initiateLogin(email, password, institutionId = null) {
-    let query = `SELECT u.*, i.status as institution_status, i.name as institution_name 
-                 FROM institution_users u 
-                 JOIN institutions i ON u.institution_id = i.id 
+  async _validateLoginCredentials(email, password, institutionId = null) {
+    let query = `SELECT u.*, i.status as institution_status, i.name as institution_name
+                 FROM institution_users u
+                 JOIN institutions i ON u.institution_id = i.id
                  WHERE u.email = ?`;
     let params = [email];
     if (institutionId) { query += ' AND u.institution_id = ?'; params.push(institutionId); }
@@ -274,6 +273,22 @@ class AuthService {
 
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) throw new Error('Email or password is incorrect. Please check your credentials and try again.');
+
+    return user;
+  }
+
+  // Step 1: validate credentials, generate & email OTP
+  async initiateLogin(email, password, institutionId = null) {
+    const user = await this._validateLoginCredentials(email, password, institutionId);
+
+    if (!user.two_factor_enabled) {
+      logger.info('Login successful without OTP (2FA disabled)', { userId: user.id, email, institutionId: user.institution_id });
+      const tokenData = await this.issueToken(user.email, user.institution_id);
+      return {
+        requiresOtp: false,
+        tokenData
+      };
+    }
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -299,7 +314,7 @@ class AuthService {
     }
 
     logger.info('OTP sent', { userId: user.id, email, otp });
-    return { email, institutionId: user.institution_id };
+    return { requiresOtp: true, email, institutionId: user.institution_id };
   }
 
   // Send OTP for pre-registration email verification
@@ -635,8 +650,9 @@ class AuthService {
 
   async getInstitutionUsers(institutionId, limit = 50, offset = 0) {
     return await db.query(
-      `SELECT id, email, first_name, last_name, role, permissions, warehouse_access, 
-              status, last_login, created_at, department, designation, employee_id
+      `SELECT id, email, first_name, last_name, role, permissions, warehouse_access,
+              status, two_factor_enabled, last_login, created_at, department, designation, employee_id,
+              mobile, address, city, state, country, postal_code, date_of_birth, gender
        FROM institution_users 
        WHERE institution_id = ? 
        ORDER BY created_at DESC`,
@@ -772,8 +788,142 @@ class AuthService {
     logger.info('User password changed', { userId, institutionId });
   }
 
+  async sendTwoFactorEnableOtp(institutionId, userId) {
+    const users = await db.query(
+      `SELECT id, email, two_factor_enabled, status
+         FROM institution_users
+        WHERE institution_id = ? AND id = ?
+        LIMIT 1`,
+      [institutionId, userId]
+    );
+    if (users.length === 0) throw new Error('User not found');
+    const user = users[0];
+    if (user.status !== 'active') throw new Error('User account is inactive');
+    if (user.two_factor_enabled) throw new Error('Two-factor authentication is already enabled.');
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    await otpService.createOtp({
+      purpose: 'two_factor_enable',
+      email: user.email,
+      otp,
+      institutionId,
+      userId: user.id,
+      ttlMs: OTP_TTL_MS
+    });
+
+    try {
+      await emailService.sendEmail({
+        to: user.email,
+        subject: 'Confirm Two-Factor Authentication',
+        text: `Your code to enable two-factor authentication is: ${otp}. It expires in 5 minutes.`,
+        html: `<p>Your code to enable two-factor authentication is: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`
+      });
+    } catch (emailErr) {
+      logger.warn('2FA enable OTP email failed, OTP still stored', { email: user.email, error: emailErr.message });
+    }
+
+    logger.info('2FA enable OTP sent', { userId: user.id, email: user.email });
+    return { email: user.email };
+  }
+
+  async verifyAndEnableTwoFactor(institutionId, userId, otp) {
+    const users = await db.query(
+      `SELECT id, email, two_factor_enabled, status
+         FROM institution_users
+        WHERE institution_id = ? AND id = ?
+        LIMIT 1`,
+      [institutionId, userId]
+    );
+    if (users.length === 0) throw new Error('User not found');
+    const user = users[0];
+    if (user.status !== 'active') throw new Error('User account is inactive');
+    if (user.two_factor_enabled) throw new Error('Two-factor authentication is already enabled.');
+
+    await otpService.verifyOtp({
+      purpose: 'two_factor_enable',
+      email: user.email,
+      otp,
+      institutionId
+    });
+
+    await db.query(
+      'UPDATE institution_users SET two_factor_enabled = 1, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [institutionId, userId]
+    );
+
+    logger.info('Two-factor authentication enabled', { userId, institutionId });
+    return { twoFactorEnabled: true, email: user.email };
+  }
+
+  async sendTwoFactorDisableOtp(institutionId, userId) {
+    const users = await db.query(
+      `SELECT id, email, two_factor_enabled, status
+         FROM institution_users
+        WHERE institution_id = ? AND id = ?
+        LIMIT 1`,
+      [institutionId, userId]
+    );
+    if (users.length === 0) throw new Error('User not found');
+    const user = users[0];
+    if (user.status !== 'active') throw new Error('User account is inactive');
+    if (!user.two_factor_enabled) throw new Error('Two-factor authentication is already disabled.');
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    await otpService.createOtp({
+      purpose: 'two_factor_disable',
+      email: user.email,
+      otp,
+      institutionId,
+      userId: user.id,
+      ttlMs: OTP_TTL_MS
+    });
+
+    try {
+      await emailService.sendEmail({
+        to: user.email,
+        subject: 'Confirm Two-Factor Disable',
+        text: `Your code to disable two-factor authentication is: ${otp}. It expires in 5 minutes.`,
+        html: `<p>Your code to disable two-factor authentication is: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`
+      });
+    } catch (emailErr) {
+      logger.warn('2FA disable OTP email failed, OTP still stored', { email: user.email, error: emailErr.message });
+    }
+
+    logger.info('2FA disable OTP sent', { userId: user.id, email: user.email });
+    return { email: user.email };
+  }
+
+  async verifyAndDisableTwoFactor(institutionId, userId, otp) {
+    const users = await db.query(
+      `SELECT id, email, two_factor_enabled, status
+         FROM institution_users
+        WHERE institution_id = ? AND id = ?
+        LIMIT 1`,
+      [institutionId, userId]
+    );
+    if (users.length === 0) throw new Error('User not found');
+    const user = users[0];
+    if (user.status !== 'active') throw new Error('User account is inactive');
+    if (!user.two_factor_enabled) throw new Error('Two-factor authentication is already disabled.');
+
+    await otpService.verifyOtp({
+      purpose: 'two_factor_disable',
+      email: user.email,
+      otp,
+      institutionId
+    });
+
+    await db.query(
+      'UPDATE institution_users SET two_factor_enabled = 0, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+      [institutionId, userId]
+    );
+
+    logger.info('Two-factor authentication disabled', { userId, institutionId });
+    return { twoFactorEnabled: false, email: user.email };
+  }
+
   async updateAccountSettings(institutionId, userId, updateData) {
-    const { firstName, lastName, email, mobile, address, city, state, country, postalCode, dateOfBirth, gender } = updateData;
+    const { firstName, lastName, email, mobile, address, city, state, country, postalCode, dateOfBirth, gender, twoFactorEnabled } = updateData;
     
     if (email) {
       const existingUser = await db.query(
@@ -832,6 +982,12 @@ class AuthService {
     if (gender !== undefined) {
       updateFields.push('gender = ?');
       updateValues.push(this._toNull(gender));
+    }
+    if (twoFactorEnabled !== undefined) {
+      if (twoFactorEnabled) {
+        throw new Error('To enable two-factor authentication, verify your email with the OTP sent from security settings.');
+      }
+      throw new Error('To disable two-factor authentication, verify your email with the OTP sent from security settings.');
     }
 
     if (updateFields.length === 0) {

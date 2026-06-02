@@ -16,7 +16,7 @@ const DEFAULT_MAX_ATTEMPTS = 5;
  * to the `otp_tokens` table can see active codes — protect DB access
  * accordingly. Revisit to hash if/when security requirements tighten.
  *
- * Each record tracks purpose ('login' | 'registration' | 'password_reset'),
+ * Each record tracks purpose ('login' | 'registration' | 'password_reset' | 'two_factor_enable'),
  * the target email/institution/user, attempt count, expiry, and consumption.
  */
 class OtpService {

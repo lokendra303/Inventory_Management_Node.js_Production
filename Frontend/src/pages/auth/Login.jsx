@@ -675,6 +675,8 @@ export default function Login() {
         setOtpStep(true);
         otpForm.resetFields();
         startResendTimer();
+      } else if (res.success && !res.otpRequired) {
+        navigate('/dashboard', { replace: true });
       } else {
         setLoginError(res.error || 'Login failed. Please check your credentials.');
       }
@@ -912,7 +914,7 @@ export default function Login() {
                       disabled={loading}
                     >
                       {loading
-                        ? <><div className="ims-spin" /> Sending OTP...</>
+                        ? <><div className="ims-spin" /> Signing in...</>
                         : <>Continue <ArrowRightOutlined /></>}
                     </button>
                   </Form.Item>

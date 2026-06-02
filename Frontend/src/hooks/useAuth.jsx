@@ -159,6 +159,18 @@ export const AuthProvider = ({ children }) => {
     }
   }, [logout, setupSessionManagement]);
 
+  const applyLoginSession = useCallback((token, userData) => {
+    sessionStorage.setItem('token', token);
+    if (userData?.institutionId) sessionStorage.setItem('institutionId', userData.institutionId);
+    apiService.setAuthToken(token);
+    setUser({ ...userData, token });
+    lastActivityRef.current = Date.now();
+    tokenExpiresAtRef.current = getTokenExpiresAt(token);
+    setSessionSecondsLeft(Math.ceil(INACTIVITY_TIMEOUT / 1000));
+    sessionStorage.setItem('lastActivity', lastActivityRef.current.toString());
+    setupSessionManagement();
+  }, [setupSessionManagement]);
+
   useEffect(() => {
     const token = sessionStorage.getItem('token');
     if (token) {
@@ -180,6 +192,11 @@ export const AuthProvider = ({ children }) => {
       if (response.success && response.data?.requiresOtp) {
         return { success: true, otpRequired: true, email: response.data.email, institutionId: response.data.institutionId };
       }
+      if (response.success && response.data?.token && response.data?.user) {
+        applyLoginSession(response.data.token, response.data.user);
+        message.success('Login successful');
+        return { success: true, otpRequired: false };
+      }
       return { success: false, error: response.error || response.message || 'Login failed' };
     } catch (error) {
       const errMsg = error.response?.data?.error || error.message || 'Login failed. Please try again.';
@@ -192,15 +209,7 @@ export const AuthProvider = ({ children }) => {
       const response = await apiService.post('/auth/verify-otp', { email, otp, institutionId });
       if (response.success) {
         const { token, user: userData } = response.data;
-        sessionStorage.setItem('token', token);
-        if (userData.institutionId) sessionStorage.setItem('institutionId', userData.institutionId);
-        apiService.setAuthToken(token);
-        setUser({ ...userData, token });
-        lastActivityRef.current = Date.now();
-        tokenExpiresAtRef.current = getTokenExpiresAt(token);
-        setSessionSecondsLeft(Math.ceil(INACTIVITY_TIMEOUT / 1000));
-        sessionStorage.setItem('lastActivity', lastActivityRef.current.toString());
-        setupSessionManagement();
+        applyLoginSession(token, userData);
         message.success('Login successful');
         return { success: true };
       } else {

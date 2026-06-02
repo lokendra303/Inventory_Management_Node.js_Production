@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, message, Tabs, DatePicker, Select } from 'antd';
-import { UserOutlined, LockOutlined, EnvironmentOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef } from 'react';
+import { Card, Form, Input, Button, message, Tabs, DatePicker, Select, Switch, Modal } from 'antd';
+import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import moment from 'moment';
 
@@ -10,12 +10,36 @@ const { Option } = Select;
 const AccountSettings = () => {
   const [profileForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
+  const [otpForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpAction, setOtpAction] = useState('enable');
+  const [pendingTwoFactorValue, setPendingTwoFactorValue] = useState(null);
+  const [resendTimer, setResendTimer] = useState(0);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     fetchProfile();
+    return () => clearInterval(timerRef.current);
   }, []);
+
+  const startResendTimer = () => {
+    setResendTimer(60);
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setResendTimer((t) => {
+        if (t <= 1) {
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+  };
 
   const fetchProfile = async () => {
     try {
@@ -23,6 +47,8 @@ const AccountSettings = () => {
       const response = await apiService.get('/users/profile');
       if (response.success) {
         setUserProfile(response.data);
+        const enabled = Boolean(response.data.twoFactorEnabled);
+        setTwoFactorEnabled(enabled);
         profileForm.setFieldsValue({
           firstName: response.data.firstName,
           lastName: response.data.lastName,
@@ -63,6 +89,90 @@ const AccountSettings = () => {
     }
   };
 
+  const sendTwoFactorOtp = async (action, nextValue) => {
+    const endpoint = action === 'disable'
+      ? '/users/two-factor/send-disable-otp'
+      : '/users/two-factor/send-otp';
+    const response = await apiService.post(endpoint);
+    if (response.success) {
+      setOtpAction(action);
+      setPendingTwoFactorValue(nextValue);
+      setOtpEmail(response.data?.email || userProfile?.email || '');
+      setOtpModalOpen(true);
+      otpForm.resetFields();
+      startResendTimer();
+      message.success('OTP sent to your email');
+      return true;
+    }
+    message.error(response.error || 'Failed to send OTP');
+    return false;
+  };
+
+  const handleTwoFactorToggle = async (checked) => {
+    const action = checked ? 'enable' : 'disable';
+    try {
+      setTwoFactorLoading(true);
+      setTwoFactorEnabled(checked);
+      const ok = await sendTwoFactorOtp(action, checked);
+      if (!ok) {
+        setTwoFactorEnabled(!checked);
+      }
+    } catch (error) {
+      setTwoFactorEnabled(!checked);
+      message.error(error.response?.data?.error || 'Failed to send OTP');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const handleVerifyTwoFactorOtp = async ({ otp }) => {
+    try {
+      setTwoFactorLoading(true);
+      const endpoint = otpAction === 'disable'
+        ? '/users/two-factor/verify-disable'
+        : '/users/two-factor/verify-enable';
+      const response = await apiService.post(endpoint, { otp });
+      if (response.success) {
+        const enabled = otpAction === 'enable';
+        setTwoFactorEnabled(enabled);
+        setUserProfile((prev) => (prev ? { ...prev, twoFactorEnabled: enabled } : prev));
+        setPendingTwoFactorValue(null);
+        setOtpModalOpen(false);
+        otpForm.resetFields();
+        message.success(enabled ? 'Two-factor authentication enabled' : 'Two-factor authentication disabled');
+      } else {
+        message.error(response.error || 'Invalid OTP');
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error || 'OTP verification failed');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const handleOtpModalCancel = () => {
+    setOtpModalOpen(false);
+    if (pendingTwoFactorValue !== null) {
+      setTwoFactorEnabled(!pendingTwoFactorValue);
+    }
+    setPendingTwoFactorValue(null);
+    otpForm.resetFields();
+    clearInterval(timerRef.current);
+    setResendTimer(0);
+  };
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return;
+    try {
+      setTwoFactorLoading(true);
+      await sendTwoFactorOtp(otpAction, pendingTwoFactorValue);
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Failed to resend OTP');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
   const handlePasswordChange = async (values) => {
     try {
       setLoading(true);
@@ -86,10 +196,10 @@ const AccountSettings = () => {
   return (
     <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '1200px', margin: '0 auto' }}>
       <h1>Account Settings</h1>
-      
+
       <Tabs defaultActiveKey="profile">
-        <TabPane 
-          tab={<span><UserOutlined /> Profile Information</span>} 
+        <TabPane
+          tab={<span><UserOutlined /> Profile Information</span>}
           key="profile"
         >
           <Card>
@@ -193,6 +303,21 @@ const AccountSettings = () => {
                 </div>
               </div>
 
+              <h3 style={{ marginTop: '24px' }}>Security</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                <span style={{ fontWeight: 500 }}>Two-Factor Authentication</span>
+                <Switch
+                  checked={twoFactorEnabled}
+                  loading={twoFactorLoading}
+                  checkedChildren="Enabled"
+                  unCheckedChildren="Disabled"
+                  onChange={handleTwoFactorToggle}
+                />
+              </div>
+              <p style={{ color: '#666', fontSize: '13px', marginBottom: '24px' }}>
+                Both enabling and disabling two-factor authentication require email OTP verification.
+              </p>
+
               <Form.Item>
                 <Button type="primary" htmlType="submit" loading={loading}>
                   Update Profile
@@ -202,8 +327,8 @@ const AccountSettings = () => {
           </Card>
         </TabPane>
 
-        <TabPane 
-          tab={<span><LockOutlined /> Change Password</span>} 
+        <TabPane
+          tab={<span><LockOutlined /> Change Password</span>}
           key="password"
         >
           <Card style={{ maxWidth: '600px' }}>
@@ -259,6 +384,50 @@ const AccountSettings = () => {
           </Card>
         </TabPane>
       </Tabs>
+
+      <Modal
+        title="Confirm your email"
+        open={otpModalOpen}
+        onCancel={handleOtpModalCancel}
+        footer={null}
+        destroyOnClose
+        maskClosable={false}
+      >
+        <p style={{ marginBottom: 16, color: '#666' }}>
+          Enter the 6-digit code sent to <strong>{otpEmail}</strong> to {otpAction === 'disable' ? 'disable' : 'enable'} 2FA. It expires in 5 minutes.
+        </p>
+        <Form form={otpForm} layout="vertical" onFinish={handleVerifyTwoFactorOtp}>
+          <Form.Item
+            name="otp"
+            label="Verification code"
+            rules={[
+              { required: true, message: 'OTP is required' },
+              { len: 6, message: 'OTP must be 6 digits' },
+              { pattern: /^[0-9]{6}$/, message: 'OTP must be numeric' }
+            ]}
+          >
+            <Input
+              placeholder="000000"
+              maxLength={6}
+              style={{ letterSpacing: 6, textAlign: 'center', fontSize: 18 }}
+            />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 8 }}>
+            <Button type="primary" htmlType="submit" block loading={twoFactorLoading}>
+              {otpAction === 'disable' ? 'Verify and disable 2FA' : 'Verify and enable 2FA'}
+            </Button>
+          </Form.Item>
+        </Form>
+        <div style={{ textAlign: 'center' }}>
+          <Button
+            type="link"
+            disabled={resendTimer > 0 || twoFactorLoading}
+            onClick={handleResendOtp}
+          >
+            {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend OTP'}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 };

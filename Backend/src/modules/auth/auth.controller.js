@@ -113,12 +113,23 @@ class AuthController {
   async login(req, res) {
     try {
       const { email, password, institutionId } = req.body;
-      const { institutionId: resolvedInstitutionId } = await authService.initiateLogin(email, password, institutionId);
+      const loginResult = await authService.initiateLogin(email, password, institutionId);
+
+      if (!loginResult.requiresOtp && loginResult.tokenData) {
+        return res.json({
+          success: true,
+          message: 'Login successful',
+          data: {
+            requiresOtp: false,
+            ...loginResult.tokenData
+          }
+        });
+      }
 
       res.json({
         success: true,
         message: 'OTP sent to your registered email address.',
-        data: { requiresOtp: true, email, institutionId: resolvedInstitutionId }
+        data: { requiresOtp: true, email: loginResult.email, institutionId: loginResult.institutionId }
       });
     } catch (error) {
       logger.error('Login failed', { error: error.message, email: req.body.email });
@@ -379,7 +390,8 @@ class AuthController {
           department: userProfile.department,
           designation: userProfile.designation,
           employeeId: userProfile.employee_id,
-          permissions: effectivePermissions
+          permissions: effectivePermissions,
+          twoFactorEnabled: Boolean(userProfile.two_factor_enabled)
         }
       });
     } catch (error) {
@@ -518,6 +530,70 @@ class AuthController {
     }
   }
 
+  async sendTwoFactorEnableOtp(req, res) {
+    try {
+      const result = await authService.sendTwoFactorEnableOtp(req.institutionId, req.user.userId);
+      res.json({
+        success: true,
+        message: 'OTP sent to your email address.',
+        data: { email: result.email }
+      });
+    } catch (error) {
+      logger.error('Send 2FA enable OTP failed', { error: error.message, userId: req.user.userId });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async verifyTwoFactorEnable(req, res) {
+    try {
+      const { otp } = req.body;
+      if (!otp) {
+        return res.status(400).json({ success: false, error: 'OTP is required.' });
+      }
+      const result = await authService.verifyAndEnableTwoFactor(req.institutionId, req.user.userId, otp);
+      res.json({
+        success: true,
+        message: 'Two-factor authentication enabled successfully.',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Verify 2FA enable failed', { error: error.message, userId: req.user.userId });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async sendTwoFactorDisableOtp(req, res) {
+    try {
+      const result = await authService.sendTwoFactorDisableOtp(req.institutionId, req.user.userId);
+      res.json({
+        success: true,
+        message: 'OTP sent to your email address.',
+        data: { email: result.email }
+      });
+    } catch (error) {
+      logger.error('Send 2FA disable OTP failed', { error: error.message, userId: req.user.userId });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async verifyTwoFactorDisable(req, res) {
+    try {
+      const { otp } = req.body;
+      if (!otp) {
+        return res.status(400).json({ success: false, error: 'OTP is required.' });
+      }
+      const result = await authService.verifyAndDisableTwoFactor(req.institutionId, req.user.userId, otp);
+      res.json({
+        success: true,
+        message: 'Two-factor authentication disabled successfully.',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Verify 2FA disable failed', { error: error.message, userId: req.user.userId });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
   async updateAccountSettings(req, res) {
     try {
       const userId = req.user.userId;
@@ -544,7 +620,8 @@ class AuthController {
           country: userProfile.country,
           postalCode: userProfile.postal_code,
           dateOfBirth: userProfile.date_of_birth,
-          gender: userProfile.gender
+          gender: userProfile.gender,
+          twoFactorEnabled: Boolean(userProfile.two_factor_enabled)
         }
       });
     } catch (error) {

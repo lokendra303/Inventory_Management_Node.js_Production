@@ -51,6 +51,30 @@ router.put('/account-settings',
   authController.updateAccountSettings
 );
 
+// POST /api/users/two-factor/send-otp — email OTP before enabling 2FA
+router.post('/two-factor/send-otp',
+  auditLog('two_factor_enable_otp_sent'),
+  authController.sendTwoFactorEnableOtp
+);
+
+// POST /api/users/two-factor/verify-enable — confirm OTP and enable 2FA
+router.post('/two-factor/verify-enable',
+  auditLog('two_factor_enabled'),
+  authController.verifyTwoFactorEnable
+);
+
+// POST /api/users/two-factor/send-disable-otp — email OTP before disabling 2FA
+router.post('/two-factor/send-disable-otp',
+  auditLog('two_factor_disable_otp_sent'),
+  authController.sendTwoFactorDisableOtp
+);
+
+// POST /api/users/two-factor/verify-disable — confirm OTP and disable 2FA
+router.post('/two-factor/verify-disable',
+  auditLog('two_factor_disabled'),
+  authController.verifyTwoFactorDisable
+);
+
 // PUT /api/users/:userId/permissions
 router.put('/:userId/permissions', 
   requirePermission('user_management'),
