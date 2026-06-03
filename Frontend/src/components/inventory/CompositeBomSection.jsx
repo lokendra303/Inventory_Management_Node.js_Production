@@ -117,11 +117,10 @@ export default function CompositeBomSection({
           </li>
           <li style={{ marginTop: 6 }}>
             <AntText strong>Consume when</AntText>
-            {' — '}When integrated fulfilment consumes component stock:&nbsp;
-            <AntText strong>Shipment</AntText>
-            {' '}when dispatching/leaving warehouse; <AntText strong>Order</AntText>
-            {' '}when the sales order is placed or confirmed—use whichever matches how you allocate stock. (You can still
-            sell components on their own; this table only drives the kit recipe.)
+            {' — '}For <AntText strong>Explode on ship</AntText> kits: <AntText strong>Order</AntText>
+            {' '}reserves components when the sales order is created; <AntText strong>Shipment</AntText>
+            {' '}consumes at dispatch. Pre-built kits use <AntText strong>Kit Assembly</AntText>
+            {' '}to move parts into finished kit stock before selling.
           </li>
         </ul>
       </div>

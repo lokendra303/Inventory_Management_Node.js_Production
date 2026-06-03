@@ -18,9 +18,12 @@ import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { filterSelectOption } from '../../utils/selectFilter';
 import { ImportDefaultsPanel } from './ImportDefaultsPanel.jsx';
+import { ImportDuplicateGroupsPanel } from './ImportDuplicateGroupsPanel.jsx';
 import {
   assessImportRowIssues,
-  buildDuplicateSkuKeysInFile,
+  buildImportDuplicateGroups,
+  buildMergedImportDescription,
+  buildMergedImportQuantities,
   checkSkuAvailableForImport,
   countImportDefaultsSet,
   CSV_IMPORT_SKU_AUTO_RULE,
@@ -29,6 +32,7 @@ import {
   ensureImportDropdownOption,
   ensureItemGroupForImport,
   ensureUnitForImport,
+  isImportRowInPendingDuplicateGroup,
   isImportRowReady,
   isSkuRequiredForImport,
   IMPORT_PREVIEW_CELL_MISMATCH_STYLE,
@@ -254,6 +258,9 @@ const CSV_IMPORT_CORE_TARGETS = [
 
 /** CSV import creates plain items (no BOM / variant matrix). */
 const CSV_IMPORT_SUPPORTED_ITEM_TYPES = ['simple', 'service'];
+
+/** Built-in types — must match backend itemType.service PROTECTED_ITEM_TYPES */
+const PROTECTED_ITEM_TYPES = new Set(['simple', 'variant', 'composite']);
 const CSV_IMPORT_MODAL_Z_INDEX = 1000;
 /** Above import modal and app header (see Warehouses.jsx). */
 const ITEM_FORM_MODAL_OVER_IMPORT_Z_INDEX = 10050;
@@ -442,12 +449,14 @@ const Items = () => {
   const [existingCustomFields, setExistingCustomFields] = useState({});
   const [variantMatrixEdits, setVariantMatrixEdits] = useState([]);
   const [compositeComponents, setCompositeComponents] = useState([]);
+  const [kitFulfillmentMode, setKitFulfillmentMode] = useState('prebuilt');
   const autoDraftSavingRef = useRef(false);
   const autoDraftSavedRef = useRef(false);
   const variantBuilderSeededRef = useRef(false);
   const fetchItemsRef = useRef(async () => {});
   const csvImportExcelBufferRef = useRef(null);
   const activeImportRowIndexRef = useRef(null);
+  const activeImportGroupRef = useRef(null);
 
   // ---- SKU auto-generator (Zoho-style rules) ------------------------------
   const [skuRulesOpen, setSkuRulesOpen] = useState(false);
@@ -475,6 +484,8 @@ const Items = () => {
     defaultWarehouseId: undefined,
     result: null,
     addedRowIndexes: {},
+    supersededRowIndexes: {},
+    duplicateGroupPlans: {},
     skuSource: CSV_IMPORT_SKU_FROM_FILE,
     importSkuRuleId: undefined,
     importDefaults: {},
@@ -1093,6 +1104,10 @@ const Items = () => {
 
   const handleDeleteItemType = async (typeId, typeName) => {
     if (!canManageItems) return;
+    if (PROTECTED_ITEM_TYPES.has(String(typeName || '').toLowerCase())) {
+      message.warning('Simple, variant, and composite types cannot be deleted.');
+      return;
+    }
     try {
       await apiService.delete(`/item-types/${typeId}`);
       setItemTypes(prev => prev.filter(t => t.id !== typeId));
@@ -1441,11 +1456,14 @@ const Items = () => {
       defaultWarehouseId: undefined,
       result: null,
       addedRowIndexes: {},
+      supersededRowIndexes: {},
+      duplicateGroupPlans: {},
       skuSource: CSV_IMPORT_SKU_FROM_FILE,
       importSkuRuleId: undefined,
       importDefaults: {},
     });
     activeImportRowIndexRef.current = null;
+    activeImportGroupRef.current = null;
     setItemFormOpenedFromImport(false);
   }, []);
 
@@ -1454,6 +1472,7 @@ const Items = () => {
     setItemFormOpenedFromImport(false);
     setImportCustomFieldsPreview([]);
     activeImportRowIndexRef.current = null;
+    activeImportGroupRef.current = null;
     setEditingItem(null);
     setImageUrl('');
     setImageFile(null);
@@ -1464,6 +1483,7 @@ const Items = () => {
     setExistingCustomFields({});
     setVariantMatrixEdits([]);
     setCompositeComponents([]);
+    setKitFulfillmentMode('prebuilt');
     setEditingWarehouseSummaries([]);
     setSelectedSkuRuleId(null);
     setLastAppliedSkuRule(null);
@@ -1501,11 +1521,14 @@ const Items = () => {
       defaultWarehouseId: firstWh,
       result: null,
       addedRowIndexes: {},
+      supersededRowIndexes: {},
+      duplicateGroupPlans: {},
       skuSource: CSV_IMPORT_SKU_FROM_FILE,
       importSkuRuleId,
       importDefaults: {},
     });
     activeImportRowIndexRef.current = null;
+    activeImportGroupRef.current = null;
     setItemFormOpenedFromImport(false);
   }, [warehouses]);
 
@@ -1801,6 +1824,7 @@ const Items = () => {
           return;
         }
         itemData.components = normalizedComponents;
+        itemData.kitFulfillmentMode = kitFulfillmentMode;
       }
 
       if (!isEditing && duplicateSourcePayload) {
@@ -1849,16 +1873,31 @@ const Items = () => {
         form.resetFields();
       } else if (itemFormOpenedFromImport && activeImportRowIndexRef.current != null) {
         const savedRowIndex = activeImportRowIndexRef.current;
+        const importGroup = activeImportGroupRef.current;
         closeItemFormReturnToImport();
-        setCsvImportModal((prev) => ({
-          ...prev,
-          open: true,
-          addedRowIndexes: {
-            ...(prev.addedRowIndexes || {}),
-            ...(savedRowIndex != null ? { [String(savedRowIndex)]: true } : {}),
-          },
-        }));
-        message.success('Item saved. Import list is still open — pick the next row.');
+        setCsvImportModal((prev) => {
+          const added = { ...(prev.addedRowIndexes || {}) };
+          const superseded = { ...(prev.supersededRowIndexes || {}) };
+          if (importGroup?.mode === 'merge' && Array.isArray(importGroup.rowIndexes)) {
+            importGroup.rowIndexes.forEach((i) => {
+              added[String(i)] = true;
+            });
+          } else if (importGroup?.mode === 'pick_one' && Array.isArray(importGroup.rowIndexes)) {
+            added[String(savedRowIndex)] = true;
+            importGroup.rowIndexes.forEach((i) => {
+              if (i !== savedRowIndex) superseded[String(i)] = importGroup.groupKey || true;
+            });
+          } else if (savedRowIndex != null) {
+            added[String(savedRowIndex)] = true;
+          }
+          return { ...prev, open: true, addedRowIndexes: added, supersededRowIndexes: superseded };
+        });
+        const mergeMsg = importGroup?.mode === 'merge'
+          ? 'Merged item saved. All rows in that duplicate group are marked added.'
+          : importGroup?.mode === 'pick_one'
+            ? 'Item saved. Other rows in that duplicate group were marked skipped.'
+            : 'Item saved. Import list is still open — pick the next row.';
+        message.success(mergeMsg);
       } else {
         // Keep form open for rapid multi-item entry (not from CSV import).
         setImageUrl('');
@@ -1868,6 +1907,7 @@ const Items = () => {
         setExistingCustomFields({});
         setVariantMatrixEdits([]);
         setCompositeComponents([]);
+        setKitFulfillmentMode('prebuilt');
         setSelectedSkuRuleId(null);
         setLastAppliedSkuRule(null);
         form.resetFields();
@@ -2027,6 +2067,7 @@ const viewItem = async (item) => {
         : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
     );
     setCompositeComponents(normalizeCompositeComponents(fullItem?.composite_components || []));
+    setKitFulfillmentMode(fullItem?.kit_fulfillment_mode || fullItem?.kitFulfillmentMode || 'prebuilt');
 
     // Get warehouse from item's inventory projections first.
     // If the item has no stock projection yet, fall back to the warehouse owning
@@ -2653,6 +2694,7 @@ const viewItem = async (item) => {
         : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
     );
     setCompositeComponents(normalizeCompositeComponents(fullItem?.composite_components || []));
+    setKitFulfillmentMode(fullItem?.kit_fulfillment_mode || fullItem?.kitFulfillmentMode || 'prebuilt');
 
     let finalWarehouseId = null;
     if (fullItem.warehouse_ids?.length > 0) {
@@ -2810,7 +2852,7 @@ const viewItem = async (item) => {
     setModalVisible(true);
   };
 
-  const openAddItemFromImportRow = async (rowIndex) => {
+  const openAddItemFromImportRow = async (rowIndex, importOptions = {}) => {
     if (!canManageItems) return;
     const {
       mapping,
@@ -2822,6 +2864,15 @@ const viewItem = async (item) => {
       importSkuRuleId,
       importDefaults = {},
     } = csvImportModal;
+    const {
+      mergeRowIndexes = null,
+      pickOneGroupRowIndexes = null,
+      importNote = '',
+      groupKey = null,
+      resolveDuplicateGroup = false,
+    } = importOptions;
+    const isMergeSave = Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 1;
+    const isPickOneGroup = Array.isArray(pickOneGroupRowIndexes) && pickOneGroupRowIndexes.length > 1;
     const skuFromFile = isSkuRequiredForImport(skuSource);
     if (!mapping?.name && !importDefaults?.name) {
       message.error('Map Name to a file column, or set a default name for all rows in Default values');
@@ -2848,13 +2899,16 @@ const viewItem = async (item) => {
     };
     const pick = (fieldKey) => pickImportValue(row, mapping, importDefaults, fieldKey);
 
-    const duplicateSkuKeys = buildDuplicateSkuKeysInFile(rows, mapping);
+    const duplicateGroups = resolveDuplicateGroup
+      ? []
+      : buildImportDuplicateGroups(rows, mapping, importDefaults);
     const preflight = validateImportRowBeforeOpen({
       row,
+      rowIndex,
       mapping,
       fieldConfigs,
       defaultWarehouseId,
-      duplicateSkuKeys,
+      duplicateGroups,
       skuSource,
       hasSkuRules: skuRules.length > 0,
       importDefaults,
@@ -2889,16 +2943,27 @@ const viewItem = async (item) => {
       return;
     }
 
-    const stockParsed = parseImportNumeric(pick('openingStock'));
-    const valueParsed = parseImportNumeric(pick('openingValue'));
-    if (stockParsed.invalid) {
-      message.warning(`Opening stock is not a valid number; using 0.`);
+    let openingStock;
+    let openingValue;
+    if (isMergeSave) {
+      const merged = buildMergedImportQuantities(mergeRowIndexes, rows, mapping, importDefaults);
+      if (merged.anyInvalidStock) {
+        message.warning('Some rows have invalid opening stock; valid quantities were summed.');
+      }
+      openingStock = merged.openingStock;
+      openingValue = merged.openingValue;
+    } else {
+      const stockParsed = parseImportNumeric(pick('openingStock'));
+      const valueParsed = parseImportNumeric(pick('openingValue'));
+      if (stockParsed.invalid) {
+        message.warning(`Opening stock is not a valid number; using 0.`);
+      }
+      if (valueParsed.invalid) {
+        message.warning(`Opening value is not a valid number; it will be ignored.`);
+      }
+      openingStock = stockParsed.value || 0;
+      openingValue = valueParsed.invalid ? 0 : (valueParsed.value || 0);
     }
-    if (valueParsed.invalid) {
-      message.warning(`Opening value is not a valid number; it will be ignored.`);
-    }
-    const openingStock = stockParsed.value || 0;
-    const openingValue = valueParsed.invalid ? 0 : (valueParsed.value || 0);
 
     const costRaw = pick('costPrice');
     const sellRaw = pick('sellingPrice');
@@ -3083,6 +3148,38 @@ const viewItem = async (item) => {
       && (openingStock > 0 || !!finalWarehouseId);
 
     activeImportRowIndexRef.current = rowIndex;
+    if (isMergeSave) {
+      activeImportGroupRef.current = {
+        mode: 'merge',
+        rowIndexes: mergeRowIndexes,
+        primaryRowIndex: rowIndex,
+        groupKey,
+      };
+    } else if (isPickOneGroup) {
+      activeImportGroupRef.current = {
+        mode: 'pick_one',
+        rowIndexes: pickOneGroupRowIndexes,
+        primaryRowIndex: rowIndex,
+        groupKey,
+      };
+    } else {
+      activeImportGroupRef.current = null;
+    }
+
+    let importDescription = normalizeOptionalText(pick('description'));
+    const noteText = String(importNote || '').trim();
+    if (isMergeSave) {
+      importDescription = buildMergedImportDescription({
+        primaryRow: row,
+        rowIndexes: mergeRowIndexes,
+        rows,
+        mapping,
+        importDefaults,
+        userNote: noteText,
+      }) || undefined;
+    } else if (noteText) {
+      importDescription = [importDescription, `Import note: ${noteText}`].filter(Boolean).join('\n\n') || undefined;
+    }
 
     form.setFieldsValue({
       type: resolvedItemType,
@@ -3093,7 +3190,7 @@ const viewItem = async (item) => {
       purchaseDescription: 'Initial stock entry',
       sku: normalizeOptionalText(skuText),
       name: normalizeOptionalText(nameText),
-      description: normalizeOptionalText(pick('description')),
+      description: importDescription,
       category: resolvedCategory,
       unit: unitId,
       supplierCode: normalizeOptionalText(supplierCodeStr),
@@ -3419,9 +3516,14 @@ const viewItem = async (item) => {
     return [...core, ...custom];
   }, [csvImportModal.fieldConfigs, csvImportModal.skuSource]);
 
+  const csvImportDuplicateGroups = useMemo(() => {
+    const { rows, mapping, importDefaults } = csvImportModal;
+    if (!rows?.length) return [];
+    return buildImportDuplicateGroups(rows, mapping, importDefaults || {});
+  }, [csvImportModal.rows, csvImportModal.mapping, csvImportModal.importDefaults]);
+
   const csvImportIssueContext = useMemo(() => {
-    const { rows, mapping, defaultWarehouseId, fieldConfigs, skuSource, importDefaults } = csvImportModal;
-    const duplicateSkuKeys = buildDuplicateSkuKeysInFile(rows, mapping);
+    const { mapping, defaultWarehouseId, fieldConfigs, skuSource, importDefaults } = csvImportModal;
     const existingSkuKeys = new Set(
       (items || [])
         .map((i) => String(i.sku || '').trim().toLowerCase())
@@ -3431,19 +3533,19 @@ const viewItem = async (item) => {
       mapping,
       fieldConfigs: fieldConfigs || [],
       defaultWarehouseId,
-      duplicateSkuKeys,
+      duplicateGroups: csvImportDuplicateGroups,
       existingSkuKeys,
       skuSource: skuSource || CSV_IMPORT_SKU_FROM_FILE,
       hasSkuRules: skuRules.length > 0,
       importDefaults: importDefaults || {},
     };
   }, [
-    csvImportModal.rows,
     csvImportModal.mapping,
     csvImportModal.defaultWarehouseId,
     csvImportModal.fieldConfigs,
     csvImportModal.skuSource,
     csvImportModal.importDefaults,
+    csvImportDuplicateGroups,
     items,
     skuRules.length,
   ]);
@@ -3454,12 +3556,15 @@ const viewItem = async (item) => {
     const ctx = csvImportIssueContext;
     return rows.map((row, idx) => {
       const added = !!csvImportModal.addedRowIndexes?.[String(idx)];
+      const superseded = !!csvImportModal.supersededRowIndexes?.[String(idx)];
       const issues = assessImportRowIssues({
         row,
+        rowIndex: idx,
+        rows,
         mapping: ctx.mapping,
         fieldConfigs: ctx.fieldConfigs,
         defaultWarehouseId: ctx.defaultWarehouseId,
-        duplicateSkuKeys: ctx.duplicateSkuKeys,
+        duplicateGroups: ctx.duplicateGroups,
         existingSkuKeys: ctx.existingSkuKeys,
         brandOptions,
         manufacturerOptions,
@@ -3469,17 +3574,19 @@ const viewItem = async (item) => {
         hasSkuRules: ctx.hasSkuRules,
         importDefaults: ctx.importDefaults,
       });
-      const level = added ? 'added' : issues.level;
+      const level = added ? 'added' : superseded ? 'superseded' : issues.level;
       return {
         ...row,
         _rowIndex: String(idx),
         _importIssues: issues,
         _importLevel: level,
+        _importSuperseded: superseded,
       };
     });
   }, [
     csvImportModal.rows,
     csvImportModal.addedRowIndexes,
+    csvImportModal.supersededRowIndexes,
     csvImportIssueContext,
     brandOptions,
     manufacturerOptions,
@@ -3880,7 +3987,7 @@ const viewItem = async (item) => {
               <AntText strong>first worksheet</AntText>
               {' '}only. Map columns to app fields. Choose <AntText strong>SKU from file</AntText> or <AntText strong>Auto-generate SKU</AntText> (SKU column optional). When you use <AntText strong>Add in form</AntText>, missing master data is created where allowed and SKU is generated from your rule if configured. Prices use your current item currency (
               <AntText strong>{priceCurrency}</AntText>
-              ) and are converted to USD for the API like the item form. Use <AntText strong>Default values for all rows</AntText> when you do not want to map a column (e.g. same category or unit for every item). File values override defaults when both exist. Use <AntText strong>Add in form</AntText> on each row. Simple and Service types only (up to 5,000 data rows).
+              ) and are converted to USD for the API like the item form. Use <AntText strong>Default values for all rows</AntText> when you do not want to map a column (e.g. same category or unit for every item). File values override defaults when both exist. Rows with the same <AntText strong>SKU</AntText>, <AntText strong>item name</AntText>, or <AntText strong>description</AntText> are grouped under <AntText strong>Duplicate item groups</AntText> so you can merge quantities, pick one row, or add a note. Other rows use <AntText strong>Add in form</AntText>. Simple and Service types only (up to 5,000 data rows).
             </span>
           }
         />
@@ -4064,6 +4171,47 @@ const viewItem = async (item) => {
           </div>
         )}
 
+        {csvImportModal.rows.length > 0 && csvImportModal.headers.length > 0 && csvImportDuplicateGroups.length > 0 && (
+          <ImportDuplicateGroupsPanel
+            groups={csvImportDuplicateGroups}
+            duplicateGroupPlans={csvImportModal.duplicateGroupPlans || {}}
+            addedRowIndexes={csvImportModal.addedRowIndexes || {}}
+            supersededRowIndexes={csvImportModal.supersededRowIndexes || {}}
+            disabled={csvImportModal.busy}
+            canManageItems={canManageItems}
+            onPlanChange={(groupKey, patch) => {
+              setCsvImportModal((prev) => ({
+                ...prev,
+                duplicateGroupPlans: {
+                  ...(prev.duplicateGroupPlans || {}),
+                  [groupKey]: {
+                    ...(prev.duplicateGroupPlans?.[groupKey] || {}),
+                    ...patch,
+                  },
+                },
+              }));
+            }}
+            onAddInForm={(group, plan) => {
+              const primaryIndex = plan.selectedRowIndex ?? group.rowIndexes[0];
+              if (plan.mode === 'merge') {
+                openAddItemFromImportRow(primaryIndex, {
+                  mergeRowIndexes: group.rowIndexes,
+                  importNote: plan.note,
+                  groupKey: group.groupKey,
+                  resolveDuplicateGroup: true,
+                });
+              } else {
+                openAddItemFromImportRow(primaryIndex, {
+                  pickOneGroupRowIndexes: group.rowIndexes,
+                  importNote: plan.note,
+                  groupKey: group.groupKey,
+                  resolveDuplicateGroup: true,
+                });
+              }
+            }}
+          />
+        )}
+
         {csvImportModal.rows.length > 0 && csvImportModal.headers.length > 0 && (
           <div style={{ marginTop: 16 }}>
             <AntText strong style={{ display: 'block', marginBottom: 8 }}>Add-item requirements (mapping)</AntText>
@@ -4190,6 +4338,10 @@ const viewItem = async (item) => {
                 <AntText type="secondary">Added</AntText>
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 3, background: '#f5f5f5', border: '1px solid #d9d9d9' }} />
+                <AntText type="secondary">Skipped (duplicate group)</AntText>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 14, height: 14, borderRadius: 3, background: '#ffccc7', border: '1px solid #ff7875' }} />
                 <AntText type="secondary">Mismatched cell</AntText>
               </span>
@@ -4243,6 +4395,9 @@ const viewItem = async (item) => {
                   render: (_, r) => {
                     if (r._importLevel === 'added') {
                       return <Tag color="success" style={{ margin: 0 }}>Added</Tag>;
+                    }
+                    if (r._importSuperseded) {
+                      return <Tag style={{ margin: 0 }}>Skipped</Tag>;
                     }
                     const iss = r._importIssues;
                     if (!iss || r._importLevel === 'ok') {
@@ -4301,20 +4456,36 @@ const viewItem = async (item) => {
                   fixed: 'left',
                   render: (_, r) => {
                     const rowKey = String(r._rowIndex);
+                    const rowIndex = Number(r._rowIndex);
                     if (csvImportModal.addedRowIndexes?.[rowKey]) {
                       return null;
                     }
-                    const canOpen = r._importIssues?.ok;
-                    const tip = canOpen
-                      ? 'Open add-item form with mapped values'
-                      : (r._importIssues?.errors?.[0] || 'Fix blocking issues before opening the form');
+                    if (r._importSuperseded) {
+                      return (
+                        <AntText type="secondary" style={{ fontSize: 12 }}>
+                          Use group above
+                        </AntText>
+                      );
+                    }
+                    const pendingDup = isImportRowInPendingDuplicateGroup(
+                      rowIndex,
+                      csvImportDuplicateGroups,
+                      csvImportModal.addedRowIndexes,
+                      csvImportModal.supersededRowIndexes
+                    );
+                    const canOpen = r._importIssues?.ok && !pendingDup;
+                    const tip = pendingDup
+                      ? 'This row matches another by SKU, name, or description — resolve it in Duplicate item groups above'
+                      : canOpen
+                        ? 'Open add-item form with mapped values'
+                        : (r._importIssues?.errors?.[0] || 'Fix blocking issues before opening the form');
                     return (
                       <Tooltip title={tip}>
                         <Button
                           type="link"
                           size="small"
                           disabled={csvImportModal.busy || !canManageItems || !canOpen}
-                          onClick={() => openAddItemFromImportRow(Number(r._rowIndex))}
+                          onClick={() => openAddItemFromImportRow(rowIndex)}
                         >
                           Add in form
                         </Button>
@@ -5273,7 +5444,7 @@ const viewItem = async (item) => {
                           <Select.Option key={type.id} value={type.name}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ textTransform: 'capitalize' }}>{type.name}</span>
-                              {canManageItems && (
+                              {canManageItems && !PROTECTED_ITEM_TYPES.has(String(type.name || '').toLowerCase()) && (
                                 <span
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -5494,12 +5665,36 @@ const viewItem = async (item) => {
                   </Col>
                 </Row>
                 {watchedItemType === 'composite' && (
-                  <CompositeBomSection
-                    components={compositeComponents}
-                    onComponentsChange={setCompositeComponents}
-                    catalogItems={items}
-                    excludeItemId={editingItem?.id}
-                  />
+                  <>
+                    <Row gutter={16} style={{ marginBottom: 12 }}>
+                      <Col xs={24} md={12}>
+                        <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: '#64748b' }}>
+                          SALES / FULFILMENT MODE
+                        </div>
+                        <Select
+                          style={{ width: '100%' }}
+                          value={kitFulfillmentMode}
+                          onChange={setKitFulfillmentMode}
+                          options={[
+                            {
+                              value: 'prebuilt',
+                              label: 'Pre-built kits — sell finished kit stock (assemble parts first)',
+                            },
+                            {
+                              value: 'explode_on_ship',
+                              label: 'Explode on ship — consume BOM components when fulfilling orders',
+                            },
+                          ]}
+                        />
+                      </Col>
+                    </Row>
+                    <CompositeBomSection
+                      components={compositeComponents}
+                      onComponentsChange={setCompositeComponents}
+                      catalogItems={items}
+                      excludeItemId={ editingItem?.id }
+                    />
+                  </>
                 )}
                 <Row gutter={16}>
                   <Col span={24}>

@@ -61,6 +61,7 @@ import VendorCredits from './pages/purchases/VendorCredits.jsx';
 import InvoicePayments from './pages/sales/InvoiceMayments.jsx';
 import StockCount from './pages/inventory/StockCount.jsx';
 import ReorderLevels from './pages/inventory/ReorderLevels.jsx';
+import KitAssembly from './pages/inventory/KitAssembly.jsx';
 import BatchTracking from './pages/inventory/BatchTracking.jsx';
 import PurchaseReturns from './pages/purchases/PurchaseReturns.jsx';
 import ExchangeRateSettings from './pages/settings/ExchangeRateSettings.jsx';
@@ -95,6 +96,7 @@ const ProtectedItemGroups = withPermission(null, ['item_view', 'item_management'
 const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
 const ProtectedWarehouseLocations = withPermission('warehouse_view')(WarehouseLocations);
 const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(InventoryAdjustments);
+const ProtectedKitAssembly = withPermission('inventory_adjust')(KitAssembly);
 const ProtectedInventoryShipments = withPermission('inventory_ship')(Shipments);
 const ProtectedPutaways = withPermission('inventory_receive')(Putaways);
 const ProtectedMoveOrders = withPermission('inventory_transfer')(MoveOrders);
@@ -174,6 +176,7 @@ function AppContent() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<ProtectedInventory />} />
             <Route path="/inventory/adjustments" element={<ProtectedInventoryAdjustments />} />
+            <Route path="/inventory/kit-assembly" element={<ProtectedKitAssembly />} />
             <Route path="/inventory/shipments" element={<ProtectedInventoryShipments />} />
             <Route path="/inventory/putaways" element={<ProtectedPutaways />} />
             <Route path="/inventory/move-orders" element={<ProtectedMoveOrders />} />

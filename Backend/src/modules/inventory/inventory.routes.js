@@ -59,6 +59,31 @@ router.get('/item-activity/:itemId',
   inventoryController.getItemActivitySummary
 );
 
+// GET /api/inventory/composite/:compositeItemId/:warehouseId/availability
+router.get(
+  '/composite/:compositeItemId/:warehouseId/availability',
+  requirePermission('inventory_view'),
+  inventoryController.getCompositeAvailability
+);
+
+// POST /api/inventory/assemble-kit
+router.post(
+  '/assemble-kit',
+  validate(schemas.assembleKitSchema),
+  requirePermission('inventory_adjust'),
+  auditLog('kit_assembled'),
+  inventoryController.assembleKit
+);
+
+// POST /api/inventory/disassemble-kit
+router.post(
+  '/disassemble-kit',
+  validate(schemas.disassembleKitSchema),
+  requirePermission('inventory_adjust'),
+  auditLog('kit_disassembled'),
+  inventoryController.disassembleKit
+);
+
 // GET /api/inventory/:itemId/:warehouseId/history
 router.get('/:itemId/:warehouseId/history', 
   requirePermission('inventory_view'),

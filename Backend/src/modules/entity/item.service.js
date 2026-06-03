@@ -136,7 +136,7 @@ class ItemService {
 
   async getItemAuditSnapshot(institutionId, itemId) {
     const rows = await db.query(
-      `SELECT i.id, i.sku, i.name, i.description, i.type, i.category, i.unit, i.barcode, i.hsn_code,
+      `SELECT i.id, i.sku, i.name, i.description, i.type, i.kit_fulfillment_mode, i.category, i.unit, i.barcode, i.hsn_code,
               i.custom_fields, i.valuation_method, i.allow_negative_stock, i.status, i.cost_price,
               i.selling_price, i.mrp, i.tax_rate, i.brand, i.manufacturer, i.item_group_id,
               COALESCE(ig.name, i.item_group) AS item_group_name,
@@ -208,6 +208,7 @@ class ItemService {
         quantityRequired: Number(component.quantity_required || 0),
         consumptionTiming: component.consumption_timing || 'shipment'
       }));
+      snapshot.kitFulfillmentMode = row.kit_fulfillment_mode || 'prebuilt';
     }
 
     return snapshot;
@@ -405,7 +406,8 @@ class ItemService {
       openingValue = 0,
       asOfDate,
       warehouseId,
-      defaultBinId = null
+      defaultBinId = null,
+      kitFulfillmentMode = 'prebuilt'
     } = itemData;
 
     // Validate custom fields based on item type
@@ -435,16 +437,20 @@ class ItemService {
     const resolvedItemGroup = await this._resolveItemGroup(institutionId, { itemGroupId, itemGroup });
     const itemId = uuidv4();
 
+    const normalizedKitMode = String(type).toLowerCase() === 'composite'
+      ? (String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship' ? 'explode_on_ship' : 'prebuilt')
+      : 'prebuilt';
+
     await db.query(
       `INSERT INTO items 
-       (id, institution_id, created_by, sku, name, description, image, type, category, unit, barcode, batch_number, hsn_code, 
+       (id, institution_id, created_by, sku, name, description, image, type, kit_fulfillment_mode, category, unit, barcode, batch_number, hsn_code, 
         custom_fields, default_bin_id, valuation_method, allow_negative_stock, cost_price, selling_price, mrp, 
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, item_group_id, purchase_account, sales_account,
         opening_stock, opening_value, as_of_date, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, category || null, unit, barcode || null, normalizedBatchNumber, hsnCode || null,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+      [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, normalizedKitMode, category || null, unit, barcode || null, normalizedBatchNumber, hsnCode || null,
        JSON.stringify(customFields), defaultBinId || null, valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
@@ -564,7 +570,8 @@ class ItemService {
       mpn,
       openingStock,
       openingValue,
-      defaultBinId
+      defaultBinId,
+      kitFulfillmentMode
     } = updateData;
 
     const updateFields = [];
@@ -706,6 +713,18 @@ class ItemService {
     if (defaultBinId !== undefined) {
       updateFields.push('default_bin_id = ?');
       updateValues.push(defaultBinId || null);
+    }
+    if (kitFulfillmentMode !== undefined) {
+      const nextTypeForMode = type !== undefined ? type : oldItem?.type;
+      if (String(nextTypeForMode || '').toLowerCase() !== 'composite') {
+        throw new Error('Kit fulfillment mode applies only to composite items');
+      }
+      const normalizedKitMode =
+        String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship'
+          ? 'explode_on_ship'
+          : 'prebuilt';
+      updateFields.push('kit_fulfillment_mode = ?');
+      updateValues.push(normalizedKitMode);
     }
 
     if (updateFields.length === 0) {
@@ -907,6 +926,8 @@ class ItemService {
     };
     if (String(item.type || '').toLowerCase() === 'composite') {
       response.composite_components = await this.getCompositeComponents(institutionId, itemId);
+      response.kit_fulfillment_mode = item.kit_fulfillment_mode || 'prebuilt';
+      response.kitFulfillmentMode = item.kit_fulfillment_mode || 'prebuilt';
     }
     return response;
   }

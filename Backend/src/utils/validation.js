@@ -147,6 +147,20 @@ const adjustStockSchema = Joi.object({
   itemVariantId: itemVariantIdOpt
 }).unknown(true);
 
+const assembleKitSchema = Joi.object({
+  compositeItemId: itemId,
+  warehouseId,
+  quantity,
+  notes: Joi.string().max(500).optional()
+}).unknown(true);
+
+const disassembleKitSchema = Joi.object({
+  compositeItemId: itemId,
+  warehouseId,
+  quantity,
+  notes: Joi.string().max(500).optional()
+}).unknown(true);
+
 const transferStockSchema = Joi.object({
   itemId,
   fromWarehouseId: Joi.string().uuid().required(),
@@ -394,6 +408,8 @@ module.exports = {
     reserveStockSchema,
     shipStockSchema,
     adjustStockSchema,
+    assembleKitSchema,
+    disassembleKitSchema,
     transferStockSchema,
     createPurchaseOrderSchema,
     createSalesOrderSchema,

@@ -86,26 +86,319 @@ export function parseImportNumeric(raw, { emptyAsZero = true } = {}) {
   return { value: n, invalid: false, empty: false };
 }
 
-export function buildDuplicateSkuKeysInFile(rows, mapping) {
+function normalizeImportMatchText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Effective SKU for a row (file column + import defaults). */
+export function getEffectiveImportSku(row, mapping = {}, importDefaults = {}) {
+  const sku = pickImportValue(row, mapping, importDefaults, 'sku');
+  const trimmed = String(sku || '').trim();
+  if (!trimmed) return null;
+  return { key: normalizeImportMatchText(trimmed), display: trimmed };
+}
+
+/**
+ * Effective item name for duplicate matching.
+ * Uses Name column, or Description when name is empty (common in supplier files).
+ */
+export function getEffectiveImportName(row, mapping = {}, importDefaults = {}) {
+  const name = pickImportValue(row, mapping, importDefaults, 'name');
+  const desc = pickImportValue(row, mapping, importDefaults, 'description');
+  const trimmed = String(name || '').trim() || String(desc || '').trim();
+  if (!trimmed) return null;
+  return { key: normalizeImportMatchText(trimmed), display: trimmed };
+}
+
+/** Description-only duplicate match (when description differs from resolved name). */
+export function getEffectiveImportDescription(row, mapping = {}, importDefaults = {}) {
+  const desc = pickImportValue(row, mapping, importDefaults, 'description');
+  const trimmed = String(desc || '').trim();
+  if (!trimmed) return null;
+  const nameKey = getEffectiveImportName(row, mapping, importDefaults)?.key;
+  const descKey = normalizeImportMatchText(trimmed);
+  if (nameKey && nameKey === descKey) return null;
+  return { key: descKey, display: trimmed };
+}
+
+function createImportUnionFind(size) {
+  const parent = Array.from({ length: size }, (_, i) => i);
+  const rank = Array(size).fill(0);
+  const find = (x) => {
+    if (parent[x] !== x) parent[x] = find(parent[x]);
+    return parent[x];
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) parent[ra] = rb;
+    else if (rank[ra] > rank[rb]) parent[rb] = ra;
+    else {
+      parent[rb] = ra;
+      rank[ra] += 1;
+    }
+  };
+  return { find, union };
+}
+
+function linkIndexesInMap(unionFind, bucketMap) {
+  for (const indexes of bucketMap.values()) {
+    if (indexes.length < 2) continue;
+    for (let i = 1; i < indexes.length; i += 1) {
+      unionFind.union(indexes[0], indexes[i]);
+    }
+  }
+}
+
+function buildImportDuplicateGroupLabel({ skuDisplay, nameDisplay, descriptionDisplay, rowCount }) {
+  const parts = [];
+  if (skuDisplay) parts.push(`SKU: ${skuDisplay}`);
+  if (nameDisplay) parts.push(`Name: ${nameDisplay}`);
+  if (descriptionDisplay) parts.push(`Description: ${descriptionDisplay}`);
+  if (parts.length) return parts.join(' · ');
+  return `Duplicate group (${rowCount} rows)`;
+}
+
+/** SKU keys that appear on more than one row (legacy helper for SKU-only checks). */
+export function buildDuplicateSkuKeysInFile(rows, mapping, importDefaults = {}) {
   const counts = new Map();
   for (const row of rows || []) {
-    const col = mapping?.sku;
-    if (!col) continue;
-    const v = row[col];
-    if (v === undefined || v === null || String(v).trim() === '') continue;
-    const key = String(v).trim().toLowerCase();
-    counts.set(key, (counts.get(key) || 0) + 1);
+    const sku = getEffectiveImportSku(row, mapping, importDefaults);
+    if (!sku) continue;
+    counts.set(sku.key, (counts.get(sku.key) || 0) + 1);
   }
   return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([k]) => k));
+}
+
+/**
+ * Groups of 2+ rows linked when any share the same SKU, item name, or description
+ * (case-insensitive, after trim). Uses union-find so chains are one group
+ * (e.g. row A≈B by SKU, row B≈C by name → A,B,C together).
+ */
+export function buildImportDuplicateGroups(rows, mapping, importDefaults = {}) {
+  const list = rows || [];
+  const n = list.length;
+  if (n < 2) return [];
+
+  const uf = createImportUnionFind(n);
+  const skuMap = new Map();
+  const nameMap = new Map();
+  const descMap = new Map();
+
+  for (let idx = 0; idx < n; idx += 1) {
+    const row = list[idx];
+    const sku = getEffectiveImportSku(row, mapping, importDefaults);
+    const name = getEffectiveImportName(row, mapping, importDefaults);
+    const desc = getEffectiveImportDescription(row, mapping, importDefaults);
+    if (sku) {
+      if (!skuMap.has(sku.key)) skuMap.set(sku.key, []);
+      skuMap.get(sku.key).push(idx);
+    }
+    if (name) {
+      if (!nameMap.has(name.key)) nameMap.set(name.key, []);
+      nameMap.get(name.key).push(idx);
+    }
+    if (desc) {
+      if (!descMap.has(desc.key)) descMap.set(desc.key, []);
+      descMap.get(desc.key).push(idx);
+    }
+  }
+
+  linkIndexesInMap(uf, skuMap);
+  linkIndexesInMap(uf, nameMap);
+  linkIndexesInMap(uf, descMap);
+
+  const clusters = new Map();
+  for (let idx = 0; idx < n; idx += 1) {
+    const root = uf.find(idx);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(idx);
+  }
+
+  return [...clusters.entries()]
+    .filter(([, indexes]) => indexes.length > 1)
+    .map(([root, rowIndexes]) => {
+      const sorted = [...rowIndexes].sort((a, b) => a - b);
+      const groupKey = `g-${sorted[0]}`;
+
+      let skuDisplay = null;
+      let nameDisplay = null;
+      let descriptionDisplay = null;
+      const matchTypes = new Set();
+
+      const skuKeys = new Set();
+      const nameKeys = new Set();
+      const descKeys = new Set();
+      for (const rowIndex of sorted) {
+        const row = list[rowIndex];
+        const sku = getEffectiveImportSku(row, mapping, importDefaults);
+        const name = getEffectiveImportName(row, mapping, importDefaults);
+        const desc = getEffectiveImportDescription(row, mapping, importDefaults);
+        if (sku) skuKeys.add(sku.key);
+        if (name) nameKeys.add(name.key);
+        if (desc) descKeys.add(desc.key);
+      }
+      if (skuKeys.size === 1) {
+        matchTypes.add('sku');
+        const first = getEffectiveImportSku(list[sorted[0]], mapping, importDefaults);
+        skuDisplay = first?.display || null;
+      }
+      if (nameKeys.size === 1) {
+        matchTypes.add('name');
+        const first = getEffectiveImportName(list[sorted[0]], mapping, importDefaults);
+        nameDisplay = first?.display || null;
+      }
+      if (descKeys.size === 1) {
+        matchTypes.add('description');
+        const first = getEffectiveImportDescription(list[sorted[0]], mapping, importDefaults);
+        descriptionDisplay = first?.display || null;
+      }
+      if (matchTypes.size === 0) matchTypes.add('linked');
+
+      const details = sorted.map((rowIndex) => {
+        const row = list[rowIndex];
+        const stock = parseImportNumeric(pickImportValue(row, mapping, importDefaults, 'openingStock'));
+        return {
+          rowIndex,
+          sourceLine: row?.__sourceLine,
+          sku: pickImportValue(row, mapping, importDefaults, 'sku'),
+          name: pickImportValue(row, mapping, importDefaults, 'name'),
+          description: pickImportValue(row, mapping, importDefaults, 'description'),
+          openingStock: stock.invalid ? null : (stock.value || 0),
+        };
+      });
+      const totalOpeningStock = details.reduce((sum, d) => sum + (Number(d.openingStock) || 0), 0);
+      const label = buildImportDuplicateGroupLabel({
+        skuDisplay,
+        nameDisplay,
+        descriptionDisplay,
+        rowCount: sorted.length,
+      });
+
+      return {
+        groupKey,
+        skuKey: groupKey,
+        label,
+        matchTypes: [...matchTypes],
+        skuDisplay,
+        nameDisplay,
+        descriptionDisplay,
+        rowIndexes: sorted,
+        details,
+        totalOpeningStock,
+      };
+    });
+}
+
+/** File columns to highlight when this row duplicates another on SKU, name, or description. */
+export function getImportDuplicateMatchColumns(rowIndex, duplicateGroups, rows, mapping, importDefaults = {}) {
+  const group = (duplicateGroups || []).find((g) => g.rowIndexes?.includes(rowIndex));
+  if (!group || group.rowIndexes.length < 2) return [];
+  const row = rows[rowIndex];
+  if (!row) return [];
+  const cols = [];
+  const sku = getEffectiveImportSku(row, mapping, importDefaults);
+  const name = getEffectiveImportName(row, mapping, importDefaults);
+  const desc = getEffectiveImportDescription(row, mapping, importDefaults);
+
+  for (const otherIdx of group.rowIndexes) {
+    if (otherIdx === rowIndex) continue;
+    const other = rows[otherIdx];
+    if (!other) continue;
+    const oSku = getEffectiveImportSku(other, mapping, importDefaults);
+    const oName = getEffectiveImportName(other, mapping, importDefaults);
+    const oDesc = getEffectiveImportDescription(other, mapping, importDefaults);
+    if (sku && oSku && sku.key === oSku.key && mapping?.sku) cols.push(mapping.sku);
+    if (name && oName && name.key === oName.key && mapping?.name) cols.push(mapping.name);
+    if (desc && oDesc && desc.key === oDesc.key && mapping?.description) cols.push(mapping.description);
+  }
+  return [...new Set(cols.filter(Boolean))];
+}
+
+export function isImportRowInDuplicateFileGroup(rowIndex, duplicateGroups = []) {
+  const group = duplicateGroups.find((g) => g.rowIndexes?.includes(rowIndex));
+  return !!(group && group.rowIndexes.length > 1);
+}
+
+export function isImportRowInPendingDuplicateGroup(
+  rowIndex,
+  duplicateGroups,
+  addedRowIndexes = {},
+  supersededRowIndexes = {}
+) {
+  const group = (duplicateGroups || []).find((g) => g.rowIndexes.includes(rowIndex));
+  if (!group) return false;
+  const pending = group.rowIndexes.filter(
+    (i) => !addedRowIndexes[String(i)] && !supersededRowIndexes[String(i)]
+  );
+  return pending.length > 1;
+}
+
+/** Sum opening stock / value across duplicate rows for a merged save. */
+export function buildMergedImportQuantities(rowIndexes, rows, mapping, importDefaults = {}) {
+  let openingStock = 0;
+  let openingValue = 0;
+  let hasOpeningValue = false;
+  let anyInvalidStock = false;
+  for (const idx of rowIndexes || []) {
+    const row = rows[idx];
+    if (!row) continue;
+    const stock = parseImportNumeric(pickImportValue(row, mapping, importDefaults, 'openingStock'));
+    const val = parseImportNumeric(pickImportValue(row, mapping, importDefaults, 'openingValue'));
+    if (stock.invalid) anyInvalidStock = true;
+    else openingStock += stock.value || 0;
+    if (!val.invalid && (val.value || 0) > 0) {
+      openingValue += val.value || 0;
+      hasOpeningValue = true;
+    }
+  }
+  return {
+    openingStock,
+    openingValue: hasOpeningValue ? openingValue : 0,
+    anyInvalidStock,
+  };
+}
+
+/** Build description text when merging duplicate import rows. */
+export function buildMergedImportDescription({
+  primaryRow,
+  rowIndexes,
+  rows,
+  mapping,
+  importDefaults = {},
+  userNote = '',
+}) {
+  const primaryDesc = pickImportValue(primaryRow, mapping, importDefaults, 'description');
+  const lineParts = (rowIndexes || []).map((idx) => {
+    const row = rows[idx];
+    if (!row) return null;
+    const line = row.__sourceLine != null ? `Line ${row.__sourceLine}` : `Row ${idx + 1}`;
+    const name = pickImportValue(row, mapping, importDefaults, 'name') || '—';
+    const stock = parseImportNumeric(pickImportValue(row, mapping, importDefaults, 'openingStock'));
+    const qty = stock.invalid ? '?' : String(stock.value || 0);
+    return `${line}: ${name} (qty ${qty})`;
+  }).filter(Boolean);
+  const sections = [];
+  if (primaryDesc) sections.push(primaryDesc);
+  if (String(userNote || '').trim()) {
+    sections.push(`Import note: ${String(userNote).trim()}`);
+  }
+  if (lineParts.length > 1) {
+    sections.push(`Merged from duplicate import rows:\n${lineParts.join('\n')}`);
+  }
+  return sections.join('\n\n');
 }
 
 /** Gate before opening add-item form from an import row. */
 export function validateImportRowBeforeOpen({
   row,
+  rowIndex = null,
   mapping,
   fieldConfigs = [],
   defaultWarehouseId,
   duplicateSkuKeys = new Set(),
+  duplicateGroups = [],
   skuSource = CSV_IMPORT_SKU_FROM_FILE,
   hasSkuRules = true,
   importDefaults = {},
@@ -141,9 +434,18 @@ export function validateImportRowBeforeOpen({
     }
   }
 
+  const inDuplicateGroup = rowIndex != null && isImportRowInDuplicateFileGroup(rowIndex, duplicateGroups);
   const skuForDup = pick('sku');
-  if (skuForDup && duplicateSkuKeys.has(skuForDup.toLowerCase())) {
-    warnings.push(`SKU "${skuForDup}" appears more than once in this file. Only the first save will succeed unless you change SKUs.`);
+  if (inDuplicateGroup) {
+    const g = duplicateGroups.find((gr) => gr.rowIndexes?.includes(rowIndex));
+    const hint = g?.label ? ` (${g.label})` : '';
+    warnings.push(
+      `This row is in a duplicate group in the file${hint} — same SKU, item name, or description as another row. Use Duplicate item groups to merge quantities, pick one row, or add a note.`
+    );
+  } else if (skuForDup && duplicateSkuKeys.has(skuForDup.toLowerCase())) {
+    warnings.push(
+      `SKU "${skuForDup}" appears more than once in this file. Use Duplicate item groups to merge quantities, pick one row, or add a note.`
+    );
   }
 
   for (const c of fieldConfigs) {
@@ -212,10 +514,13 @@ function pushMismatchColumn(mismatchColumns, col) {
 /** Sync row assessment for import preview highlighting (no API calls). */
 export function assessImportRowIssues({
   row,
+  rowIndex = null,
+  rows = [],
   mapping = {},
   fieldConfigs = [],
   defaultWarehouseId,
   duplicateSkuKeys = new Set(),
+  duplicateGroups = [],
   existingSkuKeys = new Set(),
   brandOptions = [],
   manufacturerOptions = [],
@@ -232,10 +537,12 @@ export function assessImportRowIssues({
 
   const base = validateImportRowBeforeOpen({
     row,
+    rowIndex,
     mapping,
     fieldConfigs,
     defaultWarehouseId,
     duplicateSkuKeys,
+    duplicateGroups,
     skuSource,
     hasSkuRules,
     importDefaults,
@@ -268,6 +575,12 @@ export function assessImportRowIssues({
 
   if (sku && duplicateSkuKeys.has(sku.toLowerCase())) {
     pushMismatchColumn(mismatchColumns, mapping.sku);
+  }
+
+  if (rowIndex != null && duplicateGroups?.length) {
+    for (const col of getImportDuplicateMatchColumns(rowIndex, duplicateGroups, rows, mapping, importDefaults)) {
+      pushMismatchColumn(mismatchColumns, col);
+    }
   }
 
   const stockCell = pick('openingStock');
@@ -389,6 +702,7 @@ export const IMPORT_PREVIEW_ROW_STYLE = {
   warning: { background: '#fffbe6' },
   error: { background: '#fff1f0' },
   added: { background: '#f6ffed' },
+  superseded: { background: '#f5f5f5', opacity: 0.85 },
 };
 
 export const IMPORT_PREVIEW_CELL_MISMATCH_STYLE = {

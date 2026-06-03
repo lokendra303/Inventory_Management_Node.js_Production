@@ -2,6 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const inventoryService = require('../inventory/inventory.service');
+const compositeInventoryService = require('../inventory/compositeInventory.service');
+const itemService = require('../entity/item.service');
 const { serializeDocumentMeta } = require('../../utils/documentMeta');
 
 class SOConfirmationService {
@@ -44,19 +46,49 @@ class SOConfirmationService {
         // Check stock availability per line's warehouse
         // Stock was already reserved at SO creation — check quantity_reserved not quantity_available
         for (const line of lines) {
+          const requiredQty = Number(line.quantity_ordered);
+          const fulfillmentMode = await compositeInventoryService.getFulfillmentMode(
+            institutionId,
+            line.item_id
+          );
+
+          if (fulfillmentMode === 'explode_on_ship') {
+            const components = await itemService.getCompositeComponents(
+              institutionId,
+              line.item_id
+            );
+            for (const c of components) {
+              const compQty = requiredQty * Number(c.quantity_required);
+              const stock = await inventoryService.getCurrentStock(
+                institutionId,
+                c.component_item_id,
+                line.warehouse_id,
+                null
+              );
+              const availableQty = stock ? Number(stock.quantity_available) : 0;
+              if (availableQty < compQty) {
+                throw new Error(
+                  `Insufficient component stock for kit ${line.item_name} (${c.component_name || c.sku}): ` +
+                    `available ${availableQty}, required ${compQty}`
+                );
+              }
+            }
+            continue;
+          }
+
           const stock = await inventoryService.getCurrentStock(
             institutionId,
             line.item_id,
             line.warehouse_id,
             line.item_variant_id || null
           );
-          const reservedQty  = stock ? Number(stock.quantity_reserved)  : 0;
-          const onHandQty    = stock ? Number(stock.quantity_on_hand)    : 0;
-          const requiredQty  = Number(line.quantity_ordered);
+          const reservedQty = stock ? Number(stock.quantity_reserved) : 0;
+          const onHandQty = stock ? Number(stock.quantity_on_hand) : 0;
 
-          // Reserved covers it (normal path) OR on_hand covers it (fallback for SOs created before reservation)
           if (reservedQty < requiredQty && onHandQty < requiredQty) {
-            throw new Error(`Insufficient stock for ${line.item_name}. Available: ${onHandQty}, Required: ${requiredQty}`);
+            throw new Error(
+              `Insufficient stock for ${line.item_name}. Available: ${onHandQty}, Required: ${requiredQty}`
+            );
           }
         }
 
@@ -66,16 +98,20 @@ class SOConfirmationService {
         // Process each line item
         for (const line of lines) {
           // Ship stock (reduces inventory and moves reserved to pending/shipped)
-          await inventoryService.shipStock(institutionId, {
-            itemId: line.item_id,
-            warehouseId: line.warehouse_id,
-            quantity: line.quantity_ordered,
-            unitPrice: line.unit_price,
-            soId: soId,
-            soLineId: line.id,
-            shipmentNumber: shipmentNumber,
-            itemVariantId: line.item_variant_id || undefined
-          }, userId);
+          await compositeInventoryService.shipForSalesLine(
+            institutionId,
+            {
+              itemId: line.item_id,
+              warehouseId: line.warehouse_id,
+              quantity: line.quantity_ordered,
+              unitPrice: line.unit_price,
+              soId,
+              soLineId: line.id,
+              itemVariantId: line.item_variant_id || undefined
+            },
+            shipmentNumber,
+            userId
+          );
 
           // Update SO line status
           await connection.execute(

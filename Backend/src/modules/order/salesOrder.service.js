@@ -7,7 +7,7 @@ const {
 } = require('../../utils/exchangeRateHelpers');
 const { serializeDocumentMeta, parseDocumentMeta } = require('../../utils/documentMeta');
 const logger = require('../../utils/logger');
-const inventoryService = require('../inventory/inventory.service');
+const compositeInventoryService = require('../inventory/compositeInventory.service');
 const warehouseOptimizationService = require('../warehouse/warehouseOptimization.service');
 
 class SalesOrderService {
@@ -64,16 +64,20 @@ class SalesOrderService {
           throw new Error(`Cannot ship ${qty} for line ${line.soLineId}. Pending: ${pending}`);
         }
 
-        await inventoryService.shipStock(institutionId, {
-          itemId: soLine.item_id,
-          warehouseId: soLine.warehouse_id,
-          quantity: qty,
-          unitPrice: Number(soLine.unit_price || 0),
-          soId,
-          soLineId: soLine.id,
+        await compositeInventoryService.shipForSalesLine(
+          institutionId,
+          {
+            itemId: soLine.item_id,
+            warehouseId: soLine.warehouse_id,
+            quantity: qty,
+            unitPrice: Number(soLine.unit_price || 0),
+            soId,
+            soLineId: soLine.id,
+            itemVariantId: soLine.item_variant_id || undefined
+          },
           shipmentNumber,
-          itemVariantId: soLine.item_variant_id || undefined
-        }, userId);
+          userId
+        );
 
         const newShipped = alreadyShipped + qty;
         const nextStatus = newShipped >= ordered ? 'shipped' : 'partially_shipped';
@@ -220,15 +224,19 @@ class SalesOrderService {
 
         // Reserve stock for each line item
         for (const line of createdLines) {
-          await inventoryService.reserveStock(institutionId, {
-            itemId: line.itemId,
-            warehouseId: line.warehouseId,
-            quantity: line.quantity,
-            unitPrice: line.unitPrice,
-            soId: soId,
-            soLineId: line.lineId,
-            itemVariantId: line.itemVariantId || undefined
-          }, userId);
+          await compositeInventoryService.reserveForSalesLine(
+            institutionId,
+            {
+              itemId: line.itemId,
+              warehouseId: line.warehouseId,
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+              soId,
+              soLineId: line.lineId,
+              itemVariantId: line.itemVariantId || undefined
+            },
+            userId
+          );
         }
       });
 
@@ -306,15 +314,19 @@ class SalesOrderService {
           const resolvedItemId = line.itemId || line.item_id;
           const resolvedWarehouseId = line.warehouseId || line.warehouse_id;
           const resolvedVariantId = line.itemVariantId || line.item_variant_id || undefined;
-          await inventoryService.reserveStock(institutionId, {
-            itemId: resolvedItemId,
-            warehouseId: resolvedWarehouseId,
-            quantity: line.quantity,
-            unitPrice: line.unitPrice,
-            soId,
-            soLineId: line.id,
-            itemVariantId: resolvedVariantId
-          }, userId);
+          await compositeInventoryService.reserveForSalesLine(
+            institutionId,
+            {
+              itemId: resolvedItemId,
+              warehouseId: resolvedWarehouseId,
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+              soId,
+              soLineId: line.id,
+              itemVariantId: resolvedVariantId
+            },
+            userId
+          );
 
           await connection.execute(
             'UPDATE sales_order_lines SET status = "reserved" WHERE id = ?',
@@ -401,14 +413,18 @@ class SalesOrderService {
 
         // Release reserved stock for each line
         for (const line of lines[0]) {
-          await inventoryService.releaseReservedStock(institutionId, {
-            itemId: line.item_id,
-            warehouseId: line.warehouse_id,
-            quantity: line.quantity_ordered,
-            soId: soId,
-            soLineId: line.id,
-            itemVariantId: line.item_variant_id || undefined
-          }, userId);
+          await compositeInventoryService.releaseForSalesLine(
+            institutionId,
+            {
+              itemId: line.item_id,
+              warehouseId: line.warehouse_id,
+              quantity: line.quantity_ordered,
+              soId,
+              soLineId: line.id,
+              itemVariantId: line.item_variant_id || undefined
+            },
+            userId
+          );
         }
 
         // Update SO status to cancelled

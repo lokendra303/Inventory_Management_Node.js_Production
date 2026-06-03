@@ -1,4 +1,5 @@
 const inventoryService = require('./inventory.service');
+const compositeInventoryService = require('./compositeInventory.service');
 const itemActivityService = require('./itemActivity.service');
 const logger = require('../../utils/logger');
 
@@ -421,6 +422,49 @@ class InventoryController {
         success: false,
         error: 'Internal server error'
       });
+    }
+  }
+
+  async getCompositeAvailability(req, res) {
+    try {
+      const { compositeItemId, warehouseId } = req.params;
+      const data = await compositeInventoryService.getAvailability(
+        req.institutionId,
+        compositeItemId,
+        warehouseId
+      );
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Composite availability failed', { error: error.message, institutionId: req.institutionId });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async assembleKit(req, res) {
+    try {
+      const result = await compositeInventoryService.assembleKit(
+        req.institutionId,
+        req.body,
+        req.user.userId
+      );
+      res.status(201).json({ success: true, message: 'Kit assembled successfully', data: result });
+    } catch (error) {
+      logger.error('Kit assembly failed', { error: error.message, institutionId: req.institutionId });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async disassembleKit(req, res) {
+    try {
+      const result = await compositeInventoryService.disassembleKit(
+        req.institutionId,
+        req.body,
+        req.user.userId
+      );
+      res.status(201).json({ success: true, message: 'Kit disassembled successfully', data: result });
+    } catch (error) {
+      logger.error('Kit disassembly failed', { error: error.message, institutionId: req.institutionId });
+      res.status(400).json({ success: false, error: error.message });
     }
   }
 

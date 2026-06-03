@@ -4,20 +4,23 @@ const logger = require('../../utils/logger');
 
 const DEFAULT_ITEM_TYPES = ['simple', 'variant', 'composite', 'service'];
 
+/** Core types required by inventory, BOM, and variant flows — cannot be removed. */
+const PROTECTED_ITEM_TYPES = new Set(['simple', 'variant', 'composite']);
+
 class ItemTypeService {
   async ensureDefaultTypes(institutionId) {
-    const rows = await db.query(
-      'SELECT id FROM item_types WHERE institution_id = ? LIMIT 1',
-      [institutionId]
-    );
-    if (rows.length > 0) return;
-
     for (const name of DEFAULT_ITEM_TYPES) {
-      await db.query(
-        `INSERT INTO item_types (id, institution_id, name, is_active)
-         VALUES (?, ?, ?, TRUE)`,
-        [uuidv4(), institutionId, name]
+      const existing = await db.query(
+        'SELECT id FROM item_types WHERE institution_id = ? AND name = ? LIMIT 1',
+        [institutionId, name]
       );
+      if (existing.length === 0) {
+        await db.query(
+          `INSERT INTO item_types (id, institution_id, name, is_active)
+           VALUES (?, ?, ?, TRUE)`,
+          [uuidv4(), institutionId, name]
+        );
+      }
     }
   }
 
@@ -64,6 +67,12 @@ class ItemTypeService {
     if (typeRows.length === 0) throw new Error('Item type not found');
     const itemType = typeRows[0];
 
+    if (PROTECTED_ITEM_TYPES.has(String(itemType.name || '').toLowerCase())) {
+      throw new Error(
+        `Cannot delete built-in item type "${itemType.name}". Simple, variant, and composite types are required by the system.`
+      );
+    }
+
     const inUse = await db.query(
       'SELECT COUNT(*) AS count FROM items WHERE institution_id = ? AND type = ?',
       [institutionId, itemType.name]
@@ -83,3 +92,5 @@ class ItemTypeService {
 }
 
 module.exports = new ItemTypeService();
+module.exports.PROTECTED_ITEM_TYPES = PROTECTED_ITEM_TYPES;
+module.exports.DEFAULT_ITEM_TYPES = DEFAULT_ITEM_TYPES;

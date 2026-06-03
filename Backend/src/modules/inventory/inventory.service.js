@@ -196,7 +196,7 @@ class InventoryService {
         throw new Error(`Insufficient available stock: available ${availableQty}, requested ${shipQty}`);
       }
 
-      if (hasSalesOrderRef) {
+      if (hasSalesOrderRef && !data.skipSoLineValidation) {
         const soLines = await db.query(
           `SELECT quantity_ordered, quantity_shipped
            FROM sales_order_lines
