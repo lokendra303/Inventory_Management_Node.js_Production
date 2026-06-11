@@ -5,6 +5,13 @@ import platformApi from '../services/platformApi';
 
 const { Title, Paragraph } = Typography;
 
+const OTP_MODAL_TITLES = {
+  enable: 'Verify to enable 2FA',
+  disable: 'Verify to disable 2FA',
+  'email-change': 'Verify new email address',
+  'password-change': 'Confirm password change',
+};
+
 export default function PlatformProfile() {
   const [profileForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
@@ -17,6 +24,8 @@ export default function PlatformProfile() {
   const [otpEmail, setOtpEmail] = useState('');
   const [otpAction, setOtpAction] = useState('enable');
   const [pendingTwoFactorValue, setPendingTwoFactorValue] = useState(null);
+  const [pendingProfileValues, setPendingProfileValues] = useState(null);
+  const [pendingPasswordValues, setPendingPasswordValues] = useState(null);
   const [resendTimer, setResendTimer] = useState(0);
   const timerRef = useRef(null);
 
@@ -59,22 +68,57 @@ export default function PlatformProfile() {
     }
   };
 
+  const openOtpModal = (action, email) => {
+    setOtpAction(action);
+    setOtpEmail(email);
+    setOtpModalOpen(true);
+    otpForm.resetFields();
+    startResendTimer();
+  };
+
   const handleProfileUpdate = async (values) => {
+    const emailChanged = profile?.email
+      && values.email?.trim().toLowerCase() !== profile.email.trim().toLowerCase();
+
+    if (!emailChanged) {
+      try {
+        setLoading(true);
+        const res = await platformApi.patch('/platform/profile', {
+          name: values.name,
+          email: values.email,
+        });
+        if (res.success) {
+          message.success('Profile updated successfully');
+          setProfile(res.data?.admin);
+          profileForm.setFieldsValue({
+            name: res.data?.admin?.name,
+            email: res.data?.admin?.email,
+          });
+        } else {
+          message.error(res.error || 'Failed to update profile');
+        }
+      } catch (err) {
+        message.error(err.response?.data?.error || 'Failed to update profile');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       setLoading(true);
-      const res = await platformApi.patch('/platform/profile', values);
+      const res = await platformApi.post('/platform/profile/email/send-otp', {
+        newEmail: values.email,
+      });
       if (res.success) {
-        message.success('Profile updated successfully');
-        setProfile(res.data?.admin);
-        profileForm.setFieldsValue({
-          name: res.data?.admin?.name,
-          email: res.data?.admin?.email,
-        });
+        setPendingProfileValues({ name: values.name, email: values.email });
+        openOtpModal('email-change', res.data?.email || values.email);
+        message.success('Verification code sent to your new email address');
       } else {
-        message.error(res.error || 'Failed to update profile');
+        message.error(res.error || 'Failed to send verification code');
       }
     } catch (err) {
-      message.error(err.response?.data?.error || 'Failed to update profile');
+      message.error(err.response?.data?.error || 'Failed to send verification code');
     } finally {
       setLoading(false);
     }
@@ -88,10 +132,7 @@ export default function PlatformProfile() {
     if (res.success) {
       setOtpAction(action);
       setPendingTwoFactorValue(nextValue);
-      setOtpEmail(res.data?.email || profile?.email || '');
-      setOtpModalOpen(true);
-      otpForm.resetFields();
-      startResendTimer();
+      openOtpModal(action, res.data?.email || profile?.email || '');
       message.success('OTP sent to your email');
       return true;
     }
@@ -114,9 +155,57 @@ export default function PlatformProfile() {
     }
   };
 
-  const handleVerifyTwoFactorOtp = async ({ otp }) => {
+  const handleVerifyOtp = async ({ otp }) => {
     try {
       setTwoFactorLoading(true);
+
+      if (otpAction === 'email-change') {
+        if (!pendingProfileValues) {
+          message.error('Profile update session expired. Please try again.');
+          return;
+        }
+        const res = await platformApi.patch('/platform/profile', {
+          name: pendingProfileValues.name,
+          email: pendingProfileValues.email,
+          emailOtp: otp,
+        });
+        if (res.success) {
+          setProfile(res.data?.admin);
+          profileForm.setFieldsValue({
+            name: res.data?.admin?.name,
+            email: res.data?.admin?.email,
+          });
+          setPendingProfileValues(null);
+          setOtpModalOpen(false);
+          otpForm.resetFields();
+          message.success('Email updated successfully');
+        } else {
+          message.error(res.error || 'Failed to update email');
+        }
+        return;
+      }
+
+      if (otpAction === 'password-change') {
+        if (!pendingPasswordValues) {
+          message.error('Password change session expired. Please try again.');
+          return;
+        }
+        const res = await platformApi.post('/platform/profile/change-password', {
+          ...pendingPasswordValues,
+          otp,
+        });
+        if (res.success) {
+          setPendingPasswordValues(null);
+          setOtpModalOpen(false);
+          otpForm.resetFields();
+          passwordForm.resetFields();
+          message.success('Password changed successfully');
+        } else {
+          message.error(res.error || 'Failed to change password');
+        }
+        return;
+      }
+
       const endpoint = otpAction === 'disable'
         ? '/platform/profile/two-factor/verify-disable'
         : '/platform/profile/two-factor/verify-enable';
@@ -145,6 +234,8 @@ export default function PlatformProfile() {
       setTwoFactorEnabled(!pendingTwoFactorValue);
     }
     setPendingTwoFactorValue(null);
+    setPendingProfileValues(null);
+    setPendingPasswordValues(null);
     otpForm.resetFields();
     clearInterval(timerRef.current);
     setResendTimer(0);
@@ -154,7 +245,29 @@ export default function PlatformProfile() {
     if (resendTimer > 0) return;
     try {
       setTwoFactorLoading(true);
-      await sendTwoFactorOtp(otpAction, pendingTwoFactorValue);
+      if (otpAction === 'email-change' && pendingProfileValues?.email) {
+        const res = await platformApi.post('/platform/profile/email/send-otp', {
+          newEmail: pendingProfileValues.email,
+        });
+        if (res.success) {
+          openOtpModal('email-change', res.data?.email || pendingProfileValues.email);
+          message.success('Verification code resent');
+        } else {
+          message.error(res.error || 'Failed to resend code');
+        }
+      } else if (otpAction === 'password-change') {
+        const res = await platformApi.post('/platform/profile/change-password/send-otp', {
+          currentPassword: pendingPasswordValues?.currentPassword,
+        });
+        if (res.success) {
+          openOtpModal('password-change', res.data?.email || profile?.email || '');
+          message.success('Verification code resent');
+        } else {
+          message.error(res.error || 'Failed to resend code');
+        }
+      } else {
+        await sendTwoFactorOtp(otpAction, pendingTwoFactorValue);
+      }
     } catch (err) {
       message.error(err.response?.data?.error || 'Failed to resend OTP');
     } finally {
@@ -165,22 +278,33 @@ export default function PlatformProfile() {
   const handlePasswordChange = async (values) => {
     try {
       setLoading(true);
-      const res = await platformApi.post('/platform/profile/change-password', {
+      const res = await platformApi.post('/platform/profile/change-password/send-otp', {
         currentPassword: values.currentPassword,
-        newPassword: values.newPassword,
       });
       if (res.success) {
-        message.success('Password changed successfully');
-        passwordForm.resetFields();
+        setPendingPasswordValues({
+          currentPassword: values.currentPassword,
+          newPassword: values.newPassword,
+        });
+        openOtpModal('password-change', res.data?.email || profile?.email || '');
+        message.success('Verification code sent to your email');
       } else {
-        message.error(res.error || 'Failed to change password');
+        message.error(res.error || 'Failed to send verification code');
       }
     } catch (err) {
-      message.error(err.response?.data?.error || 'Failed to change password');
+      message.error(err.response?.data?.error || 'Failed to send verification code');
     } finally {
       setLoading(false);
     }
   };
+
+  const otpSubmitLabel = (() => {
+    if (otpAction === 'disable') return 'Verify and disable 2FA';
+    if (otpAction === 'enable') return 'Verify and enable 2FA';
+    if (otpAction === 'email-change') return 'Verify and save new email';
+    if (otpAction === 'password-change') return 'Verify and update password';
+    return 'Verify';
+  })();
 
   return (
     <div style={{ maxWidth: 900 }}>
@@ -197,6 +321,9 @@ export default function PlatformProfile() {
             label: 'Profile',
             children: (
               <Card loading={loading}>
+                <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+                  Changing your email requires a verification code sent to the new address.
+                </Paragraph>
                 <Form form={profileForm} layout="vertical" onFinish={handleProfileUpdate}>
                   <Form.Item
                     label="Full name"
@@ -227,6 +354,9 @@ export default function PlatformProfile() {
             label: 'Security',
             children: (
               <Card loading={loading}>
+                <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+                  Password changes are confirmed with a one-time code sent to your current email.
+                </Paragraph>
                 <Title level={5} style={{ marginTop: 0 }}>Change password</Title>
                 <Form form={passwordForm} layout="vertical" onFinish={handlePasswordChange}>
                   <Form.Item
@@ -312,7 +442,7 @@ export default function PlatformProfile() {
       />
 
       <Modal
-        title={otpAction === 'disable' ? 'Verify to disable 2FA' : 'Verify to enable 2FA'}
+        title={OTP_MODAL_TITLES[otpAction] || 'Verify OTP'}
         open={otpModalOpen}
         onCancel={handleOtpModalCancel}
         footer={null}
@@ -321,7 +451,7 @@ export default function PlatformProfile() {
         <Paragraph>
           Enter the 6-digit code sent to <strong>{otpEmail}</strong>. It expires in 5 minutes.
         </Paragraph>
-        <Form form={otpForm} layout="vertical" onFinish={handleVerifyTwoFactorOtp}>
+        <Form form={otpForm} layout="vertical" onFinish={handleVerifyOtp}>
           <Form.Item
             name="otp"
             rules={[
@@ -332,7 +462,7 @@ export default function PlatformProfile() {
             <Input maxLength={6} inputMode="numeric" placeholder="123456" />
           </Form.Item>
           <Button type="primary" htmlType="submit" block loading={twoFactorLoading}>
-            {otpAction === 'disable' ? 'Verify and disable 2FA' : 'Verify and enable 2FA'}
+            {otpSubmitLabel}
           </Button>
         </Form>
         <div style={{ textAlign: 'center', marginTop: 16 }}>

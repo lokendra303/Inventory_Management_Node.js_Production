@@ -2,7 +2,12 @@ const authService = require('./auth.service');
 const logger = require('../../utils/logger');
 
 function requestMeta(req) {
-  return { ip: req.ip, userAgent: req.get('User-Agent') };
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null)
+    || req.ip
+    || req.socket?.remoteAddress
+    || null;
+  return { ip, userAgent: req.get('User-Agent') };
 }
 
 class AuthController {

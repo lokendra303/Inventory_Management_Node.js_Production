@@ -1,11 +1,68 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const ipGeolocation = require('../../services/ipGeolocation.service');
+
+const LOCATION_COLUMNS = `location_city, location_region, location_country, location_country_code, location_label`;
+
+async function saveSessionLocation(sessionId, geo) {
+  if (!sessionId || !geo?.label) return;
+  try {
+    await db.query(
+      `UPDATE user_sessions
+          SET location_city = ?, location_region = ?, location_country = ?,
+              location_country_code = ?, location_label = ?
+        WHERE id = ?`,
+      [
+        geo.city,
+        geo.region,
+        geo.country,
+        geo.country_code,
+        geo.label,
+        sessionId,
+      ]
+    );
+  } catch (e) {
+    logger.warn('saveSessionLocation failed', { sessionId, error: e.message });
+  }
+}
+
+async function resolveSessionLocation(sessionId, ipAddress) {
+  if (!sessionId || !ipAddress) return null;
+  try {
+    const rows = await db.query(
+      `SELECT location_label FROM user_sessions WHERE id = ? LIMIT 1`,
+      [sessionId]
+    );
+    if (rows[0]?.location_label) {
+      return rows[0];
+    }
+  } catch (e) {
+    logger.warn('resolveSessionLocation: read failed', { sessionId, error: e.message });
+  }
+
+  const geo = await ipGeolocation.lookupIp(ipAddress);
+  if (geo) {
+    await saveSessionLocation(sessionId, geo);
+  }
+  return geo;
+}
+
+function mapLocationFields(row) {
+  return {
+    location_city: row.location_city || null,
+    location_region: row.location_region || null,
+    location_country: row.location_country || null,
+    location_country_code: row.location_country_code || null,
+    location_label: row.location_label || null,
+  };
+}
 
 const ACTIVE_WINDOW_MINUTES = parseInt(process.env.SESSION_ACTIVE_WINDOW_MINUTES, 10) || 30;
 
 async function createSession({ userId, institutionId, ipAddress, userAgent }) {
   const id = uuidv4();
+  const normalizedIp = ipGeolocation.normalizeIp(ipAddress);
   await db.query(
     `INSERT INTO user_sessions (id, user_id, institution_id, ip_address, user_agent, created_at, last_activity_at)
      VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
@@ -13,10 +70,15 @@ async function createSession({ userId, institutionId, ipAddress, userAgent }) {
       id,
       userId,
       institutionId,
-      ipAddress || null,
+      normalizedIp,
       userAgent ? String(userAgent).slice(0, 512) : null,
     ]
   );
+  setImmediate(() => {
+    resolveSessionLocation(id, normalizedIp).catch((err) => {
+      logger.debug('Background session geolocation failed', { sessionId: id, error: err.message });
+    });
+  });
   return id;
 }
 
@@ -111,6 +173,8 @@ async function listActiveSessions({ institutionId, search, page = 1, limit = 50 
   const data = await db.query(
     `SELECT s.id AS session_id, s.user_id, s.institution_id, s.ip_address, s.user_agent,
             s.created_at, s.last_activity_at,
+            s.location_city, s.location_region, s.location_country,
+            s.location_country_code, s.location_label,
             u.email, u.first_name, u.last_name, u.role, u.status AS user_status,
             i.name AS institution_name, i.status AS institution_status
        FROM user_sessions s
@@ -131,6 +195,8 @@ async function getSessionDetail(sessionId, { operationsLimit = 50 } = {}) {
   const rows = await db.query(
     `SELECT s.id AS session_id, s.user_id, s.institution_id, s.ip_address, s.user_agent,
             s.created_at, s.last_activity_at, s.revoked_at, s.revoke_reason,
+            s.location_city, s.location_region, s.location_country,
+            s.location_country_code, s.location_label,
             UNIX_TIMESTAMP(s.created_at) AS created_unix,
             UNIX_TIMESTAMP(s.last_activity_at) AS last_activity_unix,
             UNIX_TIMESTAMP(s.revoked_at) AS revoked_unix,
@@ -150,6 +216,17 @@ async function getSessionDetail(sessionId, { operationsLimit = 50 } = {}) {
   if (!rows.length) return null;
 
   const row = rows[0];
+  if (!row.location_label && row.ip_address) {
+    await resolveSessionLocation(sessionId, row.ip_address);
+    const refreshed = await db.query(
+      `SELECT ${LOCATION_COLUMNS} FROM user_sessions WHERE id = ? LIMIT 1`,
+      [sessionId]
+    );
+    if (refreshed[0]) {
+      Object.assign(row, refreshed[0]);
+    }
+  }
+
   const nowSec = Math.floor(Date.now() / 1000);
   const createdSec = Number(row.created_unix) || 0;
   const lastActiveSec = Number(row.last_activity_unix) || createdSec;
@@ -207,6 +284,7 @@ async function getSessionDetail(sessionId, { operationsLimit = 50 } = {}) {
       revoke_reason: row.revoke_reason,
       ip_address: row.ip_address,
       user_agent: row.user_agent,
+      ...mapLocationFields(row),
       is_active: isActive,
       active_window_minutes: ACTIVE_WINDOW_MINUTES,
       created_unix: createdSec,

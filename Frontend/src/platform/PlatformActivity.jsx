@@ -225,6 +225,14 @@ export default function PlatformActivity() {
       render: (v) => v || '—',
     },
     {
+      title: 'Location',
+      dataIndex: 'location_label',
+      key: 'location_label',
+      width: 160,
+      ellipsis: true,
+      render: (v, r) => v || (r.ip_address === '127.0.0.1' ? 'Local network' : '—'),
+    },
+    {
       title: 'Device',
       dataIndex: 'user_agent',
       key: 'user_agent',

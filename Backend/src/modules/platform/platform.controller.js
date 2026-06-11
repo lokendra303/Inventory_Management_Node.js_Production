@@ -94,10 +94,30 @@ class PlatformController {
     }
   }
 
+  async sendEmailChangeOtp(req, res) {
+    try {
+      const { newEmail } = req.body || {};
+      const data = await platformAdminService.sendEmailChangeOtp(req.platformAdmin.id, newEmail);
+      res.json({ success: true, data, message: 'Verification code sent to the new email address.' });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async sendPasswordChangeOtp(req, res) {
+    try {
+      const { currentPassword } = req.body || {};
+      const data = await platformAdminService.sendPasswordChangeOtp(req.platformAdmin.id, currentPassword);
+      res.json({ success: true, data, message: 'Verification code sent to your email.' });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
   async changePassword(req, res) {
     try {
-      const { currentPassword, newPassword } = req.body || {};
-      await platformAdminService.changePassword(req.platformAdmin.id, currentPassword, newPassword);
+      const { currentPassword, newPassword, otp } = req.body || {};
+      await platformAdminService.changePassword(req.platformAdmin.id, currentPassword, newPassword, otp);
       res.json({ success: true, message: 'Password changed successfully.' });
     } catch (error) {
       res.status(400).json({ success: false, error: error.message });

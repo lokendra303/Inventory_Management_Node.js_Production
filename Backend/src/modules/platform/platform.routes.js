@@ -14,6 +14,8 @@ router.post('/auth/reset-password', platformController.resetPassword.bind(platfo
 
 router.get('/me', requirePlatformAuth, platformController.me.bind(platformController));
 router.patch('/profile', requirePlatformAuth, platformController.updateProfile.bind(platformController));
+router.post('/profile/email/send-otp', requirePlatformAuth, platformController.sendEmailChangeOtp.bind(platformController));
+router.post('/profile/change-password/send-otp', requirePlatformAuth, platformController.sendPasswordChangeOtp.bind(platformController));
 router.post('/profile/change-password', requirePlatformAuth, platformController.changePassword.bind(platformController));
 router.post('/profile/two-factor/send-enable-otp', requirePlatformAuth, platformController.sendTwoFactorEnableOtp.bind(platformController));
 router.post('/profile/two-factor/verify-enable', requirePlatformAuth, platformController.verifyTwoFactorEnable.bind(platformController));

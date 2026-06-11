@@ -4,6 +4,7 @@ import {
 } from 'antd';
 import {
   ArrowLeftOutlined, ReloadOutlined, LogoutOutlined, UserOutlined, BankOutlined, ClockCircleOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import platformApi from '../services/platformApi';
@@ -266,6 +267,16 @@ export default function PlatformActiveSessionDetail() {
               <Descriptions.Item label="Signed in at">{formatWhen(session.created_at)}</Descriptions.Item>
               <Descriptions.Item label="Last activity">{formatWhen(session.last_activity_at)}</Descriptions.Item>
               <Descriptions.Item label="IP address">{session.ip_address || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Login location">
+                <Space size={6} wrap>
+                  <EnvironmentOutlined style={{ color: '#1677ff' }} />
+                  <span>
+                    {session.location_label
+                      || (['127.0.0.1', '::1'].includes(session.ip_address) ? 'Local network' : 'Resolving…')}
+                    {session.location_country_code ? ` (${session.location_country_code})` : ''}
+                  </span>
+                </Space>
+              </Descriptions.Item>
               <Descriptions.Item label="Browser / device" span={isNarrow ? 1 : 2}>
                 {parseBrowser(session.user_agent)}
               </Descriptions.Item>

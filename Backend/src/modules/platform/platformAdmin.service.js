@@ -13,6 +13,8 @@ const PLATFORM_RESET_PURPOSE = 'platform_password_reset';
 const PLATFORM_LOGIN_PURPOSE = 'platform_login';
 const PLATFORM_2FA_ENABLE_PURPOSE = 'platform_two_factor_enable';
 const PLATFORM_2FA_DISABLE_PURPOSE = 'platform_two_factor_disable';
+const PLATFORM_EMAIL_CHANGE_PURPOSE = 'platform_email_change';
+const PLATFORM_PASSWORD_CHANGE_PURPOSE = 'platform_password_change';
 const MIN_PASSWORD_LENGTH = 8;
 
 /** Feature keys stored in subscription_plans.features JSON; `all` grants every module. */
@@ -232,7 +234,61 @@ async function getProfile(adminId) {
   return mapAdminProfile(admin);
 }
 
-async function updateProfile(adminId, { name, email }) {
+async function sendOtpToEmail({ purpose, email, userId, subject, textPrefix }) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error('Valid email is required');
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  await otpService.createOtp({
+    purpose,
+    email: normalized,
+    userId,
+    otp,
+    ttlMs: OTP_TTL_MS,
+  });
+
+  try {
+    await emailService.sendEmail({
+      to: normalized,
+      subject,
+      text: `${textPrefix}: ${otp}. It expires in 5 minutes.`,
+      html: `<p>${textPrefix}: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`,
+    });
+  } catch (emailErr) {
+    logger.warn('Platform OTP email failed', { email: normalized, purpose, error: emailErr.message });
+    throw new Error('Failed to send OTP email. Check SMTP configuration and try again.');
+  }
+
+  return { email: normalized };
+}
+
+async function sendEmailChangeOtp(adminId, newEmail) {
+  await ensureSchema();
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+
+  const nextEmail = normalizeEmail(newEmail);
+  if (!nextEmail) throw new Error('Valid email is required');
+  if (nextEmail === admin.email) throw new Error('New email is the same as your current email.');
+
+  const existing = await db.query(
+    'SELECT id FROM platform_admins WHERE email = ? AND id != ? LIMIT 1',
+    [nextEmail, adminId]
+  );
+  if (existing.length > 0) throw new Error('Another platform admin already uses this email.');
+
+  const data = await sendOtpToEmail({
+    purpose: PLATFORM_EMAIL_CHANGE_PURPOSE,
+    email: nextEmail,
+    userId: adminId,
+    subject: 'Verify Your New Platform Admin Email',
+    textPrefix: 'Your code to verify your new platform admin email is',
+  });
+  logger.info('Platform email change OTP sent', { adminId, newEmail: nextEmail });
+  return data;
+}
+
+async function updateProfile(adminId, { name, email, emailOtp }) {
   await ensureSchema();
   const admin = await getAdminRowById(adminId);
   if (admin.status !== 'active') throw new Error('Account is disabled');
@@ -249,6 +305,16 @@ async function updateProfile(adminId, { name, email }) {
       [nextEmail, adminId]
     );
     if (existing.length > 0) throw new Error('Another platform admin already uses this email.');
+
+    if (!emailOtp) {
+      throw new Error('OTP is required to change your email. Request a verification code sent to the new address.');
+    }
+
+    await otpService.verifyOtp({
+      purpose: PLATFORM_EMAIL_CHANGE_PURPOSE,
+      email: nextEmail,
+      otp: String(emailOtp).trim(),
+    });
   }
 
   await db.query(
@@ -260,13 +326,40 @@ async function updateProfile(adminId, { name, email }) {
   return getProfile(adminId);
 }
 
-async function changePassword(adminId, currentPassword, newPassword) {
+async function sendPasswordChangeOtp(adminId, currentPassword) {
   await ensureSchema();
   const admin = await getAdminRowById(adminId);
   if (admin.status !== 'active') throw new Error('Account is disabled');
 
+  if (!currentPassword) throw new Error('Current password is required');
   const ok = await bcrypt.compare(currentPassword, admin.password_hash);
   if (!ok) throw new Error('Current password is incorrect');
+
+  const data = await sendPlatformOtp(
+    admin,
+    PLATFORM_PASSWORD_CHANGE_PURPOSE,
+    'Confirm Platform Admin Password Change',
+    'Your code to change your platform admin password is'
+  );
+  logger.info('Platform password change OTP sent', { adminId });
+  return data;
+}
+
+async function changePassword(adminId, currentPassword, newPassword, otp) {
+  await ensureSchema();
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+
+  if (!otp) throw new Error('OTP is required to change your password.');
+
+  const ok = await bcrypt.compare(currentPassword, admin.password_hash);
+  if (!ok) throw new Error('Current password is incorrect');
+
+  await otpService.verifyOtp({
+    purpose: PLATFORM_PASSWORD_CHANGE_PURPOSE,
+    email: admin.email,
+    otp: String(otp).trim(),
+  });
 
   assertPasswordStrength(newPassword);
   const passwordHash = await bcrypt.hash(newPassword, 12);
@@ -1172,7 +1265,9 @@ module.exports = {
   verifyLoginOtp,
   getProfile,
   updateProfile,
+  sendEmailChangeOtp,
   changePassword,
+  sendPasswordChangeOtp,
   sendTwoFactorEnableOtp,
   verifyAndEnableTwoFactor,
   sendTwoFactorDisableOtp,
