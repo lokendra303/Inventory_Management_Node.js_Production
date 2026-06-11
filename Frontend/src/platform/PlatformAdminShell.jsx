@@ -39,6 +39,7 @@ export default function PlatformAdminShell() {
     if (path.startsWith('/platform/institutions')) return ['/platform/institutions'];
     if (path.startsWith('/platform/plans')) return ['/platform/plans'];
     if (path.startsWith('/platform/subscription-requests')) return ['/platform/subscription-requests'];
+    if (path.startsWith('/platform/activity/sessions')) return ['/platform/activity'];
     if (path.startsWith('/platform/activity')) return ['/platform/activity'];
     if (path.startsWith('/platform/profile')) return ['/platform/profile'];
     return ['/platform/dashboard'];

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Card, Table, Typography, Spin, Tag, Button, Space, Grid, Tabs, Input, Popconfirm, message,
 } from 'antd';
-import { ReloadOutlined, LogoutOutlined } from '@ant-design/icons';
+import { ReloadOutlined, LogoutOutlined, EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import platformApi from '../services/platformApi';
 import { institutionStatusLabel } from '../config/institutionDisplay';
@@ -184,12 +184,37 @@ export default function PlatformActivity() {
         </Space>
       ),
     },
-    { title: 'User email', dataIndex: 'email', key: 'email', ellipsis: true },
+    {
+      title: 'User email',
+      dataIndex: 'email',
+      key: 'email',
+      ellipsis: true,
+      render: (email, r) => (
+        <Button
+          type="link"
+          style={{ padding: 0, height: 'auto' }}
+          onClick={() => navigate(`/platform/activity/sessions/${r.session_id}`)}
+        >
+          {email}
+        </Button>
+      ),
+    },
     {
       title: 'Name',
       key: 'nm',
       width: 140,
-      render: (_, r) => `${r.first_name || ''} ${r.last_name || ''}`.trim() || '—',
+      render: (_, r) => {
+        const name = `${r.first_name || ''} ${r.last_name || ''}`.trim() || '—';
+        return (
+          <Button
+            type="link"
+            style={{ padding: 0, height: 'auto' }}
+            onClick={() => navigate(`/platform/activity/sessions/${r.session_id}`)}
+          >
+            {name}
+          </Button>
+        );
+      },
     },
     { title: 'Role', dataIndex: 'role', key: 'role', width: 110 },
     {
@@ -209,10 +234,19 @@ export default function PlatformActivity() {
     {
       title: 'Actions',
       key: 'actions',
-      width: 220,
+      width: 280,
       fixed: 'right',
       render: (_, r) => (
         <Space size="small" wrap>
+          <Button
+            size="small"
+            type="primary"
+            ghost
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/platform/activity/sessions/${r.session_id}`)}
+          >
+            View
+          </Button>
           <Popconfirm
             title="End this session?"
             description="The user will be logged out on their next API call."

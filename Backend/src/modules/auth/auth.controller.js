@@ -1,6 +1,10 @@
 const authService = require('./auth.service');
 const logger = require('../../utils/logger');
 
+function requestMeta(req) {
+  return { ip: req.ip, userAgent: req.get('User-Agent') };
+}
+
 class AuthController {
   async sendOtp(req, res) {
     try {
@@ -110,14 +114,10 @@ class AuthController {
     return this.registerInstitution(req, res);
   }
 
-  _requestMeta(req) {
-    return { ip: req.ip, userAgent: req.get('User-Agent') };
-  }
-
   async login(req, res) {
     try {
       const { email, password, institutionId } = req.body;
-      const loginResult = await authService.initiateLogin(email, password, institutionId, this._requestMeta(req));
+      const loginResult = await authService.initiateLogin(email, password, institutionId, requestMeta(req));
 
       if (!loginResult.requiresOtp && loginResult.tokenData) {
         return res.json({
@@ -150,7 +150,7 @@ class AuthController {
       if (!email || !otp || !institutionId) {
         return res.status(400).json({ success: false, error: 'email, otp, and institutionId are required.' });
       }
-      const result = await authService.verifyOtp(email, otp, institutionId, this._requestMeta(req));
+      const result = await authService.verifyOtp(email, otp, institutionId, requestMeta(req));
       res.json({
         success: true,
         message: 'Login successful',

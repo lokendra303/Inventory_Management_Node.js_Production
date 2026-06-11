@@ -14,6 +14,7 @@ import PlatformTenants from './platform/PlatformTenants.jsx';
 import PlatformTenantDetail from './platform/PlatformTenantDetail.jsx';
 import PlatformPlans from './platform/PlatformPlans.jsx';
 import PlatformActivity from './platform/PlatformActivity.jsx';
+import PlatformActiveSessionDetail from './platform/PlatformActiveSessionDetail.jsx';
 import PlatformProfile from './platform/PlatformProfile.jsx';
 import PlatformSubscriptionRequests from './platform/PlatformSubscriptionRequests.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
@@ -276,6 +277,7 @@ function App() {
             <Route path="plans" element={<PlatformPlans />} />
             <Route path="subscription-requests" element={<PlatformSubscriptionRequests />} />
             <Route path="activity" element={<PlatformActivity />} />
+            <Route path="activity/sessions/:sessionId" element={<PlatformActiveSessionDetail />} />
             <Route path="profile" element={<PlatformProfile />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Route>

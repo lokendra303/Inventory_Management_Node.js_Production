@@ -1082,6 +1082,13 @@ async function listActiveSessions(filters = {}) {
   }
 }
 
+async function getActiveSessionDetail(sessionId, query = {}) {
+  await ensureSchema();
+  const data = await userSessionService.getSessionDetail(sessionId, query);
+  if (!data) throw new Error('Session not found');
+  return data;
+}
+
 async function revokeSessionById(sessionId, platformAdminId, reason = null) {
   await ensureSchema();
   const count = await userSessionService.revokeSession(sessionId, platformAdminId, reason || 'Force logout by platform admin');
@@ -1182,6 +1189,7 @@ module.exports = {
   updateSubscriptionPlan,
   getRecentTenantLogins,
   listActiveSessions,
+  getActiveSessionDetail,
   revokeSessionById,
   revokeUserSessionsById,
   revokeInstitutionSessionsById,

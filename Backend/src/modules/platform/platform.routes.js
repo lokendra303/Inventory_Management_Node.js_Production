@@ -34,6 +34,7 @@ router.post('/plans', requirePlatformAuth, platformController.createPlan.bind(pl
 router.patch('/plans/:planId', requirePlatformAuth, platformController.updatePlan.bind(platformController));
 router.get('/activity/recent-logins', requirePlatformAuth, platformController.recentLogins.bind(platformController));
 router.get('/activity/active-sessions', requirePlatformAuth, platformController.activeSessions.bind(platformController));
+router.get('/activity/sessions/:sessionId', requirePlatformAuth, platformController.getSessionDetail.bind(platformController));
 router.post('/activity/sessions/:sessionId/revoke', requirePlatformAuth, platformController.revokeSession.bind(platformController));
 router.post('/activity/users/:userId/revoke-sessions', requirePlatformAuth, platformController.revokeUserSessions.bind(platformController));
 router.post('/activity/institutions/:id/revoke-sessions', requirePlatformAuth, platformController.revokeInstitutionSessions.bind(platformController));

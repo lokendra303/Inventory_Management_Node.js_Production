@@ -104,38 +104,43 @@ class ApiService {
         return response.data;
       },
       async (error) => {
-        const friendlyMessage = this.getFriendlyErrorMessage(error);
-        this.attachFriendlyError(error, friendlyMessage);
+        const sessionCode = error.response?.data?.code;
+        const isSessionEvent = ['SESSION_REVOKED', 'SESSION_EXPIRED', 'SESSION_TIMEOUT'].includes(sessionCode);
 
         if (error.response?.status === 401) {
-          // Check if it's a session timeout error
-          const isSessionTimeout = error.response?.data?.code === 'SESSION_TIMEOUT';
-          const isSessionRevoked = error.response?.data?.code === 'SESSION_REVOKED';
-          
-          // Only show session expired modal if user was logged in (has token)
-          // Don't show for login/profile endpoint failures
           const reqUrl = error.config?.url || '';
           const isAuthEndpoint = reqUrl.includes('/auth/login') ||
                                  reqUrl.includes('/auth/profile');
-          // Public barcode relay — should not clear tenant session if something mis-returns 401
           const isBarcodeRelay = reqUrl.includes('/barcode/');
           const hadToken = sessionStorage.getItem('token');
-          
+
           if (!isAuthEndpoint && !isBarcodeRelay && hadToken) {
             sessionStorage.removeItem('token');
             sessionStorage.removeItem('user');
             sessionStorage.removeItem('lastActivity');
             sessionStorage.removeItem('institutionId');
+            this.setAuthToken(null);
 
-            if (isSessionRevoked) {
+            error.sessionHandled = true;
+
+            if (sessionCode === 'SESSION_REVOKED') {
               showSessionRevokedModal();
-            } else if (isSessionTimeout) {
-              showSessionExpiredModal();
             } else {
               showSessionExpiredModal();
             }
+
+            return Promise.reject(error);
           }
-          
+        }
+
+        const friendlyMessage = isSessionEvent ? '' : this.getFriendlyErrorMessage(error);
+        if (!isSessionEvent) {
+          this.attachFriendlyError(error, friendlyMessage);
+        } else {
+          error.sessionHandled = true;
+        }
+
+        if (error.response?.status === 401) {
           return Promise.reject(error);
         } else if (error.response?.status === 429) {
           // Handle rate limiting with exponential backoff and max retries
@@ -184,7 +189,8 @@ class ApiService {
   }
 
   getFriendlyErrorMessage(error) {
-    if (error?.response?.data?.code === 'SESSION_REVOKED') {
+    const sessionCode = error?.response?.data?.code;
+    if (['SESSION_REVOKED', 'SESSION_EXPIRED', 'SESSION_TIMEOUT'].includes(sessionCode)) {
       return '';
     }
 

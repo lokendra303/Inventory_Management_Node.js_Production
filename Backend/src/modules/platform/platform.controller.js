@@ -277,6 +277,16 @@ class PlatformController {
     }
   }
 
+  async getSessionDetail(req, res) {
+    try {
+      const data = await platformAdminService.getActiveSessionDetail(req.params.sessionId, req.query || {});
+      res.json({ success: true, data });
+    } catch (error) {
+      const status = error.message === 'Session not found' ? 404 : 400;
+      res.status(status).json({ success: false, error: error.message });
+    }
+  }
+
   async revokeSession(req, res) {
     try {
       const { reason } = req.body || {};

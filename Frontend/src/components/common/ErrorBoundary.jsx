@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal } from 'antd';
+import { showSessionExpiredModal } from '../../utils/sessionModals';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -19,18 +19,9 @@ class ErrorBoundary extends React.Component {
       
       const token = sessionStorage.getItem('token');
       if (token) {
-        Modal.warning({
-          title: 'Session Expired',
-          content: 'Your session has expired. Please login again.',
-          okText: 'Login',
-          onOk: () => {
-            sessionStorage.removeItem('token');
-            sessionStorage.removeItem('lastActivity');
-            window.location.href = '/';
-          },
-          centered: true,
-          maskClosable: false,
-        });
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('lastActivity');
+        showSessionExpiredModal();
       }
     }
   }

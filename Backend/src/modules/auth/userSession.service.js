@@ -125,6 +125,127 @@ async function listActiveSessions({ institutionId, search, page = 1, limit = 50 
   return { data, total, page: pageInt, limit: limitInt, activeWindowMinutes: ACTIVE_WINDOW_MINUTES };
 }
 
+async function getSessionDetail(sessionId, { operationsLimit = 50 } = {}) {
+  if (!sessionId) throw new Error('sessionId is required');
+
+  const rows = await db.query(
+    `SELECT s.id AS session_id, s.user_id, s.institution_id, s.ip_address, s.user_agent,
+            s.created_at, s.last_activity_at, s.revoked_at, s.revoke_reason,
+            UNIX_TIMESTAMP(s.created_at) AS created_unix,
+            UNIX_TIMESTAMP(s.last_activity_at) AS last_activity_unix,
+            UNIX_TIMESTAMP(s.revoked_at) AS revoked_unix,
+            u.email, u.first_name, u.last_name, u.role, u.status AS user_status,
+            u.mobile, u.department, u.designation, u.employee_id, u.last_login,
+            u.two_factor_enabled,
+            i.name AS institution_name, i.status AS institution_status, i.email AS institution_email,
+            i.plan AS institution_plan, i.city AS institution_city, i.country AS institution_country
+       FROM user_sessions s
+       INNER JOIN institution_users u ON u.id = s.user_id
+       INNER JOIN institutions i ON i.id = s.institution_id
+      WHERE s.id = ?
+      LIMIT 1`,
+    [sessionId]
+  );
+
+  if (!rows.length) return null;
+
+  const row = rows[0];
+  const nowSec = Math.floor(Date.now() / 1000);
+  const createdSec = Number(row.created_unix) || 0;
+  const lastActiveSec = Number(row.last_activity_unix) || createdSec;
+  const revokedSec = row.revoked_unix != null ? Number(row.revoked_unix) : null;
+  const activeCutoffSec = nowSec - ACTIVE_WINDOW_MINUTES * 60;
+  const isActive = !row.revoked_at && lastActiveSec >= activeCutoffSec;
+  const endSec = revokedSec ?? nowSec;
+
+  const opLimit = Math.min(100, Math.max(5, parseInt(operationsLimit, 10) || 50));
+
+  let recentOperations = [];
+  let operationCount = 0;
+  try {
+    const countRows = await db.query(
+      `SELECT COUNT(*) AS c
+         FROM audit_logs
+        WHERE user_id = ? AND institution_id = ? AND created_at >= ?`,
+      [row.user_id, row.institution_id, row.created_at]
+    );
+    operationCount = Number(countRows[0]?.c || 0);
+
+    recentOperations = await db.query(
+      `SELECT id, action, entity_type, entity_id, method, path, status_code,
+              description, ip_address, created_at, duration
+         FROM audit_logs
+        WHERE user_id = ? AND institution_id = ? AND created_at >= ?
+        ORDER BY created_at DESC
+        LIMIT ${Number(opLimit)}`,
+      [row.user_id, row.institution_id, row.created_at]
+    );
+  } catch (e) {
+    logger.warn('getSessionDetail: audit logs failed', { error: e.message, sessionId });
+  }
+
+  let otherActiveSessions = 0;
+  try {
+    const otherRows = await db.query(
+      `SELECT COUNT(*) AS c
+         FROM user_sessions
+        WHERE user_id = ? AND id <> ? AND revoked_at IS NULL
+          AND last_activity_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
+      [row.user_id, sessionId, ACTIVE_WINDOW_MINUTES]
+    );
+    otherActiveSessions = Number(otherRows[0]?.c || 0);
+  } catch (e) {
+    logger.warn('getSessionDetail: other sessions count failed', { error: e.message, sessionId });
+  }
+
+  return {
+    session: {
+      session_id: row.session_id,
+      created_at: row.created_at,
+      last_activity_at: row.last_activity_at,
+      revoked_at: row.revoked_at,
+      revoke_reason: row.revoke_reason,
+      ip_address: row.ip_address,
+      user_agent: row.user_agent,
+      is_active: isActive,
+      active_window_minutes: ACTIVE_WINDOW_MINUTES,
+      created_unix: createdSec,
+      last_activity_unix: lastActiveSec,
+      revoked_unix: revokedSec,
+      duration_seconds: Math.max(0, endSec - createdSec),
+      idle_seconds: Math.max(0, endSec - lastActiveSec),
+    },
+    user: {
+      user_id: row.user_id,
+      email: row.email,
+      first_name: row.first_name,
+      last_name: row.last_name,
+      role: row.role,
+      status: row.user_status,
+      mobile: row.mobile,
+      department: row.department,
+      designation: row.designation,
+      employee_id: row.employee_id,
+      last_login: row.last_login,
+      two_factor_enabled: Boolean(row.two_factor_enabled),
+    },
+    institution: {
+      institution_id: row.institution_id,
+      name: row.institution_name,
+      status: row.institution_status,
+      email: row.institution_email,
+      plan: row.institution_plan,
+      city: row.institution_city,
+      country: row.institution_country,
+    },
+    stats: {
+      operations_in_session: operationCount,
+      other_active_sessions: otherActiveSessions,
+    },
+    recent_operations: recentOperations,
+  };
+}
+
 module.exports = {
   createSession,
   touchSession,
@@ -133,4 +254,5 @@ module.exports = {
   revokeUserSessions,
   revokeInstitutionSessions,
   listActiveSessions,
+  getSessionDetail,
 };

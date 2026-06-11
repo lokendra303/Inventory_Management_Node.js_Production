@@ -70,7 +70,7 @@ const Vendors = () => {
       if (error.response?.status === 403) {
         message.error('You do not have permission to view vendors');
       } else if (error.response?.status === 401) {
-        message.error('Session expired — please login again');
+        // Sign-out modal is handled globally by apiService
       } else {
         message.error(error.response?.data?.error || 'Failed to load vendors');
       }
