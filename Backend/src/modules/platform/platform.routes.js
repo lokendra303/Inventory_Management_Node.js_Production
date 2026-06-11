@@ -4,9 +4,21 @@ const { requirePlatformAuth } = require('./platform.middleware');
 
 const router = express.Router();
 
+router.get('/auth/setup-status', platformController.setupStatus.bind(platformController));
+router.post('/auth/setup', platformController.setup.bind(platformController));
 router.post('/auth/login', platformController.login.bind(platformController));
+router.post('/auth/verify-login-otp', platformController.verifyLoginOtp.bind(platformController));
+router.post('/auth/forgot-password', platformController.forgotPassword.bind(platformController));
+router.post('/auth/verify-reset-otp', platformController.verifyResetOtp.bind(platformController));
+router.post('/auth/reset-password', platformController.resetPassword.bind(platformController));
 
 router.get('/me', requirePlatformAuth, platformController.me.bind(platformController));
+router.patch('/profile', requirePlatformAuth, platformController.updateProfile.bind(platformController));
+router.post('/profile/change-password', requirePlatformAuth, platformController.changePassword.bind(platformController));
+router.post('/profile/two-factor/send-enable-otp', requirePlatformAuth, platformController.sendTwoFactorEnableOtp.bind(platformController));
+router.post('/profile/two-factor/verify-enable', requirePlatformAuth, platformController.verifyTwoFactorEnable.bind(platformController));
+router.post('/profile/two-factor/send-disable-otp', requirePlatformAuth, platformController.sendTwoFactorDisableOtp.bind(platformController));
+router.post('/profile/two-factor/verify-disable', requirePlatformAuth, platformController.verifyTwoFactorDisable.bind(platformController));
 router.get('/stats', requirePlatformAuth, platformController.stats.bind(platformController));
 router.get('/institutions/export', requirePlatformAuth, platformController.exportInstitutions.bind(platformController));
 router.get('/institutions', requirePlatformAuth, platformController.listInstitutions.bind(platformController));

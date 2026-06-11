@@ -23,7 +23,16 @@ platformApi.interceptors.request.use((config) => {
 platformApi.interceptors.response.use(
   (res) => (res.config.responseType === 'blob' ? res : res.data),
   (error) => {
-    if (error.response?.status === 401 && !error.config?.url?.includes('/platform/auth/login')) {
+    const url = error.config?.url || '';
+    const isPublicAuth =
+      url.includes('/platform/auth/login') ||
+      url.includes('/platform/auth/setup') ||
+      url.includes('/platform/auth/setup-status') ||
+      url.includes('/platform/auth/forgot-password') ||
+      url.includes('/platform/auth/verify-reset-otp') ||
+      url.includes('/platform/auth/reset-password') ||
+      url.includes('/platform/auth/verify-login-otp');
+    if (error.response?.status === 401 && !isPublicAuth) {
       sessionStorage.removeItem(TOKEN_KEY);
       window.location.href = '/platform/login';
     }

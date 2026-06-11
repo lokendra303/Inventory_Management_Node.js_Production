@@ -5,7 +5,15 @@ const db = require('../../database/connection');
 const config = require('../../config');
 const logger = require('../../utils/logger');
 const emailService = require('../../services/emailService');
+const otpService = require('../auth/otp.service');
 const subscriptionService = require('../subscription/subscription.service');
+
+const OTP_TTL_MS = 5 * 60 * 1000;
+const PLATFORM_RESET_PURPOSE = 'platform_password_reset';
+const PLATFORM_LOGIN_PURPOSE = 'platform_login';
+const PLATFORM_2FA_ENABLE_PURPOSE = 'platform_two_factor_enable';
+const PLATFORM_2FA_DISABLE_PURPOSE = 'platform_two_factor_disable';
+const MIN_PASSWORD_LENGTH = 8;
 
 /** Feature keys stored in subscription_plans.features JSON; `all` grants every module. */
 const PLAN_FEATURE_OPTIONS = [
@@ -38,24 +46,131 @@ function escapeHtml(s) {
 
 async function ensureSchema() {
   if (schemaReady) return;
-
   // platform_admins DDL: migrations / 000_initial_schema — not created at runtime
+  schemaReady = true;
+}
 
-  const { bootstrapEmail, bootstrapPassword, bootstrapName } = config.platform || {};
-  if (bootstrapEmail && bootstrapPassword) {
-    const existing = await db.query('SELECT id FROM platform_admins WHERE email = ?', [bootstrapEmail.trim().toLowerCase()]);
-    if (existing.length === 0) {
-      const hash = await bcrypt.hash(bootstrapPassword, 12);
-      const id = uuidv4();
-      await db.query(
-        `INSERT INTO platform_admins (id, email, password_hash, name, status) VALUES (?, ?, ?, ?, 'active')`,
-        [id, bootstrapEmail.trim().toLowerCase(), hash, bootstrapName || 'Platform Admin']
-      );
-      logger.info('Bootstrap platform admin created', { email: bootstrapEmail.trim().toLowerCase() });
-    }
+function normalizeEmail(email) {
+  return (email || '').trim().toLowerCase();
+}
+
+function assertPasswordStrength(password) {
+  if (!password || String(password).length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+  }
+}
+
+async function countPlatformAdmins() {
+  await ensureSchema();
+  const rows = await db.query('SELECT COUNT(*) AS cnt FROM platform_admins');
+  return Number(rows[0]?.cnt || 0);
+}
+
+async function getSetupStatus() {
+  const count = await countPlatformAdmins();
+  return { needsSetup: count === 0 };
+}
+
+async function setupInitialAdmin({ email, password, name }) {
+  await ensureSchema();
+  if ((await countPlatformAdmins()) > 0) {
+    throw new Error('Platform admin already exists. Use login or forgot password.');
   }
 
-  schemaReady = true;
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error('Email is required');
+  assertPasswordStrength(password);
+
+  const hash = await bcrypt.hash(password, 12);
+  const id = uuidv4();
+  await db.query(
+    `INSERT INTO platform_admins (id, email, password_hash, name, status) VALUES (?, ?, ?, ?, 'active')`,
+    [id, normalized, hash, (name || 'Platform Admin').trim().slice(0, 120)]
+  );
+  logger.info('Initial platform admin created', { email: normalized });
+  return login(normalized, password);
+}
+
+async function forgotPassword(email) {
+  await ensureSchema();
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error('Email is required');
+
+  const rows = await db.query(
+    'SELECT id, email, status FROM platform_admins WHERE email = ? LIMIT 1',
+    [normalized]
+  );
+  if (rows.length === 0) {
+    throw new Error('This email is not registered as a platform admin.');
+  }
+  if (rows[0].status !== 'active') {
+    throw new Error('Account is disabled. Contact support.');
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  await otpService.createOtp({
+    purpose: PLATFORM_RESET_PURPOSE,
+    email: normalized,
+    otp,
+    userId: rows[0].id,
+    ttlMs: OTP_TTL_MS,
+  });
+
+  try {
+    await emailService.sendEmail({
+      to: normalized,
+      subject: 'Platform Admin Password Reset OTP',
+      text: `Your platform admin password reset OTP is: ${otp}. It expires in 5 minutes. Do not share it.`,
+      html: `<p>Your platform admin password reset OTP is: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`,
+    });
+  } catch (emailErr) {
+    logger.warn('Platform reset OTP email failed', { email: normalized, error: emailErr.message });
+    throw new Error('Failed to send OTP email. Check SMTP configuration and try again.');
+  }
+
+  logger.info('Platform password reset OTP sent', { email: normalized });
+  return { success: true };
+}
+
+async function verifyResetOtp(email, otp) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !otp) throw new Error('Email and OTP are required');
+
+  await otpService.verifyOtp({
+    purpose: PLATFORM_RESET_PURPOSE,
+    email: normalized,
+    otp,
+  });
+
+  const resetToken = jwt.sign(
+    { email: normalized, purpose: PLATFORM_RESET_PURPOSE },
+    config.jwt.secret,
+    { expiresIn: '10m' }
+  );
+  return { resetToken };
+}
+
+async function resetPassword(resetToken, newPassword) {
+  let decoded;
+  try {
+    decoded = jwt.verify(resetToken, config.jwt.secret);
+  } catch {
+    throw new Error('Reset link has expired or is invalid. Please start over.');
+  }
+  if (decoded.purpose !== PLATFORM_RESET_PURPOSE) {
+    throw new Error('Invalid reset token.');
+  }
+
+  assertPasswordStrength(newPassword);
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  const result = await db.query(
+    `UPDATE platform_admins SET password_hash = ?, updated_at = NOW() WHERE email = ? AND status = 'active'`,
+    [passwordHash, decoded.email]
+  );
+  if (result.affectedRows === 0) throw new Error('Platform admin not found.');
+
+  logger.info('Platform admin password reset successful', { email: decoded.email });
+  return { success: true };
 }
 
 function signPlatformToken(admin) {
@@ -80,20 +195,201 @@ async function verifyPlatformToken(token) {
     throw new Error('Invalid platform token');
   }
   const rows = await db.query(
-    'SELECT id, email, name, status FROM platform_admins WHERE id = ? AND status = ?',
+    'SELECT id, email, name, status, two_factor_enabled FROM platform_admins WHERE id = ? AND status = ?',
     [decoded.adminId, 'active']
   );
   if (rows.length === 0) throw new Error('Platform admin not found or inactive');
   return { ...decoded, admin: rows[0] };
 }
 
-async function login(email, password) {
+function mapAdminProfile(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    status: row.status,
+    twoFactorEnabled: Boolean(row.two_factor_enabled),
+    lastLogin: row.last_login || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+async function getAdminRowById(adminId) {
+  const rows = await db.query(
+    `SELECT id, email, password_hash, name, status, two_factor_enabled, last_login, created_at, updated_at
+       FROM platform_admins WHERE id = ? LIMIT 1`,
+    [adminId]
+  );
+  if (rows.length === 0) throw new Error('Platform admin not found');
+  return rows[0];
+}
+
+async function getProfile(adminId) {
   await ensureSchema();
-  const normalized = (email || '').trim().toLowerCase();
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+  return mapAdminProfile(admin);
+}
+
+async function updateProfile(adminId, { name, email }) {
+  await ensureSchema();
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+
+  const nextName = name !== undefined ? String(name).trim().slice(0, 120) : admin.name;
+  const nextEmail = email !== undefined ? normalizeEmail(email) : admin.email;
+
+  if (!nextName) throw new Error('Name is required');
+  if (!nextEmail) throw new Error('Email is required');
+
+  if (nextEmail !== admin.email) {
+    const existing = await db.query(
+      'SELECT id FROM platform_admins WHERE email = ? AND id != ? LIMIT 1',
+      [nextEmail, adminId]
+    );
+    if (existing.length > 0) throw new Error('Another platform admin already uses this email.');
+  }
+
+  await db.query(
+    'UPDATE platform_admins SET name = ?, email = ?, updated_at = NOW() WHERE id = ?',
+    [nextName, nextEmail, adminId]
+  );
+
+  logger.info('Platform admin profile updated', { adminId, email: nextEmail });
+  return getProfile(adminId);
+}
+
+async function changePassword(adminId, currentPassword, newPassword) {
+  await ensureSchema();
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+
+  const ok = await bcrypt.compare(currentPassword, admin.password_hash);
+  if (!ok) throw new Error('Current password is incorrect');
+
+  assertPasswordStrength(newPassword);
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await db.query(
+    'UPDATE platform_admins SET password_hash = ?, updated_at = NOW() WHERE id = ?',
+    [passwordHash, adminId]
+  );
+
+  logger.info('Platform admin password changed', { adminId });
+  return { success: true };
+}
+
+async function sendPlatformOtp(admin, purpose, subject, textPrefix) {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  await otpService.createOtp({
+    purpose,
+    email: admin.email,
+    otp,
+    userId: admin.id,
+    ttlMs: OTP_TTL_MS,
+  });
+
+  try {
+    await emailService.sendEmail({
+      to: admin.email,
+      subject,
+      text: `${textPrefix}: ${otp}. It expires in 5 minutes.`,
+      html: `<p>${textPrefix}: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`,
+    });
+  } catch (emailErr) {
+    logger.warn('Platform OTP email failed', { email: admin.email, purpose, error: emailErr.message });
+    throw new Error('Failed to send OTP email. Check SMTP configuration and try again.');
+  }
+
+  return { email: admin.email };
+}
+
+async function sendTwoFactorEnableOtp(adminId) {
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+  if (admin.two_factor_enabled) throw new Error('Two-factor authentication is already enabled.');
+
+  await sendPlatformOtp(
+    admin,
+    PLATFORM_2FA_ENABLE_PURPOSE,
+    'Confirm Platform Admin Two-Factor Authentication',
+    'Your code to enable two-factor authentication is'
+  );
+  logger.info('Platform 2FA enable OTP sent', { adminId });
+  return { email: admin.email };
+}
+
+async function verifyAndEnableTwoFactor(adminId, otp) {
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+  if (admin.two_factor_enabled) throw new Error('Two-factor authentication is already enabled.');
+
+  await otpService.verifyOtp({
+    purpose: PLATFORM_2FA_ENABLE_PURPOSE,
+    email: admin.email,
+    otp,
+  });
+
+  await db.query(
+    'UPDATE platform_admins SET two_factor_enabled = 1, updated_at = NOW() WHERE id = ?',
+    [adminId]
+  );
+  logger.info('Platform two-factor authentication enabled', { adminId });
+  return { twoFactorEnabled: true, email: admin.email };
+}
+
+async function sendTwoFactorDisableOtp(adminId) {
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+  if (!admin.two_factor_enabled) throw new Error('Two-factor authentication is already disabled.');
+
+  await sendPlatformOtp(
+    admin,
+    PLATFORM_2FA_DISABLE_PURPOSE,
+    'Confirm Platform Admin Two-Factor Disable',
+    'Your code to disable two-factor authentication is'
+  );
+  logger.info('Platform 2FA disable OTP sent', { adminId });
+  return { email: admin.email };
+}
+
+async function verifyAndDisableTwoFactor(adminId, otp) {
+  const admin = await getAdminRowById(adminId);
+  if (admin.status !== 'active') throw new Error('Account is disabled');
+  if (!admin.two_factor_enabled) throw new Error('Two-factor authentication is already disabled.');
+
+  await otpService.verifyOtp({
+    purpose: PLATFORM_2FA_DISABLE_PURPOSE,
+    email: admin.email,
+    otp,
+  });
+
+  await db.query(
+    'UPDATE platform_admins SET two_factor_enabled = 0, updated_at = NOW() WHERE id = ?',
+    [adminId]
+  );
+  logger.info('Platform two-factor authentication disabled', { adminId });
+  return { twoFactorEnabled: false, email: admin.email };
+}
+
+async function completeLogin(admin) {
+  await db.query('UPDATE platform_admins SET last_login = NOW() WHERE id = ?', [admin.id]);
+  const token = signPlatformToken(admin);
+  return {
+    requiresOtp: false,
+    token,
+    admin: { id: admin.id, email: admin.email, name: admin.name },
+  };
+}
+
+async function validateLoginCredentials(email, password) {
+  await ensureSchema();
+  const normalized = normalizeEmail(email);
   if (!normalized || !password) throw new Error('Email and password are required');
 
   const rows = await db.query(
-    'SELECT id, email, password_hash, name, status FROM platform_admins WHERE email = ?',
+    `SELECT id, email, password_hash, name, status, two_factor_enabled
+       FROM platform_admins WHERE email = ?`,
     [normalized]
   );
   if (rows.length === 0) throw new Error('Invalid email or password');
@@ -103,13 +399,46 @@ async function login(email, password) {
   const ok = await bcrypt.compare(password, admin.password_hash);
   if (!ok) throw new Error('Invalid email or password');
 
-  await db.query('UPDATE platform_admins SET last_login = NOW() WHERE id = ?', [admin.id]);
+  return admin;
+}
 
-  const token = signPlatformToken(admin);
-  return {
-    token,
-    admin: { id: admin.id, email: admin.email, name: admin.name },
-  };
+async function login(email, password) {
+  const admin = await validateLoginCredentials(email, password);
+
+  if (!admin.two_factor_enabled) {
+    logger.info('Platform login without OTP (2FA disabled)', { adminId: admin.id, email: admin.email });
+    return completeLogin(admin);
+  }
+
+  await sendPlatformOtp(
+    admin,
+    PLATFORM_LOGIN_PURPOSE,
+    'Platform Admin Login OTP',
+    'Your platform admin login OTP is'
+  );
+  logger.info('Platform login OTP sent', { adminId: admin.id, email: admin.email });
+  return { requiresOtp: true, email: admin.email };
+}
+
+async function verifyLoginOtp(email, otp) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !otp) throw new Error('Email and OTP are required');
+
+  await otpService.verifyOtp({
+    purpose: PLATFORM_LOGIN_PURPOSE,
+    email: normalized,
+    otp,
+  });
+
+  const rows = await db.query(
+    `SELECT id, email, name, status, two_factor_enabled
+       FROM platform_admins WHERE email = ? AND status = 'active' LIMIT 1`,
+    [normalized]
+  );
+  if (rows.length === 0) throw new Error('Platform admin not found.');
+
+  logger.info('Platform login OTP verified', { adminId: rows[0].id, email: normalized });
+  return completeLogin(rows[0]);
 }
 
 async function getDashboardStats() {
@@ -790,7 +1119,20 @@ async function exportInstitutionsCsv() {
 
 module.exports = {
   ensureSchema,
+  getSetupStatus,
+  setupInitialAdmin,
+  forgotPassword,
+  verifyResetOtp,
+  resetPassword,
   login,
+  verifyLoginOtp,
+  getProfile,
+  updateProfile,
+  changePassword,
+  sendTwoFactorEnableOtp,
+  verifyAndEnableTwoFactor,
+  sendTwoFactorDisableOtp,
+  verifyAndDisableTwoFactor,
   verifyPlatformToken,
   getDashboardStats,
   listInstitutions,

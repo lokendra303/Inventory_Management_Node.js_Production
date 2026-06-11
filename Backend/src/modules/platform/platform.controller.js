@@ -3,6 +3,26 @@ const subscriptionService = require('../subscription/subscription.service');
 const logger = require('../../utils/logger');
 
 class PlatformController {
+  async setupStatus(req, res) {
+    try {
+      const data = await platformAdminService.getSetupStatus();
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async setup(req, res) {
+    try {
+      const { email, password, name } = req.body;
+      const result = await platformAdminService.setupInitialAdmin({ email, password, name });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      logger.warn('Platform setup failed', { email: req.body?.email, error: error.message });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
   async login(req, res) {
     try {
       const { email, password } = req.body;
@@ -14,8 +34,112 @@ class PlatformController {
     }
   }
 
+  async verifyLoginOtp(req, res) {
+    try {
+      const { email, otp } = req.body;
+      const result = await platformAdminService.verifyLoginOtp(email, otp);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      logger.warn('Platform login OTP failed', { email: req.body?.email, error: error.message });
+      res.status(401).json({ success: false, error: error.message });
+    }
+  }
+
+  async forgotPassword(req, res) {
+    try {
+      const { email } = req.body;
+      await platformAdminService.forgotPassword(email);
+      res.json({ success: true, message: 'OTP sent to your email.' });
+    } catch (error) {
+      logger.warn('Platform forgot password failed', { email: req.body?.email, error: error.message });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async verifyResetOtp(req, res) {
+    try {
+      const { email, otp } = req.body;
+      const data = await platformAdminService.verifyResetOtp(email, otp);
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async resetPassword(req, res) {
+    try {
+      const { resetToken, newPassword } = req.body;
+      await platformAdminService.resetPassword(resetToken, newPassword);
+      res.json({ success: true, message: 'Password reset successfully.' });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
   async me(req, res) {
-    res.json({ success: true, data: { admin: req.platformAdmin } });
+    try {
+      const admin = await platformAdminService.getProfile(req.platformAdmin.id);
+      res.json({ success: true, data: { admin } });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async updateProfile(req, res) {
+    try {
+      const admin = await platformAdminService.updateProfile(req.platformAdmin.id, req.body || {});
+      res.json({ success: true, data: { admin } });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async changePassword(req, res) {
+    try {
+      const { currentPassword, newPassword } = req.body || {};
+      await platformAdminService.changePassword(req.platformAdmin.id, currentPassword, newPassword);
+      res.json({ success: true, message: 'Password changed successfully.' });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async sendTwoFactorEnableOtp(req, res) {
+    try {
+      const data = await platformAdminService.sendTwoFactorEnableOtp(req.platformAdmin.id);
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async verifyTwoFactorEnable(req, res) {
+    try {
+      const { otp } = req.body || {};
+      const data = await platformAdminService.verifyAndEnableTwoFactor(req.platformAdmin.id, otp);
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async sendTwoFactorDisableOtp(req, res) {
+    try {
+      const data = await platformAdminService.sendTwoFactorDisableOtp(req.platformAdmin.id);
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async verifyTwoFactorDisable(req, res) {
+    try {
+      const { otp } = req.body || {};
+      const data = await platformAdminService.verifyAndDisableTwoFactor(req.platformAdmin.id, otp);
+      res.json({ success: true, data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
   }
 
   async stats(req, res) {

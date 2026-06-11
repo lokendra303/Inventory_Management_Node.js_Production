@@ -193,8 +193,20 @@ A separate control plane for the vendor's operations team. Uses a different
 JWT and skips the per-institution middleware:
 
 ```
+GET  /api/platform/auth/setup-status
+POST /api/platform/auth/setup          (first admin only, when table empty)
 POST /api/platform/auth/login
+POST /api/platform/auth/forgot-password
+POST /api/platform/auth/verify-reset-otp
+POST /api/platform/auth/reset-password
+POST /api/platform/auth/verify-login-otp   (when 2FA enabled)
 GET  /api/platform/me
+PATCH /api/platform/profile
+POST /api/platform/profile/change-password
+POST /api/platform/profile/two-factor/send-enable-otp
+POST /api/platform/profile/two-factor/verify-enable
+POST /api/platform/profile/two-factor/send-disable-otp
+POST /api/platform/profile/two-factor/verify-disable
 GET  /api/platform/stats
 GET  /api/platform/institutions
 PATCH /api/platform/institutions/:id

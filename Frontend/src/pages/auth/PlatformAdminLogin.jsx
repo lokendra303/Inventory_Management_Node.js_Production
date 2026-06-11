@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Form, Input } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { Form, Input, message } from 'antd';
 import {
   LockOutlined, MailOutlined, ArrowRightOutlined,
-  SafetyCertificateOutlined, ArrowLeftOutlined
+  SafetyCertificateOutlined, ArrowLeftOutlined, UserOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import platformApi, { platformToken } from '../../services/platformApi';
@@ -242,6 +242,40 @@ const CSS = `
     text-align: center;
   }
 
+  .pa-forgot-link {
+    background: none;
+    border: none;
+    color: rgba(252,165,165,0.85);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+    margin-top: 4px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .pa-forgot-link:hover { color: #fca5a5; }
+
+  .pa-resend {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+  }
+  .pa-resend button {
+    background: none;
+    border: none;
+    color: rgba(252,165,165,0.85);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+    text-decoration: underline;
+  }
+  .pa-resend button:disabled {
+    color: rgba(255,255,255,0.25);
+    cursor: not-allowed;
+    text-decoration: none;
+  }
+
   .pa-footer {
     margin-top: 28px;
     padding-top: 20px;
@@ -268,16 +302,75 @@ const CSS = `
 
 export default function PlatformAdminLogin() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [bootLoading, setBootLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [view, setView] = useState('login');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [fpEmail, setFpEmail] = useState('');
+  const [fpResetToken, setFpResetToken] = useState('');
+  const [fpResendTimer, setFpResendTimer] = useState(0);
+  const [form] = Form.useForm();
+  const [loginOtpForm] = Form.useForm();
+  const [fpForm] = Form.useForm();
+  const fpTimerRef = useRef(null);
+
   useEffect(() => {
     if (platformToken.get()) {
       navigate('/platform/dashboard', { replace: true });
+      return;
     }
+    (async () => {
+      try {
+        const res = await platformApi.get('/platform/auth/setup-status');
+        if (res.success && res.data?.needsSetup) {
+          setNeedsSetup(true);
+          setView('setup');
+        }
+      } catch {
+        // fall back to login form
+      } finally {
+        setBootLoading(false);
+      }
+    })();
   }, [navigate]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [form] = Form.useForm();
 
-  const onFinish = async (values) => {
+  useEffect(() => () => clearInterval(fpTimerRef.current), []);
+
+  const startFpResendTimer = () => {
+    setFpResendTimer(60);
+    clearInterval(fpTimerRef.current);
+    fpTimerRef.current = setInterval(() => {
+      setFpResendTimer((t) => {
+        if (t <= 1) {
+          clearInterval(fpTimerRef.current);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+  };
+
+  const handleAuthSuccess = (res) => {
+    if (res.success && res.data?.requiresOtp) {
+      setLoginEmail(res.data.email);
+      setView('login_otp');
+      loginOtpForm.resetFields();
+      startFpResendTimer();
+      message.success('OTP sent to your email.');
+      return true;
+    }
+    if (res.success && res.data?.token) {
+      platformToken.set(res.data.token);
+      navigate('/platform/dashboard', { replace: true });
+      return true;
+    }
+    setError(res.error || 'Authentication failed');
+    return false;
+  };
+
+  const onLogin = async (values) => {
     setLoading(true);
     setError('');
     try {
@@ -285,19 +378,195 @@ export default function PlatformAdminLogin() {
         email: values.email,
         password: values.password,
       });
-      if (res.success && res.data?.token) {
-        platformToken.set(res.data.token);
-        navigate('/platform/dashboard', { replace: true });
-        return;
-      }
-      setError(res.error || 'Login failed');
+      handleAuthSuccess(res);
     } catch (err) {
-      const msg = err.response?.data?.error || err.message || 'Login failed. Please try again.';
-      setError(msg);
+      setError(err.response?.data?.error || err.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  const onLoginOtpSubmit = async ({ otp }) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await platformApi.post('/platform/auth/verify-login-otp', {
+        email: loginEmail,
+        otp,
+      });
+      handleAuthSuccess(res);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Invalid OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onLoginResendOtp = async () => {
+    if (fpResendTimer > 0 || !loginEmail) return;
+    const password = form.getFieldValue('password');
+    if (!password) {
+      message.error('Go back and enter your password to resend OTP.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await platformApi.post('/platform/auth/login', {
+        email: loginEmail,
+        password,
+      });
+      if (res.success && res.data?.requiresOtp) {
+        message.success('OTP resent.');
+        startFpResendTimer();
+      }
+    } catch (err) {
+      message.error(err.response?.data?.error || 'Failed to resend OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSetup = async (values) => {
+    if (values.password !== values.confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await platformApi.post('/platform/auth/setup', {
+        email: values.email,
+        password: values.password,
+        name: values.name,
+      });
+      if (handleAuthSuccess(res)) {
+        message.success('Platform admin account created.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Setup failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openForgotPassword = () => {
+    setView('fp_email');
+    setFpEmail('');
+    setFpResetToken('');
+    setError('');
+    fpForm.resetFields();
+  };
+
+  const closeForgotPassword = () => {
+    setView('login');
+    setError('');
+    clearInterval(fpTimerRef.current);
+    fpForm.resetFields();
+  };
+
+  const onFpEmailSubmit = async ({ email }) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await platformApi.post('/platform/auth/forgot-password', { email });
+      if (res.success) {
+        setFpEmail(email);
+        setView('fp_otp');
+        fpForm.resetFields();
+        startFpResendTimer();
+        message.success('OTP sent to your email.');
+      } else {
+        setError(res.error || 'Failed to send OTP');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to send OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onFpOtpSubmit = async ({ otp }) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await platformApi.post('/platform/auth/verify-reset-otp', { email: fpEmail, otp });
+      if (res.success) {
+        setFpResetToken(res.data.resetToken);
+        setView('fp_newpass');
+        fpForm.resetFields();
+      } else {
+        setError(res.error || 'Invalid OTP');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Invalid OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onFpNewPassSubmit = async ({ newPassword, confirmPassword }) => {
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await platformApi.post('/platform/auth/reset-password', {
+        resetToken: fpResetToken,
+        newPassword,
+      });
+      if (res.success) {
+        message.success('Password reset successfully. Please sign in.');
+        closeForgotPassword();
+        form.resetFields();
+      } else {
+        setError(res.error || 'Reset failed.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Reset failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onFpResendOtp = async () => {
+    if (fpResendTimer > 0) return;
+    setLoading(true);
+    try {
+      await platformApi.post('/platform/auth/forgot-password', { email: fpEmail });
+      message.success('OTP resent.');
+      startFpResendTimer();
+    } catch (err) {
+      message.error(err.response?.data?.error || 'Failed to resend OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const titles = {
+    login: { title: 'Admin Portal', sub: 'Restricted access — service provider only.\nManage institutions, subscriptions & platform settings.' },
+    login_otp: { title: 'Two-Factor Verification', sub: `Enter the 6-digit code sent to ${loginEmail}.` },
+    setup: { title: 'Initial Setup', sub: 'Create the first platform admin account.\nCredentials are stored securely in the database.' },
+    fp_email: { title: 'Forgot Password', sub: 'Enter your registered platform admin email.\nWe will send a one-time code to reset your password.' },
+    fp_otp: { title: 'Verify OTP', sub: `Enter the 6-digit code sent to ${fpEmail}.` },
+    fp_newpass: { title: 'New Password', sub: 'Choose a strong password for your platform admin account.' },
+  };
+  const copy = titles[view] || titles.login;
+
+  if (bootLoading) {
+    return (
+      <>
+        <style>{CSS}</style>
+        <div className="pa-root">
+          <div className="pa-card" style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
+            <div className="pa-spin" style={{ margin: '0 auto 12px' }} />
+            Loading...
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -307,9 +576,20 @@ export default function PlatformAdminLogin() {
         <div className="pa-orb pa-orb-2" />
 
         <div className="pa-card">
-          <button className="pa-back-btn" onClick={() => { window.location.href = '/login'; }}>
+          <button
+            className="pa-back-btn"
+            onClick={() => {
+              if (view === 'login_otp') {
+                setView('login');
+                setError('');
+                clearInterval(fpTimerRef.current);
+                setFpResendTimer(0);
+              } else if (view.startsWith('fp_')) closeForgotPassword();
+              else window.location.href = '/login';
+            }}
+          >
             <ArrowLeftOutlined style={{ fontSize: 11 }} />
-            Back to application login
+            {view === 'login_otp' || view.startsWith('fp_') ? 'Back to admin login' : 'Back to application login'}
           </button>
 
           <div className="pa-badge">
@@ -321,51 +601,254 @@ export default function PlatformAdminLogin() {
             <SafetyCertificateOutlined />
           </div>
 
-          <div className="pa-title">Admin Portal</div>
-          <div className="pa-sub">
-            Restricted access — service provider only.<br />
-            Manage institutions, subscriptions & platform settings.
-          </div>
+          <div className="pa-title">{copy.title}</div>
+          <div className="pa-sub" style={{ whiteSpace: 'pre-line' }}>{copy.sub}</div>
 
           {error && <div className="pa-error">{error}</div>}
 
-          <Form form={form} onFinish={onFinish} layout="vertical" size="large">
-            <Form.Item
-              label={<span className="pa-label">Admin Email</span>}
-              name="email"
-              rules={[
-                { required: true, message: 'Email is required' },
-                { type: 'email', message: 'Enter a valid email' }
-              ]}
-            >
-              <Input
-                className="pa-input"
-                prefix={<MailOutlined style={{ fontSize: 15 }} />}
-                placeholder="admin@yourplatform.com"
-              />
-            </Form.Item>
+          {view === 'login' && (
+            <Form form={form} onFinish={onLogin} layout="vertical" size="large">
+              <Form.Item
+                label={<span className="pa-label">Admin Email</span>}
+                name="email"
+                rules={[
+                  { required: true, message: 'Email is required' },
+                  { type: 'email', message: 'Enter a valid email' },
+                ]}
+              >
+                <Input
+                  className="pa-input"
+                  prefix={<MailOutlined style={{ fontSize: 15 }} />}
+                  placeholder="admin@yourplatform.com"
+                />
+              </Form.Item>
 
-            <Form.Item
-              label={<span className="pa-label">Password</span>}
-              name="password"
-              rules={[{ required: true, message: 'Password is required' }]}
-            >
-              <Input.Password
-                className="pa-input"
-                prefix={<LockOutlined style={{ fontSize: 15 }} />}
-                placeholder="Enter admin password"
-                autoComplete="current-password"
-              />
-            </Form.Item>
+              <Form.Item
+                label={<span className="pa-label">Password</span>}
+                name="password"
+                rules={[{ required: true, message: 'Password is required' }]}
+              >
+                <Input.Password
+                  className="pa-input"
+                  prefix={<LockOutlined style={{ fontSize: 15 }} />}
+                  placeholder="Enter admin password"
+                  autoComplete="current-password"
+                />
+              </Form.Item>
 
-            <Form.Item style={{ marginBottom: 0 }}>
-              <button type="submit" className="pa-submit-btn" disabled={loading}>
-                {loading
-                  ? <><div className="pa-spin" /> Authenticating...</>
-                  : <>Access Admin Panel <ArrowRightOutlined /></>}
-              </button>
-            </Form.Item>
-          </Form>
+              <div style={{ textAlign: 'right', marginBottom: 8 }}>
+                <button type="button" className="pa-forgot-link" onClick={openForgotPassword}>
+                  Forgot password?
+                </button>
+              </div>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <button type="submit" className="pa-submit-btn" disabled={loading}>
+                  {loading
+                    ? <><div className="pa-spin" /> Authenticating...</>
+                    : <>Access Admin Panel <ArrowRightOutlined /></>}
+                </button>
+              </Form.Item>
+            </Form>
+          )}
+
+          {view === 'setup' && needsSetup && (
+            <Form form={form} onFinish={onSetup} layout="vertical" size="large">
+              <Form.Item
+                label={<span className="pa-label">Full Name</span>}
+                name="name"
+                rules={[{ required: true, message: 'Name is required' }]}
+              >
+                <Input
+                  className="pa-input"
+                  prefix={<UserOutlined style={{ fontSize: 15 }} />}
+                  placeholder="Platform Administrator"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="pa-label">Admin Email</span>}
+                name="email"
+                rules={[
+                  { required: true, message: 'Email is required' },
+                  { type: 'email', message: 'Enter a valid email' },
+                ]}
+              >
+                <Input
+                  className="pa-input"
+                  prefix={<MailOutlined style={{ fontSize: 15 }} />}
+                  placeholder="admin@yourplatform.com"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="pa-label">Password</span>}
+                name="password"
+                rules={[
+                  { required: true, message: 'Password is required' },
+                  { min: 8, message: 'At least 8 characters' },
+                ]}
+              >
+                <Input.Password
+                  className="pa-input"
+                  prefix={<LockOutlined style={{ fontSize: 15 }} />}
+                  placeholder="Create a strong password"
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="pa-label">Confirm Password</span>}
+                name="confirmPassword"
+                rules={[{ required: true, message: 'Please confirm your password' }]}
+              >
+                <Input.Password
+                  className="pa-input"
+                  prefix={<LockOutlined style={{ fontSize: 15 }} />}
+                  placeholder="Re-enter password"
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <button type="submit" className="pa-submit-btn" disabled={loading}>
+                  {loading
+                    ? <><div className="pa-spin" /> Creating account...</>
+                    : <>Create Admin Account <ArrowRightOutlined /></>}
+                </button>
+              </Form.Item>
+            </Form>
+          )}
+
+          {view === 'login_otp' && (
+            <Form form={loginOtpForm} onFinish={onLoginOtpSubmit} layout="vertical" size="large">
+              <Form.Item
+                label={<span className="pa-label">One-Time Password</span>}
+                name="otp"
+                rules={[
+                  { required: true, message: 'OTP is required' },
+                  { len: 6, message: 'Enter the 6-digit OTP' },
+                ]}
+              >
+                <Input
+                  className="pa-input"
+                  prefix={<LockOutlined style={{ fontSize: 15 }} />}
+                  placeholder="123456"
+                  maxLength={6}
+                  inputMode="numeric"
+                />
+              </Form.Item>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <button type="submit" className="pa-submit-btn" disabled={loading}>
+                  {loading ? <><div className="pa-spin" /> Verifying...</> : <>Verify & sign in <ArrowRightOutlined /></>}
+                </button>
+              </Form.Item>
+
+              <div className="pa-resend">
+                {fpResendTimer > 0
+                  ? `Resend OTP in ${fpResendTimer}s`
+                  : <button type="button" onClick={onLoginResendOtp} disabled={loading}>Resend OTP</button>}
+              </div>
+            </Form>
+          )}
+
+          {view === 'fp_email' && (
+            <Form form={fpForm} onFinish={onFpEmailSubmit} layout="vertical" size="large">
+              <Form.Item
+                label={<span className="pa-label">Admin Email</span>}
+                name="email"
+                rules={[
+                  { required: true, message: 'Email is required' },
+                  { type: 'email', message: 'Enter a valid email' },
+                ]}
+              >
+                <Input
+                  className="pa-input"
+                  prefix={<MailOutlined style={{ fontSize: 15 }} />}
+                  placeholder="admin@yourplatform.com"
+                />
+              </Form.Item>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <button type="submit" className="pa-submit-btn" disabled={loading}>
+                  {loading ? <><div className="pa-spin" /> Sending OTP...</> : <>Send OTP <ArrowRightOutlined /></>}
+                </button>
+              </Form.Item>
+            </Form>
+          )}
+
+          {view === 'fp_otp' && (
+            <Form form={fpForm} onFinish={onFpOtpSubmit} layout="vertical" size="large">
+              <Form.Item
+                label={<span className="pa-label">One-Time Password</span>}
+                name="otp"
+                rules={[
+                  { required: true, message: 'OTP is required' },
+                  { len: 6, message: 'Enter the 6-digit OTP' },
+                ]}
+              >
+                <Input
+                  className="pa-input"
+                  prefix={<LockOutlined style={{ fontSize: 15 }} />}
+                  placeholder="123456"
+                  maxLength={6}
+                  inputMode="numeric"
+                />
+              </Form.Item>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <button type="submit" className="pa-submit-btn" disabled={loading}>
+                  {loading ? <><div className="pa-spin" /> Verifying...</> : <>Verify OTP <ArrowRightOutlined /></>}
+                </button>
+              </Form.Item>
+
+              <div className="pa-resend">
+                {fpResendTimer > 0
+                  ? `Resend OTP in ${fpResendTimer}s`
+                  : <button type="button" onClick={onFpResendOtp} disabled={loading}>Resend OTP</button>}
+              </div>
+            </Form>
+          )}
+
+          {view === 'fp_newpass' && (
+            <Form form={fpForm} onFinish={onFpNewPassSubmit} layout="vertical" size="large">
+              <Form.Item
+                label={<span className="pa-label">New Password</span>}
+                name="newPassword"
+                rules={[
+                  { required: true, message: 'Password is required' },
+                  { min: 8, message: 'At least 8 characters' },
+                ]}
+              >
+                <Input.Password
+                  className="pa-input"
+                  prefix={<LockOutlined style={{ fontSize: 15 }} />}
+                  placeholder="New password"
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label={<span className="pa-label">Confirm Password</span>}
+                name="confirmPassword"
+                rules={[{ required: true, message: 'Please confirm your password' }]}
+              >
+                <Input.Password
+                  className="pa-input"
+                  prefix={<LockOutlined style={{ fontSize: 15 }} />}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <button type="submit" className="pa-submit-btn" disabled={loading}>
+                  {loading ? <><div className="pa-spin" /> Resetting...</> : <>Reset Password <ArrowRightOutlined /></>}
+                </button>
+              </Form.Item>
+            </Form>
+          )}
 
           <div className="pa-footer">
             <SafetyCertificateOutlined className="pa-footer-icon" />

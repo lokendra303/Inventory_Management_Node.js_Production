@@ -109,8 +109,5 @@ module.exports = {
   /** Platform (super-admin) console — separate from tenant JWT expiry */
   platform: {
     jwtExpiresIn: process.env.PLATFORM_JWT_EXPIRES_IN || '8h',
-    bootstrapEmail: process.env.PLATFORM_ADMIN_EMAIL || '',
-    bootstrapPassword: process.env.PLATFORM_ADMIN_PASSWORD || '',
-    bootstrapName: process.env.PLATFORM_ADMIN_NAME || 'Platform Admin',
   },
 };

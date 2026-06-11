@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Layout, Menu, Button, Typography, Space, Drawer } from 'antd';
 import {
   DashboardOutlined, TeamOutlined, LogoutOutlined, SafetyCertificateOutlined,
-  CreditCardOutlined, HistoryOutlined, SendOutlined, MenuOutlined,
+  CreditCardOutlined, HistoryOutlined, SendOutlined, MenuOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { platformToken } from '../services/platformApi';
@@ -40,6 +40,7 @@ export default function PlatformAdminShell() {
     if (path.startsWith('/platform/plans')) return ['/platform/plans'];
     if (path.startsWith('/platform/subscription-requests')) return ['/platform/subscription-requests'];
     if (path.startsWith('/platform/activity')) return ['/platform/activity'];
+    if (path.startsWith('/platform/profile')) return ['/platform/profile'];
     return ['/platform/dashboard'];
   })();
 
@@ -79,6 +80,12 @@ export default function PlatformAdminShell() {
       icon: <HistoryOutlined />,
       label: 'Recent logins',
       onClick: () => { navigate('/platform/activity'); closeMobileNav(); },
+    },
+    {
+      key: '/platform/profile',
+      icon: <UserOutlined />,
+      label: 'My profile',
+      onClick: () => { navigate('/platform/profile'); closeMobileNav(); },
     },
   ];
 

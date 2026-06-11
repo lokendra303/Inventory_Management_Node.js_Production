@@ -75,9 +75,10 @@ The server will:
 - On first hit of any service that has a runtime `ensureSchema()` helper,
   create a handful of lazy tables (audit hooks, onboarding, etc.). These
   are also in `000_initial_schema.sql`, so they become no-ops.
-- Auto-create the platform admin row from `PLATFORM_ADMIN_EMAIL` /
-  `PLATFORM_ADMIN_PASSWORD` the first time someone hits the platform
-  login endpoint.
+- Platform admin credentials live in the `platform_admins` table (not in
+  `.env`). On first visit to `/platform/login`, if no admin row exists,
+  the UI shows a one-time setup form. Use **Forgot password** on that
+  page to reset via email OTP (requires SMTP in `.env`).
 
 ## Day-2 commands
 
