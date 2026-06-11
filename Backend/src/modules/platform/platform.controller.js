@@ -261,6 +261,72 @@ class PlatformController {
     }
   }
 
+  async activeSessions(req, res) {
+    try {
+      const { institutionId, search, page, limit } = req.query;
+      const result = await platformAdminService.listActiveSessions({
+        institutionId,
+        search,
+        page,
+        limit,
+      });
+      res.json({ success: true, ...result });
+    } catch (error) {
+      logger.error('Platform active sessions error', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async revokeSession(req, res) {
+    try {
+      const { reason } = req.body || {};
+      const data = await platformAdminService.revokeSessionById(
+        req.params.sessionId,
+        req.platformAdmin.id,
+        reason
+      );
+      res.json({ success: true, message: 'Session ended', data });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async revokeUserSessions(req, res) {
+    try {
+      const { reason } = req.body || {};
+      const data = await platformAdminService.revokeUserSessionsById(
+        req.params.userId,
+        req.platformAdmin.id,
+        reason
+      );
+      res.json({
+        success: true,
+        message: data.revokedSessions ? 'User sessions ended' : 'No active sessions for this user',
+        data,
+      });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async revokeInstitutionSessions(req, res) {
+    try {
+      const { reason } = req.body || {};
+      const data = await platformAdminService.revokeInstitutionSessionsById(
+        req.params.id,
+        req.platformAdmin.id,
+        reason
+      );
+      res.json({
+        success: true,
+        message: data.revokedSessions ? 'Institution sessions ended' : 'No active sessions for this institution',
+        data,
+      });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
   async getInstitutionAudit(req, res) {
     try {
       const result = await platformAdminService.listInstitutionAuditLogs(req.params.id, req.query || {});

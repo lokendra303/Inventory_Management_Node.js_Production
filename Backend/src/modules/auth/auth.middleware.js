@@ -68,9 +68,16 @@ const extractInstitutionContext = async (req, res, next) => {
     next();
   } catch (error) {
     logger.error('Failed to extract institution context', { error: error.message });
+    if (error.code === 'SESSION_REVOKED') {
+      return res.status(401).json({
+        success: false,
+        message: 'Your session was ended by a platform administrator. Please sign in again.',
+        code: 'SESSION_REVOKED',
+      });
+    }
     return res.status(401).json({
       success: false,
-      error: 'Invalid or expired token'
+      error: 'Invalid or expired token',
     });
   }
 };

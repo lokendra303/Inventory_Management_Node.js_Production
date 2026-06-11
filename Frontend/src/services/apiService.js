@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { Modal } from 'antd';
 import { getApiBaseUrl } from '../config/appConfig';
+import { showSessionRevokedModal, showSessionExpiredModal } from '../utils/sessionModals';
 
 // Simple rate limiter to prevent 429 errors
 class RateLimiter {
@@ -110,6 +110,7 @@ class ApiService {
         if (error.response?.status === 401) {
           // Check if it's a session timeout error
           const isSessionTimeout = error.response?.data?.code === 'SESSION_TIMEOUT';
+          const isSessionRevoked = error.response?.data?.code === 'SESSION_REVOKED';
           
           // Only show session expired modal if user was logged in (has token)
           // Don't show for login/profile endpoint failures
@@ -121,23 +122,18 @@ class ApiService {
           const hadToken = sessionStorage.getItem('token');
           
           if (!isAuthEndpoint && !isBarcodeRelay && hadToken) {
-            // Handle session expiration for authenticated users
             sessionStorage.removeItem('token');
             sessionStorage.removeItem('user');
             sessionStorage.removeItem('lastActivity');
             sessionStorage.removeItem('institutionId');
-            
-            Modal.warning({
-              title: 'Session Expired',
-              content: isSessionTimeout 
-                ? 'Your session has expired due to inactivity. Please login again.'
-                : 'Your session has expired. Please login again.',
-              onOk: () => {
-                window.location.href = '/';
-              },
-              centered: true,
-              maskClosable: false
-            });
+
+            if (isSessionRevoked) {
+              showSessionRevokedModal();
+            } else if (isSessionTimeout) {
+              showSessionExpiredModal();
+            } else {
+              showSessionExpiredModal();
+            }
           }
           
           return Promise.reject(error);
@@ -188,6 +184,10 @@ class ApiService {
   }
 
   getFriendlyErrorMessage(error) {
+    if (error?.response?.data?.code === 'SESSION_REVOKED') {
+      return '';
+    }
+
     const responseError = error?.response?.data?.error;
     const responseMessage = error?.response?.data?.message;
     const rawMessage = responseError || responseMessage || error?.message || '';

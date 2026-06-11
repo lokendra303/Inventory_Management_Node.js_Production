@@ -33,6 +33,10 @@ router.get('/plans', requirePlatformAuth, platformController.listPlans.bind(plat
 router.post('/plans', requirePlatformAuth, platformController.createPlan.bind(platformController));
 router.patch('/plans/:planId', requirePlatformAuth, platformController.updatePlan.bind(platformController));
 router.get('/activity/recent-logins', requirePlatformAuth, platformController.recentLogins.bind(platformController));
+router.get('/activity/active-sessions', requirePlatformAuth, platformController.activeSessions.bind(platformController));
+router.post('/activity/sessions/:sessionId/revoke', requirePlatformAuth, platformController.revokeSession.bind(platformController));
+router.post('/activity/users/:userId/revoke-sessions', requirePlatformAuth, platformController.revokeUserSessions.bind(platformController));
+router.post('/activity/institutions/:id/revoke-sessions', requirePlatformAuth, platformController.revokeInstitutionSessions.bind(platformController));
 
 router.get('/subscription-requests', requirePlatformAuth, platformController.listSubscriptionRequests.bind(platformController));
 router.post('/subscription-requests/:id/approve', requirePlatformAuth, platformController.approveSubscriptionRequest.bind(platformController));

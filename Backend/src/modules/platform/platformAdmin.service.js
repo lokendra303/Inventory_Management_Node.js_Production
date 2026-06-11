@@ -1070,6 +1070,43 @@ function safeJson(value) {
   try { return JSON.parse(value); } catch { return value; }
 }
 
+const userSessionService = require('../auth/userSession.service');
+
+async function listActiveSessions(filters = {}) {
+  await ensureSchema();
+  try {
+    return await userSessionService.listActiveSessions(filters);
+  } catch (e) {
+    logger.warn('Platform listActiveSessions failed', { error: e.message });
+    return { data: [], total: 0, page: 1, limit: 50, activeWindowMinutes: 30 };
+  }
+}
+
+async function revokeSessionById(sessionId, platformAdminId, reason = null) {
+  await ensureSchema();
+  const count = await userSessionService.revokeSession(sessionId, platformAdminId, reason || 'Force logout by platform admin');
+  if (count === 0) throw new Error('Session not found or already ended');
+  return { revokedSessions: count };
+}
+
+async function revokeUserSessionsById(userId, platformAdminId, reason = null) {
+  await ensureSchema();
+  const count = await userSessionService.revokeUserSessions(userId, platformAdminId, reason || 'Force logout by platform admin');
+  return { revokedSessions: count };
+}
+
+async function revokeInstitutionSessionsById(institutionId, platformAdminId, reason = null) {
+  await ensureSchema();
+  const rows = await db.query('SELECT id FROM institutions WHERE id = ? LIMIT 1', [institutionId]);
+  if (rows.length === 0) throw new Error('Institution not found');
+  const count = await userSessionService.revokeInstitutionSessions(
+    institutionId,
+    platformAdminId,
+    reason || 'Force logout by platform admin'
+  );
+  return { revokedSessions: count };
+}
+
 async function getRecentTenantLogins(limit = 30) {
   await ensureSchema();
   const n = Math.min(100, Math.max(5, parseInt(limit, 10) || 30));
@@ -1144,6 +1181,10 @@ module.exports = {
   createSubscriptionPlan,
   updateSubscriptionPlan,
   getRecentTenantLogins,
+  listActiveSessions,
+  revokeSessionById,
+  revokeUserSessionsById,
+  revokeInstitutionSessionsById,
   exportInstitutionsCsv,
   listInstitutionAuditLogs,
   assignInstitutionSubscription,

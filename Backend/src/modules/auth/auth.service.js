@@ -7,6 +7,7 @@ const logger = require('../../utils/logger');
 const { ROLE_PERMISSIONS } = require('../../constants/permissions');
 const emailService = require('../../services/emailService');
 const otpService = require('./otp.service');
+const userSessionService = require('./userSession.service');
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -209,7 +210,35 @@ class AuthService {
     return { email: user.email, institutionId: user.institution_id };
   }
 
-  async issueToken(email, institutionId = null) {
+  _signUserToken(user, effectivePermissions, sessionId, sessionTimestamp = Date.now()) {
+    const payload = {
+      userId: user.id,
+      institutionId: user.institution_id,
+      email: user.email,
+      role: user.role,
+      permissions: effectivePermissions,
+      warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
+      sessionTimestamp,
+    };
+    if (sessionId) payload.sessionId = sessionId;
+    return jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
+  }
+
+  _mapAuthUser(user, effectivePermissions) {
+    return {
+      id: user.id,
+      institutionId: user.institution_id,
+      institutionName: user.institution_name,
+      email: user.email,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.role,
+      permissions: effectivePermissions,
+      warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
+    };
+  }
+
+  async issueToken(email, institutionId = null, meta = {}) {
     let query = `SELECT u.*, i.status as institution_status, i.name as institution_name 
                  FROM institution_users u 
                  JOIN institutions i ON u.institution_id = i.id 
@@ -224,35 +253,19 @@ class AuthService {
     await db.query('UPDATE institution_users SET last_login = NOW() WHERE id = ?', [user.id]);
 
     const effectivePermissions = await this._resolveEffectivePermissions(user);
+    const sessionId = await userSessionService.createSession({
+      userId: user.id,
+      institutionId: user.institution_id,
+      ipAddress: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    const sessionTimestamp = Date.now();
+    const token = this._signUserToken(user, effectivePermissions, sessionId, sessionTimestamp);
 
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        institutionId: user.institution_id,
-        email: user.email,
-        role: user.role,
-        permissions: effectivePermissions,
-        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
-        sessionTimestamp: Date.now()
-      },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
-    );
-
-    logger.info('Token issued', { userId: user.id, email: user.email });
+    logger.info('Token issued', { userId: user.id, email: user.email, sessionId });
     return {
       token,
-      user: {
-        id: user.id,
-        institutionId: user.institution_id,
-        institutionName: user.institution_name,
-        email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role,
-        permissions: effectivePermissions,
-        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access)
-      }
+      user: this._mapAuthUser(user, effectivePermissions),
     };
   }
 
@@ -278,12 +291,12 @@ class AuthService {
   }
 
   // Step 1: validate credentials, generate & email OTP
-  async initiateLogin(email, password, institutionId = null) {
+  async initiateLogin(email, password, institutionId = null, meta = {}) {
     const user = await this._validateLoginCredentials(email, password, institutionId);
 
     if (!user.two_factor_enabled) {
       logger.info('Login successful without OTP (2FA disabled)', { userId: user.id, email, institutionId: user.institution_id });
-      const tokenData = await this.issueToken(user.email, user.institution_id);
+      const tokenData = await this.issueToken(user.email, user.institution_id, meta);
       return {
         requiresOtp: false,
         tokenData
@@ -349,7 +362,7 @@ class AuthService {
   }
 
   // Step 2: verify login OTP and issue JWT
-  async verifyOtp(email, otp, institutionId) {
+  async verifyOtp(email, otp, institutionId, meta = {}) {
     try {
       await otpService.verifyOtp({ purpose: 'login', email, otp, institutionId });
     } catch (err) {
@@ -362,10 +375,10 @@ class AuthService {
       }
       throw err;
     }
-    return this.issueToken(email, institutionId);
+    return this.issueToken(email, institutionId, meta);
   }
 
-  async authenticateUser(email, password, institutionId = null) {
+  async authenticateUser(email, password, institutionId = null, meta = {}) {
     let query = `SELECT u.*, i.status as institution_status, i.name as institution_name 
                  FROM institution_users u 
                  JOIN institutions i ON u.institution_id = i.id 
@@ -398,53 +411,39 @@ class AuthService {
       throw new Error('Email or password is incorrect. Please check your credentials and try again.');
     }
 
-    // Update last login
     await db.query(
       'UPDATE institution_users SET last_login = NOW() WHERE id = ?',
       [user.id]
     );
 
     const effectivePermissions = await this._resolveEffectivePermissions(user);
-
-    // Generate JWT token with session timestamp
+    const sessionId = await userSessionService.createSession({
+      userId: user.id,
+      institutionId: user.institution_id,
+      ipAddress: meta.ip,
+      userAgent: meta.userAgent,
+    });
     const sessionTimestamp = Date.now();
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        institutionId: user.institution_id,
-        email: user.email,
-        role: user.role,
-        permissions: effectivePermissions,
-        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
-        sessionTimestamp
-      },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
-    );
+    const token = this._signUserToken(user, effectivePermissions, sessionId, sessionTimestamp);
 
-    logger.info('User authenticated', { userId: user.id, institutionId: user.institution_id, email: user.email });
+    logger.info('User authenticated', {
+      userId: user.id,
+      institutionId: user.institution_id,
+      email: user.email,
+      sessionId,
+    });
 
     return {
       token,
-      user: {
-        id: user.id,
-        institutionId: user.institution_id,
-        institutionName: user.institution_name,
-        email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role,
-        permissions: effectivePermissions,
-        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access)
-      }
+      user: this._mapAuthUser(user, effectivePermissions),
     };
   }
 
   async verifyToken(token) {
     try {
       const decoded = jwt.verify(token, config.jwt.secret);
-      
-      // Verify user still exists and is active
+      await userSessionService.assertSessionValid(decoded.sessionId);
+
       const users = await db.query(
         `SELECT u.*, i.status as institution_status 
          FROM institution_users u 
@@ -460,13 +459,18 @@ class AuthService {
       const user = users[0];
       const effectivePermissions = await this._resolveEffectivePermissions(user);
 
+      if (decoded.sessionId) {
+        await userSessionService.touchSession(decoded.sessionId);
+      }
+
       return {
         ...decoded,
         role: user.role,
         permissions: effectivePermissions,
-        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access)
+        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
       };
     } catch (error) {
+      if (error.code === 'SESSION_REVOKED') throw error;
       throw new Error('Invalid token');
     }
   }
@@ -504,22 +508,21 @@ class AuthService {
       }
 
       const user = users[0];
-      const sessionTimestamp = Date.now();
       const effectivePermissions = await this._resolveEffectivePermissions(user);
 
-      const newToken = jwt.sign(
-        {
+      let sessionId = decoded.sessionId;
+      if (sessionId) {
+        await userSessionService.assertSessionValid(sessionId);
+        await userSessionService.touchSession(sessionId);
+      } else {
+        sessionId = await userSessionService.createSession({
           userId: user.id,
           institutionId: user.institution_id,
-          email: user.email,
-          role: user.role,
-          permissions: effectivePermissions,
-          warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
-          sessionTimestamp
-        },
-        config.jwt.secret,
-        { expiresIn: config.jwt.expiresIn }
-      );
+        });
+      }
+
+      const sessionTimestamp = Date.now();
+      const newToken = this._signUserToken(user, effectivePermissions, sessionId, sessionTimestamp);
 
       return {
         token: newToken,
@@ -531,10 +534,11 @@ class AuthService {
           lastName: user.last_name,
           role: user.role,
           permissions: effectivePermissions,
-          warehouseAccess: this._parseWarehouseAccess(user.warehouse_access)
-        }
+          warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
+        },
       };
     } catch (error) {
+      if (error.code === 'SESSION_REVOKED') throw error;
       throw new Error(error.message || 'Invalid or expired token');
     }
   }
@@ -1024,22 +1028,9 @@ class AuthService {
     }
 
     const user = users[0];
-    
-    // Generate new token with updated session timestamp
+    const effectivePermissions = await this._resolveEffectivePermissions(user);
     const sessionTimestamp = Date.now();
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        institutionId: user.institution_id,
-        email: user.email,
-        role: user.role,
-        permissions: typeof user.permissions === 'string' ? JSON.parse(user.permissions || '{}') : user.permissions || {},
-        warehouseAccess: this._parseWarehouseAccess(user.warehouse_access),
-        sessionTimestamp
-      },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
-    );
+    const token = this._signUserToken(user, effectivePermissions, null, sessionTimestamp);
 
     logger.info('Session extended', { userId, institutionId });
     return { token, sessionTimestamp };

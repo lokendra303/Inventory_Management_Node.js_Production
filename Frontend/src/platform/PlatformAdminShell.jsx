@@ -78,7 +78,7 @@ export default function PlatformAdminShell() {
     {
       key: '/platform/activity',
       icon: <HistoryOutlined />,
-      label: 'Recent logins',
+      label: 'Sessions & activity',
       onClick: () => { navigate('/platform/activity'); closeMobileNav(); },
     },
     {

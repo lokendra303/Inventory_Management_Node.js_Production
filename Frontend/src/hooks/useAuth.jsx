@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { message, Modal } from 'antd';
+import { message } from 'antd';
 import apiService from '../services/apiService';
+import { showSessionExpiredModal, showSessionRevokedModal } from '../utils/sessionModals';
 
 const AuthContext = createContext();
 
@@ -45,16 +46,9 @@ export const AuthProvider = ({ children }) => {
     clearInterval(tokenRefreshRef.current);
   }, []);
 
-  const showSessionExpiredModal = useCallback(() => {
+  const handleSessionExpired = useCallback(() => {
     logout();
-    Modal.warning({
-      title: 'Session Expired',
-      content: 'Your session has expired due to inactivity. Please login again.',
-      okText: 'Login',
-      onOk: () => { window.location.href = '/'; },
-      centered: true,
-      maskClosable: false,
-    });
+    showSessionExpiredModal();
   }, [logout]);
 
   const refreshToken = useCallback(async () => {
@@ -75,20 +69,24 @@ export const AuthProvider = ({ children }) => {
         }
         setUser(prev => prev ? { ...prev, token: newToken } : prev);
       } else if (!response.success && response.code === 'SESSION_EXPIRED') {
-        showSessionExpiredModal();
+        handleSessionExpired();
       }
-    } catch {
-      // Silently ignore — inactivity check will handle actual expiry
+    } catch (err) {
+      if (err?.response?.data?.code === 'SESSION_REVOKED') {
+        logout();
+        showSessionRevokedModal();
+      }
+      // Other errors: inactivity check will handle actual expiry
     } finally {
       isRefreshingRef.current = false;
     }
-  }, [showSessionExpiredModal]);
+  }, [handleSessionExpired, logout]);
 
   const refreshTokenRef = useRef(refreshToken);
   useEffect(() => { refreshTokenRef.current = refreshToken; }, [refreshToken]);
 
-  const showSessionExpiredModalRef = useRef(showSessionExpiredModal);
-  useEffect(() => { showSessionExpiredModalRef.current = showSessionExpiredModal; }, [showSessionExpiredModal]);
+  const handleSessionExpiredRef = useRef(handleSessionExpired);
+  useEffect(() => { handleSessionExpiredRef.current = handleSessionExpired; }, [handleSessionExpired]);
 
   const updateActivity = useCallback(() => {
     const now = Date.now();
@@ -118,7 +116,7 @@ export const AuthProvider = ({ children }) => {
       const secondsLeft = Math.ceil((INACTIVITY_TIMEOUT - (Date.now() - lastActivityRef.current)) / 1000);
       if (secondsLeft <= 0) {
         setSessionSecondsLeft(0);
-        showSessionExpiredModalRef.current();
+        handleSessionExpiredRef.current();
       } else {
         setSessionSecondsLeft(secondsLeft);
       }

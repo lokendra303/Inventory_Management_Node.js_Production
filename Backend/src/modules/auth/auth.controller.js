@@ -110,10 +110,14 @@ class AuthController {
     return this.registerInstitution(req, res);
   }
 
+  _requestMeta(req) {
+    return { ip: req.ip, userAgent: req.get('User-Agent') };
+  }
+
   async login(req, res) {
     try {
       const { email, password, institutionId } = req.body;
-      const loginResult = await authService.initiateLogin(email, password, institutionId);
+      const loginResult = await authService.initiateLogin(email, password, institutionId, this._requestMeta(req));
 
       if (!loginResult.requiresOtp && loginResult.tokenData) {
         return res.json({
@@ -146,7 +150,7 @@ class AuthController {
       if (!email || !otp || !institutionId) {
         return res.status(400).json({ success: false, error: 'email, otp, and institutionId are required.' });
       }
-      const result = await authService.verifyOtp(email, otp, institutionId);
+      const result = await authService.verifyOtp(email, otp, institutionId, this._requestMeta(req));
       res.json({
         success: true,
         message: 'Login successful',
@@ -425,7 +429,8 @@ class AuthController {
       logger.error('Token refresh failed', { error: error.message });
       res.status(401).json({
         success: false,
-        error: error.message
+        error: error.message,
+        ...(error.code === 'SESSION_REVOKED' ? { code: 'SESSION_REVOKED' } : {}),
       });
     }
   }
@@ -467,10 +472,17 @@ class AuthController {
       });
     } catch (error) {
       logger.debug('Heartbeat token refresh failed', { error: error.message });
+      if (error.code === 'SESSION_REVOKED') {
+        return res.status(401).json({
+          success: false,
+          message: 'Your session was ended by a platform administrator. Please sign in again.',
+          code: 'SESSION_REVOKED',
+        });
+      }
       res.status(401).json({
         success: false,
         error: 'SESSION_EXPIRED',
-        code: 'SESSION_EXPIRED'
+        code: 'SESSION_EXPIRED',
       });
     }
   }
