@@ -455,7 +455,8 @@ class SubscriptionService {
 
     if (plan.max_users !== -1) {
       const users = await db.query(
-        `SELECT id, name, email, role, status FROM institution_users WHERE institution_id=? AND status='active' ORDER BY name`,
+        `SELECT id, TRIM(CONCAT(COALESCE(first_name,''), ' ', COALESCE(last_name,''))) AS name, email, role, status
+         FROM institution_users WHERE institution_id=? AND status='active' ORDER BY first_name, last_name`,
         [institutionId]
       );
       if (users.length > plan.max_users) {
