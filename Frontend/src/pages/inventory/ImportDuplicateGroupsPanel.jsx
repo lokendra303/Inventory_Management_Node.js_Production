@@ -1,6 +1,12 @@
 import React from 'react';
 import { Alert, Button, Collapse, Input, Radio, Space, Table, Tag, Typography } from 'antd';
 import { MergeCellsOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { CSV_IMPORT_PURPOSE_UPDATE } from './importConstants';
+import {
+  buildMergedImportQuantities,
+  getImportGroupPendingRowIndexes,
+  getImportGroupSelectedRowIndexes,
+} from './importItemHelpers';
 
 const { Text } = Typography;
 
@@ -11,6 +17,7 @@ const MATCH_TYPE_LABELS = {
   name: 'Same name',
   description: 'Same description',
   linked: 'Linked rows',
+  catalog: 'Same catalog item',
 };
 
 function getGroupPlan(plans, groupKey, defaultRowIndex) {
@@ -20,6 +27,7 @@ function getGroupPlan(plans, groupKey, defaultRowIndex) {
       mode: p.mode === 'pick_one' ? 'pick_one' : 'merge',
       selectedRowIndex: p.selectedRowIndex != null ? p.selectedRowIndex : defaultRowIndex,
       note: p.note || '',
+      selectedRowIndexes: p.selectedRowIndexes,
     };
   }
   return { ...DEFAULT_PLAN, selectedRowIndex: defaultRowIndex };
@@ -34,13 +42,19 @@ function groupIsResolved(group, addedRowIndexes, supersededRowIndexes) {
 export function ImportDuplicateGroupsPanel({
   groups = [],
   duplicateGroupPlans = {},
+  rows = [],
+  mapping = {},
+  importDefaults = {},
   addedRowIndexes = {},
   supersededRowIndexes = {},
   disabled = false,
   canManageItems = false,
+  importPurpose = 'create',
   onPlanChange,
   onAddInForm,
+  onDirectUpdate,
 }) {
+  const isUpdateImport = importPurpose === CSV_IMPORT_PURPOSE_UPDATE;
   const pendingGroups = groups.filter(
     (g) => !groupIsResolved(g, addedRowIndexes, supersededRowIndexes)
   );
@@ -50,14 +64,24 @@ export function ImportDuplicateGroupsPanel({
   return (
     <div style={{ marginTop: 16, marginBottom: 8 }}>
       <Text strong style={{ display: 'block', marginBottom: 8 }}>
-        Duplicate item groups ({pendingGroups.length} pending / {groups.length} total)
+        {isUpdateImport
+          ? `Same catalog item — multiple sheet rows (${pendingGroups.length} pending / ${groups.length} total)`
+          : `Duplicate item groups (${pendingGroups.length} pending / ${groups.length} total)`}
       </Text>
       <Alert
         type="warning"
         showIcon
         style={{ marginBottom: 12 }}
-        message="Rows match by SKU, item name, or description"
-        description="Two or more rows are grouped when they share the same SKU, the same item name, or the same description text (case-insensitive). Choose how to save each group: merge opening quantities into one item, use a single row only, or add an optional note (included in the item description)."
+        message={
+          isUpdateImport
+            ? 'Multiple sheet rows update the same catalog item'
+            : 'Duplicate rows in your uploaded file'
+        }
+        description={
+          isUpdateImport
+            ? 'These sheet rows all matched one existing item in your catalog. Merge quantities into a single update, or pick one row.'
+            : 'Rows grouped when they share the same SKU, name, or description. Check rows to merge, sum opening quantities, and add one item.'
+        }
       />
       <Collapse
         accordion={groups.length > 3}
@@ -65,8 +89,31 @@ export function ImportDuplicateGroupsPanel({
           const resolved = groupIsResolved(group, addedRowIndexes, supersededRowIndexes);
           const defaultRow = group.rowIndexes[0];
           const plan = getGroupPlan(duplicateGroupPlans, group.groupKey, defaultRow);
-          const primaryIndex = plan.selectedRowIndex ?? defaultRow;
+          const pendingRowIndexes = getImportGroupPendingRowIndexes(
+            group,
+            addedRowIndexes,
+            supersededRowIndexes
+          );
+          const selectedRowIndexes = getImportGroupSelectedRowIndexes(
+            group,
+            plan,
+            addedRowIndexes,
+            supersededRowIndexes
+          );
+          const mergedQty = buildMergedImportQuantities(
+            selectedRowIndexes,
+            rows,
+            mapping,
+            importDefaults
+          );
+          const primaryIndex = (
+            plan.selectedRowIndex != null && selectedRowIndexes.includes(plan.selectedRowIndex)
+          )
+            ? plan.selectedRowIndex
+            : (selectedRowIndexes[0] ?? defaultRow);
           const matchTags = (group.matchTypes || []).map((t) => MATCH_TYPE_LABELS[t] || t);
+          const mergePlan = { ...plan, selectedRowIndexes, selectedRowIndex: primaryIndex };
+          const combinedQty = mergedQty.openingStock ?? group.totalOpeningStock;
 
           return {
             key: group.groupKey,
@@ -79,8 +126,11 @@ export function ImportDuplicateGroupsPanel({
                   </Tag>
                 ))}
                 <Tag>{group.rowIndexes.length} rows</Tag>
-                {group.totalOpeningStock > 0 && (
-                  <Tag color="blue">Combined qty: {group.totalOpeningStock}</Tag>
+                {!resolved && plan.mode === 'merge' && selectedRowIndexes.length > 0 && (
+                  <Tag color="geekblue">{selectedRowIndexes.length} selected</Tag>
+                )}
+                {combinedQty > 0 && plan.mode === 'merge' && (
+                  <Tag color="blue">Combined qty: {combinedQty}</Tag>
                 )}
                 {resolved ? (
                   <Tag color="success" icon={<CheckCircleOutlined />}>
@@ -93,11 +143,30 @@ export function ImportDuplicateGroupsPanel({
             ),
             children: (
               <div>
+                {!resolved && plan.mode === 'merge' && pendingRowIndexes.length > 0 && (
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                    Check rows to include in the merge. Unchecked rows can be added separately from the preview list.
+                  </Text>
+                )}
                 <Table
                   size="small"
                   pagination={false}
                   rowKey="rowIndex"
                   dataSource={group.details}
+                  rowSelection={!resolved && plan.mode === 'merge' && pendingRowIndexes.length > 0 ? {
+                    selectedRowKeys: selectedRowIndexes,
+                    onChange: (keys) => {
+                      onPlanChange(group.groupKey, {
+                        selectedRowIndexes: keys.map((k) => Number(k)),
+                      });
+                    },
+                    getCheckboxProps: (record) => ({
+                      disabled:
+                        disabled
+                        || !!addedRowIndexes[String(record.rowIndex)]
+                        || !!supersededRowIndexes[String(record.rowIndex)],
+                    }),
+                  } : undefined}
                   columns={[
                     {
                       title: 'Line',
@@ -125,10 +194,13 @@ export function ImportDuplicateGroupsPanel({
                       width: 100,
                       render: (_, d) => {
                         if (addedRowIndexes[String(d.rowIndex)]) {
-                          return <Tag color="success">Added</Tag>;
+                          return <Tag color="success">{isUpdateImport ? 'Updated' : 'Added'}</Tag>;
                         }
                         if (supersededRowIndexes[String(d.rowIndex)]) {
                           return <Tag>Skipped</Tag>;
+                        }
+                        if (plan.mode === 'merge' && !selectedRowIndexes.includes(d.rowIndex)) {
+                          return <Tag>Not selected</Tag>;
                         }
                         return <Tag color="processing">Pending</Tag>;
                       },
@@ -139,7 +211,7 @@ export function ImportDuplicateGroupsPanel({
                 {!resolved && (
                   <>
                     <div style={{ marginTop: 12, marginBottom: 8, fontWeight: 600, fontSize: 12 }}>
-                      How should this group be saved?
+                      {isUpdateImport ? 'How should this duplicate group be updated?' : 'How should this group be saved?'}
                     </div>
                     <Radio.Group
                       value={plan.mode}
@@ -154,7 +226,11 @@ export function ImportDuplicateGroupsPanel({
                       <Space direction="vertical" size={4}>
                         <Radio value="merge">
                           <MergeCellsOutlined style={{ marginRight: 6 }} />
-                          Merge into one item (sum opening quantities: {group.totalOpeningStock})
+                          Merge into one item (sum opening quantities
+                          {plan.mode === 'merge' && selectedRowIndexes.length > 0
+                            ? `: ${combinedQty}`
+                            : `: ${group.totalOpeningStock}`}
+                          )
                         </Radio>
                         <Radio value="pick_one">Use one row only (other rows marked skipped)</Radio>
                       </Space>
@@ -184,12 +260,12 @@ export function ImportDuplicateGroupsPanel({
                       </div>
                     )}
 
-                    {plan.mode === 'merge' && (
+                    {plan.mode === 'merge' && selectedRowIndexes.length > 0 && (
                       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
                         Field values come from line{' '}
                         {group.details.find((d) => d.rowIndex === primaryIndex)?.sourceLine
                           ?? primaryIndex + 1}
-                        ; opening stock and value are summed across all rows in this group.
+                        ; opening stock is summed across {selectedRowIndexes.length} checked row(s).
                       </Text>
                     )}
 
@@ -206,14 +282,38 @@ export function ImportDuplicateGroupsPanel({
                       />
                     </div>
 
-                    <Button
-                      type="primary"
-                      style={{ marginTop: 12 }}
-                      disabled={disabled || !canManageItems}
-                      onClick={() => onAddInForm(group, plan)}
-                    >
-                      {plan.mode === 'merge' ? 'Add merged item in form' : 'Add selected row in form'}
-                    </Button>
+                    <Space style={{ marginTop: 12 }} wrap>
+                      {isUpdateImport && onDirectUpdate && (
+                        <Button
+                          type="primary"
+                          disabled={disabled || !canManageItems || selectedRowIndexes.length === 0}
+                          onClick={() => onDirectUpdate(group, mergePlan)}
+                        >
+                          {plan.mode === 'merge'
+                            ? (selectedRowIndexes.length > 1
+                              ? `Update ${selectedRowIndexes.length} merged directly`
+                              : 'Update selected directly')
+                            : 'Update selected directly'}
+                        </Button>
+                      )}
+                      <Button
+                        type={isUpdateImport && onDirectUpdate ? 'default' : 'primary'}
+                        disabled={disabled || !canManageItems || (plan.mode === 'merge' && selectedRowIndexes.length === 0)}
+                        onClick={() => onAddInForm(group, mergePlan)}
+                      >
+                        {isUpdateImport
+                          ? (plan.mode === 'merge'
+                            ? (selectedRowIndexes.length > 1
+                              ? `Update ${selectedRowIndexes.length} merged in form`
+                              : 'Update selected in form')
+                            : 'Update selected in form')
+                          : (plan.mode === 'merge'
+                            ? (selectedRowIndexes.length > 1
+                              ? `Add ${selectedRowIndexes.length} merged in form`
+                              : 'Add selected in form')
+                            : 'Add selected row in form')}
+                      </Button>
+                    </Space>
                   </>
                 )}
               </div>

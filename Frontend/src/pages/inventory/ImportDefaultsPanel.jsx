@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { Collapse, Row, Col, Input, InputNumber, Select, Typography } from 'antd';
-import { CSV_IMPORT_DEFAULTABLE_CORE_IDS, CSV_IMPORT_SKU_AUTO_RULE } from './importConstants';
+import { Alert, Collapse, Row, Col, Input, InputNumber, Select, Typography } from 'antd';
+import { CSV_IMPORT_DEFAULTABLE_CORE_IDS, CSV_IMPORT_SKU_AUTO_RULE, CSV_IMPORT_PURPOSE_UPDATE } from './importConstants';
 
 const { Text } = Typography;
 
@@ -34,7 +34,7 @@ const FIELD_META = {
   mpn: { type: 'text' },
 };
 
-function ImportDefaultField({
+export function ImportDefaultField({
   fieldId,
   label,
   value,
@@ -206,7 +206,10 @@ export function ImportDefaultsPanel({
   canViewCategories = false,
   defaultCount = 0,
   skuSource,
+  importPurpose,
 }) {
+  const isUpdateImport = importPurpose === CSV_IMPORT_PURPOSE_UPDATE;
+
   const coreFields = useMemo(() => {
     const allowed = new Set(CSV_IMPORT_DEFAULTABLE_CORE_IDS);
     return (coreTargets || []).filter((t) => {
@@ -225,6 +228,18 @@ export function ImportDefaultsPanel({
     })),
     [fieldConfigs]
   );
+
+  if (isUpdateImport) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message="Update mode: mapped columns only"
+        description="Existing catalog values are kept for every field you do not map. Only mapped columns with data on each row are changed (empty mapped cells are skipped). Import defaults are not used on update — map the columns you want to change. Use Auto-generate SKU without mapping the SKU column when you want new SKUs."
+      />
+    );
+  }
 
   const renderCustom = (cf) => {
     const ft = String(cf.fieldType || 'text').toLowerCase();
