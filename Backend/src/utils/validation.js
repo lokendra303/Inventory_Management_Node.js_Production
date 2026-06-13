@@ -285,6 +285,13 @@ const createGRNSchema = Joi.object({
   }).unknown(true)).min(1).required()
 }).unknown(true);
 
+const createPutawaySchema = Joi.object({
+  grnLineId: Joi.string().uuid().required(),
+  binId: Joi.string().uuid().required(),
+  quantity: Joi.number().positive().required(),
+  notes: Joi.string().max(500).optional().allow('', null),
+}).unknown(true);
+
 // Purchase Order status update schema
 const updatePOStatusSchema = Joi.object({
   status: Joi.string().valid('draft', 'pending_approval', 'approved', 'sent', 'confirmed', 'partially_received', 'received', 'cancelled').required()
@@ -460,6 +467,7 @@ module.exports = {
     createPurchaseOrderSchema,
     createSalesOrderSchema,
     createGRNSchema,
+    createPutawaySchema,
     updatePOStatusSchema,
     updateSOStatusSchema,
     updateUserStatusSchema,

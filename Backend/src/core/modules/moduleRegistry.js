@@ -14,6 +14,7 @@ const moduleRegistry = [
   { path: '/warehouse-types', router: require('../../modules/warehouse/warehouseType.routes') },
   { path: '/warehouse-locations', router: require('../../modules/warehouse/warehouseLocation.routes') },
   { path: '/inventory', router: require('../../modules/inventory/inventory.routes') },
+  { path: '/putaways', router: require('../../modules/inventory/putaway.routes') },
   { path: '/purchase-orders', router: require('../../modules/order/purchaseOrder.routes') },
   { path: '/vendors', router: require('../../modules/entity/vendor.routes') },
   { path: '/customers', router: require('../../modules/entity/customer.routes') },
