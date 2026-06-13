@@ -569,22 +569,44 @@ class InvoiceTemplateService {
    */
   getManualPartyDetails(invoiceData, type) {
     const partyName = type === 'purchase' ? 'vendorName' : 'customerName';
-    
-    return {
-      type: type === 'purchase' ? 'vendor' : 'customer',
-      name: invoiceData[partyName] || '',
-      companyName: invoiceData.companyName || '',
-      contact: {
-        email: invoiceData.email || '',
-        phone: invoiceData.phone || ''
-      },
-      billingAddress: {
-        line1: invoiceData.billingAddress || '',
+
+    const billing = invoiceData.billingAddress && typeof invoiceData.billingAddress === 'object'
+      ? { ...invoiceData.billingAddress }
+      : {
+        attention: invoiceData.billingAttention || '',
+        line1: invoiceData.billingAddress || invoiceData.billingLine1 || '',
+        line2: invoiceData.billingLine2 || '',
         city: invoiceData.billingCity || '',
         state: invoiceData.billingState || '',
         country: invoiceData.billingCountry || '',
-        postalCode: invoiceData.billingPostalCode || ''
-      }
+        postalCode: invoiceData.billingPostalCode || '',
+      };
+
+    const shipping = invoiceData.shippingAddress && typeof invoiceData.shippingAddress === 'object'
+      ? { ...invoiceData.shippingAddress }
+      : {
+        attention: invoiceData.shippingAttention || '',
+        line1: invoiceData.shippingAddress || invoiceData.shippingLine1 || '',
+        line2: invoiceData.shippingLine2 || '',
+        city: invoiceData.shippingCity || '',
+        state: invoiceData.shippingState || '',
+        country: invoiceData.shippingCountry || '',
+        postalCode: invoiceData.shippingPostalCode || '',
+      };
+
+    return {
+      type: type === 'purchase' ? 'vendor' : 'customer',
+      name: invoiceData[partyName] || '',
+      companyName: invoiceData.companyName || invoiceData[partyName] || '',
+      contact: {
+        email: invoiceData.email || '',
+        phone: invoiceData.phone || '',
+      },
+      billingAddress: billing,
+      shippingAddress: shipping,
+      taxInfo: {
+        gstin: invoiceData.partyGstin || invoiceData.gstin || '',
+      },
     };
   }
 

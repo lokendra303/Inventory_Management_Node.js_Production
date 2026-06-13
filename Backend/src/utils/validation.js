@@ -358,6 +358,52 @@ const createSalesInvoiceSchema = Joi.object({
   })).min(1).required()
 }).unknown(true);
 
+// Third-party invoice (no inventory impact, manual lines)
+const createThirdPartyInvoiceSchema = Joi.object({
+  invoiceNumber: Joi.string().max(100).allow('', null).optional(),
+  partyType: Joi.string().valid('customer', 'vendor', 'other').default('other'),
+  partyId: Joi.string().uuid().optional().allow(null, ''),
+  partyName: Joi.string().max(255).required(),
+  partyGstin: Joi.string().max(20).allow('', null).optional(),
+  partyAddress: Joi.string().allow('', null).optional(),
+  partyAddresses: Joi.object({
+    billingAddressId: Joi.string().allow(null).optional(),
+    shippingAddressId: Joi.string().allow(null).optional(),
+    billingAddress: Joi.object().optional(),
+    shippingAddress: Joi.object().optional(),
+    partyAddressSelection: Joi.object().optional(),
+  }).optional(),
+  invoiceDate: Joi.alternatives().try(
+    Joi.date(),
+    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+  ).required(),
+  dueDate: Joi.alternatives().try(
+    Joi.date(),
+    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+  ).optional().allow(null, ''),
+  currency: Joi.string().length(3).default('INR'),
+  exchangeRate: Joi.number().positive().default(1.0),
+  reference: Joi.string().max(255).optional().allow('', null),
+  notes: Joi.string().optional().allow('', null),
+  status: Joi.string().valid('draft', 'posted').optional(),
+  lines: Joi.array().items(Joi.object({
+    description: Joi.string().max(500).allow('', null).optional(),
+    itemName: Joi.string().max(500).allow('', null).optional(),
+    hsnCode: Joi.string().max(20).allow('', null).optional(),
+    unit: Joi.string().max(50).allow('', null).optional(),
+    quantity: Joi.number().positive().required(),
+    unitPrice: Joi.number().min(0).required(),
+    taxRate: Joi.number().min(0).max(100).default(0),
+    discountRate: Joi.number().min(0).max(100).default(0),
+  }).or('description', 'itemName')).min(1).required(),
+  totals: Joi.object().optional(),
+  documentMeta: Joi.object().optional(),
+}).unknown(true);
+
+const updateThirdPartyInvoiceStatusSchema = Joi.object({
+  status: Joi.string().valid('draft', 'posted', 'cancelled').required(),
+});
+
 // Invoice status update schemas
 const updateInvoiceStatusSchema = Joi.object({
   status: Joi.string().valid('draft', 'posted', 'partially_paid', 'paid', 'cancelled').required()
@@ -421,6 +467,8 @@ module.exports = {
     createAutomationRuleSchema,
     createPurchaseInvoiceSchema,
     createSalesInvoiceSchema,
+    createThirdPartyInvoiceSchema,
+    updateThirdPartyInvoiceStatusSchema,
     updateInvoiceStatusSchema,
     createInvoicePaymentSchema
   }

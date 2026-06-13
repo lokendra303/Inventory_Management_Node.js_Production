@@ -22,6 +22,7 @@ const moduleRegistry = [
   { path: '/purchase-invoices', router: require('../../modules/invoice/purchaseInvoice.routes') },
   { path: '/accounting', router: require('../../modules/invoice/accounting.routes') },
   { path: '/sales-invoices', router: require('../../modules/invoice/salesInvoice.routes') },
+  { path: '/third-party-invoices', router: require('../../modules/invoice/thirdPartyInvoice.routes') },
   { path: '/grn', router: require('../../modules/order/grn.routes') },
   { path: '/reorder-levels', router: require('../../modules/inventory/reorderLevel.routes') },
   { path: '/batch-serial', router: require('../../modules/inventory/batchSerial.routes') },

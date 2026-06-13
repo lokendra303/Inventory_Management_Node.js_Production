@@ -1,0 +1,55 @@
+-- Third-party invoices: invoice format without inventory or accounting impact.
+-- Manual line entry for broker/trading/documentation use cases.
+
+CREATE TABLE IF NOT EXISTS `third_party_invoices` (
+  `id` varchar(36) NOT NULL,
+  `institution_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `invoice_number` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `party_type` enum('customer','vendor','other') NOT NULL DEFAULT 'other',
+  `party_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `party_name` varchar(255) NOT NULL,
+  `party_gstin` varchar(20) DEFAULT NULL,
+  `party_address` text,
+  `invoice_date` date NOT NULL,
+  `due_date` date DEFAULT NULL,
+  `currency` varchar(3) DEFAULT 'INR',
+  `exchange_rate` decimal(10,4) DEFAULT '1.0000',
+  `subtotal` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `tax_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `discount_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `total_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `status` enum('draft','posted','cancelled') DEFAULT 'draft',
+  `reference` varchar(255) DEFAULT NULL,
+  `notes` text,
+  `document_meta` json DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_by` varchar(36) DEFAULT NULL,
+  `updated_by` varchar(36) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_tpi_number_institution` (`invoice_number`,`institution_id`),
+  KEY `idx_tpi_institution_id` (`institution_id`),
+  KEY `idx_tpi_party_id` (`party_id`),
+  KEY `idx_tpi_status` (`status`),
+  KEY `idx_tpi_invoice_date` (`invoice_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `third_party_invoice_lines` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `invoice_id` varchar(36) NOT NULL,
+  `line_number` int NOT NULL DEFAULT '1',
+  `description` varchar(500) NOT NULL,
+  `hsn_code` varchar(20) DEFAULT NULL,
+  `unit` varchar(50) DEFAULT NULL,
+  `quantity` decimal(15,3) NOT NULL,
+  `unit_price` decimal(15,4) NOT NULL,
+  `line_total` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `tax_rate` decimal(5,2) DEFAULT '0.00',
+  `tax_amount` decimal(15,2) DEFAULT '0.00',
+  `discount_rate` decimal(5,2) DEFAULT '0.00',
+  `discount_amount` decimal(15,2) DEFAULT '0.00',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_tpi_lines_invoice_id` (`invoice_id`),
+  CONSTRAINT `third_party_invoice_lines_ibfk_1` FOREIGN KEY (`invoice_id`) REFERENCES `third_party_invoices` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

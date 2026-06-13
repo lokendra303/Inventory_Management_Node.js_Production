@@ -42,6 +42,7 @@ import {
   InvoiceDashboard,
   PurchaseInvoices,
   SalesInvoices,
+  ThirdPartyInvoices,
   OutstandingInvoices,
   ItemGroups,
   DeliveryChallans,
@@ -117,6 +118,7 @@ const ProtectedEditCustomer = withPermission('customer_management')(EditCustomer
 const ProtectedInvoiceDashboard = withPermission('invoice_view')(InvoiceDashboard);
 const ProtectedPurchaseInvoices = withPermission('invoice_view')(PurchaseInvoices);
 const ProtectedSalesInvoices = withPermission('invoice_view')(SalesInvoices);
+const ProtectedThirdPartyInvoices = withPermission('invoice_view')(ThirdPartyInvoices);
 const ProtectedOutstandingInvoices = withPermission('invoice_view')(OutstandingInvoices);
 const ProtectedStockCount = withPermission('inventory_adjust')(StockCount);
 const ProtectedBatchTracking = withPermission('inventory_view')(BatchTracking);
@@ -225,6 +227,7 @@ function AppContent() {
               <Route path="/invoices/dashboard" element={<ProtectedInvoiceDashboard />} />
               <Route path="/invoices/purchase" element={<ProtectedPurchaseInvoices />} />
               <Route path="/invoices/sales" element={<ProtectedSalesInvoices />} />
+              <Route path="/invoices/third-party" element={<ProtectedThirdPartyInvoices />} />
               <Route path="/invoices/outstanding" element={<ProtectedOutstandingInvoices />} />
               <Route path="/accounting" element={<ProtectedAccounting />} />
               <Route path="/audit" element={<ProtectedAuditDashboard />} />

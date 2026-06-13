@@ -531,6 +531,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         { key: '/invoices/dashboard',   label: 'Invoice Dashboard' },
         { key: '/invoices/purchase',    label: 'Purchase Invoices' },
         { key: '/invoices/sales',       label: 'Sales Invoices' },
+        { key: '/invoices/third-party',  label: 'Third-Party Invoices' },
         { key: '/invoices/outstanding', label: 'Outstanding' },
         { key: '/invoices/payments',    label: 'Payments' },
       ],
