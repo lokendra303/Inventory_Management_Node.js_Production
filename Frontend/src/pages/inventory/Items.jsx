@@ -512,6 +512,9 @@ const Items = () => {
   const autoDraftSavedRef = useRef(false);
   const variantBuilderSeededRef = useRef(false);
   const fetchItemsRef = useRef(async () => {});
+  const fetchDropdownOptionsRef = useRef(async () => ({}));
+  const fetchDraftsRef = useRef(async () => {});
+  const dataInitializedRef = useRef(false);
   const csvImportExcelBufferRef = useRef(null);
   const activeImportRowIndexRef = useRef(null);
   const activeImportGroupRef = useRef(null);
@@ -1377,6 +1380,7 @@ const Items = () => {
     }
     return snapshot;
   };
+  fetchDropdownOptionsRef.current = fetchDropdownOptions;
 
   const fetchWarehouseTypes = async () => {
     try {
@@ -1447,53 +1451,44 @@ const Items = () => {
     let itemsLoaded = false;
     try {
       setLoading(true);
-      
-      // Stagger API calls to prevent 429 errors
-      try {
-        const itemsResponse = await apiService.get('/items', { params: { status: 'all' } });
+
+      const canViewCategories = user?.permissions?.category_view || user?.permissions?.all;
+      const warehousesPromise = apiService.get('/warehouses', { params: { status: 'all' } }).catch(async () => {
+        try {
+          return await apiService.get('/warehouses/accessible');
+        } catch {
+          return { success: false, data: [] };
+        }
+      });
+
+      const [itemsResult, warehousesResult, categoriesResult] = await Promise.allSettled([
+        apiService.get('/items', { params: { status: 'all' } }),
+        warehousesPromise,
+        canViewCategories ? apiService.get('/categories') : Promise.resolve({ success: false }),
+      ]);
+
+      if (itemsResult.status === 'fulfilled') {
+        const itemsResponse = itemsResult.value;
         if (itemsResponse.success) {
           setItems(itemsResponse.data);
           itemsLoaded = true;
-        }
-      } catch (error) {
-        if (error?.isPermissionError) {
+        } else if (itemsResponse?.isPermissionError) {
           message.error('You do not have permission to view items');
           return;
         }
-        throw error;
+      } else if (itemsResult.reason?.isPermissionError) {
+        message.error('You do not have permission to view items');
+        return;
+      } else if (itemsResult.status === 'rejected') {
+        throw itemsResult.reason;
       }
-      
-      // Add small delay before next request
-      await new Promise(resolve => setTimeout(resolve, 100));
 
-      try {
-        const warehousesResponse = await apiService.get('/warehouses', { params: { status: 'all' } });
-        if (warehousesResponse.success) {
-          setWarehouses(warehousesResponse.data);
-        }
-      } catch (error) {
-        // Fallback: item users may not have warehouse_view but still need selectable warehouse list.
-        try {
-          const accessibleWarehousesResponse = await apiService.get('/warehouses/accessible');
-          if (accessibleWarehousesResponse.success) {
-            setWarehouses(accessibleWarehousesResponse.data || []);
-          }
-        } catch {
-          console.log('Warehouse list unavailable for this user, continuing without warehouses');
-        }
+      if (warehousesResult.status === 'fulfilled' && warehousesResult.value?.success) {
+        setWarehouses(warehousesResult.value.data || []);
       }
-      
-      // Only fetch categories if user has permission
-      if (user?.permissions?.category_view || user?.permissions?.all) {
-        try {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          const categoriesResponse = await apiService.get('/categories');
-          if (categoriesResponse.success) {
-            setCategories(categoriesResponse.data);
-          }
-        } catch (error) {
-          console.log('No category access, continuing without categories');
-        }
+
+      if (categoriesResult.status === 'fulfilled' && categoriesResult.value?.success) {
+        setCategories(categoriesResult.value.data || []);
       }
     } catch (error) {
       console.error('Fetch items error:', error);
@@ -4546,6 +4541,7 @@ const viewItem = async (item) => {
       setDraftsLoading(false);
     }
   };
+  fetchDraftsRef.current = fetchDrafts;
 
   const openDraft = async (draft) => {
     setEditingItem(null);
@@ -4645,23 +4641,22 @@ const viewItem = async (item) => {
   }, [sessionSecondsLeft, modalVisible, editingItem, saveDraftSilently]);
 
   useEffect(() => {
-    const initializeData = async () => {
-      await fetchItems();
-      await new Promise(resolve => setTimeout(resolve, 200));
-      await fetchDropdownOptions();
-      await fetchDrafts();
-    };
-    
-    initializeData();
-    
-    // Refresh vendor list when window regains focus (after adding vendor in new tab)
+    if (!user || dataInitializedRef.current) return;
+    dataInitializedRef.current = true;
+    (async () => {
+      await fetchItemsRef.current();
+      await fetchDropdownOptionsRef.current();
+      await fetchDraftsRef.current();
+    })();
+  }, [user]);
+
+  useEffect(() => {
     const handleFocus = () => {
       if (modalVisible) {
-        setTimeout(() => fetchDropdownOptions(), 100);
+        fetchDropdownOptionsRef.current();
       }
     };
     window.addEventListener('focus', handleFocus);
-    
     return () => {
       window.removeEventListener('focus', handleFocus);
     };

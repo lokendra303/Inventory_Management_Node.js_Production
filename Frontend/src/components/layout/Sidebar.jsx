@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Layout, Drawer } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth.jsx';
+import { preloadRoute } from '../../routes/lazyPages.jsx';
 import CurrencySelector from '../common/CurrencySelector.jsx';
 import {
   FundProjectionScreenOutlined, DatabaseOutlined, TagsOutlined, BankOutlined,
@@ -171,7 +172,7 @@ const FlyoutChild = ({ child, active, accentColor, onNavigate }) => {
   return (
     <div
       onClick={() => onNavigate(child.key)}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => { preloadRoute(child.key); setHovered(true); }}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
@@ -288,7 +289,7 @@ const MenuItem = ({ item, active, onClick, iconColor }) => {
   return (
     <div
       onClick={() => onClick(item.key)}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => { preloadRoute(item.key); setHovered(true); }}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
@@ -332,7 +333,7 @@ const CollapsedMenuItem = ({ item, active, onClick, iconColor }) => {
   const [hovered, setHovered] = useState(false);
   return (
     <div style={{ position: 'relative' }}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => { preloadRoute(item.key); setHovered(true); }}
       onMouseLeave={() => setHovered(false)}
     >
       <div
@@ -388,7 +389,7 @@ const ChildItem = ({ child, active, onNavigate, accentColor }) => {
   return (
     <div
       onClick={() => onNavigate(child.key)}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => { preloadRoute(child.key); setHovered(true); }}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
@@ -564,6 +565,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
 
   const handleNavigate = (key) => {
     if (typeof key === 'string' && key.startsWith('/')) {
+      preloadRoute(key);
       navigate(key);
       if (isMobile && onClose) onClose();
     }

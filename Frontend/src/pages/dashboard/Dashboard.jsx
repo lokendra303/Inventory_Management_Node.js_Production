@@ -104,21 +104,17 @@ const Dashboard = () => {
       setLoading(true);
       const start = dateRange[0].format('YYYY-MM-DD');
       const end = dateRange[1].format('YYYY-MM-DD');
-      const [inventoryRes, warehousesRes, lowStockRes, itemsRes, trendRes, topItemsRes, categoryRes, monthlyRes] = await Promise.all([
-        apiService.get('/inventory').catch(() => ({ success: false, data: [] })),
-        apiService.get('/warehouses').catch(() => ({ success: false, data: [] })),
+      const [statsRes, lowStockRes, trendRes, topItemsRes, categoryRes, monthlyRes] = await Promise.all([
+        apiService.get('/inventory/dashboard-stats').catch(() => ({ success: false, data: {} })),
         apiService.get('/inventory/low-stock').catch(() => ({ success: false, data: [] })),
-        apiService.get('/items').catch(() => ({ success: false, data: [] })),
         apiService.get(`/reports/dashboard-trend?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] })),
         apiService.get(`/reports/dashboard-top-items?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] })),
         apiService.get('/reports/dashboard-category-stock').catch(() => ({ success: false, data: [] })),
         apiService.get(`/reports/dashboard-monthly?startDate=${start}&endDate=${end}`).catch(() => ({ success: false, data: [] }))
       ]);
 
-      const inventory = inventoryRes.success ? inventoryRes.data : [];
-      const warehouses = warehousesRes.success ? warehousesRes.data : [];
+      const stats = statsRes.success ? statsRes.data : {};
       const lowStockItems = lowStockRes.success ? lowStockRes.data : [];
-      const items = itemsRes.success ? itemsRes.data : [];
       const stockTrend = trendRes.success ? trendRes.data : [];
 
       if (topItemsRes.success) setTopItems(topItemsRes.data);
@@ -126,17 +122,17 @@ const Dashboard = () => {
       if (monthlyRes.success) setMonthlyData(monthlyRes.data);
 
       setDashboardData({
-        totalItems: inventory.length,
-        activeItems: items.filter(i => i.status === 'active').length,
-        inactiveItems: items.filter(i => i.status === 'inactive').length,
-        totalQuantity: inventory.reduce((s, i) => s + (parseFloat(i.quantity_on_hand) || 0), 0),
-        totalAvailable: inventory.reduce((s, i) => s + (parseFloat(i.quantity_available) || 0), 0),
-        totalReserved: inventory.reduce((s, i) => s + (parseFloat(i.quantity_reserved) || 0), 0),
-        activeWarehouses: warehouses.filter(w => w.status === 'active').length,
-        inactiveWarehouses: warehouses.filter(w => w.status === 'inactive').length,
-        totalItemsCount: items.length,
+        totalItems: stats.totalInventoryRows || 0,
+        activeItems: stats.activeItems || 0,
+        inactiveItems: stats.inactiveItems || 0,
+        totalQuantity: parseFloat(stats.totalQuantity) || 0,
+        totalAvailable: parseFloat(stats.totalAvailable) || 0,
+        totalReserved: parseFloat(stats.totalReserved) || 0,
+        activeWarehouses: stats.activeWarehouses || 0,
+        inactiveWarehouses: stats.inactiveWarehouses || 0,
+        totalItemsCount: stats.totalItems || 0,
         lowStockItems: lowStockItems.slice(0, 10),
-        lowStockCount: lowStockItems.length,
+        lowStockCount: stats.lowStockCount ?? lowStockItems.length,
         stockTrend
       });
     } catch (e) {

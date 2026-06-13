@@ -82,11 +82,16 @@ async function createSession({ userId, institutionId, ipAddress, userAgent }) {
   return id;
 }
 
+const SESSION_TOUCH_INTERVAL_SEC = parseInt(process.env.SESSION_TOUCH_INTERVAL_SEC, 10) || 60;
+
 async function touchSession(sessionId) {
   if (!sessionId) return;
+  // Throttle writes — at most one UPDATE per session per interval
   await db.query(
-    `UPDATE user_sessions SET last_activity_at = NOW() WHERE id = ? AND revoked_at IS NULL`,
-    [sessionId]
+    `UPDATE user_sessions SET last_activity_at = NOW()
+     WHERE id = ? AND revoked_at IS NULL
+       AND (last_activity_at IS NULL OR last_activity_at < DATE_SUB(NOW(), INTERVAL ? SECOND))`,
+    [sessionId, SESSION_TOUCH_INTERVAL_SEC]
   );
 }
 

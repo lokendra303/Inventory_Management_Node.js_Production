@@ -460,7 +460,7 @@ class AuthService {
       const effectivePermissions = await this._resolveEffectivePermissions(user);
 
       if (decoded.sessionId) {
-        await userSessionService.touchSession(decoded.sessionId);
+        userSessionService.touchSession(decoded.sessionId).catch(() => {});
       }
 
       return {

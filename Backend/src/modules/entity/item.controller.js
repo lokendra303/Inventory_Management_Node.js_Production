@@ -111,8 +111,10 @@ class ItemController {
 
   async getItems(req, res) {
     try {
-      const limit = parseInt(req.query.limit) || 100;
-      const offset = parseInt(req.query.offset) || 0;
+      const limit = req.query.limit != null && req.query.limit !== ''
+        ? parseInt(req.query.limit, 10)
+        : null;
+      const offset = parseInt(req.query.offset, 10) || 0;
       const filters = {
         type: req.query.type,
         category: req.query.category,
@@ -122,12 +124,12 @@ class ItemController {
         includeVariants: req.query.includeVariants === '1' || req.query.includeVariants === 'true'
       };
       
-      const items = await itemService.getItems(req.institutionId, filters, limit, offset);
+      const { items, total } = await itemService.getItems(req.institutionId, filters, limit, offset);
       
       res.json({
         success: true,
         data: items,
-        pagination: { limit, offset, total: items.length }
+        pagination: { limit: limit ?? total, offset, total }
       });
     } catch (error) {
       logger.error('Failed to get items', { error: error.message, institutionId: req.institutionId });

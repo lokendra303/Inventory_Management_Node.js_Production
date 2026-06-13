@@ -1162,7 +1162,57 @@ class ItemService {
     return true;
   }
 
-  async getItems(institutionId, filters = {}) {
+  _buildItemsWhereClause(institutionId, filters = {}) {
+    let where = 'WHERE i.institution_id = ?';
+    const params = [institutionId];
+
+    if (filters.status === 'all') {
+      where += " AND i.status != 'draft'";
+    } else {
+      where += ' AND i.status = ?';
+      params.push(filters.status || 'active');
+    }
+
+    if (filters.type) {
+      where += ' AND i.type = ?';
+      params.push(filters.type);
+    }
+
+    if (filters.category) {
+      where += ' AND i.category = ?';
+      params.push(filters.category);
+    }
+
+    if (filters.itemGroupId) {
+      where += ' AND i.item_group_id = ?';
+      params.push(filters.itemGroupId);
+    }
+
+    if (filters.search) {
+      where += ' AND (i.name LIKE ? OR i.sku LIKE ? OR COALESCE(i.category, \'\') LIKE ? OR COALESCE(i.batch_number, \'\') LIKE ? OR COALESCE(ig.name, i.item_group, \'\') LIKE ?)';
+      const searchTerm = `%${String(filters.search).trim()}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    return { where, params };
+  }
+
+  async getItems(institutionId, filters = {}, limit = null, offset = 0) {
+    const { where, params } = this._buildItemsWhereClause(institutionId, filters);
+    const joins = `
+                 FROM items i
+                 LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
+                 LEFT JOIN brands b ON i.brand = b.id
+                 LEFT JOIN manufacturers m ON i.manufacturer = m.id
+                 LEFT JOIN units u ON i.unit = u.id
+                 LEFT JOIN item_groups ig ON ig.id = i.item_group_id AND ig.institution_id = i.institution_id`;
+
+    const countRows = await db.query(
+      `SELECT COUNT(DISTINCT i.id) AS total ${joins} ${where}`,
+      params
+    );
+    const total = Number(countRows[0]?.total || 0);
+
     let query = `SELECT i.*, 
                  COALESCE(SUM(ip.quantity_on_hand), 0) as current_stock,
                  b.name as brand_name,
@@ -1170,44 +1220,16 @@ class ItemService {
                  u.name as unit_name,
                  ig.id as item_group_ref_id,
                  COALESCE(ig.name, i.item_group) as item_group_name
-                 FROM items i
-                 LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
-                 LEFT JOIN brands b ON i.brand = b.id
-                 LEFT JOIN manufacturers m ON i.manufacturer = m.id
-                 LEFT JOIN units u ON i.unit = u.id
-                 LEFT JOIN item_groups ig ON ig.id = i.item_group_id AND ig.institution_id = i.institution_id
-                 WHERE i.institution_id = ?`;
-    const params = [institutionId];
-
-    if (filters.status === 'all') {
-      query += " AND i.status != 'draft'";
-    } else {
-      query += ' AND i.status = ?';
-      params.push(filters.status || 'active');
-    }
-
-    if (filters.type) {
-      query += ' AND i.type = ?';
-      params.push(filters.type);
-    }
-
-    if (filters.category) {
-      query += ' AND i.category = ?';
-      params.push(filters.category);
-    }
-
-    if (filters.itemGroupId) {
-      query += ' AND i.item_group_id = ?';
-      params.push(filters.itemGroupId);
-    }
-
-    if (filters.search) {
-      query += ' AND (i.name LIKE ? OR i.sku LIKE ? OR COALESCE(i.category, \'\') LIKE ? OR COALESCE(i.batch_number, \'\') LIKE ? OR COALESCE(ig.name, i.item_group, \'\') LIKE ?)';
-      const searchTerm = `%${String(filters.search).trim()}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
-    }
+                 ${joins}
+                 ${where}`;
 
     query += ' GROUP BY i.id ORDER BY i.name';
+
+    const safeLimit = limit != null ? Math.min(Math.max(parseInt(limit, 10) || 0, 1), 5000) : null;
+    const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+    if (safeLimit != null) {
+      query += ` LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+    }
 
     const items = await db.query(query, params);
 
@@ -1249,14 +1271,17 @@ class ItemService {
             sellingPrice: Number(v.selling_price || 0)
           });
         }
-        return mapped.map((item) => ({
-          ...item,
-          variant_options: item.type === 'variant' ? (byParent.get(item.id) || []) : []
-        }));
+        return {
+          items: mapped.map((item) => ({
+            ...item,
+            variant_options: item.type === 'variant' ? (byParent.get(item.id) || []) : []
+          })),
+          total
+        };
       }
     }
 
-    return mapped;
+    return { items: mapped, total };
   }
 
   async getItemFieldConfig(institutionId, itemType) {

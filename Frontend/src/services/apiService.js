@@ -2,51 +2,9 @@ import axios from 'axios';
 import { getApiBaseUrl } from '../config/appConfig';
 import { showSessionRevokedModal, showSessionExpiredModal } from '../utils/sessionModals';
 
-// Simple rate limiter to prevent 429 errors
-class RateLimiter {
-  constructor(maxRequests = 10, windowMs = 1000) {
-    this.maxRequests = maxRequests;
-    this.windowMs = windowMs;
-    this.requests = [];
-    this.queue = [];
-    this.processing = false;
-  }
-
-  async waitForSlot() {
-    return new Promise((resolve) => {
-      this.queue.push(resolve);
-      this.processQueue();
-    });
-  }
-
-  async processQueue() {
-    if (this.processing || this.queue.length === 0) return;
-    
-    this.processing = true;
-    
-    while (this.queue.length > 0) {
-      const now = Date.now();
-      this.requests = this.requests.filter(time => now - time < this.windowMs);
-      
-      if (this.requests.length < this.maxRequests) {
-        this.requests.push(now);
-        const resolve = this.queue.shift();
-        resolve();
-      } else {
-        const oldestRequest = Math.min(...this.requests);
-        const waitTime = this.windowMs - (now - oldestRequest) + 50;
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
-    }
-    
-    this.processing = false;
-  }
-}
-
 class ApiService {
   constructor() {
-    this.rateLimiter = new RateLimiter(10, 1000); // 10 requests per second
-    this.retryCount = new Map(); // Track retry attempts per request
+    this.retryCount = new Map();
     
     this.api = axios.create({
       baseURL: getApiBaseUrl(),
@@ -56,12 +14,9 @@ class ApiService {
       },
     });
 
-    // Request interceptor with rate limiting
+    // Request interceptor
     this.api.interceptors.request.use(
       async (config) => {
-        // Apply rate limiting
-        await this.rateLimiter.waitForSlot();
-        
         const token = sessionStorage.getItem('token');
         
         if (token) {

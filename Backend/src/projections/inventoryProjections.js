@@ -482,9 +482,19 @@ class InventoryProjectionService {
   }
 
   async getDashboardStats(institutionId) {
-    const [totalValueResult, totalItemsResult, lowStockResult] = await Promise.all([
+    const [
+      inventoryAgg,
+      itemCounts,
+      warehouseCounts,
+      lowStockResult,
+    ] = await Promise.all([
       db.query(
-        `SELECT SUM(ip.total_value) as total_value
+        `SELECT
+           COUNT(*) AS inventory_rows,
+           COALESCE(SUM(ip.quantity_on_hand), 0) AS total_quantity,
+           COALESCE(SUM(ip.quantity_available), 0) AS total_available,
+           COALESCE(SUM(ip.quantity_reserved), 0) AS total_reserved,
+           COALESCE(SUM(ip.total_value), 0) AS total_value
          FROM inventory_projections ip
          JOIN items i ON ip.item_id = i.id
          JOIN warehouses w ON ip.warehouse_id = w.id
@@ -492,23 +502,49 @@ class InventoryProjectionService {
         [institutionId]
       ),
       db.query(
-        'SELECT COUNT(*) as total_items FROM items WHERE institution_id = ? AND status = "active"',
+        `SELECT
+           SUM(status = 'active') AS active_items,
+           SUM(status = 'inactive') AS inactive_items,
+           COUNT(*) AS total_items
+         FROM items
+         WHERE institution_id = ? AND status != 'draft'`,
         [institutionId]
       ),
       db.query(
-        `SELECT COUNT(*) as low_stock_count
+        `SELECT
+           SUM(status = 'active') AS active_warehouses,
+           SUM(status = 'inactive') AS inactive_warehouses
+         FROM warehouses
+         WHERE institution_id = ?`,
+        [institutionId]
+      ),
+      db.query(
+        `SELECT COUNT(*) AS low_stock_count
          FROM inventory_projections ip
          JOIN items i ON ip.item_id = i.id
          JOIN warehouses w ON ip.warehouse_id = w.id
-         WHERE ip.institution_id = ? AND ip.quantity_available <= 10 AND i.status = 'active' AND w.status = 'active'`,
+         WHERE ip.institution_id = ? AND ip.quantity_available <= 10
+           AND i.status = 'active' AND w.status = 'active'`,
         [institutionId]
-      )
+      ),
     ]);
 
+    const inv = inventoryAgg[0] || {};
+    const items = itemCounts[0] || {};
+    const wh = warehouseCounts[0] || {};
+
     return {
-      totalValue: totalValueResult[0]?.total_value || 0,
-      totalItems: totalItemsResult[0]?.total_items || 0,
-      lowStockCount: lowStockResult[0]?.low_stock_count || 0
+      totalValue: inv.total_value || 0,
+      totalItems: items.total_items || 0,
+      activeItems: items.active_items || 0,
+      inactiveItems: items.inactive_items || 0,
+      totalInventoryRows: inv.inventory_rows || 0,
+      totalQuantity: inv.total_quantity || 0,
+      totalAvailable: inv.total_available || 0,
+      totalReserved: inv.total_reserved || 0,
+      activeWarehouses: wh.active_warehouses || 0,
+      inactiveWarehouses: wh.inactive_warehouses || 0,
+      lowStockCount: lowStockResult[0]?.low_stock_count || 0,
     };
   }
 

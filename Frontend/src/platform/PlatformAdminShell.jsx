@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Layout, Menu, Button, Typography, Space, Drawer } from 'antd';
 import {
   DashboardOutlined, TeamOutlined, LogoutOutlined, SafetyCertificateOutlined,
@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { platformToken } from '../services/platformApi';
+import { PageLoader } from '../routes/lazyPages.jsx';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -177,7 +178,9 @@ export default function PlatformAdminShell() {
             minWidth: 0,
           }}
         >
-          <Outlet />
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
         </Content>
       </Layout>
     </Layout>
