@@ -471,16 +471,27 @@ export function buildImportDuplicateGroups(rows, mapping, importDefaults = {}) {
       const details = sorted.map((rowIndex) => {
         const row = list[rowIndex];
         const stock = parseImportNumeric(pickImportValue(row, mapping, importDefaults, 'openingStock'));
+        const batchLine = buildImportBatchLine(row, mapping, importDefaults);
         return {
           rowIndex,
           sourceLine: row?.__sourceLine,
           sku: pickImportValue(row, mapping, importDefaults, 'sku'),
           name: pickImportValue(row, mapping, importDefaults, 'name'),
           description: pickImportValue(row, mapping, importDefaults, 'description'),
+          batchNumber: batchLine.batchNumber,
+          batchManufactureDate: batchLine.manufactureDate,
+          batchExpiryDate: batchLine.expiryDate,
           openingStock: stock.invalid ? null : (stock.value || 0),
         };
       });
       const totalOpeningStock = details.reduce((sum, d) => sum + (Number(d.openingStock) || 0), 0);
+      const batchAnalysis = analyzeImportDuplicateGroupBatches(
+        { rowIndexes: sorted },
+        list,
+        mapping,
+        importDefaults,
+        CSV_IMPORT_PURPOSE_UPDATE
+      );
       const label = buildImportDuplicateGroupLabel({
         skuDisplay,
         nameDisplay,
@@ -499,6 +510,7 @@ export function buildImportDuplicateGroups(rows, mapping, importDefaults = {}) {
         rowIndexes: sorted,
         details,
         totalOpeningStock,
+        batchAnalysis,
       };
     });
 }
@@ -546,6 +558,9 @@ export function buildImportDuplicateGroupsForUpdate(
     const details = sorted.map((rowIndex) => {
       const row = list[rowIndex];
       const stock = parseImportNumeric(pickImportValue(row, mapping, importDefaults, 'openingStock'));
+      const batchLine = buildImportBatchLine(row, mapping, importDefaults, {
+        importPurpose: CSV_IMPORT_PURPOSE_UPDATE,
+      });
       return {
         rowIndex,
         sourceLine: row?.__sourceLine,
@@ -553,10 +568,20 @@ export function buildImportDuplicateGroupsForUpdate(
         name: pickImportValue(row, mapping, importDefaults, 'name')
           || pickImportValue(row, mapping, importDefaults, 'description'),
         description: pickImportValue(row, mapping, importDefaults, 'description'),
+        batchNumber: batchLine.batchNumber,
+        batchManufactureDate: batchLine.manufactureDate,
+        batchExpiryDate: batchLine.expiryDate,
         openingStock: stock.invalid ? null : (stock.value || 0),
       };
     });
     const totalOpeningStock = details.reduce((sum, d) => sum + (Number(d.openingStock) || 0), 0);
+    const batchAnalysis = analyzeImportDuplicateGroupBatches(
+      { rowIndexes: sorted },
+      list,
+      mapping,
+      importDefaults,
+      CSV_IMPORT_PURPOSE_UPDATE
+    );
     const skuDisplay = item.sku || null;
     const nameDisplay = item.name || null;
     groups.push({
@@ -571,6 +596,7 @@ export function buildImportDuplicateGroupsForUpdate(
       rowIndexes: sorted,
       details,
       totalOpeningStock,
+      batchAnalysis,
     });
   }
 
@@ -640,6 +666,9 @@ export function buildImportSheetMatchGroupsForUpdate(
 
     const details = sorted.map((rowIndex) => {
       const row = list[rowIndex];
+      const batchLine = buildImportBatchLine(row, mapping, importDefaults, {
+        importPurpose: CSV_IMPORT_PURPOSE_UPDATE,
+      });
       const stock = parseImportNumeric(
         pickUpdateImportFieldValue(row, mapping, importDefaults, 'openingStock')
         ?? pickImportValue(row, mapping, importDefaults, 'openingStock')
@@ -650,6 +679,9 @@ export function buildImportSheetMatchGroupsForUpdate(
         sku: pickImportValue(row, mapping, importDefaults, 'sku'),
         name: pickImportValue(row, mapping, importDefaults, 'name'),
         description: pickImportValue(row, mapping, importDefaults, 'description'),
+        batchNumber: batchLine.batchNumber,
+        batchManufactureDate: batchLine.manufactureDate,
+        batchExpiryDate: batchLine.expiryDate,
         openingStock: stock.invalid ? null : (stock.value ?? 0),
         sheetMatchValue: displayValue,
       };
@@ -658,6 +690,13 @@ export function buildImportSheetMatchGroupsForUpdate(
     const mergedQty = buildMergedImportQuantitiesForUpdate(sorted, list, mapping, importDefaults);
     const hasOpeningStockSource = !!(
       mapping?.openingStock || hasImportUpdateDefault(importDefaults, 'openingStock')
+    );
+    const batchAnalysis = analyzeImportDuplicateGroupBatches(
+      { rowIndexes: sorted },
+      list,
+      mapping,
+      importDefaults,
+      CSV_IMPORT_PURPOSE_UPDATE
     );
 
     groups.push({
@@ -672,6 +711,7 @@ export function buildImportSheetMatchGroupsForUpdate(
       totalOpeningStock: mergedQty.openingStock,
       totalOpeningValue: mergedQty.openingValue,
       hasOpeningStockSource,
+      batchAnalysis,
       label: `${displayValue} (${sorted.length} sheet rows)`,
     });
   }
@@ -890,6 +930,313 @@ export function buildMergedImportDescription({
   return sections.join('\n\n');
 }
 
+/** Append warehouse batch breakdown when merge rows have batch numbers mapped. */
+export function appendMergedImportWarehouseBatchNote(
+  description,
+  rowIndexes,
+  rows,
+  mapping = {},
+  importDefaults = {},
+  importPurpose = CSV_IMPORT_PURPOSE_CREATE
+) {
+  const lines = buildConsolidatedImportBatchLinesFromRowIndexes(
+    rowIndexes,
+    rows,
+    mapping,
+    importDefaults,
+    { importPurpose }
+  ).filter((line) => line.batchNumber && line.quantity > 0);
+  if (!lines.length) return description;
+  const batchParts = lines.map((line) => {
+    const expiry = line.expiryDate ? `, exp ${line.expiryDate}` : '';
+    return `batch ${line.batchNumber}: qty ${line.quantity}${expiry}`;
+  });
+  const note = lines.length === 1
+    ? `Warehouse batch on save: ${batchParts[0]}`
+    : `Warehouse batches on save (split by batch number):\n${batchParts.join('\n')}`;
+  return [description, note].filter(Boolean).join('\n\n');
+}
+
+export function normalizeImportBatchNumber(value) {
+  const text = String(value ?? '').trim().toUpperCase();
+  return text || null;
+}
+
+/** Parse date cells from import sheets (ISO, DD/MM/YYYY, Excel serial). */
+export function parseImportDateValue(value) {
+  if (value === undefined || value === null || value === '') {
+    return { valid: false, value: null, invalid: false };
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { valid: true, value: value.toISOString().slice(0, 10), invalid: false };
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return { valid: false, value: null, invalid: false };
+
+  const excelSerial = Number(raw.replace(/,/g, ''));
+  if (Number.isFinite(excelSerial) && excelSerial > 20000 && excelSerial < 80000) {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    const parsedExcel = new Date(excelEpoch + excelSerial * 86400000);
+    if (!Number.isNaN(parsedExcel.getTime())) {
+      return { valid: true, value: parsedExcel.toISOString().slice(0, 10), invalid: false };
+    }
+  }
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return { valid: true, value: `${iso[1]}-${iso[2]}-${iso[3]}`, invalid: false };
+
+  const slash = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (slash) {
+    const first = parseInt(slash[1], 10);
+    const second = parseInt(slash[2], 10);
+    const year = slash[3];
+    const day = first > 12 ? first : second;
+    const month = first > 12 ? second : first;
+    return {
+      valid: true,
+      value: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      invalid: false,
+    };
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return { valid: true, value: parsed.toISOString().slice(0, 10), invalid: false };
+  }
+
+  return { valid: false, value: null, invalid: true };
+}
+
+export function isImportBatchColumnMapped(mapping = {}, importDefaults = {}, importPurpose = CSV_IMPORT_PURPOSE_CREATE) {
+  if (importPurpose === CSV_IMPORT_PURPOSE_UPDATE) {
+    return Boolean(
+      mapping?.batchNumber || hasImportUpdateDefault(importDefaults, 'batchNumber')
+    );
+  }
+  return Boolean(mapping?.batchNumber || importDefaults?.batchNumber);
+}
+
+function pickImportBatchField(row, mapping, importDefaults, fieldKey, importPurpose = CSV_IMPORT_PURPOSE_CREATE) {
+  if (importPurpose === CSV_IMPORT_PURPOSE_UPDATE) {
+    if (!willUpdateImportField(row, mapping, importDefaults, fieldKey)) return null;
+    return pickUpdateImportFieldValue(row, mapping, importDefaults, fieldKey);
+  }
+  return pickImportValue(row, mapping, importDefaults, fieldKey);
+}
+
+export function buildImportBatchLine(row, mapping = {}, importDefaults = {}, options = {}) {
+  const { importPurpose = CSV_IMPORT_PURPOSE_CREATE } = options;
+  if (importPurpose === CSV_IMPORT_PURPOSE_UPDATE
+    && !willUpdateImportField(row, mapping, importDefaults, 'batchNumber')) {
+    return {
+      batchNumber: null,
+      quantity: null,
+      unitCost: 0,
+      expiryDate: null,
+      manufactureDate: null,
+      invalidStock: false,
+      invalidExpiry: false,
+      invalidManufacture: false,
+    };
+  }
+
+  const batchNumber = normalizeImportBatchNumber(
+    pickImportBatchField(row, mapping, importDefaults, 'batchNumber', importPurpose)
+  );
+  const stockRaw = pickImportBatchField(row, mapping, importDefaults, 'openingStock', importPurpose);
+  const costRaw = pickImportBatchField(row, mapping, importDefaults, 'costPrice', importPurpose);
+  const expiryRaw = pickImportBatchField(row, mapping, importDefaults, 'batchExpiryDate', importPurpose);
+  const manufactureRaw = pickImportBatchField(row, mapping, importDefaults, 'batchManufactureDate', importPurpose);
+  const stock = parseImportNumeric(stockRaw ?? '');
+  const cost = parseImportNumeric(costRaw ?? '');
+  const expiry = parseImportDateValue(expiryRaw ?? '');
+  const manufacture = parseImportDateValue(manufactureRaw ?? '');
+
+  return {
+    batchNumber,
+    quantity: stock.invalid ? null : (stock.value || 0),
+    unitCost: cost.invalid ? 0 : (cost.value || 0),
+    expiryDate: expiry.valid ? expiry.value : null,
+    manufactureDate: manufacture.valid ? manufacture.value : null,
+    invalidStock: stock.invalid,
+    invalidExpiry: expiry.invalid,
+    invalidManufacture: manufacture.invalid,
+  };
+}
+
+export function buildImportBatchLinesFromRowIndexes(
+  rowIndexes,
+  rows,
+  mapping = {},
+  importDefaults = {},
+  options = {}
+) {
+  return (rowIndexes || [])
+    .map((rowIndex) => {
+      const row = rows?.[rowIndex];
+      if (!row) return null;
+      return { rowIndex, ...buildImportBatchLine(row, mapping, importDefaults, options) };
+    })
+    .filter(Boolean);
+}
+
+export function analyzeImportDuplicateGroupBatches(
+  group,
+  rows,
+  mapping = {},
+  importDefaults = {},
+  importPurpose = CSV_IMPORT_PURPOSE_CREATE
+) {
+  const rowIndexes = group?.rowIndexes || [];
+  const options = { importPurpose };
+  const lines = buildImportBatchLinesFromRowIndexes(rowIndexes, rows, mapping, importDefaults, options);
+  const withBatch = lines.filter((line) => line.batchNumber);
+  const batchKeys = new Set(withBatch.map((line) => line.batchNumber));
+  const distinctBatches = batchKeys.size;
+  const duplicateBatchInGroup = withBatch.length !== distinctBatches;
+  const canImportAsBatches = isImportBatchColumnMapped(mapping, importDefaults, importPurpose)
+    && withBatch.length >= 2
+    && distinctBatches >= 2
+    && !duplicateBatchInGroup;
+
+  return {
+    lines,
+    withBatch,
+    distinctBatches,
+    duplicateBatchInGroup,
+    canImportAsBatches,
+  };
+}
+
+export function buildConsolidatedImportBatchLinesFromRowIndexes(
+  rowIndexes,
+  rows,
+  mapping = {},
+  importDefaults = {},
+  options = {}
+) {
+  const lines = buildImportBatchLinesFromRowIndexes(rowIndexes, rows, mapping, importDefaults, options)
+    .filter((line) => line.batchNumber);
+  if (!lines.length) return [];
+
+  const byBatch = new Map();
+  for (const line of lines) {
+    const key = line.batchNumber;
+    if (!byBatch.has(key)) {
+      byBatch.set(key, {
+        batchNumber: key,
+        quantity: 0,
+        unitCost: line.unitCost || 0,
+        expiryDate: line.expiryDate || null,
+        manufactureDate: line.manufactureDate || null,
+        rowIndex: line.rowIndex,
+        invalidStock: false,
+        invalidExpiry: line.invalidExpiry,
+        invalidManufacture: line.invalidManufacture,
+      });
+    }
+    const agg = byBatch.get(key);
+    agg.quantity += Number(line.quantity) || 0;
+    if (!agg.expiryDate && line.expiryDate) agg.expiryDate = line.expiryDate;
+    if (!agg.manufactureDate && line.manufactureDate) agg.manufactureDate = line.manufactureDate;
+    if (line.unitCost > 0 && !agg.unitCost) agg.unitCost = line.unitCost;
+  }
+
+  return [...byBatch.values()];
+}
+
+export function resolveImportBatchLinesForSave({
+  importGroup = null,
+  savedRowIndex = null,
+  rows = [],
+  mapping = {},
+  importDefaults = {},
+  importPurpose = CSV_IMPORT_PURPOSE_CREATE,
+}) {
+  const options = { importPurpose };
+  if (importGroup?.mode === 'import_batches' && Array.isArray(importGroup.rowIndexes)) {
+    return buildImportBatchLinesFromRowIndexes(
+      importGroup.rowIndexes,
+      rows,
+      mapping,
+      importDefaults,
+      options
+    );
+  }
+  if (importGroup?.mode === 'merge' && Array.isArray(importGroup.rowIndexes)) {
+    if (!isImportBatchColumnMapped(mapping, importDefaults, importPurpose)) {
+      return [];
+    }
+    return buildConsolidatedImportBatchLinesFromRowIndexes(
+      importGroup.rowIndexes,
+      rows,
+      mapping,
+      importDefaults,
+      options
+    ).filter((line) => line.batchNumber && line.quantity > 0);
+  }
+  if (savedRowIndex != null && rows?.[savedRowIndex]) {
+    const line = buildImportBatchLine(rows[savedRowIndex], mapping, importDefaults, options);
+    if (line.batchNumber && line.quantity > 0) {
+      return [{ rowIndex: savedRowIndex, ...line }];
+    }
+  }
+  return [];
+}
+
+export function validateImportBatchLines(batchLines, { requireQuantity = true } = {}) {
+  const errors = [];
+  const warnings = [];
+  if (!Array.isArray(batchLines) || batchLines.length === 0) {
+    errors.push('No batch rows selected.');
+    return { ok: false, errors, warnings };
+  }
+
+  for (const line of batchLines) {
+    const label = line.batchNumber || `row ${(line.rowIndex ?? 0) + 1}`;
+    if (!line.batchNumber) {
+      errors.push(`Line ${(line.rowIndex ?? 0) + 1}: batch number is required for batch import.`);
+    }
+    if (line.invalidStock) {
+      errors.push(`Batch ${label}: opening stock is not a valid number.`);
+    } else if (requireQuantity && (!(line.quantity > 0))) {
+      errors.push(`Batch ${label}: quantity must be greater than 0.`);
+    }
+    if (line.invalidExpiry) warnings.push(`Batch ${label}: expiry date could not be parsed and was skipped.`);
+    if (line.invalidManufacture) warnings.push(`Batch ${label}: manufacture date could not be parsed and was skipped.`);
+  }
+
+  const batchKeys = batchLines.map((line) => line.batchNumber).filter(Boolean);
+  if (new Set(batchKeys).size !== batchKeys.length) {
+    errors.push('Duplicate batch numbers in the selected rows.');
+  }
+
+  return { ok: errors.length === 0, errors, warnings };
+}
+
+export function buildImportBatchImportDescription({
+  primaryRow,
+  batchLines = [],
+  rows = [],
+  mapping = {},
+  importDefaults = {},
+  userNote = '',
+}) {
+  const lineParts = batchLines.map((line) => {
+    const row = rows[line.rowIndex];
+    const lineNo = row?.__sourceLine != null ? `Line ${row.__sourceLine}` : `Row ${(line.rowIndex ?? 0) + 1}`;
+    const expiry = line.expiryDate ? `, exp ${line.expiryDate}` : '';
+    return `${lineNo}: batch ${line.batchNumber} (qty ${line.quantity || 0}${expiry})`;
+  });
+  const sections = [];
+  const primaryDesc = pickImportValue(primaryRow, mapping, importDefaults, 'description');
+  if (primaryDesc) sections.push(primaryDesc);
+  if (String(userNote || '').trim()) sections.push(`Import note: ${String(userNote).trim()}`);
+  if (lineParts.length) sections.push(`Imported warehouse batches:\n${lineParts.join('\n')}`);
+  return sections.join('\n\n');
+}
+
 /** Gate before opening add-item or update-item form from an import row. */
 export function validateImportRowBeforeOpen({
   row,
@@ -1062,6 +1409,88 @@ export function countImportDefaultsSet(importDefaults = {}) {
 /** True when a file column is mapped to this import field (update mode: unmapped fields are left unchanged). */
 export function isImportFieldMapped(mapping = {}, fieldKey) {
   return !!(mapping?.[fieldKey]);
+}
+
+/** True when an import field has a mapped column and/or default (create or update). */
+export function isImportFieldConfigured(
+  mapping = {},
+  importDefaults = {},
+  fieldKey,
+  importPurpose = CSV_IMPORT_PURPOSE_CREATE
+) {
+  if (mapping?.[fieldKey]) return true;
+  if (importPurpose === CSV_IMPORT_PURPOSE_UPDATE) {
+    return hasImportUpdateDefault(importDefaults, fieldKey);
+  }
+  const def = importDefaults?.[fieldKey];
+  return def !== undefined && def !== null && String(def).trim() !== '';
+}
+
+export function buildImportGroupDetailTableColumns({
+  mapping = {},
+  importDefaults = {},
+  importPurpose = CSV_IMPORT_PURPOSE_CREATE,
+  variant = 'duplicate',
+  statusColumn = null,
+}) {
+  const columns = [
+    {
+      title: 'Line',
+      dataIndex: 'sourceLine',
+      width: 64,
+      render: (v) => (v != null ? v : '—'),
+    },
+  ];
+
+  if (variant === 'sheet_match') {
+    columns.push({
+      title: 'Sheet match value',
+      dataIndex: 'sheetMatchValue',
+      ellipsis: true,
+    });
+  } else {
+    columns.push(
+      { title: 'SKU', dataIndex: 'sku', width: 100, ellipsis: true, render: (v) => v || '—' },
+      { title: 'Name', dataIndex: 'name', ellipsis: true, render: (v) => v || '—' },
+    );
+  }
+
+  if (isImportFieldConfigured(mapping, importDefaults, 'batchNumber', importPurpose)) {
+    columns.push({
+      title: 'Batch #',
+      dataIndex: 'batchNumber',
+      width: 110,
+      ellipsis: true,
+      render: (v) => v || '—',
+    });
+  }
+  if (isImportFieldConfigured(mapping, importDefaults, 'batchManufactureDate', importPurpose)) {
+    columns.push({
+      title: 'Manufacture',
+      dataIndex: 'batchManufactureDate',
+      width: 110,
+      render: (v) => v || '—',
+    });
+  }
+  if (isImportFieldConfigured(mapping, importDefaults, 'batchExpiryDate', importPurpose)) {
+    columns.push({
+      title: 'Expiry',
+      dataIndex: 'batchExpiryDate',
+      width: 100,
+      render: (v) => v || '—',
+    });
+  }
+  if (isImportFieldConfigured(mapping, importDefaults, 'openingStock', importPurpose)) {
+    columns.push({
+      title: variant === 'sheet_match' ? 'Qty' : 'Opening qty',
+      dataIndex: 'openingStock',
+      width: variant === 'sheet_match' ? 80 : 100,
+      render: (v) => (v == null ? '—' : v),
+    });
+  }
+
+  if (statusColumn) columns.push(statusColumn);
+  return columns;
 }
 
 /**
@@ -2176,4 +2605,26 @@ export async function ensureCategoryForImport(categoryName, categoryList, canMan
   }
 
   return { name: text, categoryList, created: false };
+}
+
+export async function createImportBatchesForItem(itemId, batchLines, warehouseId) {
+  const created = [];
+  const errors = [];
+  for (const line of batchLines || []) {
+    try {
+      await apiService.createBatch({
+        itemId,
+        warehouseId,
+        batchNumber: line.batchNumber,
+        quantityReceived: line.quantity,
+        unitCost: line.unitCost || 0,
+        manufactureDate: line.manufactureDate || undefined,
+        expiryDate: line.expiryDate || undefined,
+      });
+      created.push(line.batchNumber);
+    } catch (e) {
+      errors.push(`${line.batchNumber}: ${e?.response?.data?.error || e?.message || 'Failed'}`);
+    }
+  }
+  return { created, errors };
 }

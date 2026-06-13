@@ -44,6 +44,23 @@ class BatchSerialController {
     }
   }
 
+  async updateBatchDates(req, res) {
+    try {
+      await batchSerialService.updateBatchDates(
+        req.institutionId,
+        req.params.batchId,
+        {
+          manufactureDate: req.body.manufactureDate || null,
+          expiryDate: req.body.expiryDate || null,
+        },
+        req.user.userId
+      );
+      res.json({ success: true, message: 'Batch dates updated' });
+    } catch (e) {
+      res.status(400).json({ success: false, error: e.message });
+    }
+  }
+
   // ─── SERIAL ──────────────────────────────────────────────
   async createSerials(req, res) {
     try {

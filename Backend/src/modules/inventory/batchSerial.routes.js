@@ -9,6 +9,7 @@ router.post('/batches',          requirePermission('inventory_receive'), auditLo
 router.get('/batches',           requirePermission('inventory_view'),                                      ctrl.getBatches);
 router.post('/batches/:batchId/consume', requirePermission('inventory_adjust'), auditLog('batch_consumed'), ctrl.consumeBatch);
 router.put('/batches/:batchId/status',   requirePermission('inventory_adjust'), auditLog('batch_status_updated'), ctrl.updateBatchStatus);
+router.put('/batches/:batchId/dates',    requirePermission('inventory_adjust'), auditLog('batch_dates_updated'), ctrl.updateBatchDates);
 
 // Serials
 router.post('/serials',          requirePermission('inventory_receive'), auditLog('serials_created'),      ctrl.createSerials);

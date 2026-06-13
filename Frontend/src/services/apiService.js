@@ -427,6 +427,7 @@ class ApiService {
   async createBatch(data) { return this.post('/batch-serial/batches', data); }
   async consumeBatch(batchId, quantity) { return this.post(`/batch-serial/batches/${batchId}/consume`, { quantity }); }
   async updateBatchStatus(batchId, status) { return this.put(`/batch-serial/batches/${batchId}/status`, { status }); }
+  async updateBatchDates(batchId, data) { return this.put(`/batch-serial/batches/${batchId}/dates`, data); }
 
   async getSerials(params = {}) { return this.get('/batch-serial/serials', { params }); }
   async createSerials(data) { return this.post('/batch-serial/serials', data); }

@@ -23,6 +23,8 @@ const FIELD_META = {
   weight: { type: 'number' },
   hsnCode: { type: 'text' },
   batchNumber: { type: 'text' },
+  batchExpiryDate: { type: 'text', placeholder: 'YYYY-MM-DD or sheet date column' },
+  batchManufactureDate: { type: 'text', placeholder: 'YYYY-MM-DD or sheet date column' },
   minStockLevel: { type: 'number' },
   maxStockLevel: { type: 'number' },
   openingStock: { type: 'number' },

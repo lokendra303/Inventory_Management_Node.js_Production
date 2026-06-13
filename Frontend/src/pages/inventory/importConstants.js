@@ -30,7 +30,7 @@ export const CSV_IMPORT_DEFAULTABLE_CORE_IDS = [
   'description', 'barcode', 'category', 'unit', 'itemGroupName',
   'brand', 'manufacturer', 'supplierCode',
   'costPrice', 'sellingPrice', 'mrp', 'taxRate',
-  'weight', 'hsnCode', 'batchNumber',
+  'weight', 'hsnCode', 'batchNumber', 'batchExpiryDate', 'batchManufactureDate',
   'minStockLevel', 'maxStockLevel', 'openingStock', 'openingValue',
   'dimLength', 'dimWidth', 'dimHeight',
   'upc', 'ean', 'isbn', 'mpn',

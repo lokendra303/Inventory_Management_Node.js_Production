@@ -1,13 +1,18 @@
 import React from 'react';
+import { Radio } from 'antd';
 import { Alert, Button, Collapse, Input, Select, Space, Table, Tag, Typography } from 'antd';
 import { MergeCellsOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import {
+  analyzeImportDuplicateGroupBatches,
+  buildConsolidatedImportBatchLinesFromRowIndexes,
+  buildImportGroupDetailTableColumns,
   buildMergedImportQuantitiesForUpdate,
   getSheetMatchGroupPendingRowIndexes,
   getSheetMatchGroupSelectedRowIndexes,
   isSheetMatchGroupReadyForMergeUpdate,
   isSheetMatchGroupResolved,
 } from './importItemHelpers';
+import { CSV_IMPORT_PURPOSE_UPDATE } from './importConstants';
 
 const { Text } = Typography;
 
@@ -27,6 +32,7 @@ export function ImportSheetMatchGroupsPanel({
   onCatalogPickForGroup,
   onMergeUpdateDirect,
   onMergeUpdateInForm,
+  onDirectImportBatches,
 }) {
   const pendingGroups = groups.filter(
     (g) => !isSheetMatchGroupResolved(g, addedRowIndexes, supersededRowIndexes)
@@ -46,7 +52,7 @@ export function ImportSheetMatchGroupsPanel({
         message="Merge sheet duplicates into one catalog update"
         description={
           'Rows grouped by the same value in your match column. '
-          + 'Check the rows you want to merge, pick the catalog item (if needed), then update once with combined quantity.'
+          + 'If rows have different batch numbers, import as warehouse batches. Otherwise merge quantities into one update.'
         }
       />
       <Collapse
@@ -54,7 +60,20 @@ export function ImportSheetMatchGroupsPanel({
         defaultActiveKey={pendingGroups.length === 1 ? [pendingGroups[0].groupKey] : undefined}
         items={groups.map((group) => {
           const resolved = isSheetMatchGroupResolved(group, addedRowIndexes, supersededRowIndexes);
-          const plan = groupPlans[group.groupKey] || { note: '' };
+          const batchAnalysis = group.batchAnalysis
+            || analyzeImportDuplicateGroupBatches(
+              group,
+              rows,
+              mapping,
+              importDefaults,
+              CSV_IMPORT_PURPOSE_UPDATE
+            );
+          const plan = {
+            mode: groupPlans[group.groupKey]?.mode
+              || (batchAnalysis.canImportAsBatches ? 'import_batches' : 'merge'),
+            note: groupPlans[group.groupKey]?.note || '',
+            selectedRowIndexes: groupPlans[group.groupKey]?.selectedRowIndexes,
+          };
           const pendingRowIndexes = getSheetMatchGroupPendingRowIndexes(
             group,
             addedRowIndexes,
@@ -72,6 +91,15 @@ export function ImportSheetMatchGroupsPanel({
             mapping,
             importDefaults
           );
+          const mergeBatchLines = plan.mode === 'merge'
+            ? buildConsolidatedImportBatchLinesFromRowIndexes(
+              selectedRowIndexes,
+              rows,
+              mapping,
+              importDefaults,
+              { importPurpose: CSV_IMPORT_PURPOSE_UPDATE }
+            ).filter((line) => line.batchNumber && line.quantity > 0)
+            : [];
           const ready = isSheetMatchGroupReadyForMergeUpdate(
             group,
             mapping,
@@ -80,6 +108,29 @@ export function ImportSheetMatchGroupsPanel({
             selectedRowIndexes
           );
           const mergePlan = { ...plan, selectedRowIndexes };
+          const detailColumns = buildImportGroupDetailTableColumns({
+            mapping,
+            importDefaults,
+            importPurpose: CSV_IMPORT_PURPOSE_UPDATE,
+            variant: 'sheet_match',
+            statusColumn: {
+              title: 'Status',
+              key: 'st',
+              width: 90,
+              render: (_, d) => {
+                if (addedRowIndexes[String(d.rowIndex)]) {
+                  return <Tag color="success">Updated</Tag>;
+                }
+                if (supersededRowIndexes[String(d.rowIndex)]) {
+                  return <Tag>Skipped</Tag>;
+                }
+                if (!selectedRowIndexes.includes(d.rowIndex)) {
+                  return <Tag>Not selected</Tag>;
+                }
+                return <Tag color="processing">Pending</Tag>;
+              },
+            },
+          });
 
           return {
             key: group.groupKey,
@@ -90,8 +141,14 @@ export function ImportSheetMatchGroupsPanel({
                 {!resolved && selectedRowIndexes.length > 0 && (
                   <Tag color="geekblue">{selectedRowIndexes.length} selected</Tag>
                 )}
-                {group.hasOpeningStockSource && mergedQty.openingStock != null && selectedRowIndexes.length > 0 && (
+                {batchAnalysis.canImportAsBatches && (
+                  <Tag color="cyan">Different batches</Tag>
+                )}
+                {group.hasOpeningStockSource && mergedQty.openingStock != null && selectedRowIndexes.length > 0 && plan.mode === 'merge' && (
                   <Tag color="blue">Merged qty: {mergedQty.openingStock}</Tag>
+                )}
+                {mergeBatchLines.length > 0 && plan.mode === 'merge' && (
+                  <Tag color="cyan">{mergeBatchLines.length} warehouse batch(es)</Tag>
                 )}
                 {group.catalogStatus === 'unique' && (
                   <Tag color="green">1 catalog match</Tag>
@@ -137,42 +194,7 @@ export function ImportSheetMatchGroupsPanel({
                         || !!supersededRowIndexes[String(record.rowIndex)],
                     }),
                   } : undefined}
-                  columns={[
-                    {
-                      title: 'Line',
-                      dataIndex: 'sourceLine',
-                      width: 64,
-                      render: (v) => (v != null ? v : '—'),
-                    },
-                    {
-                      title: 'Sheet match value',
-                      dataIndex: 'sheetMatchValue',
-                      ellipsis: true,
-                    },
-                    {
-                      title: 'Qty',
-                      dataIndex: 'openingStock',
-                      width: 80,
-                      render: (v) => (v == null ? '—' : v),
-                    },
-                    {
-                      title: 'Status',
-                      key: 'st',
-                      width: 90,
-                      render: (_, d) => {
-                        if (addedRowIndexes[String(d.rowIndex)]) {
-                          return <Tag color="success">Updated</Tag>;
-                        }
-                        if (supersededRowIndexes[String(d.rowIndex)]) {
-                          return <Tag>Skipped</Tag>;
-                        }
-                        if (!selectedRowIndexes.includes(d.rowIndex)) {
-                          return <Tag>Not selected</Tag>;
-                        }
-                        return <Tag color="processing">Pending</Tag>;
-                      },
-                    },
-                  ]}
+                  columns={detailColumns}
                 />
 
                 {!resolved && (
@@ -211,17 +233,60 @@ export function ImportSheetMatchGroupsPanel({
                       </div>
                     )}
 
-                    {group.catalogStatus === 'unique' && group.resolvedItem && (
+                    {group.resolvedItem && (
+                      <>
+                        <div style={{ marginTop: 12, marginBottom: 8, fontWeight: 600, fontSize: 12 }}>
+                          How should these rows be applied?
+                        </div>
+                        <Radio.Group
+                          value={plan.mode}
+                          disabled={disabled}
+                          onChange={(e) => onPlanChange(group.groupKey, { mode: e.target.value })}
+                        >
+                          <Space direction="vertical" size={4}>
+                            {batchAnalysis.canImportAsBatches && (
+                              <Radio value="import_batches">
+                                Import as warehouse batches ({batchAnalysis.distinctBatches} batches)
+                              </Radio>
+                            )}
+                            <Radio value="merge">
+                              Merge into one catalog update (sum opening quantities
+                              {batchAnalysis.withBatch?.length > 0 ? '; split warehouse batches by batch number' : ''}
+                              )
+                            </Radio>
+                          </Space>
+                        </Radio.Group>
+                      </>
+                    )}
+
+                    {group.catalogStatus === 'unique' && group.resolvedItem && plan.mode === 'merge' && (
                       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>
                         Selected rows update catalog item{' '}
                         <Text strong>
                           {group.resolvedItem.sku || 'no SKU'} — {group.resolvedItem.name}
                         </Text>
                         . Quantities from mapped opening-stock column are summed for checked rows only.
+                        {mergeBatchLines.length > 0 && (
+                          <>
+                            {' '}
+                            Warehouse batches on save:{' '}
+                            {mergeBatchLines.map((line) => `${line.batchNumber} (${line.quantity})`).join(', ')}.
+                          </>
+                        )}
                       </Text>
                     )}
 
-                    {group.hasOpeningStockSource && mergedQty.openingStock != null && selectedRowIndexes.length > 0 && (
+                    {plan.mode === 'import_batches' && group.resolvedItem && (
+                      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>
+                        Each selected row creates a warehouse batch on{' '}
+                        <Text strong>
+                          {group.resolvedItem.sku || 'no SKU'} — {group.resolvedItem.name}
+                        </Text>
+                        . Map Batch number and Opening stock in update fields.
+                      </Text>
+                    )}
+
+                    {group.hasOpeningStockSource && mergedQty.openingStock != null && selectedRowIndexes.length > 0 && plan.mode === 'merge' && (
                       <Alert
                         type="success"
                         showIcon
@@ -251,6 +316,21 @@ export function ImportSheetMatchGroupsPanel({
                     </div>
 
                     <Space style={{ marginTop: 12 }} wrap>
+                      {plan.mode === 'import_batches' && onDirectImportBatches && group.resolvedItem && (
+                        <Button
+                          type="primary"
+                          disabled={disabled || !canManageItems || selectedRowIndexes.length === 0}
+                          onClick={() => onDirectImportBatches({
+                            ...group,
+                            catalogItemId: group.resolvedItem.id,
+                            catalogItemName: group.resolvedItem.name,
+                          }, mergePlan)}
+                        >
+                          Import {selectedRowIndexes.length} batch(es) directly
+                        </Button>
+                      )}
+                      {plan.mode === 'merge' && (
+                        <>
                       <Button
                         type="primary"
                         icon={<MergeCellsOutlined />}
@@ -269,6 +349,16 @@ export function ImportSheetMatchGroupsPanel({
                           ? `Merge ${selectedRowIndexes.length} selected & update in form`
                           : 'Update selected row in form'}
                       </Button>
+                        </>
+                      )}
+                      {plan.mode === 'import_batches' && group.resolvedItem && (
+                        <Button
+                          disabled={disabled || !canManageItems || selectedRowIndexes.length === 0}
+                          onClick={() => onMergeUpdateInForm(group, { ...mergePlan, mode: 'import_batches' })}
+                        >
+                          Import {selectedRowIndexes.length} batch(es) in form
+                        </Button>
+                      )}
                     </Space>
                   </>
                 )}

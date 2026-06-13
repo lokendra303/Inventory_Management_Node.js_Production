@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown, Alert, Typography, Checkbox, Radio } from 'antd';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown, Alert, Typography, Checkbox, Radio, DatePicker } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, CheckOutlined, ThunderboltOutlined, SettingOutlined, ImportOutlined, DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
@@ -16,6 +16,7 @@ import CompositeBomSection from '../../components/inventory/CompositeBomSection'
 import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import dayjs from 'dayjs';
 import { filterSelectOption } from '../../utils/selectFilter';
 import { ImportDefaultsPanel } from './ImportDefaultsPanel.jsx';
 import { ImportUpdateFieldsPanel } from './ImportUpdateFieldsPanel.jsx';
@@ -25,6 +26,15 @@ import {
   assessImportRowIssues,
   buildExistingItemsMatchIndex,
   buildImportDuplicateGroups,
+  buildImportBatchImportDescription,
+  buildImportBatchLine,
+  buildImportBatchLinesFromRowIndexes,
+  analyzeImportDuplicateGroupBatches,
+  validateImportBatchLines,
+  createImportBatchesForItem,
+  resolveImportBatchLinesForSave,
+  buildConsolidatedImportBatchLinesFromRowIndexes,
+  appendMergedImportWarehouseBatchNote,
   buildMergedImportDescription,
   buildMergedImportQuantities,
   checkSkuAvailableForImport,
@@ -67,6 +77,7 @@ import {
   willUpdateImportField,
   validateImportRowBeforeOpen,
   parseImportNumeric,
+  parseImportDateValue,
 } from './importItemHelpers';
 
 const VARIANT_MATRIX_GRID_TEMPLATE = 'minmax(0, 2.2fr) minmax(0, 1.5fr) minmax(0, 1.35fr) minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(64px, 0.6fr)';
@@ -268,7 +279,9 @@ const CSV_IMPORT_CORE_TARGETS = [
   { id: 'taxRate', label: 'Tax rate (%)', group: 'Pricing' },
   { id: 'weight', label: 'Weight', group: 'Physical' },
   { id: 'hsnCode', label: 'HSN code', group: 'Physical' },
-  { id: 'batchNumber', label: 'Batch number', group: 'Physical' },
+  { id: 'batchNumber', label: 'Batch number', group: 'Batch tracking' },
+  { id: 'batchExpiryDate', label: 'Batch expiry date', group: 'Batch tracking' },
+  { id: 'batchManufactureDate', label: 'Batch manufacture date', group: 'Batch tracking' },
   { id: 'minStockLevel', label: 'Min stock level', group: 'Stock' },
   { id: 'maxStockLevel', label: 'Max stock level', group: 'Stock' },
   { id: 'openingStock', label: 'Opening stock', group: 'Stock' },
@@ -309,6 +322,8 @@ const CSV_IMPORT_HEADER_ALIASES = {
   weight: ['weight', 'wt', 'mass'],
   hsnCode: ['hsn', 'hsn code', 'tariff'],
   batchNumber: ['batch', 'batch number', 'lot'],
+  batchExpiryDate: ['expiry', 'expiry date', 'exp date', 'best before', 'use by'],
+  batchManufactureDate: ['manufacture date', 'mfg date', 'production date', 'made on'],
   minStockLevel: ['min stock', 'minimum stock', 'reorder'],
   maxStockLevel: ['max stock', 'maximum stock'],
   openingStock: ['opening stock', 'qty', 'quantity', 'order qty', 'order quantity', 'stock', 'on hand'],
@@ -461,6 +476,7 @@ const Items = () => {
   const [taxRateOptions, setTaxRateOptions] = useState([]);
   const [itemHistory, setItemHistory] = useState([]);
   const [priceHistory, setPriceHistory] = useState([]);
+  const [viewingItemBatches, setViewingItemBatches] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [itemGroupFilter, setItemGroupFilter] = useState('all');
@@ -1848,6 +1864,57 @@ const Items = () => {
     URL.revokeObjectURL(url);
   }, []);
 
+  const formatItemFormBatchDate = (value) => {
+    if (!value) return undefined;
+    if (dayjs.isDayjs(value)) return value.format('YYYY-MM-DD');
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return dayjs(value).format('YYYY-MM-DD');
+    const text = String(value).trim();
+    return text || undefined;
+  };
+
+  const parseImportDateForForm = (raw) => {
+    const parsed = parseImportDateValue(raw ?? '');
+    return parsed.valid && parsed.value ? dayjs(parsed.value) : undefined;
+  };
+
+  const createWarehouseBatchFromItemForm = async (itemId, values) => {
+    const batchNum = values.batchNumber?.trim().toUpperCase();
+    const warehouseId = values.warehouseId;
+    const qty = Number(values.openingStock) || 0;
+    if (!batchNum || !warehouseId || !(qty > 0)) return { skipped: true };
+
+    await apiService.createBatch({
+      itemId,
+      warehouseId,
+      batchNumber: batchNum,
+      quantityReceived: qty,
+      unitCost: values.costPrice != null && values.costPrice !== ''
+        ? convertPrice(values.costPrice, priceCurrency, 'USD')
+        : 0,
+      manufactureDate: formatItemFormBatchDate(values.batchManufactureDate),
+      expiryDate: formatItemFormBatchDate(values.batchExpiryDate),
+    });
+    return { created: batchNum };
+  };
+
+  const syncWarehouseBatchDatesFromItemForm = async (itemId, values) => {
+    const batchNum = values.batchNumber?.trim().toUpperCase();
+    const warehouseId = values.warehouseId;
+    if (!batchNum || !warehouseId) return { skipped: true };
+
+    const batchRes = await apiService.getBatches({ itemId, warehouseId });
+    const match = (batchRes?.data || []).find(
+      (b) => b.batch_number?.toUpperCase() === batchNum
+    );
+    if (!match) return { skipped: true };
+
+    await apiService.updateBatchDates(match.id, {
+      manufactureDate: formatItemFormBatchDate(values.batchManufactureDate) || null,
+      expiryDate: formatItemFormBatchDate(values.batchExpiryDate) || null,
+    });
+    return { updated: batchNum };
+  };
+
   const handleSubmit = async (values) => {
     try {
       const isEditing = !!editingItem;
@@ -1952,17 +2019,85 @@ const Items = () => {
         }
       }
       
+      let savedItemId = null;
+      let saveSucceeded = false;
       if (isEditing) {
         const response = await apiService.put(`/items/${editingItem.id}`, itemData);
         if (response.success) {
+          saveSucceeded = true;
+          savedItemId = editingItem.id;
           message.success('Item updated successfully');
         }
       } else {
         const response = await apiService.post('/items', itemData);
         if (response.success) {
+          saveSucceeded = true;
+          savedItemId = response.data?.itemId;
           message.success('Item created successfully');
         }
       }
+
+      if (savedItemId && itemFormOpenedFromImport && saveSucceeded) {
+        const importGroup = activeImportGroupRef.current;
+        const savedRowIndex = activeImportRowIndexRef.current;
+        const warehouseId = values.warehouseId || csvImportModal.defaultWarehouseId;
+        const importPurpose = csvImportModal.importPurpose === CSV_IMPORT_PURPOSE_UPDATE
+          ? CSV_IMPORT_PURPOSE_UPDATE
+          : CSV_IMPORT_PURPOSE_CREATE;
+        const batchLinesToCreate = resolveImportBatchLinesForSave({
+          importGroup,
+          savedRowIndex,
+          rows: csvImportModal.rows,
+          mapping: csvImportModal.mapping,
+          importDefaults: csvImportModal.importDefaults || {},
+          importPurpose,
+        });
+
+        if (batchLinesToCreate.length) {
+          const batchValidation = validateImportBatchLines(batchLinesToCreate);
+          if (!batchValidation.ok) {
+            batchValidation.errors.forEach((err) => message.warning(err, 6));
+          } else {
+            if (!warehouseId) {
+              message.warning('Item saved but warehouse batches were skipped — select a warehouse.');
+            } else {
+              const batchResult = await createImportBatchesForItem(savedItemId, batchLinesToCreate, warehouseId);
+              if (batchResult.created.length) {
+                message.success(`Created ${batchResult.created.length} warehouse batch(es): ${batchResult.created.join(', ')}`);
+              }
+              if (batchResult.errors.length) {
+                Modal.warning({
+                  title: 'Some batches could not be created',
+                  content: (
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {batchResult.errors.map((err) => <li key={err}>{err}</li>)}
+                    </ul>
+                  ),
+                });
+              }
+            }
+          }
+        }
+      }
+
+      if (savedItemId && saveSucceeded && !isVariantType && !(itemFormOpenedFromImport && activeImportGroupRef.current)) {
+        try {
+          const batchResult = await createWarehouseBatchFromItemForm(savedItemId, values);
+          if (batchResult.created) {
+            message.success(`Warehouse batch ${batchResult.created} created with batch dates`);
+          } else if (isEditing) {
+            const dateResult = await syncWarehouseBatchDatesFromItemForm(savedItemId, values);
+            if (dateResult.updated) {
+              message.success(`Warehouse batch ${dateResult.updated} dates updated`);
+            }
+          }
+        } catch (e) {
+          message.warning(
+            `Item saved but warehouse batch was not created: ${e?.response?.data?.error || e?.message || 'failed'}`
+          );
+        }
+      }
+
       const normalizedVariantRows = normalizeVariantAttributes(values.variantAttributes);
       if (normalizedVariantRows.length > 0) {
         try {
@@ -1986,7 +2121,11 @@ const Items = () => {
         setCsvImportModal((prev) => {
           const added = { ...(prev.addedRowIndexes || {}) };
           const superseded = { ...(prev.supersededRowIndexes || {}) };
-          if (importGroup?.mode === 'merge' && Array.isArray(importGroup.rowIndexes)) {
+          if (importGroup?.mode === 'import_batches' && Array.isArray(importGroup.rowIndexes)) {
+            importGroup.rowIndexes.forEach((i) => {
+              added[String(i)] = true;
+            });
+          } else if (importGroup?.mode === 'merge' && Array.isArray(importGroup.rowIndexes)) {
             importGroup.rowIndexes.forEach((i) => {
               added[String(i)] = true;
             });
@@ -2000,7 +2139,9 @@ const Items = () => {
           }
           return { ...prev, open: true, addedRowIndexes: added, supersededRowIndexes: superseded };
         });
-        const mergeMsg = importGroup?.mode === 'merge'
+        const mergeMsg = importGroup?.mode === 'import_batches'
+          ? 'Item updated and warehouse batches imported. All rows in that group are marked done.'
+          : importGroup?.mode === 'merge'
           ? (wasUpdateImport
             ? 'Item updated from merged duplicate rows. All rows in that group are marked done.'
             : 'Merged item saved. All rows in that duplicate group are marked added.')
@@ -2028,7 +2169,11 @@ const Items = () => {
         setCsvImportModal((prev) => {
           const added = { ...(prev.addedRowIndexes || {}) };
           const superseded = { ...(prev.supersededRowIndexes || {}) };
-          if (importGroup?.mode === 'merge' && Array.isArray(importGroup.rowIndexes)) {
+          if (importGroup?.mode === 'import_batches' && Array.isArray(importGroup.rowIndexes)) {
+            importGroup.rowIndexes.forEach((i) => {
+              added[String(i)] = true;
+            });
+          } else if (importGroup?.mode === 'merge' && Array.isArray(importGroup.rowIndexes)) {
             importGroup.rowIndexes.forEach((i) => {
               added[String(i)] = true;
             });
@@ -2042,7 +2187,9 @@ const Items = () => {
           }
           return { ...prev, open: true, addedRowIndexes: added, supersededRowIndexes: superseded };
         });
-        const mergeMsg = importGroup?.mode === 'merge'
+        const mergeMsg = importGroup?.mode === 'import_batches'
+          ? 'Item created with warehouse batches. All rows in that group are marked added.'
+          : importGroup?.mode === 'merge'
           ? 'Merged item saved. All rows in that duplicate group are marked added.'
           : importGroup?.mode === 'pick_one'
             ? 'Item saved. Other rows in that duplicate group were marked skipped.'
@@ -2135,19 +2282,22 @@ const viewItem = async (item) => {
     setViewModalVisible(true);
     setLoadingHistory(true);
     try {
-      const [itemRes, historyRes, priceHistRes] = await Promise.allSettled([
+      const [itemRes, historyRes, priceHistRes, batchesRes] = await Promise.allSettled([
         apiService.get(`/items/${item.id}`),
         apiService.get(`/inventory/item-logs/${item.id}`),
-        apiService.get(`/items/${item.id}/price-history`)
+        apiService.get(`/items/${item.id}/price-history`),
+        apiService.getBatches({ itemId: item.id }),
       ]);
       setViewingItem(itemRes.status === 'fulfilled' && itemRes.value.success ? itemRes.value.data : item);
       setItemHistory(historyRes.status === 'fulfilled' && historyRes.value.success ? historyRes.value.data || [] : []);
       setPriceHistory(priceHistRes.status === 'fulfilled' && priceHistRes.value.success ? priceHistRes.value.data || [] : []);
+      setViewingItemBatches(batchesRes.status === 'fulfilled' ? (batchesRes.value?.data || []) : []);
     } catch (error) {
       console.error('Failed to fetch item details:', error);
       setViewingItem(item);
       setItemHistory([]);
       setPriceHistory([]);
+      setViewingItemBatches([]);
     } finally {
       setLoadingHistory(false);
     }
@@ -2259,6 +2409,26 @@ const viewItem = async (item) => {
     const manufacturerId = manufacturerOptions.find(m => m.name === fullItem.manufacturer)?.id ?? fullItem.manufacturer;
     const unitId = unitOptions.find(u => u.name === fullItem.unit)?.id ?? fullItem.unit;
 
+    let batchManufactureDate;
+    let batchExpiryDate;
+    const masterBatchNumber = normalizeOptionalText(fullItem.batch_number)?.toUpperCase();
+    if (masterBatchNumber && fullItem.id) {
+      try {
+        const batchRes = await apiService.getBatches({ itemId: fullItem.id });
+        const itemBatches = batchRes?.data || [];
+        const matchedBatch = itemBatches.find(
+          (b) => b.batch_number?.toUpperCase() === masterBatchNumber
+            && (!finalWarehouseId || b.warehouse_id === finalWarehouseId)
+        ) || itemBatches.find((b) => b.batch_number?.toUpperCase() === masterBatchNumber);
+        if (matchedBatch) {
+          batchManufactureDate = matchedBatch.manufacture_date ? dayjs(matchedBatch.manufacture_date) : undefined;
+          batchExpiryDate = matchedBatch.expiry_date ? dayjs(matchedBatch.expiry_date) : undefined;
+        }
+      } catch {
+        /* warehouse batch dates optional on edit */
+      }
+    }
+
     form.setFieldsValue({
       sku: fullItem.sku,
       name: fullItem.name,
@@ -2276,7 +2446,9 @@ const viewItem = async (item) => {
       minStockLevel: normalizeOptionalNumber(fullItem.min_stock_level),
       maxStockLevel: normalizeOptionalNumber(fullItem.max_stock_level),
       barcode: normalizeOptionalText(fullItem.barcode),
-      batchNumber: normalizeOptionalText(fullItem.batch_number)?.toUpperCase(),
+      batchNumber: masterBatchNumber,
+      batchManufactureDate,
+      batchExpiryDate,
       hsnCode: normalizeOptionalText(fullItem.hsn_code),
       itemGroupId: fullItem.item_group_id || null,
       colorCode: formScalarMeta(fullItem?.custom_fields?.skuMeta?.color),
@@ -3020,8 +3192,12 @@ const viewItem = async (item) => {
       importNote = '',
       groupKey = null,
       resolveDuplicateGroup = false,
+      importMode = null,
     } = importOptions;
-    const isMergeSave = Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 1;
+    const isBatchImportSave = importMode === 'import_batches'
+      && Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 0;
+    const isMergeSave = !isBatchImportSave
+      && Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 1;
     const isPickOneGroup = Array.isArray(pickOneGroupRowIndexes) && pickOneGroupRowIndexes.length > 1;
     const skuFromFile = isSkuRequiredForImport(skuSource);
     if (!mapping?.name && !importDefaults?.name) {
@@ -3095,7 +3271,24 @@ const viewItem = async (item) => {
 
     let openingStock;
     let openingValue;
-    if (isMergeSave) {
+    if (isBatchImportSave) {
+      const batchLines = buildImportBatchLinesFromRowIndexes(mergeRowIndexes, rows, mapping, importDefaults);
+      const batchValidation = validateImportBatchLines(batchLines);
+      if (!batchValidation.ok) {
+        Modal.error({
+          title: 'Cannot import batches',
+          content: (
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {batchValidation.errors.map((err) => <li key={err}>{err}</li>)}
+            </ul>
+          ),
+        });
+        return;
+      }
+      batchValidation.warnings.forEach((w) => message.warning(w, 6));
+      openingStock = batchLines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
+      openingValue = 0;
+    } else if (isMergeSave) {
       const merged = buildMergedImportQuantities(mergeRowIndexes, rows, mapping, importDefaults);
       if (merged.anyInvalidStock) {
         message.warning('Some rows have invalid opening stock; valid quantities were summed.');
@@ -3298,7 +3491,14 @@ const viewItem = async (item) => {
       && (openingStock > 0 || !!finalWarehouseId);
 
     activeImportRowIndexRef.current = rowIndex;
-    if (isMergeSave) {
+    if (isBatchImportSave) {
+      activeImportGroupRef.current = {
+        mode: 'import_batches',
+        rowIndexes: mergeRowIndexes,
+        primaryRowIndex: rowIndex,
+        groupKey,
+      };
+    } else if (isMergeSave) {
       activeImportGroupRef.current = {
         mode: 'merge',
         rowIndexes: mergeRowIndexes,
@@ -3318,15 +3518,31 @@ const viewItem = async (item) => {
 
     let importDescription = normalizeOptionalText(pick('description'));
     const noteText = String(importNote || '').trim();
-    if (isMergeSave) {
-      importDescription = buildMergedImportDescription({
+    if (isBatchImportSave) {
+      importDescription = buildImportBatchImportDescription({
         primaryRow: row,
-        rowIndexes: mergeRowIndexes,
+        batchLines: buildImportBatchLinesFromRowIndexes(mergeRowIndexes, rows, mapping, importDefaults),
         rows,
         mapping,
         importDefaults,
         userNote: noteText,
       }) || undefined;
+    } else if (isMergeSave) {
+      importDescription = appendMergedImportWarehouseBatchNote(
+        buildMergedImportDescription({
+          primaryRow: row,
+          rowIndexes: mergeRowIndexes,
+          rows,
+          mapping,
+          importDefaults,
+          userNote: noteText,
+        }) || undefined,
+        mergeRowIndexes,
+        rows,
+        mapping,
+        importDefaults,
+        CSV_IMPORT_PURPOSE_CREATE
+      );
     } else if (noteText) {
       importDescription = [importDescription, `Import note: ${noteText}`].filter(Boolean).join('\n\n') || undefined;
     }
@@ -3353,7 +3569,17 @@ const viewItem = async (item) => {
       minStockLevel: normalizeOptionalNumber(minSl.value),
       maxStockLevel: normalizeOptionalNumber(maxSl.value),
       barcode: normalizeOptionalText(pick('barcode')),
-      batchNumber: normalizeOptionalText(pick('batchNumber'))?.toUpperCase(),
+      batchNumber: (isBatchImportSave || (isMergeSave && buildConsolidatedImportBatchLinesFromRowIndexes(
+        mergeRowIndexes,
+        rows,
+        mapping,
+        importDefaults,
+        { importPurpose: CSV_IMPORT_PURPOSE_CREATE }
+      ).some((line) => line.batchNumber && line.quantity > 0)))
+        ? undefined
+        : normalizeOptionalText(pick('batchNumber'))?.toUpperCase(),
+      batchManufactureDate: isBatchImportSave ? undefined : parseImportDateForForm(pick('batchManufactureDate')),
+      batchExpiryDate: isBatchImportSave ? undefined : parseImportDateForForm(pick('batchExpiryDate')),
       hsnCode: normalizeOptionalText(pick('hsnCode')),
       variantAttributes: [],
       openingStock: normalizeOptionalNumber(openingStock),
@@ -3400,8 +3626,12 @@ const viewItem = async (item) => {
       importNote = '',
       groupKey = null,
       resolveDuplicateGroup = false,
+      importMode = null,
     } = importOptions;
-    const isMergeSave = Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 1;
+    const isBatchImportSave = importMode === 'import_batches'
+      && Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 0;
+    const isMergeSave = !isBatchImportSave
+      && Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 1;
     const isPickOneGroup = Array.isArray(pickOneGroupRowIndexes) && pickOneGroupRowIndexes.length > 1;
 
     const row = rows[rowIndex];
@@ -3472,7 +3702,30 @@ const viewItem = async (item) => {
 
     let openingStock;
     let openingValue;
-    if (isMergeSave) {
+    if (isBatchImportSave) {
+      const batchLines = buildImportBatchLinesFromRowIndexes(
+        mergeRowIndexes,
+        rows,
+        mapping,
+        importDefaults,
+        { importPurpose: CSV_IMPORT_PURPOSE_UPDATE }
+      );
+      const batchValidation = validateImportBatchLines(batchLines);
+      if (!batchValidation.ok) {
+        Modal.error({
+          title: 'Cannot import batches',
+          content: (
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {batchValidation.errors.map((err) => <li key={err}>{err}</li>)}
+            </ul>
+          ),
+        });
+        return;
+      }
+      batchValidation.warnings.forEach((w) => message.warning(w, 6));
+      openingStock = undefined;
+      openingValue = undefined;
+    } else if (isMergeSave) {
       const merged = buildMergedImportQuantitiesForUpdate(mergeRowIndexes, rows, mapping, importDefaults);
       openingStock = merged.openingStock;
       openingValue = merged.openingValue;
@@ -3645,7 +3898,14 @@ const viewItem = async (item) => {
     const existingUnitId = units.find((u) => u.name === fullItem.unit)?.id ?? fullItem.unit;
 
     activeImportRowIndexRef.current = rowIndex;
-    if (isMergeSave) {
+    if (isBatchImportSave) {
+      activeImportGroupRef.current = {
+        mode: 'import_batches',
+        rowIndexes: mergeRowIndexes,
+        primaryRowIndex: rowIndex,
+        groupKey,
+      };
+    } else if (isMergeSave) {
       activeImportGroupRef.current = {
         mode: 'merge',
         rowIndexes: mergeRowIndexes,
@@ -3667,16 +3927,38 @@ const viewItem = async (item) => {
       ? fields.overlayText('description', normalizeOptionalText(fullItem.description))
       : normalizeOptionalText(fullItem.description);
     const noteText = String(importNote || '').trim();
-    if (isMergeSave) {
-      importDescription = buildMergedImportDescription({
+    if (isBatchImportSave) {
+      importDescription = buildImportBatchImportDescription({
         primaryRow: row,
-        rowIndexes: mergeRowIndexes,
+        batchLines: buildImportBatchLinesFromRowIndexes(
+          mergeRowIndexes,
+          rows,
+          mapping,
+          importDefaults,
+          { importPurpose: CSV_IMPORT_PURPOSE_UPDATE }
+        ),
         rows,
         mapping,
-        importDefaults: {},
+        importDefaults,
         userNote: noteText,
-        mappedOnly: true,
       }) || importDescription;
+    } else if (isMergeSave) {
+      importDescription = appendMergedImportWarehouseBatchNote(
+        buildMergedImportDescription({
+          primaryRow: row,
+          rowIndexes: mergeRowIndexes,
+          rows,
+          mapping,
+          importDefaults: {},
+          userNote: noteText,
+          mappedOnly: true,
+        }) || importDescription,
+        mergeRowIndexes,
+        rows,
+        mapping,
+        importDefaults,
+        CSV_IMPORT_PURPOSE_UPDATE
+      );
     } else if (noteText) {
       importDescription = [importDescription, `Import note: ${noteText}`].filter(Boolean).join('\n\n') || undefined;
     }
@@ -3740,9 +4022,27 @@ const viewItem = async (item) => {
       barcode: fields.willUpdate('barcode')
         ? fields.overlayText('barcode', normalizeOptionalText(fullItem.barcode))
         : normalizeOptionalText(fullItem.barcode),
-      batchNumber: fields.willUpdate('batchNumber')
-        ? fields.overlayText('batchNumber', normalizeOptionalText(fullItem.batch_number))?.toUpperCase()
-        : normalizeOptionalText(fullItem.batch_number)?.toUpperCase(),
+      batchNumber: (isBatchImportSave || (isMergeSave && buildConsolidatedImportBatchLinesFromRowIndexes(
+        mergeRowIndexes,
+        rows,
+        mapping,
+        importDefaults,
+        { importPurpose: CSV_IMPORT_PURPOSE_UPDATE }
+      ).some((line) => line.batchNumber && line.quantity > 0)))
+        ? normalizeOptionalText(fullItem.batch_number)?.toUpperCase()
+        : (fields.willUpdate('batchNumber')
+          ? fields.overlayText('batchNumber', normalizeOptionalText(fullItem.batch_number))?.toUpperCase()
+          : normalizeOptionalText(fullItem.batch_number)?.toUpperCase()),
+      batchManufactureDate: isBatchImportSave
+        ? undefined
+        : (fields.willUpdate('batchManufactureDate')
+          ? parseImportDateForForm(fields.getRaw('batchManufactureDate'))
+          : undefined),
+      batchExpiryDate: isBatchImportSave
+        ? undefined
+        : (fields.willUpdate('batchExpiryDate')
+          ? parseImportDateForForm(fields.getRaw('batchExpiryDate'))
+          : undefined),
       hsnCode: fields.willUpdate('hsnCode')
         ? fields.overlayText('hsnCode', normalizeOptionalText(fullItem.hsn_code))
         : normalizeOptionalText(fullItem.hsn_code),
@@ -3786,7 +4086,11 @@ const viewItem = async (item) => {
     setCsvImportModal((prev) => {
       const added = { ...(prev.addedRowIndexes || {}) };
       const superseded = { ...(prev.supersededRowIndexes || {}) };
-      if (importGroup?.mode === 'merge' && Array.isArray(importGroup.rowIndexes)) {
+      if (importGroup?.mode === 'import_batches' && Array.isArray(importGroup.rowIndexes)) {
+        importGroup.rowIndexes.forEach((i) => {
+          added[String(i)] = true;
+        });
+      } else if (importGroup?.mode === 'merge' && Array.isArray(importGroup.rowIndexes)) {
         importGroup.rowIndexes.forEach((i) => {
           added[String(i)] = true;
         });
@@ -3803,6 +4107,134 @@ const viewItem = async (item) => {
       }
       return { ...prev, addedRowIndexes: added, supersededRowIndexes: superseded };
     });
+  };
+
+  const directImportBatchesFromGroup = async (group, plan, { silent = false } = {}) => {
+    if (!canManageItems) return false;
+    const {
+      mapping,
+      rows,
+      importDefaults = {},
+      defaultWarehouseId,
+      importPurpose,
+      matchField = CSV_IMPORT_DEFAULT_MATCH_FIELD,
+      catalogItemPicks = {},
+      matchFileColumn = '',
+    } = csvImportModal;
+
+    const selectedRowIndexes = getImportGroupSelectedRowIndexes(
+      group,
+      plan,
+      csvImportModal.addedRowIndexes || {},
+      csvImportModal.supersededRowIndexes || {}
+    );
+    if (!selectedRowIndexes.length) {
+      if (!silent) message.error('Select at least one row for batch import.');
+      return false;
+    }
+    if (!defaultWarehouseId) {
+      if (!silent) message.error('Select a default warehouse before importing batches.');
+      return false;
+    }
+
+    const isUpdateImport = importPurpose === CSV_IMPORT_PURPOSE_UPDATE;
+
+    const batchLines = buildImportBatchLinesFromRowIndexes(
+      selectedRowIndexes,
+      rows,
+      mapping,
+      importDefaults,
+      { importPurpose: isUpdateImport ? CSV_IMPORT_PURPOSE_UPDATE : CSV_IMPORT_PURPOSE_CREATE }
+    );
+    const validation = validateImportBatchLines(batchLines);
+    if (!validation.ok) {
+      if (!silent) {
+        Modal.error({
+          title: 'Cannot import batches',
+          content: (
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {validation.errors.map((err) => <li key={err}>{err}</li>)}
+            </ul>
+          ),
+        });
+      }
+      return false;
+    }
+    if (!silent) validation.warnings.forEach((w) => message.warning(w, 5));
+
+    let itemId = group.catalogItemId || null;
+    let itemName = group.catalogItemName || group.nameDisplay || 'Item';
+
+    if (isUpdateImport) {
+      const primaryIndex = plan.selectedRowIndex ?? selectedRowIndexes[0];
+      const catalogMatchIndex = buildExistingItemsMatchIndex(items, matchField);
+      const catalogMatch = resolveCatalogMatchForRow(
+        rows[primaryIndex],
+        mapping,
+        importDefaults,
+        catalogMatchIndex,
+        matchField,
+        primaryIndex,
+        catalogItemPicks,
+        matchFileColumn
+      );
+      if (catalogMatch.status !== 'matched' || !catalogMatch.item?.id) {
+        if (!silent) message.error('Could not match an existing catalog item for batch import.');
+        return false;
+      }
+      itemId = catalogMatch.item.id;
+      itemName = catalogMatch.item.name || itemName;
+    } else {
+      const primaryIndex = plan.selectedRowIndex ?? selectedRowIndexes[0];
+      const primaryRow = rows[primaryIndex];
+      const skuText = pickImportValue(primaryRow, mapping, importDefaults, 'sku');
+      const existing = items.find(
+        (item) => normalizeDuplicateLookup(item.sku) === normalizeDuplicateLookup(skuText)
+      );
+      if (existing?.id) {
+        itemId = existing.id;
+        itemName = existing.name || itemName;
+      } else {
+        if (!silent) {
+          message.info('Item not in catalog yet. Use "Add batches in form" to create the item and warehouse batches together.');
+        }
+        return false;
+      }
+    }
+
+    try {
+      const batchResult = await createImportBatchesForItem(itemId, batchLines, defaultWarehouseId);
+      if (batchResult.errors.length) {
+        if (!silent) {
+          Modal.warning({
+            title: 'Some batches could not be created',
+            content: (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {batchResult.errors.map((err) => <li key={err}>{err}</li>)}
+              </ul>
+            ),
+          });
+        }
+        if (!batchResult.created.length) return false;
+      }
+
+      markImportRowsUpdated(selectedRowIndexes, {
+        mode: 'import_batches',
+        rowIndexes: selectedRowIndexes,
+        primaryRowIndex: plan.selectedRowIndex ?? selectedRowIndexes[0],
+        groupKey: group.groupKey,
+      });
+      await fetchItems();
+      if (!silent) {
+        message.success(
+          `Created ${batchResult.created.length} batch(es) for "${itemName}": ${batchResult.created.join(', ')}`
+        );
+      }
+      return true;
+    } catch (e) {
+      if (!silent) message.error(e?.response?.data?.error || 'Failed to import batches');
+      return false;
+    }
   };
 
   const directUpdateItemFromImportRow = async (rowIndex, importOptions = {}) => {
@@ -3825,15 +4257,46 @@ const viewItem = async (item) => {
       importNote = '',
       groupKey = null,
       resolveDuplicateGroup = false,
+      importMode = null,
       silent = false,
     } = importOptions;
-    const isMergeSave = Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 1;
+    const isBatchImportDirect = importMode === 'import_batches'
+      && Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 0;
+    const isMergeSave = !isBatchImportDirect
+      && Array.isArray(mergeRowIndexes) && mergeRowIndexes.length > 1;
     const isPickOneGroup = Array.isArray(pickOneGroupRowIndexes) && pickOneGroupRowIndexes.length > 1;
 
     const row = rows[rowIndex];
     if (!row) {
       if (!silent) message.error('Row not found');
       return false;
+    }
+
+    if (isBatchImportDirect) {
+      const selectedRowIndexes = mergeRowIndexes;
+      const batchGroup = {
+        groupKey,
+        rowIndexes: selectedRowIndexes,
+        catalogItemId: null,
+        catalogItemName: null,
+        batchAnalysis: analyzeImportDuplicateGroupBatches(
+          { rowIndexes: selectedRowIndexes },
+          rows,
+          mapping,
+          importDefaults,
+          CSV_IMPORT_PURPOSE_UPDATE
+        ),
+      };
+      return directImportBatchesFromGroup(
+        batchGroup,
+        {
+          selectedRowIndexes,
+          selectedRowIndex: rowIndex,
+          note: importNote,
+          mode: 'import_batches',
+        },
+        { silent }
+      );
     }
 
     const catalogMatchIndex = buildExistingItemsMatchIndex(items, matchField);
@@ -3971,6 +4434,42 @@ const viewItem = async (item) => {
         : isPickOneGroup
           ? { mode: 'pick_one', rowIndexes: pickOneGroupRowIndexes, primaryRowIndex: rowIndex, groupKey }
           : null;
+      const batchLinesToCreate = resolveImportBatchLinesForSave({
+        importGroup,
+        savedRowIndex: rowIndex,
+        rows,
+        mapping,
+        importDefaults,
+        importPurpose: CSV_IMPORT_PURPOSE_UPDATE,
+      });
+      if (batchLinesToCreate.length && defaultWarehouseId) {
+        const batchValidation = validateImportBatchLines(batchLinesToCreate);
+        if (batchValidation.ok) {
+          const batchResult = await createImportBatchesForItem(
+            matchedItem.id,
+            batchLinesToCreate,
+            defaultWarehouseId
+          );
+          if (!silent && batchResult.created.length) {
+            message.success(`Created ${batchResult.created.length} warehouse batch(es): ${batchResult.created.join(', ')}`);
+          }
+          if (batchResult.errors.length && !silent) {
+            Modal.warning({
+              title: 'Some batches could not be created',
+              content: (
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {batchResult.errors.map((err) => <li key={err}>{err}</li>)}
+                </ul>
+              ),
+            });
+          }
+        } else if (!silent) {
+          batchValidation.errors.forEach((err) => message.warning(err, 5));
+        }
+      } else if (batchLinesToCreate.length && !defaultWarehouseId && !silent) {
+        message.warning('Item updated but warehouse batches were skipped — select a default warehouse.');
+      }
+
       markImportRowsUpdated([rowIndex], importGroup);
       await fetchItems();
 
@@ -5631,7 +6130,18 @@ const viewItem = async (item) => {
                 importNote: plan.note,
                 groupKey: group.groupKey,
                 resolveDuplicateGroup: true,
+                importMode: plan.mode === 'import_batches' ? 'import_batches' : undefined,
               });
+            }}
+            onDirectImportBatches={(group, plan) => {
+              directImportBatchesFromGroup(
+                {
+                  ...group,
+                  catalogItemId: group.resolvedItem?.id || group.catalogItemId,
+                  catalogItemName: group.resolvedItem?.name || group.catalogItemName,
+                },
+                plan
+              );
             }}
           />
         )}
@@ -5662,7 +6172,7 @@ const viewItem = async (item) => {
               }));
             }}
             onAddInForm={(group, plan) => {
-              if (plan.mode === 'merge') {
+              if (plan.mode === 'import_batches' || plan.mode === 'merge') {
                 const mergeRowIndexes = getImportGroupSelectedRowIndexes(
                   group,
                   plan,
@@ -5675,6 +6185,7 @@ const viewItem = async (item) => {
                   importNote: plan.note,
                   groupKey: group.groupKey,
                   resolveDuplicateGroup: true,
+                  importMode: plan.mode === 'import_batches' ? 'import_batches' : undefined,
                 });
               } else {
                 const primaryIndex = plan.selectedRowIndex ?? group.rowIndexes[0];
@@ -5686,7 +6197,14 @@ const viewItem = async (item) => {
                 });
               }
             }}
+            onDirectImportBatches={(group, plan) => {
+              directImportBatchesFromGroup(group, plan);
+            }}
             onDirectUpdate={isCsvUpdateImport ? (group, plan) => {
+              if (plan.mode === 'import_batches') {
+                directImportBatchesFromGroup(group, plan);
+                return;
+              }
               if (plan.mode === 'merge') {
                 const mergeRowIndexes = getImportGroupSelectedRowIndexes(
                   group,
@@ -7736,6 +8254,25 @@ const viewItem = async (item) => {
                 </Form.Item>
               </Col>
             </Row>
+            {watchedBatchNumber && (
+              <Row gutter={16}>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="batchManufactureDate" label="Batch Manufacture Date">
+                    <DatePicker style={{ width: '100%' }} format="DD MMM YYYY" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="batchExpiryDate" label="Batch Expiry Date">
+                    <DatePicker style={{ width: '100%' }} format="DD MMM YYYY" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <div style={{ paddingTop: 30, color: '#8c8c8c', fontSize: 12 }}>
+                    Dates apply to the warehouse batch created when batch number, warehouse, and opening stock are set.
+                  </div>
+                </Col>
+              </Row>
+            )}
           </div>{/* end Basic Info section */}
 
           {/* ── Section: Sales ── */}
@@ -8191,8 +8728,8 @@ const viewItem = async (item) => {
           </div>
         }
         open={viewModalVisible}
-        onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}
-        footer={[<Button key="close" style={{ borderRadius: 10 }} onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); }}>Close</Button>]}
+        onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); setViewingItemBatches([]); }}
+        footer={[<Button key="close" style={{ borderRadius: 10 }} onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); setViewingItemBatches([]); }}>Close</Button>]}
         width="min(1280px, 98vw)"
         style={{ top: 16 }}
         styles={{ body: { background: '#fafbff', maxHeight: '82vh', overflowY: 'auto', padding: '20px 24px' } }}
@@ -8271,6 +8808,74 @@ const viewItem = async (item) => {
                 <strong>Description:</strong> {viewingItem.description}
               </div>
             )}
+
+            <Card
+              size="small"
+              title={(
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span>Warehouse Batches</span>
+                  <Tag color="purple" style={{ borderRadius: 999, marginInlineEnd: 0 }}>
+                    {viewingItemBatches.length} batch{viewingItemBatches.length === 1 ? '' : 'es'}
+                  </Tag>
+                </div>
+              )}
+              style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden' }}
+              styles={{ body: { paddingTop: 8 } }}
+            >
+              {viewingItemBatches.length === 0 ? (
+                <Empty description="No warehouse batches recorded for this item" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              ) : (
+                <Table
+                  size="small"
+                  rowKey="id"
+                  dataSource={viewingItemBatches}
+                  pagination={{ pageSize: 5, size: 'small', hideOnSinglePage: true }}
+                  scroll={{ x: 720 }}
+                  columns={[
+                    { title: 'Batch #', dataIndex: 'batch_number', key: 'batch_number', width: 130, ellipsis: true },
+                    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 140, ellipsis: true },
+                    {
+                      title: 'Received',
+                      dataIndex: 'quantity_received',
+                      key: 'quantity_received',
+                      width: 90,
+                      render: (v) => parseFloat(v || 0).toFixed(2),
+                    },
+                    {
+                      title: 'Available',
+                      key: 'quantity_remaining',
+                      width: 90,
+                      render: (_, row) => {
+                        const remaining = parseFloat(row.quantity_remaining ?? row.quantity_available ?? 0);
+                        const color = remaining <= 0 ? 'default' : remaining <= 10 ? 'orange' : 'green';
+                        return <Tag color={color}>{remaining.toFixed(2)}</Tag>;
+                      },
+                    },
+                    {
+                      title: 'Manufacture Date',
+                      dataIndex: 'manufacture_date',
+                      key: 'manufacture_date',
+                      width: 120,
+                      render: (v) => (v ? new Date(v).toLocaleDateString() : '-'),
+                    },
+                    {
+                      title: 'Expiry',
+                      dataIndex: 'expiry_date',
+                      key: 'expiry_date',
+                      width: 120,
+                      render: (v) => (v ? new Date(v).toLocaleDateString() : '-'),
+                    },
+                    {
+                      title: 'Status',
+                      dataIndex: 'status',
+                      key: 'status',
+                      width: 100,
+                      render: (v) => <Tag color={v === 'active' ? 'green' : v === 'expired' ? 'red' : 'orange'}>{v?.toUpperCase()}</Tag>,
+                    },
+                  ]}
+                />
+              )}
+            </Card>
 
             {String(viewingItem.type || '').toLowerCase() === 'variant' && (
               <Card
