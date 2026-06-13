@@ -19,6 +19,10 @@ const AccountSettings = () => {
   const [otpEmail, setOtpEmail] = useState('');
   const [otpAction, setOtpAction] = useState('enable');
   const [pendingTwoFactorValue, setPendingTwoFactorValue] = useState(null);
+  const [pendingProfileValues, setPendingProfileValues] = useState(null);
+  const [pendingPasswordValues, setPendingPasswordValues] = useState(null);
+  const [emailChangeRequired, setEmailChangeRequired] = useState(false);
+  const [otpNewEmail, setOtpNewEmail] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
   const timerRef = useRef(null);
 
@@ -70,17 +74,111 @@ const AccountSettings = () => {
     }
   };
 
+  const profileHasChanges = (values) => {
+    if (!userProfile) return true;
+    const dob = values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : null;
+    const currentDob = userProfile.dateOfBirth
+      ? moment(userProfile.dateOfBirth).format('YYYY-MM-DD')
+      : null;
+    return (
+      values.firstName !== userProfile.firstName
+      || values.lastName !== userProfile.lastName
+      || (values.email || '').trim().toLowerCase() !== (userProfile.email || '').trim().toLowerCase()
+      || (values.mobile || '') !== (userProfile.mobile || '')
+      || (values.address || '') !== (userProfile.address || '')
+      || (values.city || '') !== (userProfile.city || '')
+      || (values.state || '') !== (userProfile.state || '')
+      || (values.country || '') !== (userProfile.country || '')
+      || (values.postalCode || '') !== (userProfile.postalCode || '')
+      || dob !== currentDob
+      || (values.gender || '') !== (userProfile.gender || '')
+    );
+  };
+
+  const openOtpModal = (action, email, options = {}) => {
+    setOtpAction(action);
+    setOtpEmail(email);
+    setEmailChangeRequired(Boolean(options.emailChangeRequired));
+    setOtpNewEmail(options.newEmail || '');
+    setOtpModalOpen(true);
+    otpForm.resetFields();
+    startResendTimer();
+  };
+
   const handleProfileUpdate = async (values) => {
+    if (!profileHasChanges(values)) {
+      message.info('No changes to save');
+      return;
+    }
+
+    const emailChanged = userProfile?.email
+      && values.email?.trim().toLowerCase() !== userProfile.email.trim().toLowerCase();
+
     try {
       setLoading(true);
       const updateData = {
         ...values,
-        dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : null
+        dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : null,
       };
-      const response = await apiService.put('/users/account-settings', updateData);
+      const response = await apiService.post('/users/profile/send-update-otp', {
+        newEmail: emailChanged ? values.email : undefined,
+      });
+      if (response.success) {
+        setPendingProfileValues(updateData);
+        openOtpModal('profile-update', response.data?.email || userProfile?.email || '', {
+          emailChangeRequired: response.data?.emailChangeRequired,
+          newEmail: response.data?.newEmail,
+        });
+        message.success(
+          response.data?.emailChangeRequired
+            ? 'Verification codes sent to your current and new email addresses'
+            : 'Verification code sent to your email'
+        );
+      } else {
+        message.error(response.error || 'Failed to send verification code');
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Failed to send verification code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyProfileOtp = async ({ otp, newEmailOtp }) => {
+    if (!pendingProfileValues) {
+      message.error('Profile update session expired. Please try again.');
+      return;
+    }
+    try {
+      setLoading(true);
+      const response = await apiService.put('/users/account-settings', {
+        ...pendingProfileValues,
+        otp,
+        newEmailOtp: emailChangeRequired ? newEmailOtp : undefined,
+      });
       if (response.success) {
         message.success('Profile updated successfully');
         setUserProfile(response.data);
+        setPendingProfileValues(null);
+        setEmailChangeRequired(false);
+        setOtpNewEmail('');
+        setOtpModalOpen(false);
+        otpForm.resetFields();
+        profileForm.setFieldsValue({
+          firstName: response.data.firstName,
+          lastName: response.data.lastName,
+          email: response.data.email,
+          mobile: response.data.mobile,
+          address: response.data.address,
+          city: response.data.city,
+          state: response.data.state,
+          country: response.data.country,
+          postalCode: response.data.postalCode,
+          dateOfBirth: response.data.dateOfBirth ? moment(response.data.dateOfBirth) : null,
+          gender: response.data.gender,
+        });
+      } else {
+        message.error(response.error || 'Failed to update profile');
       }
     } catch (error) {
       message.error(error.response?.data?.error || 'Failed to update profile');
@@ -99,6 +197,8 @@ const AccountSettings = () => {
       setPendingTwoFactorValue(nextValue);
       setOtpEmail(response.data?.email || userProfile?.email || '');
       setOtpModalOpen(true);
+      setEmailChangeRequired(false);
+      setOtpNewEmail('');
       otpForm.resetFields();
       startResendTimer();
       message.success('OTP sent to your email');
@@ -125,7 +225,14 @@ const AccountSettings = () => {
     }
   };
 
-  const handleVerifyTwoFactorOtp = async ({ otp }) => {
+  const handleVerifyTwoFactorOtp = async (values) => {
+    if (otpAction === 'profile-update') {
+      return handleVerifyProfileOtp(values);
+    }
+    if (otpAction === 'password-change') {
+      return handleVerifyPasswordOtp(values);
+    }
+    const { otp } = values;
     try {
       setTwoFactorLoading(true);
       const endpoint = otpAction === 'disable'
@@ -156,6 +263,10 @@ const AccountSettings = () => {
       setTwoFactorEnabled(!pendingTwoFactorValue);
     }
     setPendingTwoFactorValue(null);
+    setPendingProfileValues(null);
+    setPendingPasswordValues(null);
+    setEmailChangeRequired(false);
+    setOtpNewEmail('');
     otpForm.resetFields();
     clearInterval(timerRef.current);
     setResendTimer(0);
@@ -165,6 +276,35 @@ const AccountSettings = () => {
     if (resendTimer > 0) return;
     try {
       setTwoFactorLoading(true);
+      if (otpAction === 'profile-update' && pendingProfileValues) {
+        const emailChanged = userProfile?.email
+          && pendingProfileValues.email?.trim().toLowerCase() !== userProfile.email.trim().toLowerCase();
+        const response = await apiService.post('/users/profile/send-update-otp', {
+          newEmail: emailChanged ? pendingProfileValues.email : undefined,
+        });
+        if (response.success) {
+          openOtpModal('profile-update', response.data?.email || userProfile?.email || '', {
+            emailChangeRequired: response.data?.emailChangeRequired,
+            newEmail: response.data?.newEmail,
+          });
+          message.success('Verification code resent');
+        } else {
+          message.error(response.error || 'Failed to resend code');
+        }
+        return;
+      }
+      if (otpAction === 'password-change' && pendingPasswordValues) {
+        const response = await apiService.post('/users/change-password/send-otp', {
+          currentPassword: pendingPasswordValues.currentPassword,
+        });
+        if (response.success) {
+          openOtpModal('password-change', response.data?.email || userProfile?.email || '');
+          message.success('Verification code resent');
+        } else {
+          message.error(response.error || 'Failed to resend code');
+        }
+        return;
+      }
       await sendTwoFactorOtp(otpAction, pendingTwoFactorValue);
     } catch (error) {
       message.error(error.response?.data?.error || 'Failed to resend OTP');
@@ -176,13 +316,45 @@ const AccountSettings = () => {
   const handlePasswordChange = async (values) => {
     try {
       setLoading(true);
-      const response = await apiService.put('/users/change-password', {
+      const response = await apiService.post('/users/change-password/send-otp', {
         currentPassword: values.currentPassword,
-        newPassword: values.newPassword
+      });
+      if (response.success) {
+        setPendingPasswordValues({
+          currentPassword: values.currentPassword,
+          newPassword: values.newPassword,
+        });
+        openOtpModal('password-change', response.data?.email || userProfile?.email || '');
+        message.success('Verification code sent to your email');
+      } else {
+        message.error(response.error || 'Failed to send verification code');
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Failed to send verification code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyPasswordOtp = async ({ otp }) => {
+    if (!pendingPasswordValues) {
+      message.error('Password change session expired. Please try again.');
+      return;
+    }
+    try {
+      setLoading(true);
+      const response = await apiService.put('/users/change-password', {
+        ...pendingPasswordValues,
+        otp,
       });
       if (response.success) {
         message.success('Password changed successfully');
+        setPendingPasswordValues(null);
+        setOtpModalOpen(false);
+        otpForm.resetFields();
         passwordForm.resetFields();
+      } else {
+        message.error(response.error || 'Failed to change password');
       }
     } catch (error) {
       message.error(error.response?.data?.error || 'Failed to change password');
@@ -315,7 +487,9 @@ const AccountSettings = () => {
                 />
               </div>
               <p style={{ color: '#666', fontSize: '13px', marginBottom: '24px' }}>
-                Both enabling and disabling two-factor authentication require email OTP verification.
+                Saving profile changes requires a verification code sent to your current email.
+                If you change your email, separate codes are sent to both your current and new addresses.
+                Enabling or disabling two-factor authentication also requires email OTP verification.
               </p>
 
               <Form.Item>
@@ -332,6 +506,9 @@ const AccountSettings = () => {
           key="password"
         >
           <Card style={{ maxWidth: '600px' }}>
+            <p style={{ color: '#666', fontSize: '13px', marginBottom: 16 }}>
+              Password changes require a verification code sent to your registered email after you confirm your current password.
+            </p>
             <Form
               form={passwordForm}
               layout="vertical"
@@ -386,7 +563,13 @@ const AccountSettings = () => {
       </Tabs>
 
       <Modal
-        title="Confirm your email"
+        title={
+          otpAction === 'profile-update'
+            ? (emailChangeRequired ? 'Verify profile & new email' : 'Verify profile update')
+            : otpAction === 'password-change'
+              ? 'Verify password change'
+              : 'Confirm your email'
+        }
         open={otpModalOpen}
         onCancel={handleOtpModalCancel}
         footer={null}
@@ -394,12 +577,34 @@ const AccountSettings = () => {
         maskClosable={false}
       >
         <p style={{ marginBottom: 16, color: '#666' }}>
-          Enter the 6-digit code sent to <strong>{otpEmail}</strong> to {otpAction === 'disable' ? 'disable' : 'enable'} 2FA. It expires in 5 minutes.
+          {otpAction === 'profile-update' ? (
+            emailChangeRequired ? (
+              <>
+                Enter the 6-digit code sent to <strong>{otpEmail}</strong> and the code sent to{' '}
+                <strong>{otpNewEmail}</strong>. Codes expire in 5 minutes.
+              </>
+            ) : (
+              <>
+                Enter the 6-digit code sent to <strong>{otpEmail}</strong> to save your profile changes.
+                It expires in 5 minutes.
+              </>
+            )
+          ) : otpAction === 'password-change' ? (
+            <>
+              Enter the 6-digit code sent to <strong>{otpEmail}</strong> to confirm your password change.
+              It expires in 5 minutes.
+            </>
+          ) : (
+            <>
+              Enter the 6-digit code sent to <strong>{otpEmail}</strong> to{' '}
+              {otpAction === 'disable' ? 'disable' : 'enable'} 2FA. It expires in 5 minutes.
+            </>
+          )}
         </p>
         <Form form={otpForm} layout="vertical" onFinish={handleVerifyTwoFactorOtp}>
           <Form.Item
             name="otp"
-            label="Verification code"
+            label={emailChangeRequired ? 'Code from current email' : 'Verification code'}
             rules={[
               { required: true, message: 'OTP is required' },
               { len: 6, message: 'OTP must be 6 digits' },
@@ -412,9 +617,35 @@ const AccountSettings = () => {
               style={{ letterSpacing: 6, textAlign: 'center', fontSize: 18 }}
             />
           </Form.Item>
+          {otpAction === 'profile-update' && emailChangeRequired && (
+            <Form.Item
+              name="newEmailOtp"
+              label="Code from new email"
+              rules={[
+                { required: true, message: 'New email OTP is required' },
+                { len: 6, message: 'OTP must be 6 digits' },
+                { pattern: /^[0-9]{6}$/, message: 'OTP must be numeric' }
+              ]}
+            >
+              <Input
+                placeholder="000000"
+                maxLength={6}
+                style={{ letterSpacing: 6, textAlign: 'center', fontSize: 18 }}
+              />
+            </Form.Item>
+          )}
           <Form.Item style={{ marginBottom: 8 }}>
-            <Button type="primary" htmlType="submit" block loading={twoFactorLoading}>
-              {otpAction === 'disable' ? 'Verify and disable 2FA' : 'Verify and enable 2FA'}
+            <Button
+              type="primary"
+              htmlType="submit"
+              block
+              loading={loading || twoFactorLoading}
+            >
+              {otpAction === 'profile-update'
+                ? 'Verify and update profile'
+                : otpAction === 'password-change'
+                  ? 'Verify and change password'
+                  : (otpAction === 'disable' ? 'Verify and disable 2FA' : 'Verify and enable 2FA')}
             </Button>
           </Form.Item>
         </Form>

@@ -400,7 +400,15 @@ class AuthController {
           designation: userProfile.designation,
           employeeId: userProfile.employee_id,
           permissions: effectivePermissions,
-          twoFactorEnabled: Boolean(userProfile.two_factor_enabled)
+          twoFactorEnabled: Boolean(userProfile.two_factor_enabled),
+          mobile: userProfile.mobile,
+          address: userProfile.address,
+          city: userProfile.city,
+          state: userProfile.state,
+          country: userProfile.country,
+          postalCode: userProfile.postal_code,
+          dateOfBirth: userProfile.date_of_birth,
+          gender: userProfile.gender,
         }
       });
     } catch (error) {
@@ -493,47 +501,38 @@ class AuthController {
   }
 
   async updateProfile(req, res) {
+    res.status(400).json({
+      success: false,
+      error: 'Profile updates require email OTP verification. Use Account Settings and confirm the code sent to your email.',
+    });
+  }
+
+  async sendPasswordChangeOtp(req, res) {
     try {
-      const { firstName, lastName, email } = req.body;
-      const userId = req.user.userId;
-      const institutionId = req.institutionId;
-
-      await authService.updateUserProfile(institutionId, userId, {
-        firstName,
-        lastName,
-        email
-      });
-
-      // Fetch updated profile
-      const updatedUsers = await authService.getInstitutionUsers(institutionId);
-      const userProfile = updatedUsers.find(u => u.id === userId);
-
+      const { currentPassword } = req.body || {};
+      const result = await authService.sendPasswordChangeOtp(
+        req.institutionId,
+        req.user.userId,
+        currentPassword
+      );
       res.json({
         success: true,
-        message: 'Profile updated successfully',
-        data: {
-          id: userProfile.id,
-          email: userProfile.email,
-          firstName: userProfile.first_name,
-          lastName: userProfile.last_name,
-          role: userProfile.role
-        }
+        message: 'OTP sent to your email address.',
+        data: { email: result.email },
       });
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error.message
-      });
+      logger.error('Send password change OTP failed', { error: error.message, userId: req.user.userId });
+      res.status(400).json({ success: false, error: error.message });
     }
   }
 
   async changePassword(req, res) {
     try {
-      const { currentPassword, newPassword } = req.body;
+      const { currentPassword, newPassword, otp } = req.body;
       const userId = req.user.userId;
       const institutionId = req.institutionId;
 
-      await authService.changePassword(institutionId, userId, currentPassword, newPassword);
+      await authService.changePassword(institutionId, userId, currentPassword, newPassword, otp);
 
       res.json({
         success: true,
@@ -607,6 +606,27 @@ class AuthController {
       });
     } catch (error) {
       logger.error('Verify 2FA disable failed', { error: error.message, userId: req.user.userId });
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  async sendProfileUpdateOtp(req, res) {
+    try {
+      const { newEmail } = req.body || {};
+      const result = await authService.sendProfileUpdateOtp(
+        req.institutionId,
+        req.user.userId,
+        { newEmail }
+      );
+      res.json({
+        success: true,
+        message: result.emailChangeRequired
+          ? 'Verification codes sent to your current and new email addresses.'
+          : 'OTP sent to your email address.',
+        data: result,
+      });
+    } catch (error) {
+      logger.error('Send profile update OTP failed', { error: error.message, userId: req.user.userId });
       res.status(400).json({ success: false, error: error.message });
     }
   }

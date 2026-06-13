@@ -11,6 +11,14 @@ const userSessionService = require('./userSession.service');
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function generateOtpCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 class AuthService {
   // Helper function to convert undefined to null
   _toNull(value) {
@@ -763,27 +771,69 @@ class AuthService {
     logger.info('User profile updated', { userId, institutionId });
   }
 
-  async changePassword(institutionId, userId, currentPassword, newPassword) {
-    // Get current password hash
+  async sendPasswordChangeOtp(institutionId, userId, currentPassword) {
+    if (!currentPassword) throw new Error('Current password is required');
+
     const users = await db.query(
-      'SELECT password_hash FROM institution_users WHERE institution_id = ? AND id = ?',
+      'SELECT id, email, password_hash, status FROM institution_users WHERE institution_id = ? AND id = ? LIMIT 1',
       [institutionId, userId]
     );
+    if (users.length === 0) throw new Error('User not found');
+    const user = users[0];
+    if (user.status !== 'active') throw new Error('User account is inactive');
 
-    if (users.length === 0) {
-      throw new Error('User not found');
+    const isValidPassword = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!isValidPassword) throw new Error('Current password is incorrect');
+
+    const otp = generateOtpCode();
+    await otpService.createOtp({
+      purpose: 'password_change',
+      email: user.email,
+      otp,
+      institutionId,
+      userId: user.id,
+      ttlMs: OTP_TTL_MS,
+    });
+    await this._sendOtpEmail(
+      user.email,
+      'Confirm Password Change',
+      'Your code to change your password is',
+      otp
+    );
+
+    logger.info('Password change OTP sent', { userId, institutionId, email: user.email });
+    return { email: user.email };
+  }
+
+  async changePassword(institutionId, userId, currentPassword, newPassword, otp) {
+    if (!otp) {
+      throw new Error('OTP is required to change your password. Request a verification code first.');
     }
 
-    // Verify current password
+    const user = await this._getActiveUser(institutionId, userId);
+    const users = await db.query(
+      'SELECT password_hash FROM institution_users WHERE institution_id = ? AND id = ? LIMIT 1',
+      [institutionId, userId]
+    );
+    if (users.length === 0) throw new Error('User not found');
+
     const isValidPassword = await bcrypt.compare(currentPassword, users[0].password_hash);
     if (!isValidPassword) {
       throw new Error('Current password is incorrect');
     }
 
-    // Hash new password
-    const newPasswordHash = await bcrypt.hash(newPassword, 12);
+    await otpService.verifyOtp({
+      purpose: 'password_change',
+      email: user.email,
+      otp: String(otp).trim(),
+      institutionId,
+    });
 
-    // Update password
+    if (!newPassword || String(newPassword).length < 6) {
+      throw new Error('New password must be at least 6 characters');
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 12);
     await db.query(
       'UPDATE institution_users SET password_hash = ?, updated_at = NOW() WHERE institution_id = ? AND id = ?',
       [newPasswordHash, institutionId, userId]
@@ -926,15 +976,150 @@ class AuthService {
     return { twoFactorEnabled: false, email: user.email };
   }
 
-  async updateAccountSettings(institutionId, userId, updateData) {
-    const { firstName, lastName, email, mobile, address, city, state, country, postalCode, dateOfBirth, gender, twoFactorEnabled } = updateData;
-    
-    if (email) {
+  async _getActiveUser(institutionId, userId) {
+    const users = await db.query(
+      `SELECT id, email, two_factor_enabled, status
+         FROM institution_users
+        WHERE institution_id = ? AND id = ?
+        LIMIT 1`,
+      [institutionId, userId]
+    );
+    if (users.length === 0) throw new Error('User not found');
+    const user = users[0];
+    if (user.status !== 'active') throw new Error('User account is inactive');
+    return user;
+  }
+
+  async _sendOtpEmail(to, subject, textPrefix, otp) {
+    try {
+      await emailService.sendEmail({
+        to,
+        subject,
+        text: `${textPrefix}: ${otp}. It expires in 5 minutes.`,
+        html: `<p>${textPrefix}: <strong>${otp}</strong></p><p>It expires in 5 minutes. Do not share it with anyone.</p>`,
+      });
+    } catch (emailErr) {
+      logger.warn('Profile OTP email failed', { email: to, error: emailErr.message });
+      throw new Error('Failed to send OTP email. Check SMTP configuration and try again.');
+    }
+  }
+
+  async sendProfileUpdateOtp(institutionId, userId, { newEmail } = {}) {
+    const user = await this._getActiveUser(institutionId, userId);
+    const currentEmail = normalizeEmail(user.email);
+    const nextEmail = newEmail ? normalizeEmail(newEmail) : null;
+    const emailChanging = Boolean(nextEmail && nextEmail !== currentEmail);
+
+    if (emailChanging) {
+      if (!nextEmail.includes('@')) throw new Error('Valid new email is required');
       const existingUser = await db.query(
-        'SELECT id FROM institution_users WHERE institution_id = ? AND email = ? AND id != ?',
-        [institutionId, email, userId]
+        'SELECT id FROM institution_users WHERE institution_id = ? AND LOWER(email) = ? AND id != ? LIMIT 1',
+        [institutionId, nextEmail, userId]
       );
-      
+      if (existingUser.length > 0) throw new Error('Email already exists');
+    }
+
+    const currentOtp = generateOtpCode();
+    await otpService.createOtp({
+      purpose: 'profile_update',
+      email: user.email,
+      otp: currentOtp,
+      institutionId,
+      userId: user.id,
+      ttlMs: OTP_TTL_MS,
+    });
+    await this._sendOtpEmail(
+      user.email,
+      'Confirm Profile Update',
+      'Your code to confirm profile changes is',
+      currentOtp
+    );
+
+    if (emailChanging) {
+      const newOtp = generateOtpCode();
+      await otpService.createOtp({
+        purpose: 'profile_email_change',
+        email: nextEmail,
+        otp: newOtp,
+        institutionId,
+        userId: user.id,
+        ttlMs: OTP_TTL_MS,
+      });
+      await this._sendOtpEmail(
+        nextEmail,
+        'Verify Your New Email Address',
+        'Your code to verify your new email address is',
+        newOtp
+      );
+    }
+
+    logger.info('Profile update OTP sent', {
+      userId,
+      institutionId,
+      emailChanging,
+      currentEmail: user.email,
+      newEmail: emailChanging ? nextEmail : null,
+    });
+
+    return {
+      email: user.email,
+      newEmail: emailChanging ? nextEmail : null,
+      emailChangeRequired: emailChanging,
+    };
+  }
+
+  async updateAccountSettings(institutionId, userId, updateData) {
+    const {
+      otp,
+      newEmailOtp,
+      firstName,
+      lastName,
+      email,
+      mobile,
+      address,
+      city,
+      state,
+      country,
+      postalCode,
+      dateOfBirth,
+      gender,
+      twoFactorEnabled,
+    } = updateData;
+
+    const user = await this._getActiveUser(institutionId, userId);
+
+    if (!otp) {
+      throw new Error('OTP is required to update your profile. Request a verification code first.');
+    }
+
+    await otpService.verifyOtp({
+      purpose: 'profile_update',
+      email: user.email,
+      otp: String(otp).trim(),
+      institutionId,
+    });
+
+    const normalizedNewEmail = email !== undefined ? normalizeEmail(email) : null;
+    const currentEmail = normalizeEmail(user.email);
+    const emailChanging = normalizedNewEmail && normalizedNewEmail !== currentEmail;
+
+    if (emailChanging) {
+      if (!newEmailOtp) {
+        throw new Error('OTP sent to your new email address is required to change your email.');
+      }
+      await otpService.verifyOtp({
+        purpose: 'profile_email_change',
+        email: normalizedNewEmail,
+        otp: String(newEmailOtp).trim(),
+        institutionId,
+      });
+    }
+
+    if (email !== undefined) {
+      const existingUser = await db.query(
+        'SELECT id FROM institution_users WHERE institution_id = ? AND LOWER(email) = ? AND id != ? LIMIT 1',
+        [institutionId, normalizedNewEmail, userId]
+      );
       if (existingUser.length > 0) {
         throw new Error('Email already exists');
       }

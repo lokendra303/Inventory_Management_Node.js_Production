@@ -39,10 +39,22 @@ router.put('/profile',
   authController.updateProfile
 );
 
+// POST /api/users/change-password/send-otp — OTP before password change
+router.post('/change-password/send-otp',
+  auditLog('password_change_otp_sent'),
+  authController.sendPasswordChangeOtp
+);
+
 // PUT /api/users/change-password
 router.put('/change-password',
   auditLog('password_changed'),
   authController.changePassword
+);
+
+// POST /api/users/profile/send-update-otp — OTP before profile/account settings update
+router.post('/profile/send-update-otp',
+  auditLog('profile_update_otp_sent'),
+  authController.sendProfileUpdateOtp
 );
 
 // PUT /api/users/account-settings
