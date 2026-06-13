@@ -3,7 +3,7 @@ import {
   Table, Button, Tag, Space, Modal, Form, Select, DatePicker,
   InputNumber, Input, message, Tabs, Alert, Row, Col, Dropdown
 } from 'antd';
-import { PlusOutlined, WarningOutlined, BellOutlined, MoreOutlined } from '@ant-design/icons';
+import { PlusOutlined, WarningOutlined, BellOutlined, MoreOutlined, CalendarOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import dayjs from 'dayjs';
 
@@ -168,6 +168,7 @@ export default function BatchTracking() {
   };
 
   const openDatesModal = (batch) => {
+    if (batch.manufacture_date && batch.expiry_date) return;
     setSelectedBatch(batch);
     datesForm.setFieldsValue({
       manufactureDate: batch.manufacture_date ? dayjs(batch.manufacture_date) : null,
@@ -183,7 +184,7 @@ export default function BatchTracking() {
         manufactureDate: values.manufactureDate?.format('YYYY-MM-DD') || null,
         expiryDate: values.expiryDate?.format('YYYY-MM-DD') || null,
       });
-      message.success('Batch dates updated');
+      message.success('Batch dates saved');
       setDatesModal(false);
       setSelectedBatch(null);
       datesForm.resetFields();
@@ -192,6 +193,20 @@ export default function BatchTracking() {
       message.error(e.response?.data?.error || 'Failed to update batch dates');
     }
   };
+
+  const batchDatesMissing = (record) => !record.manufacture_date || !record.expiry_date;
+
+  const renderAddDatesLink = (record) => (
+    <Button
+      type="link"
+      size="small"
+      icon={<CalendarOutlined />}
+      style={{ padding: 0, height: 'auto' }}
+      onClick={() => openDatesModal(record)}
+    >
+      Add dates
+    </Button>
+  );
 
   const batchColumns = [
     { title: 'Batch #', dataIndex: 'batch_number', key: 'batch_number', width: 130, ellipsis: true },
@@ -219,19 +234,34 @@ export default function BatchTracking() {
       title: 'Manufacture Date',
       dataIndex: 'manufacture_date',
       key: 'manufacture_date',
-      width: 120,
-      render: (v) => (v ? dayjs(v).format('DD MMM YYYY') : '-'),
+      width: 130,
+      render: (v, record) => {
+        if (v) return dayjs(v).format('DD MMM YYYY');
+        if (!record.expiry_date) return renderAddDatesLink(record);
+        return (
+          <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => openDatesModal(record)}>
+            Add
+          </Button>
+        );
+      },
     },
     {
       title: 'Expiry',
       dataIndex: 'expiry_date',
       key: 'expiry_date',
-      width: 120,
-      render: (v) => {
-        if (!v) return '-';
-        const days = dayjs(v).diff(dayjs(), 'day');
-        const color = days < 0 ? 'red' : days <= 30 ? 'orange' : days <= 90 ? 'gold' : 'green';
-        return <Tag color={color}>{dayjs(v).format('DD MMM YYYY')}</Tag>;
+      width: 130,
+      render: (v, record) => {
+        if (v) {
+          const days = dayjs(v).diff(dayjs(), 'day');
+          const color = days < 0 ? 'red' : days <= 30 ? 'orange' : days <= 90 ? 'gold' : 'green';
+          return <Tag color={color}>{dayjs(v).format('DD MMM YYYY')}</Tag>;
+        }
+        if (!record.manufacture_date) return null;
+        return (
+          <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => openDatesModal(record)}>
+            Add
+          </Button>
+        );
       },
     },
     {
@@ -248,8 +278,11 @@ export default function BatchTracking() {
       fixed: 'right',
       render: (_, record) => {
         const remaining = parseFloat(record.quantity_remaining ?? record.quantity_available ?? 0);
+        const datesMissing = batchDatesMissing(record);
         const menuItems = [
-          { key: 'edit_dates', label: 'Edit manufacture / expiry dates' },
+          ...(datesMissing
+            ? [{ key: 'edit_dates', label: 'Add manufacture / expiry dates' }]
+            : []),
           ...(remaining > 0 && record.status === 'active'
             ? [{ key: 'consume', label: 'Consume qty' }]
             : []),
@@ -630,7 +663,11 @@ export default function BatchTracking() {
       </Modal>
 
       <Modal
-        title={selectedBatch ? `Batch dates — ${selectedBatch.batch_number}` : 'Batch dates'}
+        title={
+          selectedBatch
+            ? `Add batch dates — ${selectedBatch.batch_number}`
+            : 'Batch dates'
+        }
         open={datesModal}
         onCancel={() => { setDatesModal(false); setSelectedBatch(null); datesForm.resetFields(); }}
         onOk={() => datesForm.submit()}
@@ -638,16 +675,52 @@ export default function BatchTracking() {
         width="min(420px, 96vw)"
         style={{ top: 16 }}
       >
+        {selectedBatch && batchDatesMissing(selectedBatch) && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={
+              !selectedBatch.manufacture_date && !selectedBatch.expiry_date
+                ? 'Both manufacture and expiry dates are missing. Add both below — once saved, they cannot be edited.'
+                : 'Add the missing date below. Once saved, dates cannot be edited.'
+            }
+          />
+        )}
         <Form form={datesForm} layout="vertical" onFinish={handleUpdateBatchDates}>
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item name="manufactureDate" label="Manufacture Date">
-                <DatePicker style={{ width: '100%' }} format="DD MMM YYYY" />
+              <Form.Item
+                name="manufactureDate"
+                label="Manufacture Date"
+                rules={
+                  selectedBatch && !selectedBatch.manufacture_date
+                    ? [{ required: true, message: 'Manufacture date is required' }]
+                    : []
+                }
+              >
+                <DatePicker
+                  style={{ width: '100%' }}
+                  format="DD MMM YYYY"
+                  disabled={!!selectedBatch?.manufacture_date}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="expiryDate" label="Expiry Date">
-                <DatePicker style={{ width: '100%' }} format="DD MMM YYYY" />
+              <Form.Item
+                name="expiryDate"
+                label="Expiry Date"
+                rules={
+                  selectedBatch && !selectedBatch.expiry_date
+                    ? [{ required: true, message: 'Expiry date is required' }]
+                    : []
+                }
+              >
+                <DatePicker
+                  style={{ width: '100%' }}
+                  format="DD MMM YYYY"
+                  disabled={!!selectedBatch?.expiry_date}
+                />
               </Form.Item>
             </Col>
           </Row>

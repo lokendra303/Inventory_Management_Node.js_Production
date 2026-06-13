@@ -159,7 +159,20 @@ class BatchSerialService {
     const manufactureDate = data.manufactureDate || null;
     const expiryDate = data.expiryDate || null;
 
-    if (manufactureDate && expiryDate && new Date(manufactureDate) > new Date(expiryDate)) {
+    if (batch.manufacture_date && manufactureDate
+      && String(batch.manufacture_date).slice(0, 10) !== manufactureDate) {
+      throw new Error('Manufacture date cannot be changed once set');
+    }
+    if (batch.expiry_date && expiryDate
+      && String(batch.expiry_date).slice(0, 10) !== expiryDate) {
+      throw new Error('Expiry date cannot be changed once set');
+    }
+
+    const nextManufactureDate = batch.manufacture_date || manufactureDate;
+    const nextExpiryDate = batch.expiry_date || expiryDate;
+
+    if (nextManufactureDate && nextExpiryDate
+      && new Date(nextManufactureDate) > new Date(nextExpiryDate)) {
       throw new Error('Manufacture date cannot be after expiry date');
     }
 
@@ -167,16 +180,16 @@ class BatchSerialService {
       `UPDATE item_batches
        SET manufacture_date = ?, expiry_date = ?
        WHERE institution_id = ? AND id = ?`,
-      [manufactureDate, expiryDate, institutionId, batchId]
+      [nextManufactureDate, nextExpiryDate, institutionId, batchId]
     );
 
-    if (expiryDate) {
+    if (nextExpiryDate) {
       await this._checkAndCreateExpiryAlert(
         institutionId,
         batch.item_id,
         batch.warehouse_id,
         batchId,
-        expiryDate,
+        nextExpiryDate,
         parseFloat(batch.quantity_remaining || 0)
       );
     } else {
@@ -187,7 +200,7 @@ class BatchSerialService {
       );
     }
 
-    logger.info('Batch dates updated', { batchId, manufactureDate, expiryDate, institutionId, userId });
+    logger.info('Batch dates updated', { batchId, manufactureDate: nextManufactureDate, expiryDate: nextExpiryDate, institutionId, userId });
     return true;
   }
 
