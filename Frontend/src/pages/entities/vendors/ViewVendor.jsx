@@ -5,85 +5,97 @@ import {
   Button,
   Row,
   Col,
-  Descriptions,
+  Tag,
   Divider,
   Spin,
   message,
-  Space
+  Space,
 } from 'antd';
-import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons';
+import {
+  ArrowLeftOutlined,
+  EditOutlined,
+  ShopOutlined,
+  PhoneOutlined,
+  MailOutlined,
+  GlobalOutlined,
+  BankOutlined,
+} from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiService from '../../../services/apiService';
 import EntityTransactionHistory from '../../../components/entities/EntityTransactionHistory';
+import EntityInfoGrid, { formatEntityValue } from '../../../components/entities/EntityInfoGrid';
+import EntityAddressCard from '../../../components/entities/EntityAddressCard';
+import '../../../components/entities/EntityInfoGrid.css';
+
+const mapVendor = (vendorData) => ({
+  id: vendorData.id,
+  displayName: vendorData.display_name || vendorData.displayName,
+  companyName: vendorData.company_name || vendorData.companyName,
+  vendorCode: vendorData.vendor_code || vendorData.vendorCode,
+  status: vendorData.status,
+  email: vendorData.email,
+  salutation: vendorData.salutation,
+  firstName: vendorData.first_name || vendorData.firstName,
+  lastName: vendorData.last_name || vendorData.lastName,
+  workPhone: vendorData.work_phone || vendorData.workPhone,
+  mobilePhone: vendorData.mobile_phone || vendorData.mobilePhone,
+  pan: vendorData.pan,
+  gstin: vendorData.gstin,
+  msmeRegistered: vendorData.msme_registered ?? vendorData.msmeRegistered,
+  currency: vendorData.currency,
+  paymentTerms: vendorData.payment_terms || vendorData.paymentTerms,
+  tds: vendorData.tds,
+  websiteUrl: vendorData.website_url || vendorData.websiteUrl,
+  department: vendorData.department,
+  designation: vendorData.designation,
+  billing_attention: vendorData.billing_attention || vendorData.billingAttention,
+  billing_country: vendorData.billing_country || vendorData.billingCountry,
+  billing_address1: vendorData.billing_address1 || vendorData.billingAddress1,
+  billing_address2: vendorData.billing_address2 || vendorData.billingAddress2,
+  billing_city: vendorData.billing_city || vendorData.billingCity,
+  billing_state: vendorData.billing_state || vendorData.billingState,
+  billing_pin_code: vendorData.billing_pin_code || vendorData.billingPinCode,
+  shipping_attention: vendorData.shipping_attention || vendorData.shippingAttention,
+  shipping_country: vendorData.shipping_country || vendorData.shippingCountry,
+  shipping_address1: vendorData.shipping_address1 || vendorData.shippingAddress1,
+  shipping_address2: vendorData.shipping_address2 || vendorData.shippingAddress2,
+  shipping_city: vendorData.shipping_city || vendorData.shippingCity,
+  shipping_state: vendorData.shipping_state || vendorData.shippingState,
+  shipping_pin_code: vendorData.shipping_pin_code || vendorData.shippingPinCode,
+  bankName: vendorData.bank_name || vendorData.bankName,
+  accountHolderName: vendorData.account_holder_name || vendorData.accountHolderName,
+  accountNumber: vendorData.account_number || vendorData.accountNumber,
+  accountType: vendorData.account_type || vendorData.accountType,
+  ifscCode: vendorData.ifsc_code || vendorData.ifscCode,
+  branchName: vendorData.branch_name || vendorData.branchName,
+  swiftCode: vendorData.swift_code || vendorData.swiftCode,
+  iban: vendorData.iban,
+  remarks: vendorData.remarks,
+  createdAt: vendorData.created_at || vendorData.createdAt,
+  updatedAt: vendorData.updated_at || vendorData.updatedAt,
+});
 
 const ViewVendor = () => {
   const { vendorId } = useParams();
   const navigate = useNavigate();
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('details');
+  const [activeTab, setActiveTab] = useState('profile');
 
   const fetchVendor = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('Fetching vendor:', vendorId);
       const response = await apiService.get(`/vendors/${vendorId}`);
-      
-      console.log('Vendor fetch response:', response);
-      
+
       let vendorData = null;
-      if (response && response.data && typeof response.data === 'object') {
+      if (response?.data && typeof response.data === 'object') {
         vendorData = response.data;
       } else if (response && typeof response === 'object') {
         vendorData = response;
       }
-      
+
       if (vendorData) {
-        // Map snake_case to camelCase
-        const mappedVendor = {
-          displayName: vendorData.display_name || vendorData.displayName,
-          companyName: vendorData.company_name || vendorData.companyName,
-          status: vendorData.status,
-          email: vendorData.email,
-          firstName: vendorData.first_name || vendorData.firstName,
-          lastName: vendorData.last_name || vendorData.lastName,
-          workPhone: vendorData.work_phone || vendorData.workPhone,
-          mobilePhone: vendorData.mobile_phone || vendorData.mobilePhone,
-          pan: vendorData.pan,
-          gstin: vendorData.gstin,
-          msmeRegistered: vendorData.msme_registered || vendorData.msmeRegistered,
-          currency: vendorData.currency,
-          paymentTerms: vendorData.payment_terms || vendorData.paymentTerms,
-          tds: vendorData.tds,
-          websiteUrl: vendorData.website_url || vendorData.websiteUrl,
-          department: vendorData.department,
-          designation: vendorData.designation,
-          billingAttention: vendorData.billing_attention || vendorData.billingAttention,
-          billingCountry: vendorData.billing_country || vendorData.billingCountry,
-          billingAddress1: vendorData.billing_address1 || vendorData.billingAddress1,
-          billingAddress2: vendorData.billing_address2 || vendorData.billingAddress2,
-          billingCity: vendorData.billing_city || vendorData.billingCity,
-          billingState: vendorData.billing_state || vendorData.billingState,
-          billingPinCode: vendorData.billing_pin_code || vendorData.billingPinCode,
-          shippingAttention: vendorData.shipping_attention || vendorData.shippingAttention,
-          shippingCountry: vendorData.shipping_country || vendorData.shippingCountry,
-          shippingAddress1: vendorData.shipping_address1 || vendorData.shippingAddress1,
-          shippingAddress2: vendorData.shipping_address2 || vendorData.shippingAddress2,
-          shippingCity: vendorData.shipping_city || vendorData.shippingCity,
-          shippingState: vendorData.shipping_state || vendorData.shippingState,
-          shippingPinCode: vendorData.shipping_pin_code || vendorData.shippingPinCode,
-          bankName: vendorData.bank_name || vendorData.bankName,
-          accountHolderName: vendorData.account_holder_name || vendorData.accountHolderName,
-          accountNumber: vendorData.account_number || vendorData.accountNumber,
-          accountType: vendorData.account_type || vendorData.accountType,
-          ifscCode: vendorData.ifsc_code || vendorData.ifscCode,
-          branchName: vendorData.branch_name || vendorData.branchName,
-          swiftCode: vendorData.swift_code || vendorData.swiftCode,
-          iban: vendorData.iban,
-          remarks: vendorData.remarks
-        };
-        setVendor(mappedVendor);
-        console.log('Vendor loaded:', mappedVendor);
+        setVendor(mapVendor(vendorData));
       } else {
         message.error('Invalid vendor data received');
       }
@@ -108,7 +120,7 @@ const ViewVendor = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <div style={{ padding: 24, textAlign: 'center' }}>
         <Spin size="large" />
       </div>
     );
@@ -116,7 +128,7 @@ const ViewVendor = () => {
 
   if (!vendor) {
     return (
-      <div style={{ padding: '24px' }}>
+      <div className="entity-profile-page">
         <Card>
           <p>Vendor not found</p>
           <Button onClick={() => navigate('/purchases/vendors')}>Back to Vendors</Button>
@@ -125,141 +137,206 @@ const ViewVendor = () => {
     );
   }
 
+  const isMobile = window.innerWidth <= 768;
+  const contactPerson = [vendor.salutation, vendor.firstName, vendor.lastName]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div style={{ padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '16px' }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/purchases/vendors')}>Back</Button>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ margin: 0, fontSize: '22px', fontWeight: '600' }}>
-          {vendor.displayName || vendor.companyName}
-        </h1>
-        <Button type="primary" icon={<EditOutlined />} onClick={() => navigate(`/purchases/vendors/${vendorId}/edit`)}>Edit</Button>
+    <div className={`entity-profile-page${isMobile ? ' entity-profile-page--mobile' : ''}`}>
+      <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate('/purchases/vendors')}
+        >
+          Back to Vendors
+        </Button>
+        <Button
+          type="primary"
+          icon={<EditOutlined />}
+          onClick={() => navigate(`/purchases/vendors/${vendorId}/edit`)}
+        >
+          Edit Vendor
+        </Button>
       </div>
 
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
-        {
-          key: 'details',
-          label: 'Vendor Details',
-          children: (
-            <Card>
-              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-                <Descriptions.Item label="Display Name" span={2}>{vendor.displayName}</Descriptions.Item>
-                <Descriptions.Item label="Company Name" span={2}>{vendor.companyName}</Descriptions.Item>
-                <Descriptions.Item label="Status">
-                  <span style={{ color: vendor.status === 'active' ? '#52c41a' : '#ff4d4f', fontWeight: '500' }}>
-                    {vendor.status?.toUpperCase() || 'N/A'}
-                  </span>
-                </Descriptions.Item>
-                <Descriptions.Item label="Email">{vendor.email || 'N/A'}</Descriptions.Item>
-              </Descriptions>
-              <Divider />
-              <h3 style={{ marginBottom: '16px' }}>Contact Information</h3>
-              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-                <Descriptions.Item label="First Name">{vendor.firstName || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Last Name">{vendor.lastName || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Work Phone">{vendor.workPhone || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Mobile Phone">{vendor.mobilePhone || 'N/A'}</Descriptions.Item>
-              </Descriptions>
-              <Divider />
-              <h3 style={{ marginBottom: '16px' }}>Tax & Compliance</h3>
-              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-                <Descriptions.Item label="PAN">{vendor.pan || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="GSTIN">{vendor.gstin || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="MSME Registered">{vendor.msmeRegistered ? 'Yes' : 'No'}</Descriptions.Item>
-                <Descriptions.Item label="Currency">{vendor.currency || 'N/A'}</Descriptions.Item>
-              </Descriptions>
-              <Divider />
-              <h3 style={{ marginBottom: '16px' }}>Financial Terms</h3>
-              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-                <Descriptions.Item label="Payment Terms">{vendor.paymentTerms || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="TDS">{vendor.tds || 'N/A'}</Descriptions.Item>
-              </Descriptions>
-              <Divider />
-              <h3 style={{ marginBottom: '16px' }}>Additional Information</h3>
-              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-                <Descriptions.Item label="Website URL">
-                  {vendor.websiteUrl ? <a href={vendor.websiteUrl} target="_blank" rel="noopener noreferrer">{vendor.websiteUrl}</a> : 'N/A'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Department">{vendor.department || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Designation">{vendor.designation || 'N/A'}</Descriptions.Item>
-              </Descriptions>
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        style={{ marginBottom: 16 }}
+        items={[
+          { key: 'profile', label: 'Profile' },
+          { key: 'transactions', label: 'Transaction History' },
+        ]}
+      />
+
+      {activeTab === 'transactions' ? (
+        <Card style={{ marginBottom: 24 }}>
+          <EntityTransactionHistory entityType="vendor" entityId={vendorId} />
+        </Card>
+      ) : (
+        <Row gutter={[24, 24]}>
+          <Col xs={24} lg={16}>
+            <Card title="Vendor Information" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <EntityInfoGrid
+                items={[
+                  {
+                    key: 'display_name',
+                    label: 'Display Name',
+                    span: 2,
+                    render: () => <strong>{vendor.displayName}</strong>,
+                  },
+                  { key: 'vendor_code', label: 'Vendor Code', value: vendor.vendorCode },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    render: () => (
+                      <Tag color={vendor.status === 'active' ? 'green' : 'red'}>
+                        {vendor.status?.toUpperCase()}
+                      </Tag>
+                    ),
+                  },
+                  { key: 'company_name', label: 'Company Name', span: 2, value: vendor.companyName },
+                  { key: 'contact_person', label: 'Contact Person', value: contactPerson },
+                  { key: 'email', label: 'Email', icon: <MailOutlined />, value: vendor.email },
+                ]}
+              />
             </Card>
-          )
-        },
-        {
-          key: 'addresses',
-          label: 'Addresses',
-          children: (
-            <Card>
-              <Row gutter={[24, 24]}>
-                <Col xs={24} md={12}>
-                  <h4 style={{ marginBottom: '16px', fontWeight: '600' }}>Billing Address</h4>
-                  <Descriptions bordered column={1} size="small">
-                    <Descriptions.Item label="Attention">{vendor.billingAttention || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="Country">{vendor.billingCountry || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="Address">{vendor.billingAddress1 || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="Address 2">{vendor.billingAddress2 || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="City">{vendor.billingCity || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="State">{vendor.billingState || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="Pin Code">{vendor.billingPinCode || 'N/A'}</Descriptions.Item>
-                  </Descriptions>
-                </Col>
-                <Col xs={24} md={12}>
-                  <h4 style={{ marginBottom: '16px', fontWeight: '600' }}>Shipping Address</h4>
-                  <Descriptions bordered column={1} size="small">
-                    <Descriptions.Item label="Attention">{vendor.shippingAttention || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="Country">{vendor.shippingCountry || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="Address">{vendor.shippingAddress1 || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="Address 2">{vendor.shippingAddress2 || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="City">{vendor.shippingCity || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="State">{vendor.shippingState || 'N/A'}</Descriptions.Item>
-                    <Descriptions.Item label="Pin Code">{vendor.shippingPinCode || 'N/A'}</Descriptions.Item>
-                  </Descriptions>
-                </Col>
-              </Row>
+
+            <Card title="Contact Information" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <EntityInfoGrid
+                items={[
+                  {
+                    key: 'work_phone',
+                    label: 'Work Phone',
+                    icon: <PhoneOutlined />,
+                    value: vendor.workPhone,
+                  },
+                  {
+                    key: 'mobile_phone',
+                    label: 'Mobile',
+                    icon: <PhoneOutlined />,
+                    value: vendor.mobilePhone,
+                  },
+                  {
+                    key: 'website',
+                    label: 'Website',
+                    icon: <GlobalOutlined />,
+                    render: () => (
+                      vendor.websiteUrl ? (
+                        <a href={vendor.websiteUrl} target="_blank" rel="noopener noreferrer">
+                          {vendor.websiteUrl}
+                        </a>
+                      ) : formatEntityValue(null)
+                    ),
+                  },
+                  { key: 'department', label: 'Department', value: vendor.department },
+                  { key: 'designation', label: 'Designation', value: vendor.designation },
+                ]}
+              />
             </Card>
-          )
-        },
-        {
-          key: 'bankDetails',
-          label: 'Bank Details',
-          children: (
-            <Card>
-              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-                <Descriptions.Item label="Bank Name">{vendor.bankName || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Account Holder">{vendor.accountHolderName || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Account Number">{vendor.accountNumber || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Account Type">{vendor.accountType || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="IFSC Code">{vendor.ifscCode || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Branch Name">{vendor.branchName || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="SWIFT Code">{vendor.swiftCode || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="IBAN">{vendor.iban || 'N/A'}</Descriptions.Item>
-              </Descriptions>
+
+            <Card title="Business Information" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <EntityInfoGrid
+                items={[
+                  { key: 'pan', label: 'PAN', value: vendor.pan },
+                  { key: 'gstin', label: 'GSTIN', value: vendor.gstin },
+                  {
+                    key: 'msme',
+                    label: 'MSME Registered',
+                    render: () => (
+                      <span style={{ color: vendor.msmeRegistered ? '#16a34a' : '#64748b' }}>
+                        {vendor.msmeRegistered ? 'Yes' : 'No'}
+                      </span>
+                    ),
+                  },
+                  { key: 'currency', label: 'Currency', value: vendor.currency },
+                  { key: 'payment_terms', label: 'Payment Terms', value: vendor.paymentTerms },
+                  { key: 'tds', label: 'TDS', value: vendor.tds },
+                ]}
+              />
             </Card>
-          )
-        },
-        {
-          key: 'remarks',
-          label: 'Remarks',
-          children: (
-            <Card>
-              <div style={{ padding: '16px', background: '#fafafa', borderRadius: '4px', minHeight: '120px' }}>
-                {vendor.remarks || <span style={{ color: '#999' }}>No remarks added</span>}
+
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+              <Col xs={24} md={12}>
+                <EntityAddressCard title="Billing Address" prefix="billing_" data={vendor} />
+              </Col>
+              <Col xs={24} md={12}>
+                <EntityAddressCard title="Shipping Address" prefix="shipping_" data={vendor} />
+              </Col>
+            </Row>
+
+            <Card title="Bank Details" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <EntityInfoGrid
+                items={[
+                  { key: 'bank_name', label: 'Bank Name', value: vendor.bankName },
+                  { key: 'account_holder', label: 'Account Holder', value: vendor.accountHolderName },
+                  { key: 'account_number', label: 'Account Number', value: vendor.accountNumber },
+                  { key: 'account_type', label: 'Account Type', value: vendor.accountType },
+                  { key: 'ifsc', label: 'IFSC Code', value: vendor.ifscCode },
+                  { key: 'branch', label: 'Branch Name', value: vendor.branchName },
+                  { key: 'swift', label: 'SWIFT Code', value: vendor.swiftCode },
+                  { key: 'iban', label: 'IBAN', value: vendor.iban },
+                ]}
+              />
+            </Card>
+
+            {vendor.remarks && (
+              <Card title="Remarks" className="entity-profile-card">
+                <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>{vendor.remarks}</p>
+              </Card>
+            )}
+          </Col>
+
+          <Col xs={24} lg={8}>
+            <Card title="Quick Stats" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <ShopOutlined className="entity-profile-sidebar-icon" />
+                <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
+                  {vendor.displayName || vendor.companyName}
+                </div>
+                <Tag color={vendor.status === 'active' ? 'green' : 'red'}>
+                  {vendor.status?.toUpperCase()}
+                </Tag>
+              </div>
+              <Divider style={{ margin: '16px 0' }} />
+              <div>
+                {vendor.createdAt && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div className="entity-profile-meta-label">Vendor since</div>
+                    <div>{new Date(vendor.createdAt).toLocaleDateString()}</div>
+                  </div>
+                )}
+                {vendor.updatedAt && (
+                  <div>
+                    <div className="entity-profile-meta-label">Last updated</div>
+                    <div>{new Date(vendor.updatedAt).toLocaleDateString()}</div>
+                  </div>
+                )}
               </div>
             </Card>
-          )
-        },
-        {
-          key: 'transactions',
-          label: 'Transaction History',
-          children: (
-            <Card>
-              <EntityTransactionHistory entityType="vendor" entityId={vendorId} />
+
+            <Card title="Actions" size="small" className="entity-profile-card">
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Button
+                  block
+                  icon={<EditOutlined />}
+                  onClick={() => navigate(`/purchases/vendors/${vendorId}/edit`)}
+                >
+                  Edit Vendor
+                </Button>
+                <Button
+                  block
+                  icon={<BankOutlined />}
+                  onClick={() => setActiveTab('transactions')}
+                >
+                  Transaction History
+                </Button>
+              </Space>
             </Card>
-          ),
-        },
-      ]} />
+          </Col>
+        </Row>
+      )}
     </div>
   );
 };

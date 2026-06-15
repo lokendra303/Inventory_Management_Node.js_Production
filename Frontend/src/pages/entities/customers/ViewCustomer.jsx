@@ -3,7 +3,6 @@ import {
   Card,
   Row,
   Col,
-  Descriptions,
   Tag,
   Button,
   Space,
@@ -19,11 +18,14 @@ import {
   PhoneOutlined,
   MailOutlined,
   GlobalOutlined,
-  BankOutlined
+  BankOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiService from '../../../services/apiService';
 import EntityTransactionHistory from '../../../components/entities/EntityTransactionHistory';
+import EntityInfoGrid, { formatEntityValue } from '../../../components/entities/EntityInfoGrid';
+import EntityAddressCard from '../../../components/entities/EntityAddressCard';
+import '../../../components/entities/EntityInfoGrid.css';
 
 const ViewCustomer = () => {
   const [customer, setCustomer] = useState(null);
@@ -40,7 +42,7 @@ const ViewCustomer = () => {
     try {
       setLoading(true);
       const response = await apiService.get(`/customers/${id}`);
-      
+
       if (response.success) {
         setCustomer(response.data);
       } else {
@@ -69,18 +71,21 @@ const ViewCustomer = () => {
   }
 
   const isMobile = window.innerWidth <= 768;
+  const contactPerson = [customer.salutation, customer.first_name, customer.last_name]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className={`entity-profile-page${isMobile ? ' entity-profile-page--mobile' : ''}`}>
       <div style={{ marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-        <Button 
-          icon={<ArrowLeftOutlined />} 
+        <Button
+          icon={<ArrowLeftOutlined />}
           onClick={() => navigate('/sales/customers')}
         >
           Back to Customers
         </Button>
-        <Button 
-          type="primary" 
+        <Button
+          type="primary"
           icon={<EditOutlined />}
           onClick={() => navigate(`/sales/customers/${id}/edit`)}
         >
@@ -103,170 +108,162 @@ const ViewCustomer = () => {
           <EntityTransactionHistory entityType="customer" entityId={id} />
         </Card>
       ) : (
-      <Row gutter={[24, 24]}>
-        <Col xs={24} lg={16}>
-          <Card title="Customer Information" style={{ marginBottom: '24px' }}>
-            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
-              <Descriptions.Item label="Display Name" span={2}>
-                <strong>{customer.display_name}</strong>
-              </Descriptions.Item>
-              <Descriptions.Item label="Customer Code">
-                {customer.customer_code || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Status">
+        <Row gutter={[24, 24]}>
+          <Col xs={24} lg={16}>
+            <Card title="Customer Information" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <EntityInfoGrid
+                items={[
+                  {
+                    key: 'display_name',
+                    label: 'Display Name',
+                    span: 2,
+                    render: () => <strong>{customer.display_name}</strong>,
+                  },
+                  { key: 'customer_code', label: 'Customer Code', value: customer.customer_code },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    render: () => (
+                      <Tag color={customer.status === 'active' ? 'green' : 'red'}>
+                        {customer.status?.toUpperCase()}
+                      </Tag>
+                    ),
+                  },
+                  { key: 'company_name', label: 'Company Name', span: 2, value: customer.company_name },
+                  { key: 'contact_person', label: 'Contact Person', value: contactPerson },
+                  {
+                    key: 'credit_limit',
+                    label: 'Credit Limit',
+                    render: () => formatEntityValue(
+                      customer.credit_limit
+                        ? `₹${parseFloat(customer.credit_limit).toLocaleString()}`
+                        : null
+                    ),
+                  },
+                ]}
+              />
+            </Card>
+
+            <Card title="Contact Information" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <EntityInfoGrid
+                items={[
+                  {
+                    key: 'email',
+                    label: 'Email',
+                    icon: <MailOutlined />,
+                    value: customer.email,
+                  },
+                  {
+                    key: 'work_phone',
+                    label: 'Work Phone',
+                    icon: <PhoneOutlined />,
+                    value: customer.work_phone,
+                  },
+                  {
+                    key: 'mobile_phone',
+                    label: 'Mobile',
+                    icon: <PhoneOutlined />,
+                    value: customer.mobile_phone,
+                  },
+                  {
+                    key: 'website',
+                    label: 'Website',
+                    icon: <GlobalOutlined />,
+                    render: () => (
+                      customer.website_url ? (
+                        <a href={customer.website_url} target="_blank" rel="noopener noreferrer">
+                          {customer.website_url}
+                        </a>
+                      ) : formatEntityValue(null)
+                    ),
+                  },
+                  { key: 'department', label: 'Department', value: customer.department },
+                  { key: 'designation', label: 'Designation', value: customer.designation },
+                ]}
+              />
+            </Card>
+
+            <Card title="Business Information" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <EntityInfoGrid
+                items={[
+                  { key: 'pan', label: 'PAN', value: customer.pan },
+                  { key: 'gstin', label: 'GSTIN', value: customer.gstin },
+                  {
+                    key: 'msme',
+                    label: 'MSME Registered',
+                    render: () => (
+                      <span style={{ color: customer.msme_registered ? '#16a34a' : '#64748b' }}>
+                        {customer.msme_registered ? 'Yes' : 'No'}
+                      </span>
+                    ),
+                  },
+                  { key: 'currency', label: 'Currency', value: customer.currency },
+                  { key: 'payment_terms', label: 'Payment Terms', value: customer.payment_terms },
+                  { key: 'tds', label: 'TDS', value: customer.tds },
+                ]}
+              />
+            </Card>
+
+            <Row gutter={[16, 16]}>
+              <Col xs={24} md={12}>
+                <EntityAddressCard title="Billing Address" prefix="billing_" data={customer} />
+              </Col>
+              <Col xs={24} md={12}>
+                <EntityAddressCard title="Shipping Address" prefix="shipping_" data={customer} />
+              </Col>
+            </Row>
+
+            {customer.remarks && (
+              <Card title="Remarks" className="entity-profile-card" style={{ marginTop: 24 }}>
+                <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>{customer.remarks}</p>
+              </Card>
+            )}
+          </Col>
+
+          <Col xs={24} lg={8}>
+            <Card title="Quick Stats" className="entity-profile-card" style={{ marginBottom: 24 }}>
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <UserOutlined className="entity-profile-sidebar-icon" />
+                <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
+                  {customer.display_name}
+                </div>
                 <Tag color={customer.status === 'active' ? 'green' : 'red'}>
                   {customer.status?.toUpperCase()}
                 </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Company Name" span={2}>
-                {customer.company_name || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Contact Person">
-                {[customer.salutation, customer.first_name, customer.last_name]
-                  .filter(Boolean).join(' ') || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Credit Limit">
-                {customer.credit_limit ? `₹${parseFloat(customer.credit_limit).toLocaleString()}` : '-'}
-              </Descriptions.Item>
-            </Descriptions>
-          </Card>
-
-          <Card title="Contact Information" style={{ marginBottom: '24px' }}>
-            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
-              <Descriptions.Item label={<><MailOutlined /> Email</>}>
-                {customer.email || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label={<><PhoneOutlined /> Work Phone</>}>
-                {customer.work_phone || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label={<><PhoneOutlined /> Mobile</>}>
-                {customer.mobile_phone || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label={<><GlobalOutlined /> Website</>}>
-                {customer.website_url ? (
-                  <a href={customer.website_url} target="_blank" rel="noopener noreferrer">
-                    {customer.website_url}
-                  </a>
-                ) : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Department">
-                {customer.department || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Designation">
-                {customer.designation || '-'}
-              </Descriptions.Item>
-            </Descriptions>
-          </Card>
-
-          <Card title="Business Information" style={{ marginBottom: '24px' }}>
-            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
-              <Descriptions.Item label="PAN">
-                {customer.pan || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="GSTIN">
-                {customer.gstin || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="MSME Registered">
-                <Tag color={customer.msme_registered ? 'green' : 'default'}>
-                  {customer.msme_registered ? 'Yes' : 'No'}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Currency">
-                {customer.currency || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Payment Terms">
-                {customer.payment_terms || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="TDS">
-                {customer.tds || '-'}
-              </Descriptions.Item>
-            </Descriptions>
-          </Card>
-
-          <Row gutter={[24, 24]}>
-            <Col xs={24} md={12}>
-              <Card title="Billing Address" size="small">
-                <div>
-                  {customer.billing_attention && <div><strong>{customer.billing_attention}</strong></div>}
-                  {customer.billing_address1 && <div>{customer.billing_address1}</div>}
-                  {customer.billing_address2 && <div>{customer.billing_address2}</div>}
-                  {customer.billing_city && customer.billing_state && (
-                    <div>{customer.billing_city}, {customer.billing_state}</div>
-                  )}
-                  {customer.billing_pin_code && <div>{customer.billing_pin_code}</div>}
-                  {customer.billing_country && <div>{customer.billing_country}</div>}
-                  {!customer.billing_address1 && <div style={{ color: '#999' }}>No billing address</div>}
+              </div>
+              <Divider style={{ margin: '16px 0' }} />
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <div className="entity-profile-meta-label">Customer since</div>
+                  <div>{new Date(customer.created_at).toLocaleDateString()}</div>
                 </div>
-              </Card>
-            </Col>
-            <Col xs={24} md={12}>
-              <Card title="Shipping Address" size="small">
                 <div>
-                  {customer.shipping_attention && <div><strong>{customer.shipping_attention}</strong></div>}
-                  {customer.shipping_address1 && <div>{customer.shipping_address1}</div>}
-                  {customer.shipping_address2 && <div>{customer.shipping_address2}</div>}
-                  {customer.shipping_city && customer.shipping_state && (
-                    <div>{customer.shipping_city}, {customer.shipping_state}</div>
-                  )}
-                  {customer.shipping_pin_code && <div>{customer.shipping_pin_code}</div>}
-                  {customer.shipping_country && <div>{customer.shipping_country}</div>}
-                  {!customer.shipping_address1 && <div style={{ color: '#999' }}>No shipping address</div>}
+                  <div className="entity-profile-meta-label">Last updated</div>
+                  <div>{new Date(customer.updated_at).toLocaleDateString()}</div>
                 </div>
-              </Card>
-            </Col>
-          </Row>
-
-          {customer.remarks && (
-            <Card title="Remarks" style={{ marginTop: '24px' }}>
-              <p>{customer.remarks}</p>
+              </div>
             </Card>
-          )}
-        </Col>
 
-        <Col xs={24} lg={8}>
-          <Card title="Quick Stats" style={{ marginBottom: '24px' }}>
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <UserOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
-              <div style={{ fontSize: '16px', fontWeight: '500', marginBottom: '8px' }}>
-                {customer.display_name}
-              </div>
-              <Tag color={customer.status === 'active' ? 'green' : 'red'} style={{ fontSize: '12px' }}>
-                {customer.status?.toUpperCase()}
-              </Tag>
-            </div>
-            <Divider />
-            <div>
-              <div style={{ marginBottom: '8px' }}>
-                <span style={{ color: '#666' }}>Customer since:</span>
-                <div>{new Date(customer.created_at).toLocaleDateString()}</div>
-              </div>
-              <div style={{ marginBottom: '8px' }}>
-                <span style={{ color: '#666' }}>Last updated:</span>
-                <div>{new Date(customer.updated_at).toLocaleDateString()}</div>
-              </div>
-            </div>
-          </Card>
-
-          <Card title="Actions" size="small">
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Button 
-                block 
-                icon={<EditOutlined />}
-                onClick={() => navigate(`/sales/customers/${id}/edit`)}
-              >
-                Edit Customer
-              </Button>
-              <Button
-                block
-                icon={<BankOutlined />}
-                onClick={() => setActiveTab('transactions')}
-              >
-                Transaction History
-              </Button>
-            </Space>
-          </Card>
-        </Col>
-      </Row>
+            <Card title="Actions" size="small" className="entity-profile-card">
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Button
+                  block
+                  icon={<EditOutlined />}
+                  onClick={() => navigate(`/sales/customers/${id}/edit`)}
+                >
+                  Edit Customer
+                </Button>
+                <Button
+                  block
+                  icon={<BankOutlined />}
+                  onClick={() => setActiveTab('transactions')}
+                >
+                  Transaction History
+                </Button>
+              </Space>
+            </Card>
+          </Col>
+        </Row>
       )}
     </div>
   );
