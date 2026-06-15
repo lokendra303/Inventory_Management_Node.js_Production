@@ -1,7 +1,7 @@
 const express = require('express');
 const itemController = require('./item.controller');
 const itemPriceHistoryController = require('./itemPriceHistory.controller');
-const { requirePermission, auditLog } = require('../auth/auth.middleware');
+const { requirePermission, requireRole, auditLog } = require('../auth/auth.middleware');
 const { checkLimit } = require('../../middleware/subscriptionGate');
 
 const router = express.Router();
@@ -111,9 +111,9 @@ router.put('/:id/components',
   itemController.updateCompositeComponents
 );
 
-// DELETE /api/items/:id
+// DELETE /api/items/:id — permanently remove inactive items (admin / super_admin only)
 router.delete('/:id',
-  requirePermission('item_management'),
+  requireRole(['admin', 'super_admin']),
   auditLog('item_deleted'),
   itemController.deleteItem
 );

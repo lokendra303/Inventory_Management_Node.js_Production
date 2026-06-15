@@ -174,9 +174,14 @@ export function getImportRowCatalogMatchValue(
 }
 
 /** Index catalog items by normalized match-field value (multiple items may share a key). */
-export function buildExistingItemsMatchIndex(items = [], matchFieldId = CSV_IMPORT_DEFAULT_MATCH_FIELD) {
+export function buildExistingItemsMatchIndex(
+  items = [],
+  matchFieldId = CSV_IMPORT_DEFAULT_MATCH_FIELD,
+  { activeOnly = false } = {}
+) {
   const index = new Map();
   for (const item of items) {
+    if (activeOnly && item.status !== 'active') continue;
     const display = getCatalogItemFieldValue(item, matchFieldId);
     if (!display) continue;
     const key = normalizeImportMatchText(display);

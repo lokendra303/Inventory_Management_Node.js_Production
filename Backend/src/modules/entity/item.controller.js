@@ -339,11 +339,11 @@ class ItemController {
   async deleteItem(req, res) {
     try {
       const { id: itemId } = req.params;
-      await itemService.deleteItem(req.institutionId, itemId, req.user.userId);
-      
+      await itemService.permanentlyDeleteInactiveItem(req.institutionId, itemId, req.user.userId);
+
       res.json({
         success: true,
-        message: 'Item deleted successfully'
+        message: 'Inactive item permanently deleted'
       });
     } catch (error) {
       logger.error('Item deletion failed', { 

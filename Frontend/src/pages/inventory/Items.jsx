@@ -1123,6 +1123,7 @@ const Items = () => {
   const canViewCategories = user?.permissions?.category_view || user?.permissions?.all;
   const canViewItems = user?.permissions?.item_view || user?.permissions?.all;
   const canManageItems = user?.permissions?.item_management || user?.permissions?.all;
+  const canDeleteInactiveItems = user?.role === 'admin' || user?.role === 'super_admin';
 
   /** Add category from the item modal: persists when user has category_management, else local pick list only */
   const handleInlineAddCategory = async () => {
@@ -1287,6 +1288,13 @@ const Items = () => {
                     label: record.status === 'active' ? 'Deactivate' : 'Activate',
                     onClick: () => toggleItemStatus(record),
                   },
+                  ...(canDeleteInactiveItems && record.status === 'inactive' ? [{
+                    key: 'delete',
+                    icon: <DeleteOutlined style={{ color: '#ff4d4f' }} />,
+                    label: 'Delete permanently',
+                    danger: true,
+                    onClick: () => permanentlyDeleteInactiveItem(record),
+                  }] : []),
                 ],
               }}
             >
@@ -2261,16 +2269,73 @@ const Items = () => {
   };
 
   const toggleItemStatus = async (item) => {
+    const newStatus = item.status === 'active' ? 'inactive' : 'active';
+    const actionLabel = newStatus === 'inactive' ? 'deactivate' : 'activate';
     try {
-      const newStatus = item.status === 'active' ? 'inactive' : 'active';
       const response = await apiService.put(`/items/${item.id}`, { status: newStatus });
       if (response.success) {
-        message.success(`Item ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`);
+        message.success(`Item ${actionLabel}d successfully`);
         fetchItems();
+        return;
       }
+      message.error(response.error || `Cannot ${actionLabel} this item.`);
     } catch (error) {
-      message.error('Failed to update item status');
+      message.error(
+        error?.response?.data?.error
+        || error?.message
+        || `Failed to ${actionLabel} item.`,
+        8
+      );
     }
+  };
+
+  const permanentlyDeleteInactiveItem = (item) => {
+    if (!canDeleteInactiveItems) return;
+    if (item.status !== 'inactive') {
+      message.warning('Only inactive items can be permanently deleted. Deactivate the item first.');
+      return;
+    }
+    if ((item.current_stock || 0) > 0) {
+      message.warning('Reduce on-hand stock to zero before deleting this item.');
+      return;
+    }
+
+    Modal.confirm({
+      title: 'Permanently delete inactive item?',
+      icon: <DeleteOutlined style={{ color: '#ff4d4f' }} />,
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            This will permanently remove <strong>{item.name}</strong>
+            {item.sku ? ` (${item.sku})` : ''} from your catalog. This cannot be undone.
+          </p>
+          <p style={{ margin: 0, color: '#8c8c8c', fontSize: 13 }}>
+            Stock must already be zero. Items linked to sales, purchases, or kits cannot be deleted.
+          </p>
+        </div>
+      ),
+      okText: 'Delete permanently',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          const response = await apiService.deleteItem(item.id);
+          if (response.success) {
+            message.success('Inactive item permanently deleted');
+            fetchItems();
+          } else {
+            message.error(response.error || 'Failed to delete item');
+          }
+        } catch (error) {
+          message.error(
+            error?.response?.data?.error
+            || error?.message
+            || 'Failed to delete item',
+            8
+          );
+        }
+      },
+    });
   };
 
 const viewItem = async (item) => {
@@ -3635,7 +3700,7 @@ const viewItem = async (item) => {
       return;
     }
 
-    const catalogMatchIndex = buildExistingItemsMatchIndex(items, matchField);
+    const catalogMatchIndex = buildExistingItemsMatchIndex(items, matchField, { activeOnly: true });
     const duplicateGroups = resolveDuplicateGroup
       ? []
       : buildImportDuplicateGroupsForUpdate(
@@ -4162,7 +4227,7 @@ const viewItem = async (item) => {
 
     if (isUpdateImport) {
       const primaryIndex = plan.selectedRowIndex ?? selectedRowIndexes[0];
-      const catalogMatchIndex = buildExistingItemsMatchIndex(items, matchField);
+      const catalogMatchIndex = buildExistingItemsMatchIndex(items, matchField, { activeOnly: true });
       const catalogMatch = resolveCatalogMatchForRow(
         rows[primaryIndex],
         mapping,
@@ -4294,7 +4359,7 @@ const viewItem = async (item) => {
       );
     }
 
-    const catalogMatchIndex = buildExistingItemsMatchIndex(items, matchField);
+    const catalogMatchIndex = buildExistingItemsMatchIndex(items, matchField, { activeOnly: true });
     const duplicateGroups = resolveDuplicateGroup
       ? []
       : buildImportDuplicateGroupsForUpdate(
@@ -4820,8 +4885,9 @@ const viewItem = async (item) => {
 
   const csvImportCatalogMatchIndex = useMemo(() => {
     const matchField = csvImportModal.matchField || CSV_IMPORT_DEFAULT_MATCH_FIELD;
-    return buildExistingItemsMatchIndex(items, matchField);
-  }, [items, csvImportModal.matchField]);
+    const activeOnly = csvImportModal.importPurpose === CSV_IMPORT_PURPOSE_UPDATE;
+    return buildExistingItemsMatchIndex(items, matchField, { activeOnly });
+  }, [items, csvImportModal.matchField, csvImportModal.importPurpose]);
 
   const csvImportDuplicateGroups = useMemo(() => {
     const {
@@ -5068,7 +5134,11 @@ const viewItem = async (item) => {
 
   const csvImportBulkDirectReadyRows = useMemo(() => {
     if (csvImportModal.importPurpose !== CSV_IMPORT_PURPOSE_UPDATE) return [];
-    const matchIndex = buildExistingItemsMatchIndex(items, csvImportModal.matchField);
+    const matchIndex = buildExistingItemsMatchIndex(
+      items,
+      csvImportModal.matchField,
+      { activeOnly: true }
+    );
     return csvImportRowsWithAssessment.filter((r) => {
       const rowIndex = Number(r._rowIndex);
       if (csvImportModal.addedRowIndexes?.[String(rowIndex)]) return false;
@@ -5373,6 +5443,8 @@ const viewItem = async (item) => {
                   onEdit={editItem}
                   onDuplicate={duplicateItem}
                   onToggleStatus={toggleItemStatus}
+                  canDeleteInactiveItems={canDeleteInactiveItems}
+                  onDeleteInactive={permanentlyDeleteInactiveItem}
                 />
               ) : (
                 <Table

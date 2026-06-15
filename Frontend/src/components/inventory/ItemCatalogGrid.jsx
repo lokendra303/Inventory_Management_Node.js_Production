@@ -11,6 +11,7 @@ import {
   StopOutlined,
   CheckCircleOutlined,
   WarningOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { formatPrice } from '../../utils/currency';
 
@@ -45,6 +46,7 @@ const ItemCatalogGrid = ({
   loading = false,
   currency = 'USD',
   canManageItems = false,
+  canDeleteInactiveItems = false,
   page = 1,
   pageSize = 12,
   onPageChange,
@@ -53,6 +55,7 @@ const ItemCatalogGrid = ({
   onEdit,
   onDuplicate,
   onToggleStatus,
+  onDeleteInactive,
 }) => {
   if (loading) {
     return (
@@ -354,6 +357,13 @@ const ItemCatalogGrid = ({
                             label: record.status === 'active' ? 'Deactivate' : 'Activate',
                             onClick: () => onToggleStatus?.(record),
                           },
+                          ...(canDeleteInactiveItems && record.status === 'inactive' ? [{
+                            key: 'delete',
+                            icon: <DeleteOutlined style={{ color: '#dc2626' }} />,
+                            label: 'Delete permanently',
+                            danger: true,
+                            onClick: () => onDeleteInactive?.(record),
+                          }] : []),
                         ],
                       }}
                     >

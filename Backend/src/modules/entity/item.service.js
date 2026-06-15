@@ -829,11 +829,11 @@ class ItemService {
       ? type
       : (await db.query('SELECT type FROM items WHERE institution_id = ? AND id = ? LIMIT 1', [institutionId, itemId]))?.[0]?.type;
     const nextTypeNormalized = String(nextType || '').toLowerCase();
-    if (updateData.components !== undefined && nextTypeNormalized !== 'composite') {
-      throw new Error('Components can only be updated for composite items');
-    }
-    if (nextTypeNormalized === 'composite' || updateData.components !== undefined) {
-      await this._replaceCompositeComponents(institutionId, itemId, updateData.components || []);
+    if (updateData.components !== undefined) {
+      if (nextTypeNormalized !== 'composite') {
+        throw new Error('Components can only be updated for composite items');
+      }
+      await this._replaceCompositeComponents(institutionId, itemId, updateData.components);
     } else if (currentType === 'composite' && nextTypeNormalized !== 'composite') {
       await db.query(
         'DELETE FROM composite_components WHERE institution_id = ? AND composite_item_id = ?',
@@ -1366,29 +1366,99 @@ class ItemService {
     return minAvailableStock === Infinity ? 0 : minAvailableStock;
   }
 
-  async deleteItem(institutionId, itemId, userId) {
-    // Check if item has any inventory
-    const inventory = await db.query(
-      'SELECT COUNT(*) as count FROM inventory_projections WHERE institution_id = ? AND item_id = ? AND quantity_on_hand > 0',
-      [institutionId, itemId]
-    );
+  async permanentlyDeleteInactiveItem(institutionId, itemId, userId) {
+    return db.transaction(async (connection) => {
+      const [itemRows] = await connection.execute(
+        'SELECT id, status, sku, name FROM items WHERE institution_id = ? AND id = ? LIMIT 1',
+        [institutionId, itemId]
+      );
+      if (!itemRows.length) {
+        throw new Error('Item not found');
+      }
 
-    if (inventory[0].count > 0) {
-      throw new Error('Cannot delete item with existing inventory');
-    }
+      const item = itemRows[0];
+      if (String(item.status || '').toLowerCase() !== 'inactive') {
+        throw new Error('Only inactive items can be permanently deleted. Deactivate the item first.');
+      }
 
-    // Soft delete
-    const result = await db.query(
-      'UPDATE items SET status = "inactive", updated_at = NOW() WHERE institution_id = ? AND id = ?',
-      [institutionId, itemId]
-    );
+      const [stockRows] = await connection.execute(
+        `SELECT COUNT(*) AS count
+           FROM inventory_projections
+          WHERE institution_id = ? AND item_id = ?
+            AND (quantity_on_hand > 0 OR quantity_reserved > 0)`,
+        [institutionId, itemId]
+      );
+      if (Number(stockRows[0]?.count || 0) > 0) {
+        throw new Error('Cannot delete item with on-hand or reserved stock. Adjust stock to zero first.');
+      }
 
-    if (result.affectedRows === 0) {
-      throw new Error('Item not found');
-    }
+      const blockingChecks = [
+        {
+          sql: 'SELECT COUNT(*) AS count FROM sales_order_lines WHERE item_id = ?',
+          params: [itemId],
+          label: 'sales orders',
+        },
+        {
+          sql: 'SELECT COUNT(*) AS count FROM purchase_order_lines WHERE item_id = ?',
+          params: [itemId],
+          label: 'purchase orders',
+        },
+        {
+          sql: 'SELECT COUNT(*) AS count FROM grn_lines WHERE item_id = ?',
+          params: [itemId],
+          label: 'goods receipts',
+        },
+        {
+          sql: `SELECT COUNT(*) AS count
+                  FROM composite_components
+                 WHERE institution_id = ? AND component_item_id = ?`,
+          params: [institutionId, itemId],
+          label: 'composite/kit items',
+        },
+      ];
 
-    logger.info('Item deleted', { itemId, institutionId, userId });
-    return true;
+      for (const check of blockingChecks) {
+        const [rows] = await connection.execute(check.sql, check.params);
+        if (Number(rows[0]?.count || 0) > 0) {
+          throw new Error(`Cannot delete this item because it is linked to ${check.label}.`);
+        }
+      }
+
+      const cleanupStatements = [
+        ['DELETE FROM inventory_history WHERE institution_id = ? AND item_id = ?', [institutionId, itemId]],
+        ['DELETE FROM inventory_adjustments WHERE institution_id = ? AND item_id = ?', [institutionId, itemId]],
+        ['DELETE FROM inventory_cost_layers WHERE institution_id = ? AND item_id = ?', [institutionId, itemId]],
+        ['DELETE FROM inventory_aging WHERE institution_id = ? AND item_id = ?', [institutionId, itemId]],
+        ['DELETE FROM stock_movements WHERE institution_id = ? AND item_id = ?', [institutionId, itemId]],
+        ['DELETE FROM price_list_items WHERE item_id = ?', [itemId]],
+        ['DELETE FROM expiry_alerts WHERE institution_id = ? AND item_id = ?', [institutionId, itemId]],
+        ['DELETE FROM stock_count_lines WHERE institution_id = ? AND item_id = ?', [institutionId, itemId]],
+        ['DELETE FROM composite_components WHERE institution_id = ? AND composite_item_id = ?', [institutionId, itemId]],
+        ['DELETE FROM inventory_projections WHERE institution_id = ? AND item_id = ?', [institutionId, itemId]],
+      ];
+
+      for (const [sql, params] of cleanupStatements) {
+        await connection.execute(sql, params);
+      }
+
+      const [deleteResult] = await connection.execute(
+        'DELETE FROM items WHERE institution_id = ? AND id = ? AND status = ?',
+        [institutionId, itemId, 'inactive']
+      );
+
+      if (deleteResult.affectedRows === 0) {
+        throw new Error('Item could not be deleted');
+      }
+
+      logger.info('Inactive item permanently deleted', {
+        itemId,
+        institutionId,
+        userId,
+        sku: item.sku,
+        name: item.name,
+      });
+      return true;
+    });
   }
 
   async saveDraft(institutionId, userId, draftData) {
