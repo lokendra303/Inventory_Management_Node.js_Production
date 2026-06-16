@@ -2300,7 +2300,7 @@ const Items = () => {
             {item.sku ? ` (${item.sku})` : ''} will be moved to Trash and hidden from your item catalog.
           </p>
           <p style={{ margin: 0, color: '#8c8c8c', fontSize: 13 }}>
-            You can restore it later from the Trash page under Items.
+            You can restore it to Inactive from the Trash page, then activate it from the Items page.
           </p>
         </div>
       ),

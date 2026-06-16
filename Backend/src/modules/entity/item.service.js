@@ -1174,13 +1174,16 @@ class ItemService {
     const allowed = {
       active: ['inactive'],
       inactive: ['active', 'trashed'],
-      trashed: ['active'],
+      trashed: ['inactive'],
       draft: ['active'],
     };
 
     if (!(allowed[current] || []).includes(next)) {
       if (current === 'active' && next === 'trashed') {
         throw new Error('Deactivate the item first before moving it to Trash.');
+      }
+      if (current === 'trashed' && next === 'active') {
+        throw new Error('Restore trashed items to inactive first, then activate from the Items page.');
       }
       throw new Error(`Cannot change item status from ${current} to ${next}.`);
     }

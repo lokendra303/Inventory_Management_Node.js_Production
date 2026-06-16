@@ -49,20 +49,25 @@ const ItemTrash = () => {
 
   const restoreItem = (item) => {
     Modal.confirm({
-      title: 'Restore item?',
+      title: 'Restore item to inactive?',
       icon: <UndoOutlined style={{ color: '#52c41a' }} />,
       content: (
-        <span>
-          Restore <strong>{item.name}</strong>
-          {item.sku ? ` (${item.sku})` : ''} back to your active item catalog?
-        </span>
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            Restore <strong>{item.name}</strong>
+            {item.sku ? ` (${item.sku})` : ''} to the <strong>Inactive</strong> list?
+          </p>
+          <p style={{ margin: 0, color: '#8c8c8c', fontSize: 13 }}>
+            The item will not be active yet. Open Items, filter Inactive, then use Activate when you are ready.
+          </p>
+        </div>
       ),
-      okText: 'Restore',
+      okText: 'Restore to inactive',
       onOk: async () => {
         try {
-          const response = await apiService.put(`/items/${item.id}`, { status: 'active' });
+          const response = await apiService.put(`/items/${item.id}`, { status: 'inactive' });
           if (response.success) {
-            message.success('Item restored successfully');
+            message.success('Item restored to inactive. Activate it from the Items page when ready.');
             fetchTrash();
           } else {
             message.error(response.error || 'Failed to restore item');
@@ -207,7 +212,7 @@ const ItemTrash = () => {
               onClick={() => restoreItem(record)}
               style={{ borderRadius: 8 }}
             >
-              Restore
+              Restore to inactive
             </Button>
           )}
           {canDeletePermanently && (
@@ -251,7 +256,7 @@ const ItemTrash = () => {
           <div>
             <div style={{ color: '#fff', fontSize: 22, fontWeight: 700 }}>Trash</div>
             <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
-              Items must be deactivated first, then moved here from the Inactive tab. Restore or permanently delete when no longer needed.
+              Lifecycle: Active → Inactive → Trash. Restore moves items back to Inactive; activate them separately from the Items page.
             </div>
           </div>
         </div>
