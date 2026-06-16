@@ -46,7 +46,6 @@ const ItemCatalogGrid = ({
   loading = false,
   currency = 'USD',
   canManageItems = false,
-  canDeleteInactiveItems = false,
   page = 1,
   pageSize = 12,
   onPageChange,
@@ -54,8 +53,9 @@ const ItemCatalogGrid = ({
   onView,
   onEdit,
   onDuplicate,
-  onToggleStatus,
-  onDeleteInactive,
+  onDeactivate,
+  onActivate,
+  onMoveToTrash,
 }) => {
   if (loading) {
     return (
@@ -158,21 +158,29 @@ const ItemCatalogGrid = ({
                       </div>
                     )}
                     <div style={{ minWidth: 0, flex: 1, paddingTop: 2 }}>
-                      <div
+                      <button
+                        type="button"
+                        onClick={() => onView?.(record)}
                         style={{
                           fontWeight: 700,
-                          color: '#0f172a',
+                          color: '#4f46e5',
                           fontSize: 15,
                           lineHeight: 1.35,
                           display: '-webkit-box',
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: 'vertical',
                           overflow: 'hidden',
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          width: '100%',
                         }}
                         title={record.name}
                       >
                         {record.name}
-                      </div>
+                      </button>
                       <div
                         style={{
                           fontSize: 12,
@@ -349,21 +357,27 @@ const ItemCatalogGrid = ({
                             label: 'Duplicate',
                             onClick: () => onDuplicate?.(record),
                           },
-                          {
-                            key: 'toggle',
-                            icon: record.status === 'active'
-                              ? <StopOutlined style={{ color: '#dc2626' }} />
-                              : <CheckCircleOutlined style={{ color: '#16a34a' }} />,
-                            label: record.status === 'active' ? 'Deactivate' : 'Activate',
-                            onClick: () => onToggleStatus?.(record),
-                          },
-                          ...(canDeleteInactiveItems && record.status === 'inactive' ? [{
-                            key: 'delete',
-                            icon: <DeleteOutlined style={{ color: '#dc2626' }} />,
-                            label: 'Delete permanently',
-                            danger: true,
-                            onClick: () => onDeleteInactive?.(record),
+                          ...(record.status === 'active' ? [{
+                            key: 'deactivate',
+                            icon: <StopOutlined style={{ color: '#dc2626' }} />,
+                            label: 'Deactivate',
+                            onClick: () => onDeactivate?.(record),
                           }] : []),
+                          ...(record.status === 'inactive' ? [
+                            {
+                              key: 'activate',
+                              icon: <CheckCircleOutlined style={{ color: '#16a34a' }} />,
+                              label: 'Activate',
+                              onClick: () => onActivate?.(record),
+                            },
+                            {
+                              key: 'trash',
+                              icon: <DeleteOutlined style={{ color: '#dc2626' }} />,
+                              label: 'Move to Trash',
+                              danger: true,
+                              onClick: () => onMoveToTrash?.(record),
+                            },
+                          ] : []),
                         ],
                       }}
                     >

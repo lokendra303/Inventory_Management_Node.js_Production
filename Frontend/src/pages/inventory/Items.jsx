@@ -12,6 +12,7 @@ import { isOpeningStockReceipt, getInventoryLogReferenceDisplay } from '../../ut
 import CustomizableDropdown from '../../components/common/CustomizableDropdown';
 import ViewModeToggle from '../../components/common/ViewModeToggle';
 import ItemCatalogGrid from '../../components/inventory/ItemCatalogGrid';
+import ItemDetailsModal from '../../components/inventory/ItemDetailsModal';
 import CompositeBomSection from '../../components/inventory/CompositeBomSection';
 import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import { useLocation } from 'react-router-dom';
@@ -462,9 +463,9 @@ const Items = () => {
   const [itemFormOpenedFromImport, setItemFormOpenedFromImport] = useState(false);
   const [importCustomFieldsPreview, setImportCustomFieldsPreview] = useState([]);
   const [viewModalVisible, setViewModalVisible] = useState(false);
+  const [viewItemSeed, setViewItemSeed] = useState(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [viewingItem, setViewingItem] = useState(null);
   const [imageUrl, setImageUrl] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [form] = Form.useForm();
@@ -474,10 +475,6 @@ const Items = () => {
   const [brandOptions, setBrandOptions] = useState([]);
   const [vendorOptions, setVendorOptions] = useState([]);
   const [taxRateOptions, setTaxRateOptions] = useState([]);
-  const [itemHistory, setItemHistory] = useState([]);
-  const [priceHistory, setPriceHistory] = useState([]);
-  const [viewingItemBatches, setViewingItemBatches] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [itemGroupFilter, setItemGroupFilter] = useState('all');
   const [barcodeLoading, setBarcodeLoading] = useState(false);
@@ -1123,8 +1120,6 @@ const Items = () => {
   const canViewCategories = user?.permissions?.category_view || user?.permissions?.all;
   const canViewItems = user?.permissions?.item_view || user?.permissions?.all;
   const canManageItems = user?.permissions?.item_management || user?.permissions?.all;
-  const canDeleteInactiveItems = user?.role === 'admin' || user?.role === 'super_admin';
-
   /** Add category from the item modal: persists when user has category_management, else local pick list only */
   const handleInlineAddCategory = async () => {
     const raw = prompt('Enter new category:');
@@ -1218,7 +1213,22 @@ const Items = () => {
             <div style={{ width: 36, height: 36, borderRadius: 8, background: 'linear-gradient(135deg, #667eea22, #764ba222)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#764ba2', fontSize: 16 }}><InboxOutlined /></div>
           )}
           <div>
-            <div style={{ fontWeight: 600, color: '#1a1a2e', fontSize: 13 }}>{record.name}</div>
+            <button
+              type="button"
+              onClick={() => viewItem(record)}
+              style={{
+                fontWeight: 600,
+                color: '#667eea',
+                fontSize: 13,
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              {record.name}
+            </button>
             <div style={{ fontSize: 11, color: '#8c8c8c' }}>{record.sku}</div>
           </div>
         </div>
@@ -1280,21 +1290,27 @@ const Items = () => {
                     label: 'Duplicate',
                     onClick: () => duplicateItem(record),
                   },
-                  {
-                    key: 'toggle',
-                    icon: record.status === 'active'
-                      ? <StopOutlined style={{ color: '#ff4d4f' }} />
-                      : <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-                    label: record.status === 'active' ? 'Deactivate' : 'Activate',
-                    onClick: () => toggleItemStatus(record),
-                  },
-                  ...(canDeleteInactiveItems && record.status === 'inactive' ? [{
-                    key: 'delete',
-                    icon: <DeleteOutlined style={{ color: '#ff4d4f' }} />,
-                    label: 'Delete permanently',
-                    danger: true,
-                    onClick: () => permanentlyDeleteInactiveItem(record),
+                  ...(record.status === 'active' ? [{
+                    key: 'deactivate',
+                    icon: <StopOutlined style={{ color: '#ff4d4f' }} />,
+                    label: 'Deactivate',
+                    onClick: () => deactivateItem(record),
                   }] : []),
+                  ...(record.status === 'inactive' ? [
+                    {
+                      key: 'activate',
+                      icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+                      label: 'Activate',
+                      onClick: () => activateItem(record),
+                    },
+                    {
+                      key: 'trash',
+                      icon: <DeleteOutlined style={{ color: '#ff4d4f' }} />,
+                      label: 'Move to Trash',
+                      danger: true,
+                      onClick: () => moveItemToTrash(record),
+                    },
+                  ] : []),
                 ],
               }}
             >
@@ -2268,69 +2284,43 @@ const Items = () => {
     setPriceCurrency(nextCurrency);
   };
 
-  const toggleItemStatus = async (item) => {
-    const newStatus = item.status === 'active' ? 'inactive' : 'active';
-    const actionLabel = newStatus === 'inactive' ? 'deactivate' : 'activate';
-    try {
-      const response = await apiService.put(`/items/${item.id}`, { status: newStatus });
-      if (response.success) {
-        message.success(`Item ${actionLabel}d successfully`);
-        fetchItems();
-        return;
-      }
-      message.error(response.error || `Cannot ${actionLabel} this item.`);
-    } catch (error) {
-      message.error(
-        error?.response?.data?.error
-        || error?.message
-        || `Failed to ${actionLabel} item.`,
-        8
-      );
-    }
-  };
-
-  const permanentlyDeleteInactiveItem = (item) => {
-    if (!canDeleteInactiveItems) return;
+  const moveItemToTrash = (item) => {
     if (item.status !== 'inactive') {
-      message.warning('Only inactive items can be permanently deleted. Deactivate the item first.');
-      return;
-    }
-    if ((item.current_stock || 0) > 0) {
-      message.warning('Reduce on-hand stock to zero before deleting this item.');
+      message.warning('Only inactive items can be moved to Trash. Deactivate the item first.');
       return;
     }
 
     Modal.confirm({
-      title: 'Permanently delete inactive item?',
+      title: 'Move item to Trash?',
       icon: <DeleteOutlined style={{ color: '#ff4d4f' }} />,
       content: (
         <div>
           <p style={{ marginBottom: 8 }}>
-            This will permanently remove <strong>{item.name}</strong>
-            {item.sku ? ` (${item.sku})` : ''} from your catalog. This cannot be undone.
+            <strong>{item.name}</strong>
+            {item.sku ? ` (${item.sku})` : ''} will be moved to Trash and hidden from your item catalog.
           </p>
           <p style={{ margin: 0, color: '#8c8c8c', fontSize: 13 }}>
-            Stock must already be zero. Items linked to sales, purchases, or kits cannot be deleted.
+            You can restore it later from the Trash page under Items.
           </p>
         </div>
       ),
-      okText: 'Delete permanently',
+      okText: 'Move to Trash',
       okType: 'danger',
       cancelText: 'Cancel',
       onOk: async () => {
         try {
-          const response = await apiService.deleteItem(item.id);
+          const response = await apiService.put(`/items/${item.id}`, { status: 'trashed' });
           if (response.success) {
-            message.success('Inactive item permanently deleted');
+            message.success('Item moved to Trash');
             fetchItems();
           } else {
-            message.error(response.error || 'Failed to delete item');
+            message.error(response.error || 'Failed to move item to Trash');
           }
         } catch (error) {
           message.error(
             error?.response?.data?.error
             || error?.message
-            || 'Failed to delete item',
+            || 'Failed to move item to Trash',
             8
           );
         }
@@ -2338,29 +2328,71 @@ const Items = () => {
     });
   };
 
-const viewItem = async (item) => {
-    setViewModalVisible(true);
-    setLoadingHistory(true);
+  const deactivateItem = (item) => {
+    if (item.status !== 'active') return;
+
+    Modal.confirm({
+      title: 'Deactivate item?',
+      icon: <StopOutlined style={{ color: '#ff4d4f' }} />,
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            <strong>{item.name}</strong>
+            {item.sku ? ` (${item.sku})` : ''} will be marked inactive and hidden from active listings.
+          </p>
+          <p style={{ margin: 0, color: '#8c8c8c', fontSize: 13 }}>
+            You can reactivate it or move it to Trash from the Inactive tab.
+          </p>
+        </div>
+      ),
+      okText: 'Deactivate',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          const response = await apiService.put(`/items/${item.id}`, { status: 'inactive' });
+          if (response.success) {
+            message.success('Item deactivated');
+            fetchItems();
+          } else {
+            message.error(response.error || 'Failed to deactivate item');
+          }
+        } catch (error) {
+          message.error(
+            error?.response?.data?.error
+            || error?.message
+            || 'Failed to deactivate item',
+            8
+          );
+        }
+      },
+    });
+  };
+
+  const activateItem = async (item) => {
+    if (item.status !== 'inactive') return;
+
     try {
-      const [itemRes, historyRes, priceHistRes, batchesRes] = await Promise.allSettled([
-        apiService.get(`/items/${item.id}`),
-        apiService.get(`/inventory/item-logs/${item.id}`),
-        apiService.get(`/items/${item.id}/price-history`),
-        apiService.getBatches({ itemId: item.id }),
-      ]);
-      setViewingItem(itemRes.status === 'fulfilled' && itemRes.value.success ? itemRes.value.data : item);
-      setItemHistory(historyRes.status === 'fulfilled' && historyRes.value.success ? historyRes.value.data || [] : []);
-      setPriceHistory(priceHistRes.status === 'fulfilled' && priceHistRes.value.success ? priceHistRes.value.data || [] : []);
-      setViewingItemBatches(batchesRes.status === 'fulfilled' ? (batchesRes.value?.data || []) : []);
+      const response = await apiService.put(`/items/${item.id}`, { status: 'active' });
+      if (response.success) {
+        message.success('Item activated');
+        fetchItems();
+      } else {
+        message.error(response.error || 'Failed to activate item');
+      }
     } catch (error) {
-      console.error('Failed to fetch item details:', error);
-      setViewingItem(item);
-      setItemHistory([]);
-      setPriceHistory([]);
-      setViewingItemBatches([]);
-    } finally {
-      setLoadingHistory(false);
+      message.error(
+        error?.response?.data?.error
+        || error?.message
+        || 'Failed to activate item',
+        8
+      );
     }
+  };
+
+const viewItem = (item) => {
+    setViewItemSeed(item);
+    setViewModalVisible(true);
   };
 
   const fetchBinsForWarehouse = async (warehouseId) => {
@@ -4796,6 +4828,7 @@ const viewItem = async (item) => {
   };
 
   const filteredItems = items.filter(item => {
+    if (item.status === 'trashed') return false;
     if (statusFilter !== 'all' && item.status !== statusFilter) return false;
     if (itemGroupFilter !== 'all' && item.item_group_id !== itemGroupFilter) return false;
     if (!searchText) return true;
@@ -5304,7 +5337,7 @@ const viewItem = async (item) => {
         <div style={{ padding: '18px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <Space size={6}>
             {[
-              { key: 'all', label: 'All', count: items.length, color: '#667eea', bg: '#f0f0ff', border: '#667eea' },
+              { key: 'all', label: 'All', count: items.filter(i => i.status !== 'trashed' && i.status !== 'draft').length, color: '#667eea', bg: '#f0f0ff', border: '#667eea' },
               { key: 'active', label: 'Active', count: items.filter(i => i.status === 'active').length, color: '#52c41a', bg: '#f6ffed', border: '#52c41a' },
               { key: 'inactive', label: 'Inactive', count: items.filter(i => i.status === 'inactive').length, color: '#ff4d4f', bg: '#fff1f0', border: '#ff4d4f' },
             ].map(f => (
@@ -5442,9 +5475,9 @@ const viewItem = async (item) => {
                   onView={viewItem}
                   onEdit={editItem}
                   onDuplicate={duplicateItem}
-                  onToggleStatus={toggleItemStatus}
-                  canDeleteInactiveItems={canDeleteInactiveItems}
-                  onDeleteInactive={permanentlyDeleteInactiveItem}
+                  onDeactivate={deactivateItem}
+                  onActivate={activateItem}
+                  onMoveToTrash={moveItemToTrash}
                 />
               ) : (
                 <Table
@@ -8785,471 +8818,15 @@ const viewItem = async (item) => {
         </Form>
       </Modal>
 
-      <Modal
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: 16 }}>
-              <EyeOutlined />
-            </div>
-            <span style={{ fontWeight: 700, fontSize: 17 }}>Item Details</span>
-          </div>
-        }
+      <ItemDetailsModal
         open={viewModalVisible}
-        onCancel={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); setViewingItemBatches([]); }}
-        footer={[<Button key="close" style={{ borderRadius: 10 }} onClick={() => { setViewModalVisible(false); setViewingItem(null); setItemHistory([]); setPriceHistory([]); setViewingItemBatches([]); }}>Close</Button>]}
-        width="min(1280px, 98vw)"
-        style={{ top: 16 }}
-        styles={{ body: { background: '#fafbff', maxHeight: '82vh', overflowY: 'auto', padding: '20px 24px' } }}
-      >
-        {viewingItem && (
-          <div>
-            {/* Top hero strip */}
-            <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, padding: '20px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-              {viewingItem.image ? (
-                <img src={viewingItem.image} alt={viewingItem.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 12, border: '3px solid rgba(255,255,255,0.4)' }} />
-              ) : (
-                <div style={{ width: 80, height: 80, borderRadius: 12, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: '#fff' }}><InboxOutlined /></div>
-              )}
-              <div style={{ flex: 1 }}>
-                <div style={{ color: '#fff', fontSize: 20, fontWeight: 700 }}>{viewingItem.name}</div>
-                <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 2 }}>SKU: {viewingItem.sku}</div>
-                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <Tag color={viewingItem.status === 'active' ? 'success' : 'error'} style={{ borderRadius: 20 }}>{viewingItem.status}</Tag>
-                  {viewingItem.type && <Tag color="blue" style={{ borderRadius: 20 }}>{viewingItem.type}</Tag>}
-                  {viewingItem.category && <Tag color="orange" style={{ borderRadius: 20 }}>{viewingItem.category}</Tag>}
-                  {viewingItem.item_group_name && <Tag color="purple" style={{ borderRadius: 20 }}>{viewingItem.item_group_name}</Tag>}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                {[{ label: 'Selling Price', val: viewingItem.selling_price ? formatPrice(viewingItem.selling_price, currency, 'USD') : '—' },
-                  { label: 'On Hand', val: (() => { const s = viewingItem.current_stock || 0; return s % 1 === 0 ? Math.floor(s) : s.toFixed(2); })() }].map(x => (
-                  <div key={x.label} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 16px', textAlign: 'center' }}>
-                    <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>{x.val}</div>
-                    <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11 }}>{x.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        item={viewItemSeed}
+        onClose={() => {
+          setViewModalVisible(false);
+          setViewItemSeed(null);
+        }}
+      />
 
-            {/* Detail grid */}
-            <Row gutter={16}>
-              {[[
-                ['Cost Price', viewingItem.cost_price ? formatPrice(viewingItem.cost_price, currency, 'USD') : 'N/A'],
-                ['MRP', viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'],
-                ['Tax Rate', viewingItem.tax_rate ? `${viewingItem.tax_rate}%` : 'N/A'],
-                ['Unit', viewingItem.unit || 'N/A'],
-                ['Item Group', viewingItem.item_group_name || 'N/A'],
-                ['Brand', viewingItem.brand || 'N/A'],
-                ['Manufacturer', viewingItem.manufacturer || 'N/A'],
-              ], [
-                ['Status', <Tag color={viewingItem.status === 'active' ? 'success' : 'error'} style={{ borderRadius: 20, marginInlineEnd: 0, textTransform: 'capitalize' }}>{viewingItem.status || 'N/A'}</Tag>],
-                ['Min Stock', viewingItem.min_stock_level ?? 'N/A'],
-                ['Max Stock', viewingItem.max_stock_level ?? 'N/A'],
-                ['Opening Stock', viewingItem.opening_stock ?? 'N/A'],
-                ['Valuation', viewingItem.valuation_method || 'N/A'],
-                ['HSN Code', viewingItem.hsn_code || 'N/A'],
-                ['Barcode', viewingItem.barcode || 'N/A'],
-              ], [
-                ['Batch Number', viewingItem.batch_number || 'N/A'],
-                ['UPC', viewingItem.upc || 'N/A'],
-                ['EAN', viewingItem.ean || 'N/A'],
-                ['ISBN', viewingItem.isbn || 'N/A'],
-                ['MPN', viewingItem.mpn || 'N/A'],
-                ['Weight', viewingItem.weight ? `${viewingItem.weight} ${viewingItem.weight_unit || 'kg'}` : 'N/A'],
-                ['Dimensions', viewingItem.dimensions ? `${viewingItem.dimensions.length||0}×${viewingItem.dimensions.width||0}×${viewingItem.dimensions.height||0}` : 'N/A'],
-              ]].map((group, gi) => (
-                <Col xs={24} sm={8} key={gi}>
-                  <Card variant="borderless" style={{ borderRadius: 12, background: '#fff', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', marginBottom: 12 }} styles={{ body: { padding: '14px 18px' } }}>
-                    {group.map(([label, val]) => (
-                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f5f5f5', fontSize: 13 }}>
-                        <span style={{ color: '#8c8c8c' }}>{label}</span>
-                        <span style={{ fontWeight: 600, color: '#1a1a2e', maxWidth: '55%', textAlign: 'right', wordBreak: 'break-word' }}>{val}</span>
-                      </div>
-                    ))}
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-            {viewingItem.description && (
-              <div style={{ background: '#fff', borderRadius: 12, padding: '12px 18px', marginBottom: 12, boxShadow: '0 1px 8px rgba(0,0,0,0.06)', fontSize: 13, color: '#595959' }}>
-                <strong>Description:</strong> {viewingItem.description}
-              </div>
-            )}
-
-            <Card
-              size="small"
-              title={(
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span>Warehouse Batches</span>
-                  <Tag color="purple" style={{ borderRadius: 999, marginInlineEnd: 0 }}>
-                    {viewingItemBatches.length} batch{viewingItemBatches.length === 1 ? '' : 'es'}
-                  </Tag>
-                </div>
-              )}
-              style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden' }}
-              styles={{ body: { paddingTop: 8 } }}
-            >
-              {viewingItemBatches.length === 0 ? (
-                <Empty description="No warehouse batches recorded for this item" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              ) : (
-                <Table
-                  size="small"
-                  rowKey="id"
-                  dataSource={viewingItemBatches}
-                  pagination={{ pageSize: 5, size: 'small', hideOnSinglePage: true }}
-                  scroll={{ x: 720 }}
-                  columns={[
-                    { title: 'Batch #', dataIndex: 'batch_number', key: 'batch_number', width: 130, ellipsis: true },
-                    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 140, ellipsis: true },
-                    {
-                      title: 'Received',
-                      dataIndex: 'quantity_received',
-                      key: 'quantity_received',
-                      width: 90,
-                      render: (v) => parseFloat(v || 0).toFixed(2),
-                    },
-                    {
-                      title: 'Available',
-                      key: 'quantity_remaining',
-                      width: 90,
-                      render: (_, row) => {
-                        const remaining = parseFloat(row.quantity_remaining ?? row.quantity_available ?? 0);
-                        const color = remaining <= 0 ? 'default' : remaining <= 10 ? 'orange' : 'green';
-                        return <Tag color={color}>{remaining.toFixed(2)}</Tag>;
-                      },
-                    },
-                    {
-                      title: 'Manufacture Date',
-                      dataIndex: 'manufacture_date',
-                      key: 'manufacture_date',
-                      width: 120,
-                      render: (v) => (v ? new Date(v).toLocaleDateString() : '-'),
-                    },
-                    {
-                      title: 'Expiry',
-                      dataIndex: 'expiry_date',
-                      key: 'expiry_date',
-                      width: 120,
-                      render: (v) => (v ? new Date(v).toLocaleDateString() : '-'),
-                    },
-                    {
-                      title: 'Status',
-                      dataIndex: 'status',
-                      key: 'status',
-                      width: 100,
-                      render: (v) => <Tag color={v === 'active' ? 'green' : v === 'expired' ? 'red' : 'orange'}>{v?.toUpperCase()}</Tag>,
-                    },
-                  ]}
-                />
-              )}
-            </Card>
-
-            {String(viewingItem.type || '').toLowerCase() === 'variant' && (
-              <Card
-                size="small"
-                title={(
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <span>Variant Details</span>
-                    <Tag color="blue" style={{ borderRadius: 999, marginInlineEnd: 0 }}>
-                      {(Array.isArray(viewingItem.variant_rows) && viewingItem.variant_rows.length > 0
-                        ? viewingItem.variant_rows.length
-                        : (Array.isArray(viewingItem?.custom_fields?.variantMatrix) ? viewingItem.custom_fields.variantMatrix.length : 0)
-                      ) || 0} variants
-                    </Tag>
-                  </div>
-                )}
-                style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden' }}
-                styles={{ body: { paddingTop: 8 } }}
-              >
-                {(() => {
-                  const rows = Array.isArray(viewingItem.variant_rows) && viewingItem.variant_rows.length > 0
-                    ? viewingItem.variant_rows
-                    : (Array.isArray(viewingItem?.custom_fields?.variantMatrix) ? viewingItem.custom_fields.variantMatrix : []);
-                  if (!rows.length) {
-                    return <Empty description="No variant rows available" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
-                  }
-                  return (
-                    <Table
-                      size="middle"
-                      rowKey={(row, idx) => row.id || row.key || `${row.sku || 'variant'}-${idx}`}
-                      dataSource={rows}
-                      bordered={false}
-                      scroll={{ x: 760 }}
-                      style={{ border: '1px solid #f0f3f8', borderRadius: 12, overflow: 'hidden' }}
-                      rowClassName={(_, idx) => (idx % 2 === 0 ? 'table-row-light' : 'table-row-dark')}
-                      pagination={{
-                        pageSize: 6,
-                        size: 'small',
-                        hideOnSinglePage: true,
-                        position: ['bottomRight'],
-                        style: { margin: '12px 12px 0 0' }
-                      }}
-                      columns={[
-                        {
-                          title: 'Variant',
-                          key: 'variant',
-                          width: 360,
-                          render: (_, row) => {
-                            const tokens = getVariantAttributeTokens(row);
-                            const primaryLabel = String(row.combinationLabel || row.variant_name || '').trim();
-                            return (
-                              <div>
-                                {tokens.length > 0 && (
-                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                    {tokens.map((token, tokenIdx) => (
-                                      <Tag
-                                        key={`${token.label}-${token.value}-${tokenIdx}`}
-                                        color="blue"
-                                        style={{
-                                          borderRadius: 999,
-                                          marginInlineEnd: 0,
-                                          paddingInline: 10,
-                                          borderColor: '#d6e4ff',
-                                          background: '#f5f9ff',
-                                          color: '#1d39c4'
-                                        }}
-                                      >
-                                        <span style={{ fontWeight: 600 }}>{token.label}</span>: {token.value}
-                                      </Tag>
-                                    ))}
-                                  </div>
-                                )}
-                                {tokens.length === 0 && (
-                                  <div style={{ fontWeight: 600, color: '#1f2937' }}>
-                                    {primaryLabel || 'Unnamed variant'}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          }
-                        },
-                        {
-                          title: 'Child SKU',
-                          key: 'sku',
-                          width: 120,
-                          render: (_, row) => row.sku ? (
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '4px 10px',
-                              borderRadius: 999,
-                              background: '#f3f4f6',
-                              border: '1px solid #e5e7eb',
-                              fontFamily: 'Consolas, monospace',
-                              fontSize: 12,
-                              color: '#111827'
-                            }}>
-                              {row.sku}
-                            </span>
-                          ) : <span style={{ color: '#9ca3af' }}>-</span>
-                        },
-                        {
-                          title: 'Barcode',
-                          key: 'barcode',
-                          width: 120,
-                          render: (_, row) => row.barcode || <span style={{ color: '#9ca3af' }}>-</span>
-                        },
-                        {
-                          title: 'Sell Price',
-                          key: 'selling',
-                          width: 120,
-                          render: (_, row) => {
-                            const val = row.sellingPrice ?? row.selling_price;
-                            return val != null ? (
-                              <span style={{ fontWeight: 700, color: '#1677ff' }}>
-                                {formatPrice(Number(val) || 0, currency, 'USD')}
-                              </span>
-                            ) : <span style={{ color: '#9ca3af' }}>-</span>;
-                          }
-                        },
-                        {
-                          title: 'Status',
-                          key: 'status',
-                          width: 100,
-                          render: (_, row) => {
-                            const active = row.active !== undefined ? !!row.active : String(row.status || '').toLowerCase() === 'active';
-                            return (
-                              <Tag
-                                color={active ? 'success' : 'default'}
-                                style={{ borderRadius: 999, marginInlineEnd: 0, textTransform: 'capitalize', fontWeight: 600 }}
-                              >
-                                {active ? 'active' : 'inactive'}
-                              </Tag>
-                            );
-                          }
-                        }
-                      ]}
-                    />
-                  );
-                })()}
-              </Card>
-            )}
-            
-            <div style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-              {loadingHistory ? (
-                <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>
-              ) : (
-                <Tabs items={[
-                  {
-                    key: 'transactions',
-                    label: <span><HistoryOutlined /> Transaction History</span>,
-                    children: itemHistory.length > 0 ? (
-                      <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-                        <Timeline>
-                          {itemHistory.map((log, index) => {
-                            const eventType = log.type || log.event_type || '';
-                            const fieldChanges = Array.isArray(log.field_changes) ? log.field_changes : [];
-                            const summaryText = log.summary || log.description;
-                            const getEventColor = (type) => {
-                              if (['PurchaseReceived', 'SaleReturned', 'SaleReservationCancelled'].includes(type)) return 'green';
-                              if (['SaleShipped', 'PurchaseReturned', 'StockDamaged', 'StockExpired'].includes(type)) return 'red';
-                              if (['SaleReserved'].includes(type)) return 'orange';
-                              if (type === 'ADJUSTMENT') return 'blue';
-                              if (['TransferIn', 'TransferOut'].includes(type)) return 'purple';
-                              if (type === 'ITEM_CREATED') return 'green';
-                              if (type === 'ITEM_UPDATED') return 'cyan';
-                              if (type === 'ITEM_COMPONENTS_UPDATED') return 'purple';
-                              if (type === 'ITEM_DELETED') return 'red';
-                              return 'gray';
-                            };
-                            const getEventLabel = (type, logRow) => {
-                              if (type === 'PurchaseReceived' && isOpeningStockReceipt(logRow)) {
-                                return 'Opening Stock';
-                              }
-                              const labels = {
-                                PurchaseReceived: 'Stock Received (PO)',
-                                PurchaseReturned: 'Purchase Returned',
-                                SaleReserved: 'Stock Reserved (SO)',
-                                SaleShipped: 'Stock Shipped (SO)',
-                                SaleReturned: 'Sale Returned',
-                                SaleReservationCancelled: 'Reservation Cancelled',
-                                TransferIn: 'Transfer In',
-                                TransferOut: 'Transfer Out',
-                                StockDamaged: 'Stock Damaged',
-                                StockExpired: 'Stock Expired',
-                                ADJUSTMENT: 'Stock Adjusted',
-                                ITEM_CREATED: 'Item Created',
-                                ITEM_UPDATED: 'Item Updated',
-                                ITEM_COMPONENTS_UPDATED: 'BOM Updated',
-                                ITEM_DELETED: 'Item Deleted',
-                              };
-                              return labels[type] || type;
-                            };
-                            const qty = log.quantity ?? log.quantity_change;
-                            const isPositive = ['PurchaseReceived', 'TransferIn', 'SaleReturned', 'SaleReservationCancelled'].includes(eventType) || (eventType === 'ADJUSTMENT' && log.sub_type === 'increase');
-                            const isNegative = ['SaleShipped', 'SaleReserved', 'TransferOut', 'PurchaseReturned', 'StockDamaged', 'StockExpired'].includes(eventType) || (eventType === 'ADJUSTMENT' && log.sub_type === 'decrease');
-                            const signedQty = qty != null ? (isNegative ? -Math.abs(qty) : isPositive ? Math.abs(qty) : qty) : null;
-                            const unitCost = log.details?.unitCost || log.details?.unitPrice || log.unit_cost;
-                            const ref = getInventoryLogReferenceDisplay(log);
-                            const notes = log.reason || log.notes;
-                            return (
-                              <Timeline.Item key={index} color={getEventColor(eventType)}>
-                                <div style={{ marginBottom: 8 }}>
-                                  <Tag color={getEventColor(eventType)}>{getEventLabel(eventType, log)}</Tag>
-                                  <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
-                                    {new Date(log.timestamp || log.operation_date).toLocaleString()}
-                                  </span>
-                                </div>
-                                <div style={{ fontSize: 13 }}>
-                                  {log.warehouse && <div>Warehouse: <strong>{log.warehouse}</strong></div>}
-                                  {signedQty != null && (
-                                    <div>Quantity: <strong style={{ color: signedQty >= 0 ? '#52c41a' : '#ff4d4f' }}>
-                                      {signedQty > 0 ? '+' : ''}{signedQty}
-                                    </strong></div>
-                                  )}
-                                  {unitCost != null && <div>Unit Cost: <strong>{formatPrice(unitCost, currency, 'USD')}</strong></div>}
-                                  {fieldChanges.length > 0 && (
-                                    <div style={{ marginTop: 8 }}>
-                                      {fieldChanges.slice(0, 8).map((change, changeIndex) => (
-                                        <div key={`${log.id || index}-field-${changeIndex}`}>
-                                          {change.label}: <strong>{change.from_display}</strong>{' -> '}<strong>{change.to_display}</strong>
-                                        </div>
-                                      ))}
-                                      {fieldChanges.length > 8 && (
-                                        <div style={{ color: '#8c8c8c', fontSize: 12 }}>
-                                          +{fieldChanges.length - 8} more field changes
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                  {log.performed_by?.trim() && <div style={{ color: '#8c8c8c', fontSize: 12 }}>By: {log.performed_by}</div>}
-                                  {ref && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Ref: {ref}</div>}
-                                  {summaryText && <div style={{ color: '#8c8c8c', fontSize: 12 }}>{summaryText}</div>}
-                                  {notes && <div style={{ color: '#8c8c8c', fontSize: 12 }}>Notes: {notes}</div>}
-                                </div>
-                              </Timeline.Item>
-                            );
-                          })}
-                        </Timeline>
-                      </div>
-                    ) : <Empty description="No transaction history available" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                  },
-                  {
-                    key: 'price-history',
-                    label: <span><DollarOutlined /> Price History</span>,
-                    children: priceHistory.length > 0 ? (
-                      <Table
-                        size="small"
-                        rowKey={(r, i) => i}
-                        dataSource={priceHistory}
-                        pagination={{ pageSize: 10, size: 'small' }}
-                        columns={[
-                          {
-                            title: 'Price Type',
-                            dataIndex: 'price_type',
-                            key: 'price_type',
-                            render: (v) => ({ cost: 'Cost Price', selling: 'Selling Price', mrp: 'MRP' }[v] || v)
-                          },
-                          {
-                            title: 'Old Price',
-                            dataIndex: 'old_price',
-                            key: 'old_price',
-                            render: (v) => v != null ? formatPrice(v, currency, 'USD') : '-'
-                          },
-                          {
-                            title: 'New Price',
-                            dataIndex: 'new_price',
-                            key: 'new_price',
-                            render: (v, r) => {
-                              const diff = r.old_price != null ? v - r.old_price : null;
-                              return (
-                                <span>
-                                  {formatPrice(v, currency, 'USD')}
-                                  {diff != null && (
-                                    <Tag color={diff > 0 ? 'red' : 'green'} style={{ marginLeft: 8 }}>
-                                      {diff > 0 ? '+' : ''}{formatPrice(diff, currency, 'USD')}
-                                    </Tag>
-                                  )}
-                                </span>
-                              );
-                            }
-                          },
-                          {
-                            title: 'Changed By',
-                            key: 'changed_by',
-                            render: (_, r) => r.first_name ? `${r.first_name} ${r.last_name || ''}`.trim() : '-'
-                          },
-                          {
-                            title: 'Reason',
-                            dataIndex: 'reason',
-                            key: 'reason',
-                            render: (v) => v || '-'
-                          },
-                          {
-                            title: 'Date',
-                            dataIndex: 'effective_date',
-                            key: 'effective_date',
-                            render: (v) => v ? new Date(v).toLocaleDateString() : '-'
-                          }
-                        ]}
-                      />
-                    ) : <Empty description="No price history available" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                  }
-                ]} />
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

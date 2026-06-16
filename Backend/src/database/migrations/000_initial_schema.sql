@@ -717,7 +717,7 @@ CREATE TABLE IF NOT EXISTS `items` (
   `valuation_method` enum('fifo','weighted_average') DEFAULT 'fifo',
   `allow_negative_stock` tinyint(1) DEFAULT '0',
   `default_reorder_level` decimal(15,3) DEFAULT '0.000',
-  `status` enum('active','inactive','draft') NOT NULL DEFAULT 'active',
+  `status` enum('active','inactive','trashed','draft') NOT NULL DEFAULT 'active',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `cost_price` decimal(15,4) DEFAULT '0.0000',

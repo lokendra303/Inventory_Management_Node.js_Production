@@ -579,9 +579,13 @@ class ItemService {
 
     // Fetch current prices before update for price history tracking
     const [oldItem] = await db.query(
-      'SELECT cost_price, selling_price, mrp, type FROM items WHERE institution_id = ? AND id = ?',
+      'SELECT cost_price, selling_price, mrp, type, status FROM items WHERE institution_id = ? AND id = ?',
       [institutionId, itemId]
     );
+
+    if (status !== undefined) {
+      this._validateItemStatusTransition(oldItem?.status, status);
+    }
 
     if (sku !== undefined) {
       updateFields.push('sku = ?');
@@ -1162,12 +1166,32 @@ class ItemService {
     return true;
   }
 
+  _validateItemStatusTransition(currentStatus, nextStatus) {
+    const current = String(currentStatus || '').toLowerCase();
+    const next = String(nextStatus || '').toLowerCase();
+    if (!next || current === next) return;
+
+    const allowed = {
+      active: ['inactive'],
+      inactive: ['active', 'trashed'],
+      trashed: ['active'],
+      draft: ['active'],
+    };
+
+    if (!(allowed[current] || []).includes(next)) {
+      if (current === 'active' && next === 'trashed') {
+        throw new Error('Deactivate the item first before moving it to Trash.');
+      }
+      throw new Error(`Cannot change item status from ${current} to ${next}.`);
+    }
+  }
+
   _buildItemsWhereClause(institutionId, filters = {}) {
     let where = 'WHERE i.institution_id = ?';
     const params = [institutionId];
 
     if (filters.status === 'all') {
-      where += " AND i.status != 'draft'";
+      where += " AND i.status NOT IN ('draft', 'trashed')";
     } else {
       where += ' AND i.status = ?';
       params.push(filters.status || 'active');
@@ -1377,8 +1401,8 @@ class ItemService {
       }
 
       const item = itemRows[0];
-      if (String(item.status || '').toLowerCase() !== 'inactive') {
-        throw new Error('Only inactive items can be permanently deleted. Deactivate the item first.');
+      if (String(item.status || '').toLowerCase() !== 'trashed') {
+        throw new Error('Only trashed items can be permanently deleted. Deactivate the item, then move it to Trash.');
       }
 
       const [stockRows] = await connection.execute(
@@ -1443,7 +1467,7 @@ class ItemService {
 
       const [deleteResult] = await connection.execute(
         'DELETE FROM items WHERE institution_id = ? AND id = ? AND status = ?',
-        [institutionId, itemId, 'inactive']
+        [institutionId, itemId, 'trashed']
       );
 
       if (deleteResult.affectedRows === 0) {

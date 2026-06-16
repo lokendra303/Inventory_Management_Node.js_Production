@@ -343,7 +343,7 @@ class ItemController {
 
       res.json({
         success: true,
-        message: 'Inactive item permanently deleted'
+        message: 'Trashed item permanently deleted'
       });
     } catch (error) {
       logger.error('Item deletion failed', { 
