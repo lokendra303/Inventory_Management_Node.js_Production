@@ -70,7 +70,7 @@ class ReorderLevelController {
 
   async acknowledgeAlert(req, res) {
     try {
-      const { alertId } = req.params;
+      const alertId = req.params.id;
       await reorderLevelService.acknowledgeAlert(req.institutionId, alertId, req.user.userId);
       
       res.json({
@@ -81,7 +81,7 @@ class ReorderLevelController {
       logger.error('Failed to acknowledge alert', { 
         error: error.message, 
         institutionId: req.institutionId,
-        alertId: req.params.alertId 
+        alertId: req.params.id,
       });
       res.status(400).json({
         success: false,

@@ -99,17 +99,35 @@ class ReorderLevelService {
     if (status === 'active') {
       return await db.query(
         `SELECT 
-           rl.id, rl.institution_id, rl.item_id, rl.warehouse_id,
+           COALESCE(lsa.id, rl.id) as id,
+           rl.institution_id, rl.item_id, rl.warehouse_id,
            COALESCE(ip.quantity_available, 0) as current_stock,
            rl.reorder_level, rl.reorder_quantity,
            i.sku, i.name as item_name, w.name as warehouse_name,
-           'active' as status, rl.updated_at as alert_date
+           'active' as status,
+           COALESCE(lsa.alert_date, rl.updated_at) as alert_date
          FROM reorder_levels rl
          JOIN items i ON rl.item_id = i.id
          JOIN warehouses w ON rl.warehouse_id = w.id
-         LEFT JOIN inventory_projections ip ON rl.item_id = ip.item_id AND rl.warehouse_id = ip.warehouse_id
+         LEFT JOIN inventory_projections ip
+           ON rl.item_id = ip.item_id
+          AND rl.warehouse_id = ip.warehouse_id
+          AND ip.institution_id = rl.institution_id
+         LEFT JOIN low_stock_alerts lsa
+           ON lsa.institution_id = rl.institution_id
+          AND lsa.item_id = rl.item_id
+          AND lsa.warehouse_id = rl.warehouse_id
+          AND lsa.status = 'active'
          WHERE rl.institution_id = ? AND rl.is_active = TRUE
            AND COALESCE(ip.quantity_available, 0) <= rl.reorder_level
+           AND NOT EXISTS (
+             SELECT 1
+               FROM low_stock_alerts ack
+              WHERE ack.institution_id = rl.institution_id
+                AND ack.item_id = rl.item_id
+                AND ack.warehouse_id = rl.warehouse_id
+                AND ack.status = 'acknowledged'
+           )
          ORDER BY COALESCE(ip.quantity_available, 0) ASC`,
         [institutionId]
       );
@@ -128,16 +146,81 @@ class ReorderLevelService {
   }
 
   async acknowledgeAlert(institutionId, alertId, userId) {
-    const result = await db.query(
-      'UPDATE low_stock_alerts SET status = "acknowledged", acknowledged_by = ?, acknowledged_at = NOW() WHERE institution_id = ? AND id = ?',
+    const directResult = await db.query(
+      `UPDATE low_stock_alerts
+          SET status = 'acknowledged', acknowledged_by = ?, acknowledged_at = NOW()
+        WHERE institution_id = ? AND id = ? AND status = 'active'`,
       [userId, institutionId, alertId]
     );
 
-    if (result.affectedRows === 0) {
+    if (directResult.affectedRows > 0) {
+      logger.info('Low stock alert acknowledged', { institutionId, alertId, userId });
+      return;
+    }
+
+    // Active alerts list may pass a reorder_levels.id when no low_stock_alerts row exists yet.
+    const rules = await db.query(
+      `SELECT rl.item_id, rl.warehouse_id,
+              COALESCE(ip.quantity_available, 0) AS current_stock,
+              rl.reorder_level
+         FROM reorder_levels rl
+         LEFT JOIN inventory_projections ip
+           ON rl.item_id = ip.item_id
+          AND rl.warehouse_id = ip.warehouse_id
+          AND ip.institution_id = rl.institution_id
+        WHERE rl.institution_id = ? AND rl.id = ? AND rl.is_active = TRUE`,
+      [institutionId, alertId]
+    );
+
+    if (rules.length === 0) {
       throw new Error('Alert not found');
     }
 
-    logger.info('Low stock alert acknowledged', { institutionId, alertId, userId });
+    const { item_id: itemId, warehouse_id: warehouseId, current_stock: currentStock, reorder_level: reorderLevel } = rules[0];
+
+    const existingAlerts = await db.query(
+      `SELECT id, status
+         FROM low_stock_alerts
+        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+        ORDER BY alert_date DESC
+        LIMIT 1`,
+      [institutionId, itemId, warehouseId]
+    );
+
+    if (existingAlerts.length > 0) {
+      const existing = existingAlerts[0];
+      if (existing.status === 'acknowledged') {
+        return;
+      }
+
+      const updateResult = await db.query(
+        `UPDATE low_stock_alerts
+            SET status = 'acknowledged',
+                acknowledged_by = ?,
+                acknowledged_at = NOW(),
+                current_stock = ?,
+                reorder_level = ?
+          WHERE institution_id = ? AND id = ?`,
+        [userId, currentStock, reorderLevel, institutionId, existing.id]
+      );
+
+      if (updateResult.affectedRows === 0) {
+        throw new Error('Alert not found');
+      }
+
+      logger.info('Low stock alert acknowledged', { institutionId, alertId: existing.id, userId });
+      return;
+    }
+
+    const newAlertId = uuidv4();
+    await db.query(
+      `INSERT INTO low_stock_alerts
+         (id, institution_id, item_id, warehouse_id, current_stock, reorder_level, status, acknowledged_by, acknowledged_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'acknowledged', ?, NOW())`,
+      [newAlertId, institutionId, itemId, warehouseId, currentStock, reorderLevel, userId]
+    );
+
+    logger.info('Low stock alert acknowledged', { institutionId, alertId: newAlertId, userId });
   }
 
   async getReorderLevels(institutionId, filters = {}) {
