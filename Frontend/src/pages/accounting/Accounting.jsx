@@ -9,14 +9,13 @@ import {
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
-import { formatAmount } from '../../utils/numberFormat';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
 const { RangePicker } = DatePicker;
 
 const Accounting = () => {
-  const { currency } = useCurrency();
+  const { formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState({});
   const [trialBalance, setTrialBalance] = useState({ accounts: [], summary: {} });
@@ -297,7 +296,7 @@ const Accounting = () => {
       key: 'total_debits',
       width: 120,
       align: 'right',
-      render: v => `${currency} ${formatAmount(v)}` 
+      render: v => `${formatCurrency(v)}` 
     },
     { 
       title: 'Credits', 
@@ -305,7 +304,7 @@ const Accounting = () => {
       key: 'total_credits',
       width: 120,
       align: 'right',
-      render: v => `${currency} ${formatAmount(v)}` 
+      render: v => `${formatCurrency(v)}` 
     },
     { 
       title: 'Balance', 
@@ -315,7 +314,7 @@ const Accounting = () => {
       align: 'right',
       render: v => (
         <span style={{ color: v >= 0 ? '#52c41a' : '#ff4d4f' }}>
-          {currency} {formatAmount(Math.abs(v))} {v < 0 ? 'Cr' : 'Dr'}
+          {formatCurrency(Math.abs(v))} {v < 0 ? 'Cr' : 'Dr'}
         </span>
       )
     },
@@ -366,7 +365,7 @@ const Accounting = () => {
       align: 'right',
       render: v => v > 0 ? (
         <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
-          {currency} {formatAmount(v)}
+          {formatCurrency(v)}
         </span>
       ) : '-'
     },
@@ -378,7 +377,7 @@ const Accounting = () => {
       align: 'right',
       render: v => v > 0 ? (
         <span style={{ color: '#ff4d4f', fontWeight: 'bold' }}>
-          {currency} {formatAmount(v)}
+          {formatCurrency(v)}
         </span>
       ) : '-'
     },
@@ -408,7 +407,7 @@ const Accounting = () => {
       key: 'balance_amount',
       width: 120,
       align: 'right',
-      render: v => `${currency} ${formatAmount(v)}` 
+      render: v => `${formatCurrency(v)}` 
     },
     { 
       title: 'Status', 
@@ -434,7 +433,7 @@ const Accounting = () => {
       key: 'balance_amount',
       width: 120,
       align: 'right',
-      render: v => `${currency} ${formatAmount(v)}` 
+      render: v => `${formatCurrency(v)}` 
     },
     { 
       title: 'Status', 
@@ -478,7 +477,7 @@ const Accounting = () => {
       align: 'right',
       render: v => (
         <span style={{ fontWeight: 'bold', color: '#52c41a' }}>
-          {currency} {formatAmount(v)}
+          {formatCurrency(v)}
         </span>
       )
     },
@@ -537,7 +536,7 @@ const Accounting = () => {
       align: 'right',
       render: v => (
         <span style={{ color: v >= 0 ? '#52c41a' : '#ff4d4f' }}>
-          {currency} {formatAmount(Math.abs(v || 0))} {v < 0 ? 'Cr' : 'Dr'}
+          {formatCurrency(Math.abs(v || 0))} {v < 0 ? 'Cr' : 'Dr'}
         </span>
       )
     },
@@ -564,7 +563,7 @@ const Accounting = () => {
               title="Total Payable"
               value={summary.totalPayable || 0}
               prefix={<DollarOutlined />}
-              formatter={value => `${currency} ${formatAmount(value)}`}
+              formatter={value => `${formatCurrency(value)}`}
               valueStyle={{ color: '#ff4d4f' }}
             />
             <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
@@ -578,7 +577,7 @@ const Accounting = () => {
               title="Total Receivable"
               value={summary.totalReceivable || 0}
               prefix={<BankOutlined />}
-              formatter={value => `${currency} ${formatAmount(value)}`}
+              formatter={value => `${formatCurrency(value)}`}
               valueStyle={{ color: '#52c41a' }}
             />
             <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
@@ -592,7 +591,7 @@ const Accounting = () => {
               title="Total Revenue"
               value={summary.totalRevenue || 0}
               prefix={<RiseOutlined />}
-              formatter={value => `${currency} ${formatAmount(value)}`}
+              formatter={value => `${formatCurrency(value)}`}
               valueStyle={{ color: '#1890ff' }}
             />
             <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
@@ -606,7 +605,7 @@ const Accounting = () => {
               title="Net Profit"
               value={summary.netProfit || 0}
               prefix={<CalculatorOutlined />}
-              formatter={value => `${currency} ${formatAmount(value)}`}
+              formatter={value => `${formatCurrency(value)}`}
               valueStyle={{ color: (summary.netProfit || 0) >= 0 ? '#52c41a' : '#ff4d4f' }}
             />
             <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
@@ -661,7 +660,7 @@ const Accounting = () => {
               <Alert
                 type="warning"
                 message="Trial Balance is not balanced!"
-                description={`Difference: ${currency} ${formatAmount(trialBalance.summary.difference || 0)}`}
+                description={`Difference: ${formatCurrency(trialBalance.summary.difference || 0)}`}
                 style={{ marginBottom: 16 }}
                 showIcon
               />
@@ -671,13 +670,13 @@ const Accounting = () => {
                 <Statistic 
                   title="Total Debits" 
                   value={trialBalance.summary?.totalDebits || 0}
-                  formatter={value => `${currency} ${formatAmount(value)}`}
+                  formatter={value => `${formatCurrency(value)}`}
                   size="small"
                 />
                 <Statistic 
                   title="Total Credits" 
                   value={trialBalance.summary?.totalCredits || 0}
-                  formatter={value => `${currency} ${formatAmount(value)}`}
+                  formatter={value => `${formatCurrency(value)}`}
                   size="small"
                 />
               </Space>
@@ -714,7 +713,7 @@ const Accounting = () => {
                   <Statistic 
                     title="Total Payable" 
                     value={payables.summary?.totalPayable || 0}
-                    formatter={value => `${currency} ${formatAmount(value)}`}
+                    formatter={value => `${formatCurrency(value)}`}
                     valueStyle={{ color: '#ff4d4f' }}
                   />
                 </Col>
@@ -722,7 +721,7 @@ const Accounting = () => {
                   <Statistic 
                     title="Overdue Amount" 
                     value={payables.summary?.overdueTotal || 0}
-                    formatter={value => `${currency} ${formatAmount(value)}`}
+                    formatter={value => `${formatCurrency(value)}`}
                     valueStyle={{ color: '#ff7875' }}
                   />
                 </Col>
@@ -753,7 +752,7 @@ const Accounting = () => {
                   <Statistic 
                     title="Total Receivable" 
                     value={receivables.summary?.totalReceivable || 0}
-                    formatter={value => `${currency} ${formatAmount(value)}`}
+                    formatter={value => `${formatCurrency(value)}`}
                     valueStyle={{ color: '#52c41a' }}
                   />
                 </Col>
@@ -761,7 +760,7 @@ const Accounting = () => {
                   <Statistic 
                     title="Overdue Amount" 
                     value={receivables.summary?.overdueTotal || 0}
-                    formatter={value => `${currency} ${formatAmount(value)}`}
+                    formatter={value => `${formatCurrency(value)}`}
                     valueStyle={{ color: '#ff7875' }}
                   />
                 </Col>
@@ -809,7 +808,7 @@ const Accounting = () => {
                   <Statistic 
                     title="Purchase Payments" 
                     value={payments.summary?.totalPurchasePayments || 0}
-                    formatter={value => `${currency} ${formatAmount(value)}`}
+                    formatter={value => `${formatCurrency(value)}`}
                     valueStyle={{ color: '#ff4d4f' }}
                   />
                   <div style={{ fontSize: 11, color: '#999' }}>Money paid to vendors</div>
@@ -818,7 +817,7 @@ const Accounting = () => {
                   <Statistic 
                     title="Sales Receipts" 
                     value={payments.summary?.totalSalesPayments || 0}
-                    formatter={value => `${currency} ${formatAmount(value)}`}
+                    formatter={value => `${formatCurrency(value)}`}
                     valueStyle={{ color: '#52c41a' }}
                   />
                   <div style={{ fontSize: 11, color: '#999' }}>Money received from customers</div>
@@ -895,7 +894,7 @@ const Accounting = () => {
                   fontWeight: viewingEntry.debit_amount > 0 ? 'bold' : 'normal',
                   fontSize: '16px'
                 }}>
-                  {currency} {formatAmount(viewingEntry.debit_amount || 0)}
+                  {formatCurrency(viewingEntry.debit_amount || 0)}
                 </span>
               </Descriptions.Item>
               <Descriptions.Item label="Credit Amount">
@@ -904,7 +903,7 @@ const Accounting = () => {
                   fontWeight: viewingEntry.credit_amount > 0 ? 'bold' : 'normal',
                   fontSize: '16px'
                 }}>
-                  {currency} {formatAmount(viewingEntry.credit_amount || 0)}
+                  {formatCurrency(viewingEntry.credit_amount || 0)}
                 </span>
               </Descriptions.Item>
               <Descriptions.Item label="Created By">
@@ -957,7 +956,7 @@ const Accounting = () => {
                   </Descriptions.Item>
                   <Descriptions.Item label="Total Amount">
                     <span style={{ fontWeight: 'bold', color: '#1890ff' }}>
-                      {currency} {formatAmount(entryDetails.invoice.total_amount || 0)}
+                      {formatCurrency(entryDetails.invoice.total_amount || 0)}
                     </span>
                   </Descriptions.Item>
                   <Descriptions.Item label="Status">
@@ -999,7 +998,7 @@ const Accounting = () => {
                           key: 'unit_cost', 
                           width: 100, 
                           align: 'right',
-                          render: v => `${currency} ${formatAmount(v || 0)}`
+                          render: v => `${formatCurrency(v || 0)}`
                         },
                         { 
                           title: 'Line Total', 
@@ -1009,7 +1008,7 @@ const Accounting = () => {
                           align: 'right',
                           render: v => (
                             <span style={{ fontWeight: 'bold' }}>
-                              {currency} {formatAmount(v || 0)}
+                              {formatCurrency(v || 0)}
                             </span>
                           )
                         },
@@ -1055,24 +1054,24 @@ const Accounting = () => {
                     {viewingEntry.entry_type === 'purchase_invoice' && (
                       <div>
                         <p><strong>Purchase Invoice Entry:</strong></p>
-                        <p>• <strong>Debit:</strong> Purchase Expense/Inventory ({currency} {formatAmount(entryDetails?.invoice?.subtotal || 0)}) - Increases expenses/assets</p>
-                        <p>• <strong>Credit:</strong> Accounts Payable ({currency} {formatAmount(viewingEntry.credit_amount || 0)}) - Increases liability (money we owe)</p>
-                        <p>This entry records that we received goods/services worth {currency} {formatAmount(viewingEntry.credit_amount || 0)} and now owe this amount to the vendor.</p>
+                        <p>• <strong>Debit:</strong> Purchase Expense/Inventory ({formatCurrency(entryDetails?.invoice?.subtotal || 0)}) - Increases expenses/assets</p>
+                        <p>• <strong>Credit:</strong> Accounts Payable ({formatCurrency(viewingEntry.credit_amount || 0)}) - Increases liability (money we owe)</p>
+                        <p>This entry records that we received goods/services worth {formatCurrency(viewingEntry.credit_amount || 0)} and now owe this amount to the vendor.</p>
                       </div>
                     )}
                     {viewingEntry.entry_type === 'sales_invoice' && (
                       <div>
                         <p><strong>Sales Invoice Entry:</strong></p>
-                        <p>• <strong>Debit:</strong> Accounts Receivable ({currency} {formatAmount(viewingEntry.debit_amount || 0)}) - Increases assets (money customers owe us)</p>
-                        <p>• <strong>Credit:</strong> Sales Revenue ({currency} {formatAmount(viewingEntry.credit_amount || 0)}) - Increases revenue</p>
+                        <p>• <strong>Debit:</strong> Accounts Receivable ({formatCurrency(viewingEntry.debit_amount || 0)}) - Increases assets (money customers owe us)</p>
+                        <p>• <strong>Credit:</strong> Sales Revenue ({formatCurrency(viewingEntry.credit_amount || 0)}) - Increases revenue</p>
                         <p>This entry records that we sold goods/services and the customer owes us money.</p>
                       </div>
                     )}
                     {!['purchase_invoice', 'sales_invoice'].includes(viewingEntry.entry_type) && (
                       <div>
                         <p>This is a {viewingEntry.entry_type?.replace(/_/g, ' ')} entry.</p>
-                        <p>• <strong>Debit:</strong> {currency} {formatAmount(viewingEntry.debit_amount || 0)}</p>
-                        <p>• <strong>Credit:</strong> {currency} {formatAmount(viewingEntry.credit_amount || 0)}</p>
+                        <p>• <strong>Debit:</strong> {formatCurrency(viewingEntry.debit_amount || 0)}</p>
+                        <p>• <strong>Credit:</strong> {formatCurrency(viewingEntry.credit_amount || 0)}</p>
                       </div>
                     )}
                   </div>
