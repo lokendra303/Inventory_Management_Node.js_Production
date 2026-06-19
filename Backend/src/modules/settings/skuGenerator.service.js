@@ -344,7 +344,8 @@ class SkuGeneratorService {
     return length ? clean.slice(0, length) : clean;
   }
 
-  _abbr(raw, length = 3) {
+  /** First letter of each word, capped at `length` (uses fewer when name has fewer words). */
+  _abbr(raw, length = 10) {
     if (!raw) return '';
     const text = String(raw).trim();
     if (!text) return '';
@@ -352,10 +353,9 @@ class SkuGeneratorService {
       .split(/[^A-Za-z0-9]+/g)
       .map((w) => w.trim())
       .filter(Boolean);
-    if (words.length >= 2) {
-      return words.map((w) => w[0].toUpperCase()).join('').slice(0, Math.max(1, length));
-    }
-    return this._slug(text, length);
+    if (words.length === 0) return '';
+    const cap = Math.max(1, Number(length) || 10);
+    return words.map((w) => w[0].toUpperCase()).join('').slice(0, cap);
   }
 
   _templatePrefix(rule, ctx, counter) {
@@ -365,8 +365,8 @@ class SkuGeneratorService {
     const counterPart = this._counterPart(rule, counter);
     const short = (v, n = 3) => this._slug(v, n);
     const full = (v) => this._slug(v, null);
-    const extract = (value, len = 3, mode = 'abbr') => {
-      const width = Math.max(1, Number(len) || 3);
+    const extract = (value, len = 10, mode = 'abbr') => {
+      const width = Math.max(1, Number(len) || 10);
       const m = String(mode || 'abbr').toLowerCase();
       if (m === 'first' || m === 'abbr' || m === 'initials') return this._abbr(value, width);
       if (m === 'slice' || m === 'chars') return this._slug(value, width);
@@ -379,15 +379,15 @@ class SkuGeneratorService {
       const customLen = rawLen ? Number(rawLen) : null;
       const customMode = rawMode || null;
       switch (t) {
-        case 'BRAND': return customLen || customMode ? extract(ctx.brand, customLen || 3, customMode || 'abbr') : full(ctx.brandCode || short(ctx.brand));
-        case 'ITEM': return customLen || customMode ? extract(ctx.item || ctx.name, customLen || 3, customMode || 'abbr') : full(ctx.itemCode || short(ctx.item || ctx.name));
-        case 'VARIANT': return customLen || customMode ? extract(ctx.variant, customLen || 3, customMode || 'abbr') : full(ctx.variantCode || short(ctx.variant));
-        case 'SIZE': return customLen || customMode ? extract(ctx.size || ctx.unit, customLen || 3, customMode || 'slice') : full(ctx.size || ctx.unit);
-        case 'TYPE': return customLen || customMode ? extract(ctx.type, customLen || 3, customMode || 'abbr') : full(ctx.typeCode || short(ctx.type));
-        case 'CATEGORY': return customLen || customMode ? extract(ctx.category, customLen || 3, customMode || 'abbr') : full(ctx.categoryCode || short(ctx.category));
-        case 'MANUFACTURER': return customLen || customMode ? extract(ctx.manufacturer, customLen || 3, customMode || 'abbr') : full(ctx.manufacturerCode || short(ctx.manufacturer));
-        case 'UNIT': return customLen || customMode ? extract(ctx.unit, customLen || 3, customMode || 'slice') : full(ctx.unitCode || short(ctx.unit));
-        case 'WAREHOUSE': return customLen || customMode ? extract(ctx.warehouse, customLen || 3, customMode || 'slice') : full(ctx.warehouseCode || short(ctx.warehouse));
+        case 'BRAND': return customLen || customMode ? extract(ctx.brand, customLen || 10, customMode || 'abbr') : full(ctx.brandCode || short(ctx.brand));
+        case 'ITEM': return customLen || customMode ? extract(ctx.item || ctx.name, customLen || 10, customMode || 'abbr') : full(ctx.itemCode || short(ctx.item || ctx.name));
+        case 'VARIANT': return customLen || customMode ? extract(ctx.variant, customLen || 10, customMode || 'abbr') : full(ctx.variantCode || short(ctx.variant));
+        case 'SIZE': return customLen || customMode ? extract(ctx.size || ctx.unit, customLen || 10, customMode || 'slice') : full(ctx.size || ctx.unit);
+        case 'TYPE': return customLen || customMode ? extract(ctx.type, customLen || 10, customMode || 'abbr') : full(ctx.typeCode || short(ctx.type));
+        case 'CATEGORY': return customLen || customMode ? extract(ctx.category, customLen || 10, customMode || 'abbr') : full(ctx.categoryCode || short(ctx.category));
+        case 'MANUFACTURER': return customLen || customMode ? extract(ctx.manufacturer, customLen || 10, customMode || 'abbr') : full(ctx.manufacturerCode || short(ctx.manufacturer));
+        case 'UNIT': return customLen || customMode ? extract(ctx.unit, customLen || 10, customMode || 'slice') : full(ctx.unitCode || short(ctx.unit));
+        case 'WAREHOUSE': return customLen || customMode ? extract(ctx.warehouse, customLen || 10, customMode || 'slice') : full(ctx.warehouseCode || short(ctx.warehouse));
         case 'HSN': return full(ctx.hsnCode || ctx.hsn);
         case 'MPN': return full(ctx.mpn);
         case 'BARCODE': return full(ctx.barcode);

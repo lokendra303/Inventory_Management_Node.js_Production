@@ -1,4 +1,3 @@
-const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const projectionService = require('../../projections/inventoryProjections');
 const inventoryService = require('./inventory.service');
@@ -39,6 +38,35 @@ class CompositeInventoryService {
     const row = await this.getItemRow(institutionId, itemId);
     if (String(row.type || '').toLowerCase() !== 'composite') return null;
     return this.normalizeFulfillmentMode(row.kit_fulfillment_mode);
+  }
+
+  async applyKitAssemblyCost(institutionId, itemId, warehouseId, addedQty, unitCost) {
+    const added = Number(addedQty) || 0;
+    const unit = Number(unitCost) || 0;
+    if (added <= 0) return;
+
+    const rows = await db.query(
+      `SELECT quantity_on_hand, average_cost
+         FROM inventory_projections
+        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND item_variant_id IS NULL
+        LIMIT 1`,
+      [institutionId, itemId, warehouseId]
+    );
+    if (!rows.length) return;
+
+    const onHand = Number(rows[0].quantity_on_hand) || 0;
+    const avgCost = Number(rows[0].average_cost) || 0;
+    const prevOnHand = Math.max(onHand - added, 0);
+    const newAvgCost = onHand > 0
+      ? ((prevOnHand * avgCost) + (added * unit)) / onHand
+      : unit;
+
+    await db.query(
+      `UPDATE inventory_projections
+          SET average_cost = ?, total_value = quantity_on_hand * ?
+        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND item_variant_id IS NULL`,
+      [newAvgCost, newAvgCost, institutionId, itemId, warehouseId]
+    );
   }
 
   async getAvailability(institutionId, compositeItemId, warehouseId) {
@@ -124,6 +152,7 @@ class CompositeInventoryService {
     const reason = notes ? `KIT_ASSEMBLY: ${notes}` : 'KIT_ASSEMBLY';
     let totalUnitCost = 0;
     const decreased = [];
+    let kitIncreased = false;
 
     try {
       for (const c of components) {
@@ -152,18 +181,25 @@ class CompositeInventoryService {
       }
 
       const unitKitCost = qty > 0 ? totalUnitCost / qty : 0;
-      await inventoryService.receiveStock(
+      await inventoryService.adjustStock(
         institutionId,
         {
           itemId: compositeItemId,
           warehouseId,
-          quantity: qty,
-          unitCost: unitKitCost,
-          poId: uuidv4(),
-          poLineId: uuidv4(),
-          grnNumber: batchRef
+          quantityChange: qty,
+          adjustmentType: 'increase',
+          reason,
+          lossType: 'MANUAL'
         },
         userId
+      );
+      kitIncreased = true;
+      await this.applyKitAssemblyCost(
+        institutionId,
+        compositeItemId,
+        warehouseId,
+        qty,
+        unitKitCost
       );
 
       logger.info('Kit assembled', {
@@ -177,6 +213,28 @@ class CompositeInventoryService {
 
       return { batchRef, quantity: qty, unitKitCost };
     } catch (err) {
+      if (kitIncreased) {
+        try {
+          await inventoryService.adjustStock(
+            institutionId,
+            {
+              itemId: compositeItemId,
+              warehouseId,
+              quantityChange: qty,
+              adjustmentType: 'decrease',
+              reason: `KIT_ASSEMBLY_ROLLBACK:${batchRef}`,
+              lossType: 'MANUAL'
+            },
+            userId
+          );
+        } catch (rollbackErr) {
+          logger.error('Kit assembly kit-stock rollback failed', {
+            institutionId,
+            compositeItemId,
+            error: rollbackErr.message
+          });
+        }
+      }
       for (const row of decreased) {
         try {
           await inventoryService.adjustStock(

@@ -977,7 +977,7 @@ const Items = () => {
     value: key,
     label: DERIVED_SOURCE_LABELS[key] || key
   }));
-  const DEFAULT_DERIVED_CFG = { len: 3, mode: 'abbr' };
+  const DEFAULT_DERIVED_CFG = { len: 10, mode: 'abbr' };
   const buildDefaultDerivedConfig = () => Object.fromEntries(
     Object.keys(DERIVED_TOKEN_BY_SOURCE).map((src) => [src, { ...DEFAULT_DERIVED_CFG }])
   );
@@ -1002,7 +1002,7 @@ const Items = () => {
       if (!src) return null;
       sources.push(src);
       config[src] = {
-        len: Math.max(1, Number(lenRaw) || 3),
+        len: Math.max(1, Number(lenRaw) || 10),
         mode: ['abbr', 'slice'].includes(String(modeRaw || '').toLowerCase()) ? String(modeRaw).toLowerCase() : 'abbr'
       };
     }
@@ -1078,7 +1078,7 @@ const Items = () => {
             const token = DERIVED_TOKEN_BY_SOURCE[s];
             if (!token) return null;
             const c = cfg[s] || DEFAULT_DERIVED_CFG;
-            const len = Math.max(1, Number(c?.len) || 3);
+            const len = Math.max(1, Number(c?.len) || 10);
             const mode = String(c?.mode || 'abbr').toLowerCase() === 'slice' ? 'slice' : 'abbr';
             return `{${token}|${len}|${mode}}`;
           })
@@ -9205,16 +9205,18 @@ const viewItem = (item) => {
                                         }>
                                           {({ getFieldValue }) => {
                                             const mode = getFieldValue(['prefixSourceConfig', src, 'mode']) || 'abbr';
-                                            const disableLen = mode === 'abbr';
+                                            const isAbbr = mode === 'abbr';
                                             return (
                                               <Form.Item
                                                 name={['prefixSourceConfig', src, 'len']}
-                                                label="Chars"
+                                                label={isAbbr ? 'Max initials' : 'Chars'}
                                                 style={{ marginBottom: 0 }}
                                                 labelCol={{ style: { paddingBottom: 2 } }}
-                                                extra={disableLen ? 'Disabled for first letters' : undefined}
+                                                extra={isAbbr
+                                                  ? 'Counts words first, then one initial per word — uses fewer if name has fewer words (max is upper limit only)'
+                                                  : 'Characters from start of field (spaces removed)'}
                                               >
-                                                <InputNumber min={1} max={10} style={{ width: '100%' }} disabled={disableLen} />
+                                                <InputNumber min={1} max={20} style={{ width: '100%' }} />
                                               </Form.Item>
                                             );
                                           }}

@@ -85,10 +85,15 @@ class InventoryProjectionService {
         );
       } else {
         const p = current[0];
-        const newQty        = p.quantity_on_hand + quantity;
-        const newTotalValue = (p.quantity_on_hand * p.average_cost) + (quantity * unitCost);
-        const newAvgCost    = newTotalValue / newQty;
-        const newAvailable  = p.quantity_available + quantity;
+        const currentOnHand = Number(p.quantity_on_hand) || 0;
+        const currentAvailable = Number(p.quantity_available) || 0;
+        const currentAvgCost = Number(p.average_cost) || 0;
+        const recvQty = Number(quantity) || 0;
+        const recvUnitCost = Number(unitCost) || 0;
+        const newQty = currentOnHand + recvQty;
+        const newTotalValue = (currentOnHand * currentAvgCost) + (recvQty * recvUnitCost);
+        const newAvgCost = newQty > 0 ? newTotalValue / newQty : recvUnitCost;
+        const newAvailable = currentAvailable + recvQty;
 
         await db.query(
           `UPDATE inventory_projections 
