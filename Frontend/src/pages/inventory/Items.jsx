@@ -13,7 +13,6 @@ import CustomizableDropdown from '../../components/common/CustomizableDropdown';
 import ViewModeToggle from '../../components/common/ViewModeToggle';
 import ItemCatalogGrid from '../../components/inventory/ItemCatalogGrid';
 import ItemDetailsModal from '../../components/inventory/ItemDetailsModal';
-import CompositeBomSection from '../../components/inventory/CompositeBomSection';
 import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -512,8 +511,6 @@ const Items = () => {
   const [variantLibrary, setVariantLibrary] = useState([]);
   const [existingCustomFields, setExistingCustomFields] = useState({});
   const [variantMatrixEdits, setVariantMatrixEdits] = useState([]);
-  const [compositeComponents, setCompositeComponents] = useState([]);
-  const [kitFulfillmentMode, setKitFulfillmentMode] = useState('prebuilt');
   const autoDraftSavingRef = useRef(false);
   const autoDraftSavedRef = useRef(false);
   const variantBuilderSeededRef = useRef(false);
@@ -1588,8 +1585,6 @@ const Items = () => {
     setActiveDraftId(null);
     setExistingCustomFields({});
     setVariantMatrixEdits([]);
-    setCompositeComponents([]);
-    setKitFulfillmentMode('prebuilt');
     setEditingWarehouseSummaries([]);
     setSelectedSkuRuleId(null);
     setLastAppliedSkuRule(null);
@@ -2024,22 +2019,8 @@ const Items = () => {
         shelfLifeDays: values.shelfLifeDays || null,
       };
       if (itemData.type === 'composite') {
-        const normalizedComponents = normalizeCompositeComponents(compositeComponents);
-        if (normalizedComponents.length === 0) {
-          message.error('Add at least one BOM component for composite item.');
-          return;
-        }
-        const duplicateSet = new Set(normalizedComponents.map((row) => row.itemId));
-        if (duplicateSet.size !== normalizedComponents.length) {
-          message.error('Duplicate component item is not allowed in BOM.');
-          return;
-        }
-        if (editingItem?.id && normalizedComponents.some((row) => row.itemId === editingItem.id)) {
-          message.error('Composite item cannot be added as its own component.');
-          return;
-        }
-        itemData.components = normalizedComponents;
-        itemData.kitFulfillmentMode = kitFulfillmentMode;
+        message.error('BOM / composite items must be created in Production.');
+        return;
       }
 
       if (!isEditing && duplicateSourcePayload) {
@@ -2235,8 +2216,6 @@ const Items = () => {
         setDuplicateSourcePayload(null);
         setExistingCustomFields({});
         setVariantMatrixEdits([]);
-        setCompositeComponents([]);
-        setKitFulfillmentMode('prebuilt');
         setSelectedSkuRuleId(null);
         setLastAppliedSkuRule(null);
         form.resetFields();
@@ -2471,9 +2450,6 @@ const viewItem = (item) => {
         ? normalizeVariantRowsForEdit(fullItem.variant_rows)
         : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
     );
-    setCompositeComponents(normalizeCompositeComponents(fullItem?.composite_components || []));
-    setKitFulfillmentMode(fullItem?.kit_fulfillment_mode || fullItem?.kitFulfillmentMode || 'prebuilt');
-
     // Get warehouse from item's inventory projections first.
     // If the item has no stock projection yet, fall back to the warehouse owning
     // the saved default bin so the edit form still pre-fills correctly.
@@ -2757,21 +2733,6 @@ const viewItem = (item) => {
       .filter((row) => row.key);
   };
 
-  const normalizeCompositeComponents = (rows = []) => {
-    if (!Array.isArray(rows)) return [];
-    return rows
-      .map((row) => ({
-        itemId: String(row?.itemId || row?.component_item_id || '').trim(),
-        quantityRequired: Number(row?.quantityRequired ?? row?.quantity_required),
-        consumptionTiming: String(row?.consumptionTiming || row?.consumption_timing || 'shipment').toLowerCase()
-      }))
-      .filter((row) => row.itemId && Number.isFinite(row.quantityRequired) && row.quantityRequired > 0)
-      .map((row) => ({
-        ...row,
-        consumptionTiming: ['order', 'shipment'].includes(row.consumptionTiming) ? row.consumptionTiming : 'shipment'
-      }));
-  };
-
   const cartesianVariantRows = (rows = []) => {
     const normalized = normalizeVariantAttributes(rows);
     if (normalized.length === 0) return [];
@@ -2850,12 +2811,6 @@ const viewItem = (item) => {
       .filter((group) => group?.is_active || group?.id === watchedItemGroupId)
       .sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || '')))
   ), [itemGroups, watchedItemGroupId]);
-
-  useEffect(() => {
-    if (watchedItemType !== 'composite' && compositeComponents.length > 0) {
-      setCompositeComponents([]);
-    }
-  }, [watchedItemType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!modalVisible) {
@@ -3125,9 +3080,6 @@ const viewItem = (item) => {
         ? normalizeVariantRowsForEdit(fullItem.variant_rows)
         : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
     );
-    setCompositeComponents(normalizeCompositeComponents(fullItem?.composite_components || []));
-    setKitFulfillmentMode(fullItem?.kit_fulfillment_mode || fullItem?.kitFulfillmentMode || 'prebuilt');
-
     let finalWarehouseId = null;
     if (fullItem.warehouse_ids?.length > 0) {
       finalWarehouseId = fullItem.warehouse_ids[0] || null;
@@ -3243,7 +3195,6 @@ const viewItem = (item) => {
       ean: duplicateFormValues.ean,
       isbn: duplicateFormValues.isbn,
       mpn: duplicateFormValues.mpn,
-      components: normalizeCompositeComponents(fullItem?.composite_components || [])
     });
     setDuplicateSourcePayload(duplicateComparablePayload);
 
@@ -3269,7 +3220,6 @@ const viewItem = (item) => {
     setSelectedSkuRuleId(null);
     setExistingCustomFields({});
     setVariantMatrixEdits([]);
-    setCompositeComponents([]);
 
     await fetchDropdownOptions();
     await loadSkuRules();
@@ -3591,7 +3541,6 @@ const viewItem = (item) => {
     setExistingCustomFields(customFieldsObj);
     setImportCustomFieldsPreview(customPreview);
     setVariantMatrixEdits([]);
-    setCompositeComponents([]);
 
     await loadSkuRules();
 
@@ -3984,8 +3933,6 @@ const viewItem = (item) => {
         ? normalizeVariantRowsForEdit(fullItem.variant_rows)
         : (Array.isArray(fullItem?.custom_fields?.variantMatrix) ? fullItem.custom_fields.variantMatrix : [])
     );
-    setCompositeComponents(normalizeCompositeComponents(fullItem?.composite_components || []));
-    setKitFulfillmentMode(fullItem?.kit_fulfillment_mode || fullItem?.kitFulfillmentMode || 'prebuilt');
     setImageUrl(fullItem.image || '');
 
     let finalWarehouseId = null;
@@ -4666,7 +4613,6 @@ const viewItem = (item) => {
     setImageFile(null);
     setExistingCustomFields(draft.data?.customFields || {});
     setVariantMatrixEdits(Array.isArray(draft.data?.customFields?.variantMatrix) ? draft.data.customFields.variantMatrix : []);
-    setCompositeComponents(normalizeCompositeComponents(draft.data?.components || []));
     setLastAppliedSkuRule(null);
     setSelectedSkuRuleId(null);
     form.resetFields();
@@ -4700,7 +4646,7 @@ const viewItem = (item) => {
 
     autoDraftSavingRef.current = true;
     try {
-      await apiService.post('/items/draft', { ...values, image: imageUrl, components: compositeComponents });
+      await apiService.post('/items/draft', { ...values, image: imageUrl });
       if (source === 'session-timeout') {
         message.info('Session about to expire: item saved as draft.');
       }
@@ -4714,7 +4660,7 @@ const viewItem = (item) => {
     } finally {
       autoDraftSavingRef.current = false;
     }
-  }, [compositeComponents, editingItem, form, hasDraftableValues, imageUrl]);
+  }, [editingItem, form, hasDraftableValues, imageUrl]);
 
   const handleSaveDraft = async () => {
     try {
@@ -4728,7 +4674,6 @@ const viewItem = (item) => {
       setEditingItem(null);
       setActiveDraftId(null);
       setDraftBanner(null);
-      setCompositeComponents([]);
       fetchDrafts();
     } catch {
       message.error('Failed to save draft');
@@ -6891,7 +6836,6 @@ const viewItem = (item) => {
           setActiveDraftId(null);
           setExistingCustomFields({});
           setVariantMatrixEdits([]);
-          setCompositeComponents([]);
           setEditingWarehouseSummaries([]);
           setSelectedSkuRuleId(null);
           setLastAppliedSkuRule(null);
@@ -7758,7 +7702,7 @@ const viewItem = (item) => {
                       label="Item type"
                       initialValue="simple"
                       rules={[{ required: true, message: 'Select item type' }]}
-                      tooltip="Simple: one SKU. Variant: options (e.g. size). Composite: BOM / kit. Service: non-stock."
+                      tooltip="Simple: one SKU. Variant: options (e.g. size). Service: non-stock. BOM kits are managed under Production."
                     >
                       <Select
                         placeholder={itemTypes.length ? 'Select type' : 'Select or add a type'}
@@ -7777,7 +7721,7 @@ const viewItem = (item) => {
                           </div>
                         )}
                       >
-                        {itemTypes.map(type => (
+                        {itemTypes.filter((type) => String(type.name || '').toLowerCase() !== 'composite').map(type => (
                           <Select.Option key={type.id} value={type.name}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ textTransform: 'capitalize' }}>{type.name}</span>
@@ -8001,38 +7945,6 @@ const viewItem = (item) => {
                     </Form.Item>
                   </Col>
                 </Row>
-                {watchedItemType === 'composite' && (
-                  <>
-                    <Row gutter={16} style={{ marginBottom: 12 }}>
-                      <Col xs={24} md={12}>
-                        <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: '#64748b' }}>
-                          SALES / FULFILMENT MODE
-                        </div>
-                        <Select
-                          style={{ width: '100%' }}
-                          value={kitFulfillmentMode}
-                          onChange={setKitFulfillmentMode}
-                          options={[
-                            {
-                              value: 'prebuilt',
-                              label: 'Pre-built kits — sell finished kit stock (assemble parts first)',
-                            },
-                            {
-                              value: 'explode_on_ship',
-                              label: 'Explode on ship — consume BOM components when fulfilling orders',
-                            },
-                          ]}
-                        />
-                      </Col>
-                    </Row>
-                    <CompositeBomSection
-                      components={compositeComponents}
-                      onComponentsChange={setCompositeComponents}
-                      catalogItems={items}
-                      excludeItemId={ editingItem?.id }
-                    />
-                  </>
-                )}
                 <Row gutter={16}>
                   <Col span={24}>
                     <Form.Item name="returnableItem" valuePropName="checked" style={{ marginBottom: 8 }}>
@@ -8856,7 +8768,6 @@ const viewItem = (item) => {
                   setEditingItem(null);
                   setDuplicateBanner(null);
                   setDuplicateSourcePayload(null);
-                  setCompositeComponents([]);
                   setEditingWarehouseSummaries([]);
                   form.resetFields();
                 }}

@@ -720,6 +720,10 @@ class BatchSerialService {
     return allocations;
   }
 
+  async previewFefoAllocations(institutionId, itemId, warehouseId, quantity) {
+    return this._allocateFefo(institutionId, itemId, warehouseId, quantity, null);
+  }
+
   async _consumeBatchInternal(institutionId, batchId, quantity, connection = null) {
     const rows = await this._exec(
       connection,
@@ -1160,6 +1164,410 @@ class BatchSerialService {
     }
 
     return { batchId };
+  }
+
+  // ─── KIT ASSEMBLY / DISASSEMBLY ───────────────────────────
+
+  async _kitBatchContext(institutionId, itemId, warehouseId, connection = null) {
+    const batchGeneratorService = require('../settings/batchGenerator.service');
+    return batchGeneratorService.buildContextFromItem(institutionId, itemId, warehouseId, connection);
+  }
+
+  async _generateBatchByContext(institutionId, itemId, connection = null, options = {}) {
+    const batchGeneratorService = require('../settings/batchGenerator.service');
+    const {
+      warehouseId,
+      consume = true,
+      ruleId,
+      context = 'kit_assembly',
+    } = options;
+    if (!warehouseId) {
+      throw new Error('Warehouse is required to generate batch number');
+    }
+
+    const ctx = await this._kitBatchContext(institutionId, itemId, warehouseId, connection);
+    ctx.context = context;
+    if (ruleId) ctx.ruleId = ruleId;
+
+    if (!consume) {
+      const preview = await batchGeneratorService.previewBatch(institutionId, ctx, { connection });
+      return preview.preview;
+    }
+
+    const result = await batchGeneratorService.generateBatch(institutionId, ctx, { connection });
+    return result.batchNumber;
+  }
+
+  async generateKitAssemblyBatchNumber(institutionId, itemId, connection = null, options = {}) {
+    return this._generateBatchByContext(institutionId, itemId, connection, {
+      ...options,
+      context: 'kit_assembly',
+    });
+  }
+
+  async generateOpeningStockBatchNumber(institutionId, itemId, connection = null, options = {}) {
+    return this._generateBatchByContext(institutionId, itemId, connection, {
+      ...options,
+      context: 'opening_stock',
+    });
+  }
+
+  async generateKitDisassemblyComponentBatchNumber(institutionId, itemId, connection = null, options = {}) {
+    const batchGeneratorService = require('../settings/batchGenerator.service');
+    const { warehouseId, consume = true, ruleId } = options;
+    if (!warehouseId) {
+      throw new Error('Warehouse is required to generate disassembly batch number');
+    }
+
+    const ctx = await this._kitBatchContext(institutionId, itemId, warehouseId, connection);
+    ctx.context = 'kit_disassembly';
+    if (ruleId) ctx.ruleId = ruleId;
+
+    if (!consume) {
+      const preview = await batchGeneratorService.previewBatch(institutionId, ctx, { connection });
+      return preview.preview;
+    }
+
+    const result = await batchGeneratorService.generateBatch(institutionId, ctx, { connection });
+    return result.batchNumber;
+  }
+
+  async getBatchStockTotal(institutionId, itemId, warehouseId, connection = null) {
+    const batchRows = await this._exec(
+      connection,
+      `SELECT COALESCE(SUM(quantity_remaining), 0) AS batch_total
+         FROM item_batches
+        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND status = 'active'`,
+      [institutionId, itemId, warehouseId]
+    );
+    return parseFloat(batchRows[0]?.batch_total || 0);
+  }
+
+  async _restoreBatchQuantity(institutionId, batchId, quantity, connection = null) {
+    const qty = parseFloat(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) return;
+    await this._exec(
+      connection,
+      'UPDATE item_batches SET quantity_remaining = quantity_remaining + ? WHERE institution_id = ? AND id = ?',
+      [qty, institutionId, batchId]
+    );
+  }
+
+  async consumeForKitAssembly(institutionId, lineData, userId, connection = null) {
+    const {
+      itemId, warehouseId, quantity, batchAllocations, assemblyRefId,
+    } = lineData;
+
+    const tracking = await this.getItemTracking(institutionId, itemId);
+    if (!tracking.isBatchTracked) return { allocations: [] };
+
+    const qty = parseFloat(quantity);
+    let allocations = batchAllocations;
+    if (!allocations?.length) {
+      allocations = await this._allocateFefo(institutionId, itemId, warehouseId, qty, connection);
+    } else {
+      const total = allocations.reduce((sum, row) => sum + parseFloat(row.quantity), 0);
+      if (Math.abs(total - qty) > 0.0001) {
+        throw new Error(`Batch allocation total (${total}) must equal assembly consumption (${qty})`);
+      }
+    }
+
+    for (const alloc of allocations) {
+      await this._consumeBatchInternal(institutionId, alloc.batchId, alloc.quantity, connection);
+      await this._logMovement(
+        institutionId,
+        {
+          movementType: 'ship',
+          referenceType: 'kit_assembly_component',
+          referenceId: assemblyRefId,
+          itemId,
+          warehouseId,
+          batchId: alloc.batchId,
+          quantity: alloc.quantity,
+        },
+        userId,
+        connection
+      );
+    }
+
+    return { allocations };
+  }
+
+  async receiveForKitAssembly(institutionId, lineData, userId, connection = null) {
+    const {
+      itemId, warehouseId, quantity, unitCost,
+      batchNumber, manufactureDate, expiryDate, assemblyRefId, batchRuleId,
+    } = lineData;
+
+    const tracking = await this.getItemTracking(institutionId, itemId);
+    const qty = parseFloat(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new Error('Invalid kit assembly quantity for batch receive');
+    }
+
+    if (tracking.hasExpiry && !expiryDate) {
+      throw new Error('Expiry date is required for batch-tracked kits with expiry tracking');
+    }
+
+    let normalizedBatch = String(batchNumber || '').trim().toUpperCase();
+    if (!normalizedBatch) {
+      normalizedBatch = await this.generateKitAssemblyBatchNumber(
+        institutionId,
+        itemId,
+        connection,
+        { warehouseId, consume: true, ruleId: batchRuleId }
+      );
+    }
+
+    const dup = await this._exec(
+      connection,
+      `SELECT id FROM item_batches
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND batch_number = ?`,
+      [institutionId, itemId, warehouseId, normalizedBatch]
+    );
+    if (dup.length) {
+      throw new Error(`Batch number "${normalizedBatch}" already exists for this kit in this warehouse`);
+    }
+
+    const batchId = await this._receiveIntoBatch(
+      institutionId,
+      {
+        itemId,
+        warehouseId,
+        batchNumber: normalizedBatch,
+        manufactureDate,
+        expiryDate,
+        quantity: qty,
+        unitCost: unitCost || 0,
+      },
+      userId,
+      connection
+    );
+
+    await this._logMovement(
+      institutionId,
+      {
+        movementType: 'receive',
+        referenceType: 'kit_assembly_output',
+        referenceId: assemblyRefId,
+        itemId,
+        warehouseId,
+        batchId,
+        quantity: qty,
+      },
+      userId,
+      connection
+    );
+
+    return { batchId, batchNumber: normalizedBatch, quantity: qty };
+  }
+
+  async receiveForOpeningStock(institutionId, lineData, userId, connection = null) {
+    const {
+      itemId, warehouseId, quantity, unitCost,
+      batchNumber, manufactureDate, expiryDate, batchRuleId, openingRefId,
+      forceBatch = false,
+    } = lineData;
+
+    const tracking = await this.getItemTracking(institutionId, itemId);
+    const qty = parseFloat(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new Error('Invalid opening stock quantity for batch receive');
+    }
+
+    if (!tracking.isBatchTracked && !forceBatch) {
+      return null;
+    }
+
+    if (tracking.hasExpiry && !expiryDate) {
+      throw new Error('Expiry date is required for batch-tracked items with expiry tracking');
+    }
+
+    let normalizedBatch = String(batchNumber || '').trim().toUpperCase();
+    if (!normalizedBatch) {
+      try {
+        normalizedBatch = await this.generateOpeningStockBatchNumber(
+          institutionId,
+          itemId,
+          connection,
+          { warehouseId, consume: true, ruleId: batchRuleId }
+        );
+      } catch (genErr) {
+        const rows = await this._exec(
+          connection,
+          'SELECT sku FROM items WHERE id = ? AND institution_id = ? LIMIT 1',
+          [itemId, institutionId]
+        );
+        const sku = String(rows[0]?.sku || 'KIT').replace(/[^A-Z0-9-]/gi, '').toUpperCase() || 'KIT';
+        normalizedBatch = `OPEN-${sku}-${Date.now()}`;
+        logger.warn('Opening batch rule generation failed; using fallback lot number', {
+          institutionId,
+          itemId,
+          error: genErr.message,
+          fallback: normalizedBatch,
+        });
+      }
+    }
+
+    const dup = await this._exec(
+      connection,
+      `SELECT id FROM item_batches
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND batch_number = ?`,
+      [institutionId, itemId, warehouseId, normalizedBatch]
+    );
+    if (dup.length) {
+      throw new Error(`Batch number "${normalizedBatch}" already exists for this item in this warehouse`);
+    }
+
+    const batchId = await this._receiveIntoBatch(
+      institutionId,
+      {
+        itemId,
+        warehouseId,
+        batchNumber: normalizedBatch,
+        manufactureDate,
+        expiryDate,
+        quantity: qty,
+        unitCost: unitCost || 0,
+      },
+      userId,
+      connection
+    );
+
+    await this._logMovement(
+      institutionId,
+      {
+        movementType: 'receive',
+        referenceType: 'opening_stock',
+        referenceId: openingRefId || `OPEN-${itemId}`,
+        itemId,
+        warehouseId,
+        batchId,
+        quantity: qty,
+      },
+      userId,
+      connection
+    );
+
+    return { batchId, batchNumber: normalizedBatch, quantity: qty };
+  }
+
+  async rollbackKitAssemblyBatches(institutionId, batchOps, userId, connection = null) {
+    const { componentAllocations = [], outputBatch } = batchOps || {};
+
+    for (const alloc of componentAllocations) {
+      try {
+        await this._restoreBatchQuantity(institutionId, alloc.batchId, alloc.quantity, connection);
+      } catch (err) {
+        logger.error('Kit assembly batch rollback failed (component)', {
+          institutionId,
+          batchId: alloc.batchId,
+          error: err.message,
+        });
+      }
+    }
+
+    if (outputBatch?.batchId && outputBatch?.quantity) {
+      try {
+        await this._consumeBatchInternal(
+          institutionId,
+          outputBatch.batchId,
+          outputBatch.quantity,
+          connection
+        );
+      } catch (err) {
+        logger.error('Kit assembly batch rollback failed (output)', {
+          institutionId,
+          batchId: outputBatch.batchId,
+          error: err.message,
+        });
+      }
+    }
+  }
+
+  async processKitDisassemblyBatches(institutionId, data, userId, connection = null) {
+    const {
+      compositeItemId, warehouseId, quantity, components, disassemblyRefId, componentUnitCosts = {},
+    } = data;
+
+    const qty = parseFloat(quantity);
+    const kitTracking = await this.getItemTracking(institutionId, compositeItemId);
+    const kitAllocations = [];
+
+    if (kitTracking.isBatchTracked) {
+      const allocations = await this._allocateFefo(
+        institutionId, compositeItemId, warehouseId, qty, connection
+      );
+      for (const alloc of allocations) {
+        await this._consumeBatchInternal(institutionId, alloc.batchId, alloc.quantity, connection);
+        await this._logMovement(
+          institutionId,
+          {
+            movementType: 'ship',
+            referenceType: 'kit_disassembly_output',
+            referenceId: disassemblyRefId,
+            itemId: compositeItemId,
+            warehouseId,
+            batchId: alloc.batchId,
+            quantity: alloc.quantity,
+          },
+          userId,
+          connection
+        );
+        kitAllocations.push(alloc);
+      }
+    }
+
+    const componentBatches = [];
+    for (const c of components) {
+      const compTracking = await this.getItemTracking(institutionId, c.component_item_id);
+      if (!compTracking.isBatchTracked) continue;
+
+      const lineQty = qty * Number(c.quantity_required);
+      const batchNumber = await this.generateKitDisassemblyComponentBatchNumber(
+        institutionId, c.component_item_id, connection, { warehouseId, consume: true }
+      );
+      const unitCost = Number(componentUnitCosts[c.component_item_id]) || 0;
+
+      const batchId = await this._receiveIntoBatch(
+        institutionId,
+        {
+          itemId: c.component_item_id,
+          warehouseId,
+          batchNumber,
+          quantity: lineQty,
+          unitCost,
+        },
+        userId,
+        connection
+      );
+
+      await this._logMovement(
+        institutionId,
+        {
+          movementType: 'receive',
+          referenceType: 'kit_disassembly_component',
+          referenceId: disassemblyRefId,
+          itemId: c.component_item_id,
+          warehouseId,
+          batchId,
+          quantity: lineQty,
+        },
+        userId,
+        connection
+      );
+
+      componentBatches.push({
+        itemId: c.component_item_id,
+        batchId,
+        batchNumber,
+        quantity: lineQty,
+        itemName: c.component_name || null,
+        itemSku: c.sku || null,
+      });
+    }
+
+    return { kitAllocations, componentBatches };
   }
 
   async getMovements(institutionId, filters = {}) {

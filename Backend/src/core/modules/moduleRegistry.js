@@ -14,6 +14,7 @@ const moduleRegistry = [
   { path: '/warehouse-types', router: require('../../modules/warehouse/warehouseType.routes') },
   { path: '/warehouse-locations', router: require('../../modules/warehouse/warehouseLocation.routes') },
   { path: '/inventory', router: require('../../modules/inventory/inventory.routes') },
+  { path: '/production', router: require('../../modules/production/production.routes') },
   { path: '/putaways', router: require('../../modules/inventory/putaway.routes') },
   { path: '/purchase-orders', router: require('../../modules/order/purchaseOrder.routes') },
   { path: '/vendors', router: require('../../modules/entity/vendor.routes') },
@@ -46,6 +47,7 @@ const moduleRegistry = [
   { path: '/subscription', router: require('../../modules/subscription/subscription.routes') },
   { path: '/workflows', router: require('../../modules/workflows/workflow.routes') },
   { path: '/sku-rules', router: require('../../modules/settings/skuGenerator.routes') },
+  { path: '/batch-rules', router: require('../../modules/settings/batchGenerator.routes') },
 ];
 
 module.exports = moduleRegistry;

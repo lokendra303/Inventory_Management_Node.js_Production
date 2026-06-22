@@ -42,8 +42,8 @@ export function AddItemGuide() {
           <ul style={{ margin: '8px 0 0', paddingLeft: 20, lineHeight: 1.7 }}>
             <li><Text strong>Simple</Text> — one SKU; optional “quick variant” tags (colour, size, pack) are labels only.</li>
             <li><Text strong>Variant</Text> — many SKUs from a matrix (e.g. size × colour); stock and prices are set per child row.</li>
-            <li><Text strong>Composite</Text> — kit / BOM made of other items.</li>
             <li><Text strong>Service</Text> — non-stock; inventory sections are largely irrelevant.</li>
+            <li><Text strong>BOM / kit items</Text> — managed under <Text code>Production → BOM Items</Text>, not on this form.</li>
           </ul>
         }
       />
@@ -60,7 +60,7 @@ export function AddItemGuide() {
             { field: 'SKU', info: 'Unique code for this item or variant line. Used on documents, barcodes, and duplicate checks. Optional SKU rules / Generate SKU help auto-build it from category and attributes.' },
             { field: 'Item Name', info: 'Name shown in lists, orders, and invoices.' },
             { field: 'Variant / Packing, Colour, Size, Pack Type', info: 'For non-variant items: optional labels (e.g. 100ML, Red, Large) to refine naming and SKU generation — not full multi-attribute variants.' },
-            { field: 'Item type', info: 'Controls whether you get a single row, a variant matrix, composite BOM, or a service item.' },
+            { field: 'Item type', info: 'Controls whether you get a single row, a variant matrix, or a service item. BOM kits use Production.' },
             { field: 'Category', info: 'Reporting group and input for default SKU rules.' },
             { field: 'Unit', info: 'How stock and prices are counted (pieces, kg, box, etc.).' },
             { field: 'Item Group', info: 'Optional higher-level grouping for filters and reporting.' },
@@ -77,19 +77,19 @@ export function AddItemGuide() {
         />
       </Card>
 
-      <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} title="Composite item — BOM components (kit recipe)">
+      <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} title="Production — BOM items (kits)">
         <Paragraph type="secondary" style={{ marginTop: 0 }}>
-          Shown when <Text strong>Item type</Text> is <Text strong>composite</Text>. Each row is one BOM line—the same meanings as the help panel at the top of the BOM section on the form.
+          BOM / composite kits are created under <Text code>Production → BOM Items</Text>, not on the Items page. Use <Text code>Production → BOM Operation</Text> to assemble or disassemble finished kits from parts.
         </Paragraph>
         <Table
           {...tableProps}
           rowKey="field"
           columns={[colField, colInfo]}
           dataSource={[
-            { field: 'Component item', info: 'An existing catalogue item (simple or variant only). Adding it here does not change that item’s record; it only links it into this BOM.' },
-            { field: 'Qty per 1 kit', info: 'How many units of the component belong to exactly one unit of the parent composite. Total need for kits sold = kits × this quantity.' },
-            { field: 'Consume when → Shipment', info: 'Use when component stock should be tied to fulfilment dispatch (warehouse ship/goods issue).' },
-            { field: 'Consume when → Order', info: 'Use when consumption or allocation aligns with placing or confirming the sales order (not yet shipped).' },
+            { field: 'Component item', info: 'An existing catalogue item (simple or variant only). Each row is one BOM line for the parent kit.' },
+            { field: 'Qty per 1 kit', info: 'How many units of the component belong to exactly one unit of the parent kit.' },
+            { field: 'Fulfillment mode', info: 'Pre-built: sell finished kit stock. Explode on ship: consume components when shipping sales orders.' },
+            { field: 'Consume when → Shipment / Order', info: 'For explode-on-ship kits: when component stock is reserved or consumed.' },
           ]}
         />
       </Card>

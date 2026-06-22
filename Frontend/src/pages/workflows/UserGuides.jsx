@@ -105,7 +105,7 @@ export default function UserGuides() {
       key: 'add-item-guide',
       title: 'Add Item — Field Guide',
       category: 'Inventory',
-      keywords: ['items', 'sku', 'catalog', 'variant', 'price', 'stock', 'add item', 'item form', 'bom', 'kit', 'composite'],
+      keywords: ['items', 'sku', 'catalog', 'variant', 'price', 'stock', 'add item', 'item form', 'production', 'bom', 'kit'],
       icon: <InboxOutlined />,
       component: <AddItemGuide />,
     },

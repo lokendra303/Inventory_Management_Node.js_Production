@@ -6,7 +6,7 @@ import { preloadRoute } from '../../routes/lazyPages.jsx';
 import CurrencySelector from '../common/CurrencySelector.jsx';
 import {
   FundProjectionScreenOutlined, DatabaseOutlined, TagsOutlined, BankOutlined,
-  ContainerOutlined, FileDoneOutlined, AccountBookOutlined,
+  ContainerOutlined, FileDoneOutlined, AccountBookOutlined, BuildOutlined,
   ControlOutlined, TeamOutlined, FolderOpenOutlined, TransactionOutlined,
   DownOutlined, PieChartOutlined, AuditOutlined,
   PercentageOutlined, ThunderboltOutlined, CrownOutlined, TagsFilled,
@@ -29,6 +29,7 @@ const ICON_COLORS = {
   '/dashboard'   : '#667eea',
   inventory      : '#38ef7d',
   items          : '#f093fb',
+  production     : '#a78bfa',
   '/warehouses'  : '#ffd200',
   'warehouses'   : '#ffd200',
   sales          : '#f5576c',
@@ -476,7 +477,6 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       children: [
         hasPermission('inventory_view')     && { key: '/inventory',               label: 'Overview' },
         hasPermission('inventory_adjust')   && { key: '/inventory/adjustments',   label: 'Adjustments' },
-        hasPermission('inventory_adjust')   && { key: '/inventory/kit-assembly',  label: 'Kit Assembly' },
         hasPermission('inventory_adjust')   && { key: '/inventory/stock-count',   label: 'Stock Count' },
         hasPermission('inventory_view')     && { key: '/inventory/batch-tracking',label: 'Batch & Serial' },
         hasPermission('inventory_view')     && { key: '/inventory/reorder-levels', label: 'Reorder Levels' },
@@ -484,6 +484,13 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         hasPermission('inventory_ship')     && { key: '/inventory/shipments',     label: 'Shipments' },
         hasPermission('inventory_transfer') && { key: '/inventory/move-orders',   label: 'Move Orders' },
         hasPermission('inventory_receive')  && { key: '/inventory/putaways',      label: 'Putaways' },
+      ].filter(Boolean),
+    },
+    hasAnyPermission('production_view', 'production_management') && {
+      key: 'production', icon: <BuildOutlined />, label: 'Production',
+      children: [
+        hasPermission('production_view') && { key: '/production/bom-items', label: 'BOM Items' },
+        hasPermission('production_management') && { key: '/production/kit-assembly', label: 'BOM Operation' },
       ].filter(Boolean),
     },
     hasAnyPermission('item_view','item_management') && {

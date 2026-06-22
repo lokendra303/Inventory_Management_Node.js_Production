@@ -58,6 +58,7 @@ import {
   StockCount,
   ReorderLevels,
   KitAssembly,
+  BomItems,
   BatchTracking,
   PurchaseReturns,
   ExchangeRateSettings,
@@ -102,7 +103,8 @@ const ProtectedItemTrash = withPermission('item_view')(ItemTrash);
 const ProtectedWarehouses = withPermission('warehouse_view')(Warehouses);
 const ProtectedWarehouseLocations = withPermission('warehouse_view')(WarehouseLocations);
 const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(InventoryAdjustments);
-const ProtectedKitAssembly = withPermission('inventory_adjust')(KitAssembly);
+const ProtectedKitAssembly = withPermission('production_management')(KitAssembly);
+const ProtectedBomItems = withPermission('production_view')(BomItems);
 const ProtectedInventoryShipments = withPermission('inventory_ship')(Shipments);
 const ProtectedPutaways = withPermission('inventory_receive')(Putaways);
 const ProtectedMoveOrders = withPermission('inventory_transfer')(MoveOrders);
@@ -183,7 +185,9 @@ function AppContent() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/inventory" element={<ProtectedInventory />} />
               <Route path="/inventory/adjustments" element={<ProtectedInventoryAdjustments />} />
-              <Route path="/inventory/kit-assembly" element={<ProtectedKitAssembly />} />
+              <Route path="/inventory/kit-assembly" element={<Navigate to="/production/kit-assembly" replace />} />
+              <Route path="/production/bom-items" element={<ProtectedBomItems />} />
+              <Route path="/production/kit-assembly" element={<ProtectedKitAssembly />} />
               <Route path="/inventory/shipments" element={<ProtectedInventoryShipments />} />
               <Route path="/inventory/putaways" element={<ProtectedPutaways />} />
               <Route path="/inventory/move-orders" element={<ProtectedMoveOrders />} />

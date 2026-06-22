@@ -130,6 +130,25 @@ class ItemService {
     }
   }
 
+  _extractMetaScalar(value) {
+    if (value == null || value === '') return null;
+    if (Array.isArray(value)) {
+      const parts = value.map((v) => String(v || '').trim()).filter(Boolean);
+      return parts.length ? parts.join(', ') : null;
+    }
+    const text = String(value).trim();
+    return text || null;
+  }
+
+  _extractComponentSize(customFields = {}) {
+    const cf = typeof customFields === 'object' && customFields ? customFields : {};
+    const skuMeta = cf.skuMeta && typeof cf.skuMeta === 'object' ? cf.skuMeta : {};
+    return this._extractMetaScalar(skuMeta.size)
+      || this._extractMetaScalar(cf.size)
+      || this._extractMetaScalar(cf.Size)
+      || null;
+  }
+
   async _resolveItemGroup(institutionId, payload = {}) {
     return itemGroupService.resolveItemGroupRef(institutionId, payload);
   }
@@ -365,7 +384,7 @@ class ItemService {
     return rows.length;
   }
 
-  async createItem(institutionId, itemData, userId) {
+  async createItem(institutionId, itemData, userId, options = {}) {
     const {
       sku,
       name,
@@ -407,8 +426,16 @@ class ItemService {
       asOfDate,
       warehouseId,
       defaultBinId = null,
-      kitFulfillmentMode = 'prebuilt'
+      kitFulfillmentMode = 'prebuilt',
+      openingBatchNumber,
+      openingManufactureDate,
+      openingExpiryDate,
+      openingBatchRuleId,
     } = itemData;
+
+    if (String(type).toLowerCase() === 'composite' && !options.allowComposite) {
+      throw new Error('Composite/BOM items must be created in Production');
+    }
 
     // Validate custom fields based on item type
     const validationErrors = await itemFieldService.validateCustomFields(institutionId, type, customFields);
@@ -527,6 +554,61 @@ class ItemService {
         },
         userId
       );
+
+      const isComposite = String(type).toLowerCase() === 'composite';
+      const needsOpeningBatch = Boolean(isBatchTracked) || isComposite;
+      if (needsOpeningBatch) {
+        try {
+          const batchResult = await this._receiveOpeningStockBatch(
+            institutionId,
+            {
+              itemId,
+              warehouseId,
+              quantity: normalizedOpeningStock,
+              unitCost: openingUnitCost,
+              isBatchTracked: isBatchTracked || isComposite,
+              type,
+              openingBatchNumber,
+              openingManufactureDate,
+              openingExpiryDate,
+              openingBatchRuleId,
+            },
+            userId
+          );
+          if (batchResult?.batchNumber) {
+            logger.info('Opening stock batch created', {
+              institutionId,
+              itemId,
+              batchNumber: batchResult.batchNumber,
+              quantity: normalizedOpeningStock,
+            });
+          }
+        } catch (batchErr) {
+          try {
+            await inventoryService.adjustStock(
+              institutionId,
+              {
+                itemId,
+                warehouseId,
+                quantityChange: normalizedOpeningStock,
+                adjustmentType: 'decrease',
+                reason: 'OPENING_BATCH_ROLLBACK',
+                lossType: 'MANUAL',
+              },
+              userId
+            );
+          } catch (rollbackErr) {
+            logger.error('Opening stock rollback failed after batch error', {
+              institutionId,
+              itemId,
+              error: rollbackErr.message,
+            });
+          }
+          throw new Error(
+            batchErr.message || 'Failed to create opening stock batch. Run batch_generator_rules migrations.'
+          );
+        }
+      }
     } else if (openingStock > 0 && !warehouseId) {
       logger.warn('Opening stock provided without warehouse', { itemId, openingStock, institutionId });
     }
@@ -535,7 +617,7 @@ class ItemService {
     return itemId;
   }
 
-  async updateItem(institutionId, itemId, updateData, userId) {
+  async updateItem(institutionId, itemId, updateData, userId, options = {}) {
     const {
       sku,
       name,
@@ -589,6 +671,15 @@ class ItemService {
 
     if (status !== undefined) {
       this._validateItemStatusTransition(oldItem?.status, status);
+    }
+
+    const currentTypeEarly = String(oldItem?.type || '').toLowerCase();
+    const nextTypeEarly = type !== undefined ? String(type).toLowerCase() : currentTypeEarly;
+    const touchesComposite = currentTypeEarly === 'composite'
+      || nextTypeEarly === 'composite'
+      || updateData.components !== undefined;
+    if (touchesComposite && !options.allowComposite) {
+      throw new Error('Composite/BOM items must be managed in Production');
     }
 
     if (sku !== undefined) {
@@ -1225,6 +1316,12 @@ class ItemService {
       params.push(filters.type);
     }
 
+    if (Array.isArray(filters.excludeTypes) && filters.excludeTypes.length > 0) {
+      const placeholders = filters.excludeTypes.map(() => '?').join(',');
+      where += ` AND i.type NOT IN (${placeholders})`;
+      params.push(...filters.excludeTypes);
+    }
+
     if (filters.category) {
       where += ' AND i.category = ?';
       params.push(filters.category);
@@ -1365,7 +1462,7 @@ class ItemService {
       ...itemData,
       type: 'composite',
       components
-    }, userId);
+    }, userId, { allowComposite: true });
 
     logger.info('Composite item created', { itemId, institutionId, userId, componentCount: Array.isArray(components) ? components.length : 0 });
     return itemId;
@@ -1377,14 +1474,77 @@ class ItemService {
     return updatedCount;
   }
 
+  async _receiveOpeningStockBatch(institutionId, data, userId) {
+    const {
+      itemId,
+      warehouseId,
+      quantity,
+      unitCost,
+      isBatchTracked,
+      type,
+      openingBatchNumber,
+      openingManufactureDate,
+      openingExpiryDate,
+      openingBatchRuleId,
+    } = data;
+
+    const qty = Number(quantity) || 0;
+    if (!itemId || !warehouseId || qty <= 0) return null;
+
+    const isComposite = String(type || '').toLowerCase() === 'composite';
+    if (!isBatchTracked && !isComposite) return null;
+
+    const batchSerialService = require('../inventory/batchSerial.service');
+    const result = await batchSerialService.receiveForOpeningStock(
+      institutionId,
+      {
+        itemId,
+        warehouseId,
+        quantity: qty,
+        unitCost: unitCost || 0,
+        batchNumber: openingBatchNumber,
+        manufactureDate: openingManufactureDate,
+        expiryDate: openingExpiryDate,
+        batchRuleId: openingBatchRuleId,
+        openingRefId: `OPEN-${itemId}`,
+        forceBatch: isComposite,
+      },
+      userId
+    );
+
+    if (isComposite && result) {
+      await db.query(
+        'UPDATE items SET is_batch_tracked = 1, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+        [institutionId, itemId]
+      );
+    }
+
+    return result;
+  }
+
   async getCompositeComponents(institutionId, compositeItemId) {
-    return await db.query(
-      `SELECT cc.*, i.sku, i.name as component_name, i.unit
-       FROM composite_components cc
-       JOIN items i ON cc.component_item_id = i.id
-       WHERE cc.institution_id = ? AND cc.composite_item_id = ?`,
+    const rows = await db.query(
+      `SELECT cc.*,
+              i.sku,
+              i.name AS component_name,
+              i.unit AS unit_id,
+              i.custom_fields,
+              u.name AS unit_name
+         FROM composite_components cc
+         JOIN items i ON cc.component_item_id = i.id
+         LEFT JOIN units u ON i.unit = u.id
+        WHERE cc.institution_id = ? AND cc.composite_item_id = ?`,
       [institutionId, compositeItemId]
     );
+    return rows.map((row) => {
+      const customFields = this._safeParseJson(row.custom_fields, {});
+      const { custom_fields: _rawCustomFields, ...rest } = row;
+      return {
+        ...rest,
+        unit: row.unit_name || row.unit_id || null,
+        component_size: this._extractComponentSize(customFields),
+      };
+    });
   }
 
   async calculateCompositeStock(institutionId, compositeItemId, warehouseId) {
@@ -1565,6 +1725,83 @@ class ItemService {
     await db.query(
       `DELETE FROM items
        WHERE institution_id = ? AND created_by = ? AND status = 'draft'`,
+      [institutionId, userId]
+    );
+  }
+
+  _parseDraftRow(row) {
+    let parsed = row.draft_data;
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
+    }
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
+    }
+    return {
+      id: row.id,
+      data: parsed,
+      savedAt: row.updated_at,
+      label: row.name || parsed?.name || parsed?.sku || 'Draft',
+      sku: row.sku,
+    };
+  }
+
+  async saveBomDraft(institutionId, userId, draftData) {
+    const payload = {
+      ...(typeof draftData === 'object' && draftData ? draftData : {}),
+      _draftKind: 'bom',
+    };
+    const serialized = JSON.stringify(payload);
+
+    await db.query(
+      `DELETE FROM items
+       WHERE institution_id = ? AND created_by = ? AND status = 'draft' AND type = 'composite'`,
+      [institutionId, userId]
+    );
+
+    const draftId = uuidv4();
+    const draftSku = `BOM-DRAFT-${draftId.slice(0, 8).toUpperCase()}`;
+    const displayName = String(payload.name || payload.sku || 'BOM Draft').slice(0, 255);
+    const unit = payload.unit || 'pcs';
+
+    await db.query(
+      `INSERT INTO items (id, institution_id, created_by, draft_data, status, name, sku, type, unit, custom_fields)
+       VALUES (?, ?, ?, ?, 'draft', ?, ?, 'composite', ?, '{}')`,
+      [draftId, institutionId, userId, serialized, displayName, draftSku, unit]
+    );
+
+    return draftId;
+  }
+
+  async getBomDrafts(institutionId, userId) {
+    const rows = await db.query(
+      `SELECT id, draft_data, updated_at, name, sku
+         FROM items
+        WHERE institution_id = ? AND created_by = ? AND status = 'draft' AND type = 'composite'
+        ORDER BY updated_at DESC`,
+      [institutionId, userId]
+    );
+    return rows.map((row) => this._parseDraftRow(row));
+  }
+
+  async getBomDraft(institutionId, userId) {
+    const drafts = await this.getBomDrafts(institutionId, userId);
+    return drafts.length > 0 ? drafts[0] : null;
+  }
+
+  async deleteBomDraft(institutionId, userId, draftId = null) {
+    if (draftId) {
+      await db.query(
+        `DELETE FROM items
+         WHERE institution_id = ? AND created_by = ? AND status = 'draft' AND type = 'composite' AND id = ?`,
+        [institutionId, userId, draftId]
+      );
+      return;
+    }
+
+    await db.query(
+      `DELETE FROM items
+       WHERE institution_id = ? AND created_by = ? AND status = 'draft' AND type = 'composite'`,
       [institutionId, userId]
     );
   }

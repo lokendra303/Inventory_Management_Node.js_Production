@@ -23,6 +23,10 @@ const PERMISSIONS = {
   // Item Management
   ITEM_VIEW: 'item_view',
   ITEM_MANAGEMENT: 'item_management',
+
+  // Production / BOM
+  PRODUCTION_VIEW: 'production_view',
+  PRODUCTION_MANAGEMENT: 'production_management',
   
   // Warehouse Management
   WAREHOUSE_VIEW: 'warehouse_view',
@@ -85,6 +89,8 @@ const ROLE_PERMISSIONS = {
     [PERMISSIONS.INVENTORY_MANAGEMENT]: true,
     [PERMISSIONS.ITEM_VIEW]: true,
     [PERMISSIONS.ITEM_MANAGEMENT]: true,
+    [PERMISSIONS.PRODUCTION_VIEW]: true,
+    [PERMISSIONS.PRODUCTION_MANAGEMENT]: true,
     [PERMISSIONS.WAREHOUSE_VIEW]: true,
     [PERMISSIONS.WAREHOUSE_MANAGEMENT]: true,
     [PERMISSIONS.WAREHOUSE_TYPE_VIEW]: true,
@@ -107,6 +113,7 @@ const ROLE_PERMISSIONS = {
   user: {
     [PERMISSIONS.INVENTORY_VIEW]: true,
     [PERMISSIONS.ITEM_VIEW]: true,
+    [PERMISSIONS.PRODUCTION_VIEW]: true,
     [PERMISSIONS.WAREHOUSE_VIEW]: true,
     [PERMISSIONS.WAREHOUSE_TYPE_VIEW]: true,
     [PERMISSIONS.CATEGORY_VIEW]: true,
@@ -144,6 +151,11 @@ const PERMISSION_GROUPS = {
   'Item Management': [
     PERMISSIONS.ITEM_VIEW,
     PERMISSIONS.ITEM_MANAGEMENT
+  ],
+
+  'Production': [
+    PERMISSIONS.PRODUCTION_VIEW,
+    PERMISSIONS.PRODUCTION_MANAGEMENT
   ],
   
   'Warehouse Management': [

@@ -279,7 +279,6 @@ const DynamicItemForm = ({ itemType = 'simple', onSubmit, initialData = {} }) =>
             >
               <option value="simple">Simple Product</option>
               <option value="service">Service</option>
-              <option value="composite">Composite</option>
               <option value="variant">Variant</option>
             </select>
           </div>

@@ -73,6 +73,24 @@ export const PERMISSION_MATRIX_SECTIONS = [
     ],
   },
   {
+    title: 'Production',
+    rows: [
+      {
+        id: 'production',
+        label: 'BOM operation',
+        cells: {
+          full: ['production_view', 'production_management'],
+          view: ['production_view'],
+          create: ['production_management'],
+          edit: ['production_management'],
+          delete: ['production_management'],
+          approve: [],
+        },
+        moreKeys: [],
+      },
+    ],
+  },
+  {
     title: 'Inventory',
     rows: [
       {

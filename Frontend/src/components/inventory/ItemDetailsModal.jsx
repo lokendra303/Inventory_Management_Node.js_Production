@@ -3,7 +3,7 @@ import {
   Modal, Button, Row, Col, Card, Tag, Table, Empty, Tabs, Timeline, Spin,
 } from 'antd';
 import {
-  EyeOutlined, InboxOutlined, HistoryOutlined, DollarOutlined,
+  EyeOutlined, InboxOutlined, HistoryOutlined, DollarOutlined, BuildOutlined,
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -49,6 +49,53 @@ const getItemStatusTagColor = (status) => {
   if (status === 'trashed') return 'default';
   return 'error';
 };
+
+const fulfillmentLabel = (mode) => (
+  mode === 'explode_on_ship' ? 'Explode on ship' : 'Pre-built'
+);
+
+const consumptionLabel = (timing) => (
+  String(timing || 'shipment').toLowerCase() === 'order' ? 'On order' : 'On shipment'
+);
+
+const looksLikeUuid = (value) => (
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
+);
+
+const resolveComponentUnit = (component) => {
+  if (component?.unit_name) return component.unit_name;
+  const raw = component?.unit;
+  if (raw && !looksLikeUuid(raw)) return raw;
+  return '—';
+};
+
+const resolveComponentSize = (component) => {
+  if (component?.component_size) return component.component_size;
+  const cf = component?.custom_fields;
+  if (cf && typeof cf === 'object') {
+    const skuMeta = cf.skuMeta && typeof cf.skuMeta === 'object' ? cf.skuMeta : {};
+    const pick = (val) => {
+      if (val == null || val === '') return null;
+      if (Array.isArray(val)) return val.filter(Boolean).join(', ') || null;
+      return String(val).trim() || null;
+    };
+    return pick(skuMeta.size) || pick(cf.size) || pick(cf.Size) || '—';
+  }
+  return component?.size || '—';
+};
+
+const normalizeBomComponents = (item) => (
+  Array.isArray(item?.composite_components) ? item.composite_components : []
+).map((c, idx) => ({
+  key: c.id || c.component_item_id || `component-${idx}`,
+  itemId: c.component_item_id || c.itemId,
+  name: c.component_name || c.name || '—',
+  sku: c.sku || '—',
+  unit: resolveComponentUnit(c),
+  size: resolveComponentSize(c),
+  quantityRequired: Number(c.quantity_required ?? c.quantityRequired ?? 0),
+  consumptionTiming: c.consumption_timing || c.consumptionTiming || 'shipment',
+}));
 
 const ItemDetailsModal = ({ open, item, onClose }) => {
   const { currency } = useCurrency();
@@ -112,6 +159,10 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
     onClose?.();
   };
 
+  const isComposite = String(viewingItem?.type || '').toLowerCase() === 'composite';
+  const bomComponents = normalizeBomComponents(viewingItem);
+  const kitFulfillmentMode = viewingItem?.kit_fulfillment_mode || viewingItem?.kitFulfillmentMode;
+
   return (
     <Modal
       title={(
@@ -144,6 +195,11 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
               <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Tag color={getItemStatusTagColor(viewingItem.status)} style={{ borderRadius: 20, textTransform: 'capitalize' }}>{viewingItem.status}</Tag>
                 {viewingItem.type && <Tag color="blue" style={{ borderRadius: 20 }}>{viewingItem.type}</Tag>}
+                {isComposite && (
+                  <Tag color="geekblue" style={{ borderRadius: 20 }}>
+                    <BuildOutlined /> {fulfillmentLabel(kitFulfillmentMode)}
+                  </Tag>
+                )}
                 {viewingItem.category && <Tag color="orange" style={{ borderRadius: 20 }}>{viewingItem.category}</Tag>}
                 {viewingItem.item_group_name && <Tag color="purple" style={{ borderRadius: 20 }}>{viewingItem.item_group_name}</Tag>}
               </div>
@@ -214,6 +270,66 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
             <div style={{ background: '#fff', borderRadius: 12, padding: '12px 18px', marginBottom: 12, boxShadow: '0 1px 8px rgba(0,0,0,0.06)', fontSize: 13, color: '#595959' }}>
               <strong>Description:</strong> {viewingItem.description}
             </div>
+          )}
+
+          {isComposite && (
+            <Card
+              size="small"
+              title={(
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span><BuildOutlined /> BOM Components</span>
+                  <Tag color="purple" style={{ borderRadius: 999, marginInlineEnd: 0 }}>
+                    {bomComponents.length} component{bomComponents.length === 1 ? '' : 's'}
+                  </Tag>
+                </div>
+              )}
+              style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden' }}
+              styles={{ body: { paddingTop: 8 } }}
+            >
+              {bomComponents.length === 0 ? (
+                <Empty description="No BOM components defined for this kit" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              ) : (
+                <Table
+                  size="small"
+                  rowKey="key"
+                  dataSource={bomComponents}
+                  pagination={{ pageSize: 8, size: 'small', hideOnSinglePage: true }}
+                  scroll={{ x: 820 }}
+                  columns={[
+                    {
+                      title: 'Component',
+                      key: 'component',
+                      render: (_, row) => (
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#1a1a2e' }}>{row.name}</div>
+                          <div style={{ fontSize: 12, color: '#8c8c8c', fontFamily: 'monospace' }}>{row.sku}</div>
+                        </div>
+                      ),
+                    },
+                    {
+                      title: 'Qty per kit',
+                      dataIndex: 'quantityRequired',
+                      key: 'quantityRequired',
+                      width: 110,
+                      render: (v) => <strong>{Number(v)}</strong>,
+                    },
+                    { title: 'Size', dataIndex: 'size', key: 'size', width: 90, render: (v) => v || '—' },
+                    { title: 'Unit', dataIndex: 'unit', key: 'unit', width: 90, render: (v) => v || '—' },
+                    {
+                      title: 'Consumption',
+                      dataIndex: 'consumptionTiming',
+                      key: 'consumptionTiming',
+                      width: 130,
+                      render: (v) => (
+                        <Tag color={String(v).toLowerCase() === 'order' ? 'orange' : 'blue'} style={{ borderRadius: 20, marginInlineEnd: 0 }}>
+                          {consumptionLabel(v)}
+                        </Tag>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </Card>
           )}
 
           <Card

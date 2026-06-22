@@ -53,7 +53,9 @@ export default function CompositeBomSection({
   };
 
   const selectableItems = catalogItems.filter(
-    (itemRow) => itemRow.id !== excludeItemId && itemRow.status === 'active'
+    (itemRow) => itemRow.id !== excludeItemId
+      && itemRow.status === 'active'
+      && ['simple', 'variant'].includes(String(itemRow.type || '').toLowerCase())
   );
 
   return (
@@ -119,7 +121,7 @@ export default function CompositeBomSection({
             <AntText strong>Consume when</AntText>
             {' — '}For <AntText strong>Explode on ship</AntText> kits: <AntText strong>Order</AntText>
             {' '}reserves components when the sales order is created; <AntText strong>Shipment</AntText>
-            {' '}consumes at dispatch. Pre-built kits use <AntText strong>Kit Assembly</AntText>
+            {' '}consumes at dispatch. Pre-built kits use <AntText strong>BOM Operation</AntText>
             {' '}to move parts into finished kit stock before selling.
           </li>
         </ul>
@@ -133,6 +135,17 @@ export default function CompositeBomSection({
           {components.map((row, idx) => {
             const controlTopOffset = 22 + 8;
             const deletePaddingTop = screens.sm ? controlTopOffset : 0;
+            const selectedElsewhere = new Set(
+              components
+                .map((c, i) => (i !== idx && c.itemId ? String(c.itemId) : null))
+                .filter(Boolean)
+            );
+            const rowOptions = selectableItems.filter(
+              (itemRow) => !selectedElsewhere.has(String(itemRow.id)) || String(row.itemId) === String(itemRow.id)
+            );
+            const duplicateRow = row.itemId && components.some(
+              (c, i) => i !== idx && String(c.itemId) === String(row.itemId)
+            );
             return (
               <div
                 key={`bom-${idx}`}
@@ -159,8 +172,9 @@ export default function CompositeBomSection({
                       style={{ width: '100%', display: 'block' }}
                       size="middle"
                       onChange={(value) => updateRow(idx, { itemId: value })}
+                      status={duplicateRow ? 'error' : (!row.itemId ? 'warning' : undefined)}
                     >
-                      {selectableItems.map((itemRow) => (
+                      {rowOptions.map((itemRow) => (
                         <Select.Option key={itemRow.id} value={itemRow.id}>
                           <span>{itemRow.sku}</span>
                           {' — '}
@@ -168,6 +182,15 @@ export default function CompositeBomSection({
                         </Select.Option>
                       ))}
                     </Select>
+                    {duplicateRow ? (
+                      <AntText type="danger" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                        Same component already on another row — use one row and increase qty, or remove this line.
+                      </AntText>
+                    ) : !row.itemId ? (
+                      <AntText type="warning" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                        Select a component or remove this empty row before saving.
+                      </AntText>
+                    ) : null}
                   </Col>
                   <Col xs={12} sm={6}>
                     <div style={BOM_FIELD_LABEL_STYLE}>

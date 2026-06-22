@@ -2,7 +2,9 @@ const db = require('../../database/connection');
 const projectionService = require('../../projections/inventoryProjections');
 const inventoryService = require('./inventory.service');
 const itemService = require('../entity/item.service');
+const batchSerialService = require('./batchSerial.service');
 const logger = require('../../utils/logger');
+const { v4: uuidv4 } = require('uuid');
 
 const FULFILLMENT_PREBUILT = 'prebuilt';
 const FULFILLMENT_EXPLODE = 'explode_on_ship';
@@ -19,7 +21,8 @@ class CompositeInventoryService {
 
   async getItemRow(institutionId, itemId) {
     const rows = await db.query(
-      `SELECT id, type, kit_fulfillment_mode, name, sku
+      `SELECT id, type, kit_fulfillment_mode, name, sku,
+              is_batch_tracked, is_serialized, has_expiry
          FROM items
         WHERE institution_id = ? AND id = ?
         LIMIT 1`,
@@ -27,6 +30,45 @@ class CompositeInventoryService {
     );
     if (!rows.length) throw new Error('Item not found');
     return rows[0];
+  }
+
+  async calculateBuildableWithBatches(institutionId, compositeItemId, warehouseId) {
+    const components = await itemService.getCompositeComponents(institutionId, compositeItemId);
+    if (!components.length) return 0;
+
+    let minAvailableStock = Infinity;
+    for (const component of components) {
+      const tracking = await batchSerialService.getItemTracking(
+        institutionId,
+        component.component_item_id
+      );
+      let availableQuantity;
+      if (tracking.isBatchTracked) {
+        availableQuantity = await batchSerialService.getBatchStockTotal(
+          institutionId,
+          component.component_item_id,
+          warehouseId
+        );
+      } else {
+        const componentStock = await projectionService.getInventoryProjection(
+          institutionId,
+          component.component_item_id,
+          warehouseId
+        );
+        availableQuantity = componentStock ? Number(componentStock.quantity_available) : 0;
+      }
+      const req = Number(component.quantity_required);
+      const possibleCompositeQuantity = req > 0 ? Math.floor(availableQuantity / req) : 0;
+      minAvailableStock = Math.min(minAvailableStock, possibleCompositeQuantity);
+    }
+
+    const projectionBuildable = await itemService.calculateCompositeStock(
+      institutionId,
+      compositeItemId,
+      warehouseId
+    );
+    const batchBuildable = minAvailableStock === Infinity ? 0 : minAvailableStock;
+    return Math.min(projectionBuildable, batchBuildable);
   }
 
   async isComposite(institutionId, itemId) {
@@ -76,11 +118,26 @@ class CompositeInventoryService {
     }
 
     const components = await itemService.getCompositeComponents(institutionId, compositeItemId);
-    const buildableFromComponents = await itemService.calculateCompositeStock(
+    const buildableFromComponents = await this.calculateBuildableWithBatches(
       institutionId,
       compositeItemId,
       warehouseId
     );
+    const batchGen = require('../settings/batchGenerator.service');
+    const batchCtx = await batchGen.buildContextFromItem(
+      institutionId,
+      compositeItemId,
+      warehouseId
+    );
+    batchCtx.context = 'kit_assembly';
+    const batchPreview = await batchGen.previewBatch(institutionId, batchCtx);
+    const suggestedOutputBatchNumber = batchPreview.preview;
+    const batchRule = batchPreview.rule;
+    const kitTracking = {
+      isBatchTracked: Boolean(row.is_batch_tracked),
+      isSerialized: Boolean(row.is_serialized),
+      hasExpiry: Boolean(row.has_expiry),
+    };
     const kitProj = await projectionService.getInventoryProjection(
       institutionId,
       compositeItemId,
@@ -96,7 +153,19 @@ class CompositeInventoryService {
         c.component_item_id,
         warehouseId
       );
-      const avail = p ? Number(p.quantity_available) : 0;
+      const compTracking = await batchSerialService.getItemTracking(
+        institutionId,
+        c.component_item_id
+      );
+      let avail = p ? Number(p.quantity_available) : 0;
+      if (compTracking.isBatchTracked) {
+        const batchAvail = await batchSerialService.getBatchStockTotal(
+          institutionId,
+          c.component_item_id,
+          warehouseId
+        );
+        avail = Math.min(avail, batchAvail);
+      }
       const req = Number(c.quantity_required);
       componentDetails.push({
         componentItemId: c.component_item_id,
@@ -106,9 +175,19 @@ class CompositeInventoryService {
         quantityRequiredPerKit: req,
         consumptionTiming: c.consumption_timing || 'shipment',
         available: avail,
-        kitsSupportable: req > 0 ? Math.floor(avail / req) : 0
+        averageCost: p ? Number(p.average_cost) : 0,
+        kitsSupportable: req > 0 ? Math.floor(avail / req) : 0,
+        isBatchTracked: compTracking.isBatchTracked,
+        isSerialized: compTracking.isSerialized,
       });
     }
+
+    const estimatedUnitCost = componentDetails.reduce(
+      (sum, row) => sum + (Number(row.quantityRequiredPerKit) || 0) * (Number(row.averageCost) || 0),
+      0
+    );
+
+    const anyBatchTrackedComponent = componentDetails.some((c) => c.isBatchTracked);
 
     return {
       compositeItemId,
@@ -117,11 +196,96 @@ class CompositeInventoryService {
       kitOnHand,
       kitAvailable,
       buildableFromComponents,
+      kitTracking,
+      suggestedOutputBatchNumber,
+      batchRule,
+      requiresKitBatch: true,
+      anyBatchTrackedComponent,
+      estimatedUnitCost,
       componentDetails
     };
   }
 
-  async assembleKit(institutionId, { compositeItemId, warehouseId, quantity, notes }, userId) {
+  async previewDisassembly(institutionId, compositeItemId, warehouseId, quantity) {
+    const row = await this.getItemRow(institutionId, compositeItemId);
+    if (String(row.type || '').toLowerCase() !== 'composite') {
+      throw new Error('Item is not a composite kit');
+    }
+
+    const qty = Number(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new Error('quantity must be a positive number');
+    }
+
+    const kitProj = await projectionService.getInventoryProjection(
+      institutionId,
+      compositeItemId,
+      warehouseId
+    );
+    const kitAvailable = kitProj ? Number(kitProj.quantity_available) : 0;
+    const kitTracking = await batchSerialService.getItemTracking(institutionId, compositeItemId);
+
+    let kitBatchAllocations = [];
+    let kitBatchSufficient = true;
+    let kitBatchError = null;
+
+    if (kitTracking.isBatchTracked) {
+      try {
+        kitBatchAllocations = await batchSerialService.previewFefoAllocations(
+          institutionId,
+          compositeItemId,
+          warehouseId,
+          qty
+        );
+      } catch (err) {
+        kitBatchSufficient = false;
+        kitBatchError = err.message;
+      }
+    }
+
+    const components = await itemService.getCompositeComponents(institutionId, compositeItemId);
+    const componentPreview = [];
+    for (const c of components) {
+      const lineQty = qty * Number(c.quantity_required);
+      const compTracking = await batchSerialService.getItemTracking(
+        institutionId,
+        c.component_item_id
+      );
+      componentPreview.push({
+        componentItemId: c.component_item_id,
+        sku: c.sku,
+        name: c.component_name,
+        quantityPerKit: Number(c.quantity_required),
+        quantityReturned: lineQty,
+        willCreateBatch: compTracking.isBatchTracked,
+      });
+    }
+
+    return {
+      compositeItemId,
+      warehouseId,
+      quantity: qty,
+      kitAvailable,
+      kitSufficient: kitAvailable >= qty,
+      kitBatchAllocations,
+      kitBatchSufficient,
+      kitBatchError,
+      componentPreview,
+    };
+  }
+
+  async assembleKit(institutionId, payload, userId) {
+    const {
+      compositeItemId,
+      warehouseId,
+      quantity,
+      notes,
+      outputBatchNumber,
+      outputManufactureDate,
+      outputExpiryDate,
+      componentBatchAllocations = {},
+      batchRuleId,
+    } = payload;
     const qty = Number(quantity);
     if (!Number.isFinite(qty) || qty <= 0) {
       throw new Error('Quantity must be a positive number');
@@ -137,7 +301,7 @@ class CompositeInventoryService {
       throw new Error('Composite item has no BOM components');
     }
 
-    const buildable = await itemService.calculateCompositeStock(
+    const buildable = await this.calculateBuildableWithBatches(
       institutionId,
       compositeItemId,
       warehouseId
@@ -148,11 +312,12 @@ class CompositeInventoryService {
       );
     }
 
-    const batchRef = `ASM-${Date.now()}`;
+    const assemblyRefId = `ASM-${Date.now()}-${uuidv4().slice(0, 8)}`;
     const reason = notes ? `KIT_ASSEMBLY: ${notes}` : 'KIT_ASSEMBLY';
     let totalUnitCost = 0;
     const decreased = [];
     let kitIncreased = false;
+    const batchOps = { componentAllocations: [], outputBatch: null };
 
     try {
       for (const c of components) {
@@ -202,17 +367,80 @@ class CompositeInventoryService {
         unitKitCost
       );
 
+      for (const c of components) {
+        const lineQty = qty * Number(c.quantity_required);
+        const customAlloc = componentBatchAllocations[c.component_item_id]
+          || componentBatchAllocations[String(c.component_item_id)];
+        const { allocations } = await batchSerialService.consumeForKitAssembly(
+          institutionId,
+          {
+            itemId: c.component_item_id,
+            warehouseId,
+            quantity: lineQty,
+            batchAllocations: customAlloc,
+            assemblyRefId,
+          },
+          userId
+        );
+        for (const alloc of allocations) {
+          batchOps.componentAllocations.push({
+            ...alloc,
+            itemId: c.component_item_id,
+            itemName: c.component_name,
+            itemSku: c.sku,
+          });
+        }
+      }
+
+      const outputBatch = await batchSerialService.receiveForKitAssembly(
+        institutionId,
+        {
+          itemId: compositeItemId,
+          warehouseId,
+          quantity: qty,
+          unitCost: unitKitCost,
+          batchNumber: outputBatchNumber,
+          manufactureDate: outputManufactureDate,
+          expiryDate: outputExpiryDate,
+          assemblyRefId,
+          batchRuleId,
+        },
+        userId
+      );
+      batchOps.outputBatch = outputBatch;
+
       logger.info('Kit assembled', {
         institutionId,
         compositeItemId,
         warehouseId,
         quantity: qty,
         userId,
-        batchRef
+        assemblyRefId,
+        outputBatchNumber: outputBatch.batchNumber,
       });
 
-      return { batchRef, quantity: qty, unitKitCost };
+      return {
+        batchRef: assemblyRefId,
+        quantity: qty,
+        unitKitCost,
+        outputBatchNumber: outputBatch.batchNumber,
+        outputBatchId: outputBatch.batchId,
+        componentBatchAllocations: batchOps.componentAllocations,
+      };
     } catch (err) {
+      try {
+        await batchSerialService.rollbackKitAssemblyBatches(
+          institutionId,
+          batchOps,
+          userId
+        );
+      } catch (rollbackBatchErr) {
+        logger.error('Kit assembly batch rollback failed', {
+          institutionId,
+          compositeItemId,
+          error: rollbackBatchErr.message,
+        });
+      }
       if (kitIncreased) {
         try {
           await inventoryService.adjustStock(
@@ -222,7 +450,7 @@ class CompositeInventoryService {
               warehouseId,
               quantityChange: qty,
               adjustmentType: 'decrease',
-              reason: `KIT_ASSEMBLY_ROLLBACK:${batchRef}`,
+              reason: `KIT_ASSEMBLY_ROLLBACK:${assemblyRefId}`,
               lossType: 'MANUAL'
             },
             userId
@@ -244,7 +472,7 @@ class CompositeInventoryService {
               warehouseId,
               quantityChange: row.quantity,
               adjustmentType: 'increase',
-              reason: `KIT_ASSEMBLY_ROLLBACK:${batchRef}`,
+              reason: `KIT_ASSEMBLY_ROLLBACK:${assemblyRefId}`,
               lossType: 'MANUAL'
             },
             userId
@@ -261,7 +489,8 @@ class CompositeInventoryService {
     }
   }
 
-  async disassembleKit(institutionId, { compositeItemId, warehouseId, quantity, notes }, userId) {
+  async disassembleKit(institutionId, payload, userId) {
+    const { compositeItemId, warehouseId, quantity, notes } = payload;
     const qty = Number(quantity);
     if (!Number.isFinite(qty) || qty <= 0) {
       throw new Error('Quantity must be a positive number');
@@ -289,48 +518,128 @@ class CompositeInventoryService {
       );
     }
 
-    const batchRef = `DSM-${Date.now()}`;
+    const kitTracking = await batchSerialService.getItemTracking(institutionId, compositeItemId);
+    if (kitTracking.isBatchTracked) {
+      const batchAvail = await batchSerialService.getBatchStockTotal(
+        institutionId,
+        compositeItemId,
+        warehouseId
+      );
+      if (batchAvail < qty) {
+        throw new Error(
+          `Insufficient kit batch stock to disassemble. Batch available: ${batchAvail}, requested: ${qty}. ` +
+            'Assemble kits with batch tracking or reconcile batch quantities.'
+        );
+      }
+    }
+
+    const disassemblyRefId = `DSM-${Date.now()}-${uuidv4().slice(0, 8)}`;
     const reason = notes ? `KIT_DISASSEMBLY: ${notes}` : 'KIT_DISASSEMBLY';
 
-    await inventoryService.adjustStock(
-      institutionId,
-      {
-        itemId: compositeItemId,
-        warehouseId,
-        quantityChange: qty,
-        adjustmentType: 'decrease',
-        reason,
-        lossType: 'MANUAL'
-      },
-      userId
-    );
-
-    for (const c of components) {
-      const lineQty = qty * Number(c.quantity_required);
+    try {
       await inventoryService.adjustStock(
         institutionId,
         {
-          itemId: c.component_item_id,
+          itemId: compositeItemId,
           warehouseId,
-          quantityChange: lineQty,
-          adjustmentType: 'increase',
+          quantityChange: qty,
+          adjustmentType: 'decrease',
           reason,
           lossType: 'MANUAL'
         },
         userId
       );
+
+      const componentUnitCosts = {};
+      for (const c of components) {
+        const lineQty = qty * Number(c.quantity_required);
+        const proj = await projectionService.getInventoryProjection(
+          institutionId,
+          c.component_item_id,
+          warehouseId
+        );
+        componentUnitCosts[c.component_item_id] = proj ? Number(proj.average_cost) : 0;
+
+        await inventoryService.adjustStock(
+          institutionId,
+          {
+            itemId: c.component_item_id,
+            warehouseId,
+            quantityChange: lineQty,
+            adjustmentType: 'increase',
+            reason,
+            lossType: 'MANUAL'
+          },
+          userId
+        );
+      }
+
+      const batchResult = await batchSerialService.processKitDisassemblyBatches(
+        institutionId,
+        {
+          compositeItemId,
+          warehouseId,
+          quantity: qty,
+          components,
+          disassemblyRefId,
+          componentUnitCosts,
+        },
+        userId
+      );
+
+      logger.info('Kit disassembled', {
+        institutionId,
+        compositeItemId,
+        warehouseId,
+        quantity: qty,
+        userId,
+        disassemblyRefId
+      });
+
+      return {
+        batchRef: disassemblyRefId,
+        quantity: qty,
+        kitBatchAllocations: batchResult.kitAllocations,
+        componentBatches: batchResult.componentBatches,
+      };
+    } catch (err) {
+      try {
+        await inventoryService.adjustStock(
+          institutionId,
+          {
+            itemId: compositeItemId,
+            warehouseId,
+            quantityChange: qty,
+            adjustmentType: 'increase',
+            reason: `KIT_DISASSEMBLY_ROLLBACK:${disassemblyRefId}`,
+            lossType: 'MANUAL'
+          },
+          userId
+        );
+        for (const c of components) {
+          const lineQty = qty * Number(c.quantity_required);
+          await inventoryService.adjustStock(
+            institutionId,
+            {
+              itemId: c.component_item_id,
+              warehouseId,
+              quantityChange: lineQty,
+              adjustmentType: 'decrease',
+              reason: `KIT_DISASSEMBLY_ROLLBACK:${disassemblyRefId}`,
+              lossType: 'MANUAL'
+            },
+            userId
+          );
+        }
+      } catch (rollbackErr) {
+        logger.error('Kit disassembly stock rollback failed', {
+          institutionId,
+          compositeItemId,
+          error: rollbackErr.message,
+        });
+      }
+      throw err;
     }
-
-    logger.info('Kit disassembled', {
-      institutionId,
-      compositeItemId,
-      warehouseId,
-      quantity: qty,
-      userId,
-      batchRef
-    });
-
-    return { batchRef, quantity: qty };
   }
 
   async reserveForSalesLine(institutionId, line, userId) {

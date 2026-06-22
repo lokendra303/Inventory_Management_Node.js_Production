@@ -50,7 +50,7 @@ const createItemSchema = Joi.object({
   sku: Joi.string().max(100).required(),
   name: Joi.string().max(255).required(),
   description: Joi.string().optional(),
-  type: Joi.string().valid('simple', 'variant', 'composite', 'service').default('simple'),
+  type: Joi.string().valid('simple', 'variant', 'service').default('simple'),
   category: Joi.string().max(255).optional(),
   unit: Joi.string().max(50).default('pcs'),
   barcode: Joi.string().max(255).optional(),
@@ -88,6 +88,67 @@ const updateItemSchema = Joi.object({
   manufacturer: Joi.string().max(100).optional(),
   minStockLevel: Joi.number().min(0).optional(),
   maxStockLevel: Joi.number().min(0).optional()
+}).unknown(true);
+
+const bomComponentSchema = Joi.object({
+  itemId: Joi.string().uuid().required(),
+  quantityRequired: Joi.number().positive().required(),
+  consumptionTiming: Joi.string().valid('order', 'shipment').default('shipment'),
+}).unknown(true);
+
+const createBomItemSchema = Joi.object({
+  sku: Joi.string().max(100).required(),
+  name: Joi.string().max(255).required(),
+  description: Joi.string().optional(),
+  category: Joi.string().max(255).optional(),
+  unit: Joi.string().max(50).default('pcs'),
+  barcode: Joi.string().max(255).optional(),
+  hsnCode: Joi.string().max(50).optional(),
+  kitFulfillmentMode: Joi.string().valid('prebuilt', 'explode_on_ship').default('prebuilt'),
+  components: Joi.array().items(bomComponentSchema).min(1).required(),
+  valuationMethod: Joi.string().valid('fifo', 'weighted_average').default('fifo'),
+  allowNegativeStock: Joi.boolean().default(false),
+  costPrice: Joi.number().min(0).optional(),
+  sellingPrice: Joi.number().min(0).optional(),
+  mrp: Joi.number().min(0).optional(),
+  taxRate: Joi.number().min(0).max(100).optional(),
+  minStockLevel: Joi.number().min(0).optional(),
+  maxStockLevel: Joi.number().min(0).optional(),
+  isSerialized: Joi.boolean().optional(),
+  isBatchTracked: Joi.boolean().optional(),
+  hasExpiry: Joi.boolean().optional(),
+  shelfLifeDays: Joi.number().min(0).optional(),
+  warehouseId: Joi.string().uuid().optional(),
+  openingStock: Joi.number().min(0).optional(),
+  openingBatchNumber: Joi.string().max(100).optional(),
+  openingManufactureDate: Joi.string().max(30).optional(),
+  openingExpiryDate: Joi.string().max(30).optional(),
+  openingBatchRuleId: Joi.string().uuid().optional(),
+}).unknown(true);
+
+const updateBomItemSchema = Joi.object({
+  sku: Joi.string().max(100).optional(),
+  name: Joi.string().max(255).optional(),
+  description: Joi.string().optional(),
+  category: Joi.string().max(255).optional(),
+  unit: Joi.string().max(50).optional(),
+  barcode: Joi.string().max(255).optional(),
+  hsnCode: Joi.string().max(50).optional(),
+  kitFulfillmentMode: Joi.string().valid('prebuilt', 'explode_on_ship').optional(),
+  components: Joi.array().items(bomComponentSchema).min(1).optional(),
+  valuationMethod: Joi.string().valid('fifo', 'weighted_average').optional(),
+  allowNegativeStock: Joi.boolean().optional(),
+  status: Joi.string().valid('active', 'inactive').optional(),
+  costPrice: Joi.number().min(0).optional(),
+  sellingPrice: Joi.number().min(0).optional(),
+  mrp: Joi.number().min(0).optional(),
+  taxRate: Joi.number().min(0).max(100).optional(),
+  minStockLevel: Joi.number().min(0).optional(),
+  maxStockLevel: Joi.number().min(0).optional(),
+  isSerialized: Joi.boolean().optional(),
+  isBatchTracked: Joi.boolean().optional(),
+  hasExpiry: Joi.boolean().optional(),
+  shelfLifeDays: Joi.number().min(0).optional(),
 }).unknown(true);
 
 // Warehouse schemas
@@ -147,11 +208,26 @@ const adjustStockSchema = Joi.object({
   itemVariantId: itemVariantIdOpt
 }).unknown(true);
 
+const batchAllocationSchema = Joi.array().items(
+  Joi.object({
+    batchId: Joi.string().uuid().required(),
+    quantity: Joi.number().positive().required(),
+  })
+);
+
 const assembleKitSchema = Joi.object({
   compositeItemId: itemId,
   warehouseId,
   quantity,
-  notes: Joi.string().max(500).optional()
+  notes: Joi.string().max(500).optional(),
+  outputBatchNumber: Joi.string().max(100).optional(),
+  outputManufactureDate: Joi.string().max(30).optional(),
+  outputExpiryDate: Joi.string().max(30).optional(),
+  batchRuleId: Joi.string().uuid().optional(),
+  componentBatchAllocations: Joi.object().pattern(
+    Joi.string().uuid(),
+    batchAllocationSchema
+  ).optional(),
 }).unknown(true);
 
 const disassembleKitSchema = Joi.object({
@@ -160,6 +236,28 @@ const disassembleKitSchema = Joi.object({
   quantity,
   notes: Joi.string().max(500).optional()
 }).unknown(true);
+
+const productionOperationDraftSchema = Joi.object({
+  id: Joi.string().uuid().optional(),
+  operationType: Joi.string().valid('assemble', 'disassemble').required(),
+  compositeItemId: itemId,
+  warehouseId,
+  quantity,
+  notes: Joi.string().max(500).optional(),
+  estimatedUnitCost: Joi.number().min(0).optional(),
+  outputBatchNumber: Joi.string().max(100).optional(),
+  outputManufactureDate: Joi.string().max(30).optional(),
+  outputExpiryDate: Joi.string().max(30).optional(),
+  batchRuleId: Joi.string().uuid().optional(),
+  componentBatchAllocations: Joi.object().pattern(
+    Joi.string().uuid(),
+    batchAllocationSchema
+  ).optional(),
+}).unknown(true);
+
+const productionOperationExecuteSchema = productionOperationDraftSchema.keys({
+  execute: Joi.boolean().optional(),
+});
 
 const transferStockSchema = Joi.object({
   itemId,
@@ -456,6 +554,8 @@ module.exports = {
     createUserSchema,
     createItemSchema,
     updateItemSchema,
+    createBomItemSchema,
+    updateBomItemSchema,
     createWarehouseSchema,
     receiveStockSchema,
     reserveStockSchema,
@@ -463,6 +563,8 @@ module.exports = {
     adjustStockSchema,
     assembleKitSchema,
     disassembleKitSchema,
+    productionOperationDraftSchema,
+    productionOperationExecuteSchema,
     transferStockSchema,
     createPurchaseOrderSchema,
     createSalesOrderSchema,

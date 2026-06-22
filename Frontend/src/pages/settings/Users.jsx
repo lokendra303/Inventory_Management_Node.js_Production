@@ -49,6 +49,8 @@ const Users = () => {
     { key: 'inventory_management', label: 'Manage Inventory Controls' },
     { key: 'item_view', label: 'View Items' },
     { key: 'item_management', label: 'Manage Items' },
+    { key: 'production_view', label: 'View Production / BOM' },
+    { key: 'production_management', label: 'Manage Production / BOM' },
     { key: 'warehouse_view', label: 'View Warehouses' },
     { key: 'warehouse_management', label: 'Manage Warehouses' },
     { key: 'warehouse_type_view', label: 'View Warehouse Types' },

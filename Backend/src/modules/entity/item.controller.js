@@ -79,17 +79,17 @@ class ItemController {
   async createItem(req, res) {
     try {
       const body = req.body || {};
-      const itemId = body.type === 'composite'
-        ? await itemService.createCompositeItem(
-          req.institutionId,
-          { itemData: body, components: body.components || [] },
-          req.user.userId
-        )
-        : await itemService.createItem(
-          req.institutionId,
-          body,
-          req.user.userId
-        );
+      if (String(body.type || '').toLowerCase() === 'composite') {
+        return res.status(400).json({
+          success: false,
+          error: 'Composite/BOM items must be created in Production',
+        });
+      }
+      const itemId = await itemService.createItem(
+        req.institutionId,
+        body,
+        req.user.userId
+      );
       
       res.status(201).json({
         success: true,
@@ -121,7 +121,10 @@ class ItemController {
         itemGroupId: req.query.itemGroupId,
         status: req.query.status,
         search: req.query.search,
-        includeVariants: req.query.includeVariants === '1' || req.query.includeVariants === 'true'
+        includeVariants: req.query.includeVariants === '1' || req.query.includeVariants === 'true',
+        excludeTypes: req.query.excludeTypes
+          ? String(req.query.excludeTypes).split(',').map((s) => s.trim()).filter(Boolean)
+          : (req.query.type ? [] : ['composite']),
       };
       
       const { items, total } = await itemService.getItems(req.institutionId, filters, limit, offset);
@@ -279,31 +282,10 @@ class ItemController {
   }
 
   async updateCompositeComponents(req, res) {
-    try {
-      const { id: itemId } = req.params;
-      const before = await itemService.getItemAuditSnapshot(req.institutionId, itemId);
-      const updatedCount = await itemService.updateCompositeComponents(
-        req.institutionId,
-        itemId,
-        req.body?.components || [],
-        req.user.userId
-      );
-      const after = await itemService.getItemAuditSnapshot(req.institutionId, itemId);
-      res.locals.auditExtra = { before, after, submitted: req.body };
-      res.json({
-        success: true,
-        message: 'Composite components updated successfully',
-        data: { updatedCount }
-      });
-    } catch (error) {
-      logger.error('Failed to update composite components', {
-        error: error.message,
-        institutionId: req.institutionId,
-        itemId: req.params.id,
-        userId: req.user?.userId
-      });
-      res.status(400).json({ success: false, error: error.message });
-    }
+    return res.status(400).json({
+      success: false,
+      error: 'Composite/BOM components must be managed in Production',
+    });
   }
 
   async updateItemFieldConfig(req, res) {
