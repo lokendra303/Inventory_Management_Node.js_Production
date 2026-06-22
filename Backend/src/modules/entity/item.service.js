@@ -431,6 +431,7 @@ class ItemService {
       openingManufactureDate,
       openingExpiryDate,
       openingBatchRuleId,
+      isSellable = true,
     } = itemData;
 
     if (String(type).toLowerCase() === 'composite' && !options.allowComposite) {
@@ -468,6 +469,10 @@ class ItemService {
       ? (String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship' ? 'explode_on_ship' : 'prebuilt')
       : 'prebuilt';
 
+    const normalizedIsSellable = String(type).toLowerCase() === 'service'
+      ? true
+      : (isSellable === false || isSellable === 0 || isSellable === '0' ? false : true);
+
     await db.query(
       `INSERT INTO items 
        (id, institution_id, created_by, sku, name, description, image, type, kit_fulfillment_mode, category, unit, barcode, batch_number, hsn_code, 
@@ -475,14 +480,14 @@ class ItemService {
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, item_group_id, purchase_account, sales_account,
-        opening_stock, opening_value, as_of_date, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+        opening_stock, opening_value, as_of_date, status, is_sellable) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
       [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, normalizedKitMode, category || null, unit, barcode || null, normalizedBatchNumber, hsnCode || null,
        JSON.stringify(customFields), defaultBinId || null, valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
        shelfLifeDays || null, storageConditions || null, resolvedItemGroup?.itemGroupName || null, resolvedItemGroup?.itemGroupId || null, purchaseAccount || null, salesAccount || null,
-       openingStock, openingValue, asOfDate || null]
+       openingStock, openingValue, asOfDate || null, normalizedIsSellable ? 1 : 0]
     );
 
     if (type === 'variant') {
@@ -658,6 +663,7 @@ class ItemService {
       isBatchTracked,
       hasExpiry,
       shelfLifeDays,
+      isSellable,
     } = updateData;
 
     const updateFields = [];
@@ -840,6 +846,14 @@ class ItemService {
           : 'prebuilt';
       updateFields.push('kit_fulfillment_mode = ?');
       updateValues.push(normalizedKitMode);
+    }
+    if (isSellable !== undefined) {
+      const nextTypeForSellable = type !== undefined ? type : oldItem?.type;
+      const normalizedIsSellable = String(nextTypeForSellable || '').toLowerCase() === 'service'
+        ? true
+        : (isSellable === false || isSellable === 0 || isSellable === '0' ? false : true);
+      updateFields.push('is_sellable = ?');
+      updateValues.push(normalizedIsSellable ? 1 : 0);
     }
 
     if (updateFields.length === 0) {
@@ -1336,6 +1350,14 @@ class ItemService {
       where += ' AND (i.name LIKE ? OR i.sku LIKE ? OR COALESCE(i.category, \'\') LIKE ? OR COALESCE(i.batch_number, \'\') LIKE ? OR COALESCE(ig.name, i.item_group, \'\') LIKE ?)';
       const searchTerm = `%${String(filters.search).trim()}%`;
       params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    if (filters.sellableOnly === true || filters.sellableOnly === 'true' || filters.sellableOnly === '1') {
+      where += ' AND COALESCE(i.is_sellable, 1) = 1';
+    }
+
+    if (filters.productionOnly === true || filters.productionOnly === 'true' || filters.productionOnly === '1') {
+      where += ' AND COALESCE(i.is_sellable, 1) = 0';
     }
 
     return { where, params };

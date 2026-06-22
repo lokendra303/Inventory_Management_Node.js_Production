@@ -431,7 +431,7 @@ const SalesOrders = () => {
             .get("/customers")
             .catch(() => ({ success: false, data: [] })),
           apiService.get("/warehouses"),
-          apiService.get("/items?includeVariants=1"),
+          apiService.get("/items?includeVariants=1&sellableOnly=1"),
         ],
       );
 

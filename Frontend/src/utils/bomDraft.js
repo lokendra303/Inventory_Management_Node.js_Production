@@ -124,6 +124,8 @@ export function mapBomItemToFormValues(item = {}) {
     warehouseId: item.warehouse_id || (Array.isArray(item.warehouse_ids) ? item.warehouse_ids[0] : undefined),
     status: item.status || 'active',
     returnableItem: Boolean(item.custom_fields?.returnableItem || item.custom_fields?.returnable),
+    trackInventory: false,
+    isSellable: item.is_sellable !== 0 && item.is_sellable !== false,
   };
 }
 
@@ -133,7 +135,11 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
     kitFulfillmentMode,
     imageUrl,
     existingCustomFields = {},
+    isEditing = false,
   } = extras;
+
+  const itemIsSellable = values.isSellable !== false;
+  const tracksInventory = values.trackInventory === true;
 
   const dimensions = (values.length || values.width || values.height)
     ? {
@@ -143,12 +149,23 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
     }
     : null;
 
-  const customFields = { ...existingCustomFields };
+  const customFields = {
+    ...existingCustomFields,
+    ...(values.customFields && typeof values.customFields === 'object' ? values.customFields : {}),
+  };
   if (values.returnableItem) customFields.returnableItem = true;
   else delete customFields.returnableItem;
   if (values.salesDescription) customFields.salesDescription = values.salesDescription;
+  else delete customFields.salesDescription;
   if (values.purchaseDescription) customFields.purchaseDescription = values.purchaseDescription;
+  else delete customFields.purchaseDescription;
   if (values.purchaseTaxRate != null) customFields.purchaseTaxRate = values.purchaseTaxRate;
+  else delete customFields.purchaseTaxRate;
+
+  Object.keys(customFields).forEach((key) => {
+    const val = customFields[key];
+    if (val === undefined || val === null || val === '') delete customFields[key];
+  });
 
   return {
     ...values,
@@ -160,11 +177,25 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
     itemGroupId: values.itemGroupId || null,
     salesAccount: values.salesAccount,
     purchaseAccount: values.purchaseAccount,
+    isSellable: itemIsSellable,
+    sellingPrice: itemIsSellable && values.sellingPrice != null ? values.sellingPrice : 0,
+    mrp: itemIsSellable && values.mrp != null ? values.mrp : null,
+    taxRate: itemIsSellable ? values.taxRate : 0,
+    isBatchTracked: tracksInventory ? Boolean(values.isBatchTracked) : false,
+    isSerialized: tracksInventory ? Boolean(values.isSerialized) : false,
+    hasExpiry: tracksInventory ? Boolean(values.hasExpiry) : false,
+    shelfLifeDays: tracksInventory && values.hasExpiry ? (values.shelfLifeDays || null) : null,
+    minStockLevel: tracksInventory ? (values.minStockLevel ?? 0) : 0,
+    maxStockLevel: tracksInventory ? (values.maxStockLevel ?? 0) : 0,
+    openingStock: !isEditing && tracksInventory ? (Number(values.openingStock) || 0) : undefined,
+    openingValue: !isEditing && tracksInventory ? (Number(values.openingValue) || 0) : undefined,
+    warehouseId: !isEditing && tracksInventory ? values.warehouseId : undefined,
+    defaultBinId: !isEditing && tracksInventory ? (values.defaultBinId || null) : undefined,
     customFields: Object.keys(customFields).length ? customFields : undefined,
-    openingManufactureDate: values.openingManufactureDate?.format
+    openingManufactureDate: tracksInventory && values.openingManufactureDate?.format
       ? values.openingManufactureDate.format('YYYY-MM-DD')
       : undefined,
-    openingExpiryDate: values.openingExpiryDate?.format
+    openingExpiryDate: tracksInventory && values.openingExpiryDate?.format
       ? values.openingExpiryDate.format('YYYY-MM-DD')
       : undefined,
     length: undefined,
@@ -174,5 +205,6 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
     salesDescription: undefined,
     purchaseDescription: undefined,
     purchaseTaxRate: undefined,
+    trackInventory: undefined,
   };
 }

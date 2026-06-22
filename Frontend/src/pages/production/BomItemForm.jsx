@@ -11,7 +11,9 @@ import {
 import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import BomItemFormFields from '../../components/production/BomItemFormFields';
+import { resolveMasterDataIds } from '../../components/inventory/ItemMasterDataFields';
 import apiService from '../../services/apiService';
+import { itemService } from '../../services/itemService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import {
   buildBomSubmitPayload,
@@ -56,8 +58,43 @@ const defaultFormValues = (units = []) => ({
   isSerialized: false,
   hasExpiry: false,
   returnableItem: false,
+  trackInventory: false,
+  isSellable: true,
   unit: pickDefaultUnit(units),
 });
+
+const RESERVED_CUSTOM_FIELD_KEYS = new Set([
+  'variantMatrix',
+  'variantAttributes',
+  'skuMeta',
+  'returnableItem',
+  'returnable',
+  'salesDescription',
+  'purchaseDescription',
+  'purchaseTaxRate',
+]);
+
+const extractTypeCustomFields = (custom = {}) => {
+  const out = {};
+  Object.entries(custom || {}).forEach(([key, value]) => {
+    if (!RESERVED_CUSTOM_FIELD_KEYS.has(key)) out[key] = value;
+  });
+  return out;
+};
+
+const deriveTrackInventoryValue = (item = {}, warehouseId = null) => (
+  Boolean(
+    warehouseId ||
+    item?.default_bin_id ||
+    Number(item?.opening_stock) > 0 ||
+    Number(item?.opening_value) > 0 ||
+    Number(item?.min_stock_level) > 0 ||
+    Number(item?.max_stock_level) > 0 ||
+    item?.is_batch_tracked ||
+    item?.is_serialized ||
+    item?.has_expiry
+  )
+);
 
 export default function BomItemForm({
   open,
@@ -69,6 +106,8 @@ export default function BomItemForm({
 }) {
   const { user } = useAuth();
   const canManage = user?.permissions?.production_management || user?.permissions?.all;
+  const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
+  const canViewCategories = user?.permissions?.category_view || user?.permissions?.all;
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -81,6 +120,7 @@ export default function BomItemForm({
   const [brandOptions, setBrandOptions] = useState([]);
   const [manufacturerOptions, setManufacturerOptions] = useState([]);
   const [taxRateOptions, setTaxRateOptions] = useState([]);
+  const [fieldConfigs, setFieldConfigs] = useState([]);
   const [binsForWarehouse, setBinsForWarehouse] = useState([]);
   const [binsLoading, setBinsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
@@ -93,8 +133,52 @@ export default function BomItemForm({
   const autoDraftLock = useRef(false);
   const initDoneRef = useRef(false);
 
-  const hasExpiry = Form.useWatch('hasExpiry', form);
   const isEditing = Boolean(itemId);
+
+  const loadMasterData = useCallback(async () => {
+    const [
+      unitsRes,
+      whRes,
+      catRes,
+      groupsRes,
+      brandsRes,
+      mfgRes,
+      taxRes,
+      compositeFieldConfigs,
+    ] = await Promise.all([
+      apiService.get('/units'),
+      apiService.get('/warehouses'),
+      apiService.get('/categories'),
+      apiService.get('/item-groups'),
+      apiService.get('/brands'),
+      apiService.get('/manufacturers'),
+      apiService.get('/tax/rates'),
+      itemService.getFieldConfig('composite'),
+    ]);
+
+    const unitRows = unitsRes.success ? unitsRes.data : [];
+    const brandRows = brandsRes.success ? brandsRes.data : [];
+    const manufacturerRows = mfgRes.success ? mfgRes.data : [];
+    const categoryRows = catRes.success ? catRes.data : [];
+
+    setUnits(unitRows);
+    setWarehouses((whRes.success ? whRes.data : []).filter((w) => w.status === 'active'));
+    setCategories(categoryRows);
+    setItemGroups(groupsRes.success ? groupsRes.data : []);
+    setBrandOptions(brandRows);
+    setManufacturerOptions(manufacturerRows);
+    setTaxRateOptions(taxRes.success ? taxRes.data : []);
+    setFieldConfigs(Array.isArray(compositeFieldConfigs) ? compositeFieldConfigs : []);
+
+    return {
+      units: unitRows,
+      brands: brandRows,
+      manufacturers: manufacturerRows,
+      categories: categoryRows,
+    };
+  }, []);
+
+  const refreshMasterData = useCallback(async () => loadMasterData(), [loadMasterData]);
 
   const fetchBinsForWarehouse = useCallback(async (warehouseId) => {
     if (!warehouseId) {
@@ -187,37 +271,14 @@ export default function BomItemForm({
 
     const loadLookups = async () => {
       try {
-        const [
-          itemsRes,
-          unitsRes,
-          whRes,
-          catRes,
-          groupsRes,
-          brandsRes,
-          mfgRes,
-          taxRes,
-        ] = await Promise.all([
+        const [itemsRes, master] = await Promise.all([
           apiService.get('/items', { params: { limit: 5000 } }),
-          apiService.get('/units'),
-          apiService.get('/warehouses'),
-          apiService.get('/categories'),
-          apiService.get('/item-groups'),
-          apiService.get('/brands'),
-          apiService.get('/manufacturers'),
-          apiService.get('/tax/rates'),
+          loadMasterData(),
         ]);
-        const unitRows = unitsRes.success ? unitsRes.data : [];
         setCatalogItems(itemsRes.success ? itemsRes.data : []);
-        setUnits(unitRows);
-        setWarehouses((whRes.success ? whRes.data : []).filter((w) => w.status === 'active'));
-        setCategories(catRes.success ? catRes.data : []);
-        setItemGroups(groupsRes.success ? groupsRes.data : []);
-        setBrandOptions(brandsRes.success ? brandsRes.data : []);
-        setManufacturerOptions(mfgRes.success ? mfgRes.data : []);
-        setTaxRateOptions(taxRes.success ? taxRes.data : []);
 
         if (!itemId && !resumeDraftId && !draftRestored) {
-          form.setFieldsValue({ unit: pickDefaultUnit(unitRows) });
+          form.setFieldsValue({ unit: pickDefaultUnit(master.units) });
         }
       } catch {
         message.error('Failed to load form lookups');
@@ -226,7 +287,7 @@ export default function BomItemForm({
 
     loadLookups();
     return undefined;
-  }, [open, itemId, resumeDraftId, draftRestored, form]);
+  }, [open, itemId, resumeDraftId, draftRestored, form, loadMasterData]);
 
   useEffect(() => {
     if (!open) {
@@ -238,7 +299,10 @@ export default function BomItemForm({
       const loadItem = async () => {
         try {
           setLoading(true);
-          const res = await apiService.get(`/production/bom-items/${itemId}`);
+          const [master, res] = await Promise.all([
+            loadMasterData(),
+            apiService.get(`/production/bom-items/${itemId}`),
+          ]);
           if (!res.success || !res.data) {
             message.error('BOM item not found');
             onCancel?.();
@@ -246,9 +310,22 @@ export default function BomItemForm({
           }
           const item = res.data;
           const custom = item.custom_fields || {};
+          const { brandId, manufacturerId, unitId } = resolveMasterDataIds(item, {
+            units: master.units,
+            brandOptions: master.brands,
+            manufacturerOptions: master.manufacturers,
+          });
           setExistingCustomFields(custom);
+          const whId = item.warehouse_id || (item.warehouse_ids?.[0]);
           form.setFieldsValue({
             ...mapBomItemToFormValues(item),
+            category: item.category,
+            unit: unitId,
+            brand: brandId,
+            manufacturer: manufacturerId,
+            trackInventory: deriveTrackInventoryValue(item, whId),
+            isSellable: item.is_sellable !== 0 && item.is_sellable !== false,
+            customFields: extractTypeCustomFields(custom),
             salesDescription: custom.salesDescription,
             purchaseDescription: custom.purchaseDescription,
             purchaseTaxRate: custom.purchaseTaxRate,
@@ -262,7 +339,6 @@ export default function BomItemForm({
               consumptionTiming: c.consumption_timing || c.consumptionTiming || 'shipment',
             }))
             : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }]);
-          const whId = item.warehouse_id || (item.warehouse_ids?.[0]);
           if (whId) await fetchBinsForWarehouse(whId);
         } catch (err) {
           message.error(err?.response?.data?.error || 'Failed to load BOM item');
@@ -288,7 +364,7 @@ export default function BomItemForm({
     })();
 
     return undefined;
-  }, [open, itemId, resumeDraftId, form, onCancel, loadDraftById, resetCreateForm, tryLoadLatestDraft, fetchBinsForWarehouse]);
+  }, [open, itemId, resumeDraftId, form, onCancel, loadDraftById, resetCreateForm, tryLoadLatestDraft, fetchBinsForWarehouse, loadMasterData]);
 
   const saveDraft = useCallback(async (silent = false) => {
     if (isEditing || autoDraftLock.current) return false;
@@ -371,7 +447,14 @@ export default function BomItemForm({
       if (!validateComponents()) throw new Error('validation_failed');
 
       const openingStock = Number(values.openingStock) || 0;
-      if (!isEditing && openingStock > 0 && values.warehouseId && values.hasExpiry && !values.openingExpiryDate) {
+      if (
+        !isEditing &&
+        values.trackInventory &&
+        openingStock > 0 &&
+        values.warehouseId &&
+        values.hasExpiry &&
+        !values.openingExpiryDate
+      ) {
         message.error('Expiry date is required when Has expiry is on and opening stock is set');
         throw new Error('validation_failed');
       }
@@ -506,12 +589,15 @@ export default function BomItemForm({
             brandOptions={brandOptions}
             manufacturerOptions={manufacturerOptions}
             taxRateOptions={taxRateOptions}
+            fieldConfigs={fieldConfigs}
+            canViewCategories={canViewCategories}
+            canManageCategories={canManageCategories}
+            onRefreshMasterData={refreshMasterData}
             components={components}
             onComponentsChange={setComponents}
             catalogItems={catalogItems}
             kitFulfillmentMode={kitFulfillmentMode}
             onKitFulfillmentModeChange={setKitFulfillmentMode}
-            hasExpiry={Boolean(hasExpiry)}
             imageUrl={imageUrl}
             onImageChange={(url) => setImageUrl(url)}
             onImageClear={() => setImageUrl('')}

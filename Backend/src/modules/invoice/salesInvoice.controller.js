@@ -865,6 +865,7 @@ class SalesInvoiceController {
           0 as available_quantity
         FROM items i
         WHERE i.institution_id = ? AND i.status = 'active'
+          AND COALESCE(i.is_sellable, 1) = 1
       `;
       const params = [institutionId];
 

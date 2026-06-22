@@ -125,6 +125,8 @@ class ItemController {
         excludeTypes: req.query.excludeTypes
           ? String(req.query.excludeTypes).split(',').map((s) => s.trim()).filter(Boolean)
           : (req.query.type ? [] : ['composite']),
+        sellableOnly: req.query.sellableOnly,
+        productionOnly: req.query.productionOnly,
       };
       
       const { items, total } = await itemService.getItems(req.institutionId, filters, limit, offset);

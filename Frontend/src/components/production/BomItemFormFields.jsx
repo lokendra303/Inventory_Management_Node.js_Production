@@ -23,6 +23,13 @@ import {
   BuildOutlined,
 } from '@ant-design/icons';
 import CompositeBomSection from '../inventory/CompositeBomSection';
+import ItemTypeCustomFields from '../inventory/ItemTypeCustomFields';
+import {
+  BrandField,
+  CategoryField,
+  ManufacturerField,
+  UnitField,
+} from '../inventory/ItemMasterDataFields';
 import SkuGeneratorField from '../inventory/SkuGeneratorField';
 import OpeningBatchFields from './OpeningBatchFields';
 import { filterSelectOption } from '../../utils/selectFilter';
@@ -40,12 +47,15 @@ export default function BomItemFormFields({
   brandOptions = [],
   manufacturerOptions = [],
   taxRateOptions = [],
+  fieldConfigs = [],
+  canViewCategories = true,
+  canManageCategories = false,
+  onRefreshMasterData,
   components,
   onComponentsChange,
   catalogItems,
   kitFulfillmentMode,
   onKitFulfillmentModeChange,
-  hasExpiry,
   imageUrl,
   onImageChange,
   onImageClear,
@@ -53,6 +63,20 @@ export default function BomItemFormFields({
   binsLoading = false,
   onWarehouseChange,
 }) {
+  const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
+  const watchedIsSellable = Form.useWatch('isSellable', form) !== false;
+  const watchedHasExpiry = Form.useWatch('hasExpiry', form) === true;
+
+  const clearSalesFields = () => {
+    form.setFieldsValue({
+      sellingPrice: undefined,
+      mrp: undefined,
+      salesAccount: undefined,
+      taxRate: undefined,
+      salesDescription: undefined,
+    });
+  };
+
   return (
     <>
       <div style={sectionStyle}>
@@ -81,15 +105,13 @@ export default function BomItemFormFields({
             </Row>
             <Row gutter={16}>
               <Col xs={24} md={12}>
-                <Form.Item name="category" label="Category">
-                  <Select
-                    allowClear
-                    showSearch
-                    placeholder="Select category"
-                    filterOption={filterSelectOption}
-                    options={categories.map((c) => ({ value: c.name, label: c.name }))}
-                  />
-                </Form.Item>
+                <CategoryField
+                  form={form}
+                  categories={categories}
+                  canViewCategories={canViewCategories}
+                  canManageCategories={canManageCategories}
+                  onRefresh={onRefreshMasterData}
+                />
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item name="itemGroupId" label="Item group">
@@ -105,17 +127,7 @@ export default function BomItemFormFields({
             </Row>
             <Row gutter={16}>
               <Col xs={24} md={12}>
-                <Form.Item name="unit" label="Unit" rules={[{ required: true, message: 'Unit is required' }]}>
-                  <Select
-                    showSearch
-                    placeholder="Select unit"
-                    filterOption={filterSelectOption}
-                    options={units.map((u) => ({
-                      value: u.id || u.name,
-                      label: u.symbol ? `${u.name} (${u.symbol})` : (u.name || u.id),
-                    }))}
-                  />
-                </Form.Item>
+                <UnitField form={form} units={units} onRefresh={onRefreshMasterData} />
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item name="returnableItem" valuePropName="checked">
@@ -285,26 +297,10 @@ export default function BomItemFormFields({
         </Row>
         <Row gutter={16}>
           <Col xs={24} sm={8}>
-            <Form.Item name="brand" label="Brand">
-              <Select
-                allowClear
-                showSearch
-                placeholder="Select brand"
-                filterOption={filterSelectOption}
-                options={brandOptions.map((b) => ({ value: b.name, label: b.name }))}
-              />
-            </Form.Item>
+            <BrandField form={form} brandOptions={brandOptions} onRefresh={onRefreshMasterData} />
           </Col>
           <Col xs={24} sm={8}>
-            <Form.Item name="manufacturer" label="Manufacturer">
-              <Select
-                allowClear
-                showSearch
-                placeholder="Select manufacturer"
-                filterOption={filterSelectOption}
-                options={manufacturerOptions.map((m) => ({ value: m.name, label: m.name }))}
-              />
-            </Form.Item>
+            <ManufacturerField form={form} manufacturerOptions={manufacturerOptions} onRefresh={onRefreshMasterData} />
           </Col>
           <Col xs={24} sm={8}>
             <Form.Item name="weight" label="Weight (per unit)">
@@ -331,53 +327,84 @@ export default function BomItemFormFields({
         </Row>
       </div>
 
+      <ItemTypeCustomFields
+        fieldConfigs={fieldConfigs}
+        sectionStyle={sectionStyle}
+        sectionHeader={sectionHeader}
+        sectionIconStyle={sectionIconStyle}
+        title="BOM / kit specific fields"
+      />
+
       <div style={sectionStyle}>
         <div style={sectionHeader}>
           <span style={sectionIconStyle}><DollarOutlined /></span>
           Sales information
         </div>
-        <Row gutter={16}>
-          <Col xs={24} sm={8}>
-            <Form.Item name="sellingPrice" label="Selling price (per unit)">
-              <InputNumber min={0} step={0.01} precision={2} style={{ width: '100%' }} />
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff' }}>
+            <Form.Item name="isSellable" valuePropName="checked" noStyle>
+              <Checkbox
+                style={{ fontSize: 13, color: '#595959' }}
+                onChange={(e) => {
+                  if (!e.target.checked) clearSalesFields();
+                }}
+              >
+                Available for sale
+              </Checkbox>
             </Form.Item>
-          </Col>
-          <Col xs={24} sm={8}>
-            <Form.Item name="mrp" label="MRP (per unit)">
-              <InputNumber min={0} step={0.01} precision={2} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={8}>
-            <Form.Item name="salesAccount" label="Sales account">
-              <Select allowClear placeholder="Select account">
-                <Select.Option value="sales">Sales</Select.Option>
-                <Select.Option value="income">Income</Select.Option>
-              </Select>
-            </Form.Item>
-          </Col>
-        </Row>
-        <Row gutter={16}>
-          <Col xs={24} sm={8}>
-            <Form.Item name="taxRate" label="Tax rate (%)">
-              {taxRateOptions.length > 0 ? (
-                <Select allowClear placeholder="Select tax rate" showSearch optionFilterProp="children">
-                  {taxRateOptions.map((t) => (
-                    <Select.Option key={t.id} value={parseFloat(t.rate)}>
-                      {t.name} ({parseFloat(t.rate).toFixed(2)}%)
-                    </Select.Option>
-                  ))}
-                </Select>
-              ) : (
-                <InputNumber min={0} max={100} step={0.01} style={{ width: '100%' }} />
-              )}
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={16}>
-            <Form.Item name="salesDescription" label="Sales description">
-              <Input.TextArea rows={2} placeholder="Shown on sales documents" />
-            </Form.Item>
-          </Col>
-        </Row>
+          </div>
+          {!watchedIsSellable && (
+            <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff7e6', borderRadius: 8, border: '1px solid #ffd591', fontSize: 12, color: '#ad6800' }}>
+              Production / internal kit only — not listed on sales orders or invoices. Purchase and BOM assembly still work.
+            </div>
+          )}
+        </div>
+        {watchedIsSellable && (
+          <>
+            <Row gutter={16}>
+              <Col xs={24} sm={8}>
+                <Form.Item name="sellingPrice" label="Selling price (per unit)">
+                  <InputNumber min={0} step={0.01} precision={2} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="mrp" label="MRP (per unit)">
+                  <InputNumber min={0} step={0.01} precision={2} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={8}>
+                <Form.Item name="salesAccount" label="Sales account">
+                  <Select allowClear placeholder="Select account">
+                    <Select.Option value="sales">Sales</Select.Option>
+                    <Select.Option value="income">Income</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={8}>
+                <Form.Item name="taxRate" label="Tax rate (%)">
+                  {taxRateOptions.length > 0 ? (
+                    <Select allowClear placeholder="Select tax rate" showSearch optionFilterProp="children">
+                      {taxRateOptions.map((t) => (
+                        <Select.Option key={t.id} value={parseFloat(t.rate)}>
+                          {t.name} ({parseFloat(t.rate).toFixed(2)}%)
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <InputNumber min={0} max={100} step={0.01} style={{ width: '100%' }} />
+                  )}
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={16}>
+                <Form.Item name="salesDescription" label="Sales description">
+                  <Input.TextArea rows={2} placeholder="Shown on sales documents" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </>
+        )}
       </div>
 
       <div style={sectionStyle}>
@@ -430,129 +457,147 @@ export default function BomItemFormFields({
           <span style={sectionIconStyle}><InboxOutlined /></span>
           Inventory tracking
         </div>
-        <div style={{ marginBottom: 16, padding: '10px 12px', background: '#f0f5ff', borderRadius: 8, border: '1px solid #adc6ff' }}>
-          <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Batch / serial / expiry</div>
-          <Space wrap size="large">
-            <Form.Item name="isBatchTracked" valuePropName="checked" noStyle>
-              <Checkbox>Batch / lot tracked</Checkbox>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff' }}>
+            <Form.Item name="trackInventory" valuePropName="checked" noStyle>
+              <Checkbox style={{ fontSize: 13, color: '#595959' }}>
+                Track inventory for this item
+              </Checkbox>
             </Form.Item>
-            <Form.Item name="isSerialized" valuePropName="checked" noStyle>
-              <Checkbox>Serialized</Checkbox>
-            </Form.Item>
-            <Form.Item name="hasExpiry" valuePropName="checked" noStyle>
-              <Checkbox>Track expiry date</Checkbox>
-            </Form.Item>
-          </Space>
-          {hasExpiry && (
-            <Form.Item name="shelfLifeDays" label="Shelf life (days)" style={{ marginTop: 12, marginBottom: 0, maxWidth: 220 }}>
-              <InputNumber min={1} style={{ width: '100%' }} placeholder="Optional" />
-            </Form.Item>
+          </div>
+          {watchedTrackInventory && (
+            <div style={{ marginTop: 12, padding: '10px 12px', background: '#f0f5ff', borderRadius: 8, border: '1px solid #adc6ff' }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Batch / serial tracking</div>
+              <Space wrap size="middle">
+                <Form.Item name="isBatchTracked" valuePropName="checked" noStyle>
+                  <Checkbox>Batch / lot tracked</Checkbox>
+                </Form.Item>
+                <Form.Item name="isSerialized" valuePropName="checked" noStyle>
+                  <Checkbox>Serialized (one # per unit)</Checkbox>
+                </Form.Item>
+                <Form.Item name="hasExpiry" valuePropName="checked" noStyle>
+                  <Checkbox>Track expiry date</Checkbox>
+                </Form.Item>
+              </Space>
+              {watchedHasExpiry && (
+                <Form.Item name="shelfLifeDays" label="Shelf life (days)" style={{ marginTop: 8, marginBottom: 0, maxWidth: 220 }}>
+                  <InputNumber min={1} style={{ width: '100%' }} placeholder="Optional" />
+                </Form.Item>
+              )}
+              <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
+                Required for batch/serial fields on kit assembly, shipment, and returns.
+              </div>
+            </div>
           )}
         </div>
-        <Row gutter={16}>
-          <Col xs={24} sm={8}>
-            <Form.Item name="minStockLevel" label="Min stock level">
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={8}>
-            <Form.Item name="maxStockLevel" label="Max stock level">
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={8}>
-            <Form.Item name="allowNegativeStock" label="Allow negative stock" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Row gutter={16}>
-          <Col xs={24} sm={8}>
-            <Form.Item name="valuationMethod" label="Valuation method">
-              <Select>
-                <Select.Option value="fifo">FIFO</Select.Option>
-                <Select.Option value="weighted_average">Weighted average</Select.Option>
-              </Select>
-            </Form.Item>
-          </Col>
-          {isEditing && (
-            <Col xs={24} sm={8}>
-              <Form.Item name="status" label="Status">
-                <Select
-                  options={[
-                    { value: 'active', label: 'Active' },
-                    { value: 'inactive', label: 'Inactive' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-          )}
-        </Row>
-
-        {!isEditing && (
+        {watchedTrackInventory && (
           <>
             <Row gutter={16}>
               <Col xs={24} sm={8}>
-                <Form.Item name="openingStock" label="Opening stock">
-                  <InputNumber
-                    min={0}
-                    style={{ width: '100%' }}
-                    onChange={(value) => {
-                      const costPrice = form.getFieldValue('costPrice');
-                      if (value > 0 && costPrice > 0) {
-                        form.setFieldsValue({ openingValue: Math.round(value * costPrice * 100) / 100 });
-                      }
-                    }}
-                  />
+                <Form.Item name="minStockLevel" label="Min stock level">
+                  <InputNumber min={0} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={8}>
-                <Form.Item name="openingValue" label="Opening value (auto)">
-                  <InputNumber disabled min={0} step={0.01} precision={2} style={{ width: '100%' }} />
+                <Form.Item name="maxStockLevel" label="Max stock level">
+                  <InputNumber min={0} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={8}>
-                <Form.Item name="warehouseId" label="Warehouse">
-                  <Select
-                    allowClear
-                    showSearch
-                    placeholder="Select warehouse"
-                    filterOption={filterSelectOption}
-                    onChange={(value) => {
-                      form.setFieldsValue({ defaultBinId: null });
-                      onWarehouseChange?.(value);
-                    }}
-                    options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
-                  />
+                <Form.Item name="allowNegativeStock" label="Allow negative stock" valuePropName="checked">
+                  <Switch />
                 </Form.Item>
               </Col>
             </Row>
             <Row gutter={16}>
-              <Col xs={24} sm={12}>
-            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.warehouseId !== cur.warehouseId}>
-              {() => {
-                const hasWarehouse = Boolean(form.getFieldValue('warehouseId'));
-                return (
-                  <Form.Item name="defaultBinId" label="Default bin (optional)">
+              <Col xs={24} sm={8}>
+                <Form.Item name="valuationMethod" label="Valuation method">
+                  <Select>
+                    <Select.Option value="fifo">FIFO</Select.Option>
+                    <Select.Option value="weighted_average">Weighted average</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+              {isEditing && (
+                <Col xs={24} sm={8}>
+                  <Form.Item name="status" label="Status">
                     <Select
-                      allowClear
-                      showSearch
-                      loading={binsLoading}
-                      placeholder={hasWarehouse ? 'Select bin' : 'Select warehouse first'}
-                      disabled={!hasWarehouse}
-                      optionFilterProp="label"
-                      options={binsForWarehouse.map((b) => ({
-                        value: b.id,
-                        label: `${b.zone_code || ''} / ${b.rack_code || ''} / ${b.code}${b.name ? ` — ${b.name}` : ''}`,
-                      }))}
+                      options={[
+                        { value: 'active', label: 'Active' },
+                        { value: 'inactive', label: 'Inactive' },
+                      ]}
                     />
                   </Form.Item>
-                );
-              }}
-            </Form.Item>
-          </Col>
+                </Col>
+              )}
             </Row>
-            <OpeningBatchFields form={form} warehouses={warehouses} hasExpiry={Boolean(hasExpiry)} />
+
+            {!isEditing && (
+              <>
+                <Row gutter={16}>
+                  <Col xs={24} sm={8}>
+                    <Form.Item name="openingStock" label="Opening stock">
+                      <InputNumber
+                        min={0}
+                        style={{ width: '100%' }}
+                        onChange={(value) => {
+                          const costPrice = form.getFieldValue('costPrice');
+                          if (value > 0 && costPrice > 0) {
+                            form.setFieldsValue({ openingValue: Math.round(value * costPrice * 100) / 100 });
+                          }
+                        }}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item name="openingValue" label="Opening value (auto)">
+                      <InputNumber disabled min={0} step={0.01} precision={2} style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <Form.Item name="warehouseId" label="Warehouse">
+                      <Select
+                        allowClear
+                        showSearch
+                        placeholder="Select warehouse"
+                        filterOption={filterSelectOption}
+                        onChange={(value) => {
+                          form.setFieldsValue({ defaultBinId: null });
+                          onWarehouseChange?.(value);
+                        }}
+                        options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.warehouseId !== cur.warehouseId}>
+                      {() => {
+                        const hasWarehouse = Boolean(form.getFieldValue('warehouseId'));
+                        return (
+                          <Form.Item name="defaultBinId" label="Default bin (optional)">
+                            <Select
+                              allowClear
+                              showSearch
+                              loading={binsLoading}
+                              placeholder={hasWarehouse ? 'Select bin' : 'Select warehouse first'}
+                              disabled={!hasWarehouse}
+                              optionFilterProp="label"
+                              options={binsForWarehouse.map((b) => ({
+                                value: b.id,
+                                label: `${b.zone_code || ''} / ${b.rack_code || ''} / ${b.code}${b.name ? ` — ${b.name}` : ''}`,
+                              }))}
+                            />
+                          </Form.Item>
+                        );
+                      }}
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <OpeningBatchFields form={form} warehouses={warehouses} hasExpiry={watchedHasExpiry} />
+              </>
+            )}
           </>
         )}
       </div>

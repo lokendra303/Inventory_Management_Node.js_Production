@@ -734,6 +734,7 @@ CREATE TABLE IF NOT EXISTS `items` (
   `allow_negative_stock` tinyint(1) DEFAULT '0',
   `default_reorder_level` decimal(15,3) DEFAULT '0.000',
   `status` enum('active','inactive','trashed','draft') NOT NULL DEFAULT 'active',
+  `is_sellable` tinyint(1) NOT NULL DEFAULT '1' COMMENT '1=sell on SO/invoice, 0=production/BOM component only',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `cost_price` decimal(15,4) DEFAULT '0.0000',

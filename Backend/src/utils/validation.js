@@ -65,7 +65,8 @@ const createItemSchema = Joi.object({
   brand: Joi.string().max(100).optional(),
   manufacturer: Joi.string().max(100).optional(),
   minStockLevel: Joi.number().min(0).optional(),
-  maxStockLevel: Joi.number().min(0).optional()
+  maxStockLevel: Joi.number().min(0).optional(),
+  isSellable: Joi.boolean().default(true),
 }).unknown(true);
 
 const updateItemSchema = Joi.object({
@@ -87,7 +88,8 @@ const updateItemSchema = Joi.object({
   brand: Joi.string().max(100).optional(),
   manufacturer: Joi.string().max(100).optional(),
   minStockLevel: Joi.number().min(0).optional(),
-  maxStockLevel: Joi.number().min(0).optional()
+  maxStockLevel: Joi.number().min(0).optional(),
+  isSellable: Joi.boolean().optional(),
 }).unknown(true);
 
 const bomComponentSchema = Joi.object({

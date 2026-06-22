@@ -195,6 +195,12 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
               <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Tag color={getItemStatusTagColor(viewingItem.status)} style={{ borderRadius: 20, textTransform: 'capitalize' }}>{viewingItem.status}</Tag>
                 {viewingItem.type && <Tag color="blue" style={{ borderRadius: 20 }}>{viewingItem.type}</Tag>}
+                {viewingItem.type !== 'service' && viewingItem.is_sellable !== 0 && viewingItem.is_sellable !== false && (
+                  <Tag color="green" style={{ borderRadius: 20 }}>Sellable</Tag>
+                )}
+                {viewingItem.type !== 'service' && viewingItem.is_sellable === 0 && (
+                  <Tag color="orange" style={{ borderRadius: 20 }}>Production only</Tag>
+                )}
                 {isComposite && (
                   <Tag color="geekblue" style={{ borderRadius: 20 }}>
                     <BuildOutlined /> {fulfillmentLabel(kitFulfillmentMode)}

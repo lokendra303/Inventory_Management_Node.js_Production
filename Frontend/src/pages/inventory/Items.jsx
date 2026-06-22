@@ -667,6 +667,7 @@ const Items = () => {
     ean: payload.ean,
     isbn: payload.isbn,
     mpn: payload.mpn,
+    isSellable: payload.isSellable,
     components: payload.components || []
   });
 
@@ -1241,6 +1242,17 @@ const Items = () => {
       )
     },
     { title: 'Type', dataIndex: 'type', key: 'type', render: v => v ? <Tag color="blue" style={{ borderRadius: 20, textTransform: 'capitalize' }}>{v}</Tag> : '-' },
+    {
+      title: 'Usage',
+      key: 'usage',
+      render: (_, record) => {
+        if (record.type === 'service') return <Tag style={{ borderRadius: 20 }}>Service</Tag>;
+        const sellable = record.is_sellable !== 0 && record.is_sellable !== false;
+        return sellable
+          ? <Tag color="green" style={{ borderRadius: 20 }}>Sellable</Tag>
+          : <Tag color="orange" style={{ borderRadius: 20 }}>Production only</Tag>;
+      },
+    },
     { title: 'Item Group', dataIndex: 'item_group_name', key: 'item_group_name', render: v => v ? <Tag color="purple" style={{ borderRadius: 20 }}>{v}</Tag> : '-' },
     { title: 'Unit', dataIndex: 'unit', key: 'unit', render: v => v || '-' },
     {
@@ -1969,6 +1981,8 @@ const Items = () => {
         height: values.height || 0
       } : null;
       
+      const itemIsSellable = itemType === 'service' ? true : values.isSellable !== false;
+
       const itemData = {
         sku: values.sku,
         name: values.name,
@@ -1990,9 +2004,9 @@ const Items = () => {
         unit: values.unit,
         warehouseId: isVariantType ? defaultVariantWarehouseId : values.warehouseId,
         costPrice: values.costPrice != null && values.costPrice !== '' ? convertPrice(values.costPrice, priceCurrency, 'USD') : 0,
-        sellingPrice: values.sellingPrice != null && values.sellingPrice !== '' ? convertPrice(values.sellingPrice, priceCurrency, 'USD') : 0,
-        mrp: values.mrp ? convertPrice(values.mrp, priceCurrency, 'USD') : null,
-        taxRate: values.taxRate,
+        sellingPrice: itemIsSellable && values.sellingPrice != null && values.sellingPrice !== '' ? convertPrice(values.sellingPrice, priceCurrency, 'USD') : 0,
+        mrp: itemIsSellable && values.mrp ? convertPrice(values.mrp, priceCurrency, 'USD') : null,
+        taxRate: itemIsSellable ? values.taxRate : 0,
         brand: values.brand,
         manufacturer: values.manufacturer,
         itemGroupId: values.itemGroupId || null,
@@ -2017,6 +2031,7 @@ const Items = () => {
         isSerialized: Boolean(values.isSerialized),
         hasExpiry: Boolean(values.hasExpiry),
         shelfLifeDays: values.shelfLifeDays || null,
+        isSellable: itemIsSellable,
       };
       if (itemData.type === 'composite') {
         message.error('BOM / composite items must be created in Production.');
@@ -2222,6 +2237,7 @@ const Items = () => {
         form.setFieldsValue({
           type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
           itemGroupId: null,
+          isSellable: true,
           purchaseAccount: 'cogs',
           purchaseTaxRate: 0,
           purchaseDescription: 'Initial stock entry'
@@ -2553,6 +2569,7 @@ const viewItem = (item) => {
       isSerialized: Boolean(fullItem.is_serialized),
       hasExpiry: Boolean(fullItem.has_expiry),
       shelfLifeDays: fullItem.shelf_life_days || null,
+      isSellable: fullItem.is_sellable !== 0 && fullItem.is_sellable !== false,
     });
     fetchBinsForWarehouse(finalWarehouseId);
     setModalVisible(true);
@@ -2768,7 +2785,19 @@ const viewItem = (item) => {
   const watchedPackType = Form.useWatch('packType', form);
   const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
   const watchedHasExpiry = Form.useWatch('hasExpiry', form) === true;
+  const watchedIsSellable = Form.useWatch('isSellable', form) !== false;
+  const showSalesFields = watchedItemType === 'service' || watchedIsSellable;
   const isVariantItem = watchedItemType === 'variant';
+
+  const clearSalesFields = () => {
+    form.setFieldsValue({
+      sellingPrice: undefined,
+      mrp: undefined,
+      account: undefined,
+      taxRate: undefined,
+      salesDescription: undefined,
+    });
+  };
 
   const possibleDuplicateItems = useMemo(() => {
     if (!modalVisible || editingItem) return [];
@@ -3142,6 +3171,7 @@ const viewItem = (item) => {
       ean: normalizeOptionalText(fullItem.ean),
       isbn: normalizeOptionalText(fullItem.isbn),
       mpn: normalizeOptionalText(fullItem.mpn),
+      isSellable: fullItem.is_sellable !== 0 && fullItem.is_sellable !== false,
     };
 
     const duplicateComparablePayload = buildComparableItemPayload({
@@ -3195,6 +3225,7 @@ const viewItem = (item) => {
       ean: duplicateFormValues.ean,
       isbn: duplicateFormValues.isbn,
       mpn: duplicateFormValues.mpn,
+      isSellable: duplicateFormValues.isSellable !== false,
     });
     setDuplicateSourcePayload(duplicateComparablePayload);
 
@@ -3226,6 +3257,7 @@ const viewItem = (item) => {
     form.setFieldsValue({
       type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
       trackInventory: false,
+      isSellable: true,
       itemGroupId: null,
       purchaseAccount: 'cogs',
       purchaseTaxRate: 0,
@@ -4125,6 +4157,7 @@ const viewItem = (item) => {
       ean: fields.willUpdate('ean') ? fields.overlayText('ean', normalizeOptionalText(fullItem.ean)) : normalizeOptionalText(fullItem.ean),
       isbn: fields.willUpdate('isbn') ? fields.overlayText('isbn', normalizeOptionalText(fullItem.isbn)) : normalizeOptionalText(fullItem.isbn),
       mpn: fields.willUpdate('mpn') ? fields.overlayText('mpn', normalizeOptionalText(fullItem.mpn)) : normalizeOptionalText(fullItem.mpn),
+      isSellable: fullItem.is_sellable !== 0 && fullItem.is_sellable !== false,
     });
     fetchBinsForWarehouse(finalWarehouseId);
     if (importSkuRuleId) setSelectedSkuRuleId(importSkuRuleId);
@@ -8319,11 +8352,34 @@ const viewItem = (item) => {
               <span style={sectionIconStyle}><DollarOutlined /></span>
               Sales Information
             </div>
-          {isVariantItem && (
+          {watchedItemType !== 'service' && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff' }}>
+                <Form.Item name="isSellable" valuePropName="checked" noStyle>
+                  <Checkbox
+                    style={{ fontSize: 13, color: '#595959' }}
+                    onChange={(e) => {
+                      if (!e.target.checked) clearSalesFields();
+                    }}
+                  >
+                    Available for sale
+                  </Checkbox>
+                </Form.Item>
+              </div>
+              {!watchedIsSellable && (
+                <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff7e6', borderRadius: 8, border: '1px solid #ffd591', fontSize: 12, color: '#ad6800' }}>
+                  Production / BOM only — this item will not appear on sales orders or invoices. It can still be purchased and used as a BOM component.
+                </div>
+              )}
+            </div>
+          )}
+          {showSalesFields && isVariantItem && (
             <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: '#f7faff', border: '1px solid #d6e4ff', fontSize: 12, color: '#1d39c4' }}>
               Variant item detected. Child variants use the prices entered in the Variant Matrix above. The fields below act as shared defaults only when a variant row price is left blank.
             </div>
           )}
+          {showSalesFields && (
+          <>
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item label="Price Currency">
@@ -8401,6 +8457,8 @@ const viewItem = (item) => {
               </Form.Item>
             </Col>
           </Row>
+          </>
+          )}
 
           </div>{/* end Sales section */}
 
