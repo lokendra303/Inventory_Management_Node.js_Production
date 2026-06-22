@@ -51,6 +51,46 @@ export default function BatchTracking() {
   const [consumeForm] = Form.useForm();
   const [datesForm] = Form.useForm();
 
+  const batchTrackedItems = useMemo(
+    () => items.filter((i) => i.is_batch_tracked),
+    [items]
+  );
+
+  const watchedBatchItemId = Form.useWatch('itemId', batchForm);
+  const watchedBatchWarehouseId = Form.useWatch('warehouseId', batchForm);
+  const [batchStockHint, setBatchStockHint] = useState(null);
+
+  useEffect(() => {
+    if (!watchedBatchItemId || !watchedBatchWarehouseId) {
+      setBatchStockHint(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [invRes, batchRes] = await Promise.all([
+          apiService.get(`/inventory/${watchedBatchItemId}/${watchedBatchWarehouseId}`),
+          apiService.getBatches({
+            itemId: watchedBatchItemId,
+            warehouseId: watchedBatchWarehouseId,
+            status: 'active',
+          }),
+        ]);
+        if (cancelled) return;
+        const onHand = parseFloat(invRes?.data?.quantity_on_hand || 0);
+        const batchTotal = (batchRes?.data || []).reduce(
+          (sum, b) => sum + parseFloat(b.quantity_remaining || 0),
+          0
+        );
+        const unallocated = onHand - batchTotal;
+        setBatchStockHint({ onHand, batchTotal, unallocated });
+      } catch {
+        if (!cancelled) setBatchStockHint(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [watchedBatchItemId, watchedBatchWarehouseId]);
+
   const watchedSerialItemId = Form.useWatch('itemId', serialForm);
   const watchedSerialWarehouseId = Form.useWatch('warehouseId', serialForm);
 
@@ -488,13 +528,12 @@ export default function BatchTracking() {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="Automatic traceability (recommended)"
+        message="Batch lots must match warehouse stock"
         description={
           <>
-            Lifecycle rows are created automatically when you{' '}
-            <strong>receive a PO with batch #</strong> (item must have Batch/lot tracked enabled first){' '}
-            and <strong>ship a confirmed Sales Order</strong>.{' '}
-            &quot;New Batch&quot; and &quot;Manual adjust&quot; are for corrections only — they do not update main inventory.
+            A batch can only be created for quantity already on hand in the warehouse
+            (via GRN, opening stock, or adjustment). Use PO receive for new inbound stock.
+            Manual consume reduces both batch and main inventory.
           </>
         }
       />
@@ -643,8 +682,8 @@ export default function BatchTracking() {
       >
         <Form form={batchForm} layout="vertical" onFinish={handleCreateBatch}>
           <Form.Item name="itemId" label="Item" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="children" placeholder="Select item">
-              {items.map((i) => <Option key={i.id} value={i.id}>{i.name} ({i.sku})</Option>)}
+            <Select showSearch optionFilterProp="children" placeholder="Select batch-tracked item">
+              {batchTrackedItems.map((i) => <Option key={i.id} value={i.id}>{i.name} ({i.sku})</Option>)}
             </Select>
           </Form.Item>
           <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
@@ -652,6 +691,19 @@ export default function BatchTracking() {
               {warehouses.map((w) => <Option key={w.id} value={w.id}>{w.name}</Option>)}
             </Select>
           </Form.Item>
+          {batchStockHint && (
+            <Alert
+              type={batchStockHint.unallocated > 0 ? 'info' : 'warning'}
+              showIcon
+              style={{ marginBottom: 12 }}
+              message={
+                batchStockHint.unallocated > 0
+                  ? `${batchStockHint.unallocated.toFixed(2)} units available to assign to a new batch`
+                  : 'No unallocated stock in this warehouse — receive stock first'
+              }
+              description={`On hand: ${batchStockHint.onHand.toFixed(2)} · Already in batches: ${batchStockHint.batchTotal.toFixed(2)}`}
+            />
+          )}
           <Form.Item
             name="batchNumber"
             label="Batch Number"

@@ -8,6 +8,61 @@ const SERIAL_STATUSES = ['available', 'reserved', 'sold', 'damaged', 'returned']
 class BatchSerialService {
   // ─── BATCH ───────────────────────────────────────────────
 
+  async _assertActiveItemAndWarehouse(institutionId, itemId, warehouseId, connection = null) {
+    const rows = await this._exec(
+      connection,
+      `SELECT i.id AS item_id, w.id AS warehouse_id
+         FROM items i
+         JOIN warehouses w ON w.id = ?
+        WHERE i.id = ? AND i.institution_id = ? AND w.institution_id = ?
+          AND i.status = 'active' AND w.status = 'active'`,
+      [warehouseId, itemId, institutionId, institutionId]
+    );
+    if (!rows.length) {
+      throw new Error('Item or warehouse not found or inactive');
+    }
+  }
+
+  async _getBatchAllocationSummary(institutionId, itemId, warehouseId, connection = null) {
+    const invRows = await this._exec(
+      connection,
+      `SELECT COALESCE(quantity_on_hand, 0) AS on_hand
+         FROM inventory_projections
+        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?`,
+      [institutionId, itemId, warehouseId]
+    );
+    const batchRows = await this._exec(
+      connection,
+      `SELECT COALESCE(SUM(quantity_remaining), 0) AS batch_total
+         FROM item_batches
+        WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND status = 'active'`,
+      [institutionId, itemId, warehouseId]
+    );
+
+    const onHand = parseFloat(invRows[0]?.on_hand || 0);
+    const batchTotal = parseFloat(batchRows[0]?.batch_total || 0);
+    return { onHand, batchTotal, unallocated: onHand - batchTotal };
+  }
+
+  async _validateBatchQuantityAgainstInventory(institutionId, itemId, warehouseId, quantity, connection = null) {
+    const qty = parseFloat(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new Error('Quantity must be greater than 0');
+    }
+
+    const { onHand, batchTotal, unallocated } = await this._getBatchAllocationSummary(
+      institutionId, itemId, warehouseId, connection
+    );
+
+    if (qty > unallocated + 0.0001) {
+      throw new Error(
+        `Cannot assign ${qty} to a batch — only ${Math.max(unallocated, 0).toFixed(2)} unallocated in warehouse stock `
+        + `(${onHand.toFixed(2)} on hand, ${batchTotal.toFixed(2)} already in batches). `
+        + 'Receive stock via GRN or set opening stock first.'
+      );
+    }
+  }
+
   async createBatch(institutionId, data, userId) {
     const {
       itemId, warehouseId, batchNumber,
@@ -22,17 +77,10 @@ class BatchSerialService {
       throw new Error('Quantity must be greater than 0');
     }
 
-    const [item] = await db.query(
-      'SELECT id FROM items WHERE id=? AND institution_id=? AND status=\'active\'',
-      [itemId, institutionId]
+    await this._assertActiveItemAndWarehouse(institutionId, itemId, warehouseId);
+    await this._validateBatchQuantityAgainstInventory(
+      institutionId, itemId, warehouseId, qtyReceived
     );
-    if (!item) throw new Error('Item not found or inactive');
-
-    const [wh] = await db.query(
-      'SELECT id FROM warehouses WHERE id=? AND institution_id=? AND status=\'active\'',
-      [warehouseId, institutionId]
-    );
-    if (!wh) throw new Error('Warehouse not found or inactive');
 
     const existing = await db.query(
       `SELECT id FROM item_batches
@@ -163,6 +211,20 @@ class BatchSerialService {
       );
     }
 
+    const inventoryService = require('./inventory.service');
+    await inventoryService.adjustStock(
+      institutionId,
+      {
+        itemId: batch.item_id,
+        warehouseId: batch.warehouse_id,
+        quantityChange: qty,
+        adjustmentType: 'decrease',
+        reason: `Manual batch consume (${batch.batch_number})`,
+        lossType: 'MANUAL',
+      },
+      userId
+    );
+
     await this._logMovement(
       institutionId,
       {
@@ -270,17 +332,7 @@ class BatchSerialService {
       throw new Error('serialNumbers array is required');
     }
 
-    const [item] = await db.query(
-      'SELECT id FROM items WHERE id=? AND institution_id=? AND status=\'active\'',
-      [itemId, institutionId]
-    );
-    if (!item) throw new Error('Item not found or inactive');
-
-    const [wh] = await db.query(
-      'SELECT id FROM warehouses WHERE id=? AND institution_id=? AND status=\'active\'',
-      [warehouseId, institutionId]
-    );
-    if (!wh) throw new Error('Warehouse not found or inactive');
+    await this._assertActiveItemAndWarehouse(institutionId, itemId, warehouseId);
 
     if (batchId) {
       const [batch] = await db.query(
@@ -537,7 +589,9 @@ class BatchSerialService {
 
   async getItemTracking(institutionId, itemId) {
     const rows = await db.query(
-      'SELECT is_batch_tracked, is_serialized, has_expiry FROM items WHERE id = ? AND institution_id = ?',
+      `SELECT is_batch_tracked, is_serialized, has_expiry
+         FROM items
+        WHERE id = ? AND institution_id = ? AND status = 'active'`,
       [itemId, institutionId]
     );
     if (!rows.length) {
@@ -575,6 +629,10 @@ class BatchSerialService {
     } = data;
     const normalized = String(batchNumber || '').trim().toUpperCase();
     if (!normalized) throw new Error('Batch number is required');
+    await this._assertActiveItemAndWarehouse(institutionId, itemId, warehouseId, connection);
+    await this._validateBatchQuantityAgainstInventory(
+      institutionId, itemId, warehouseId, quantity, connection
+    );
 
     const existing = await this._exec(
       connection,
