@@ -130,9 +130,20 @@ export default function BomItemFormFields({
                 <UnitField form={form} units={units} onRefresh={onRefreshMasterData} />
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item name="returnableItem" valuePropName="checked">
-                  <Checkbox>Returnable item</Checkbox>
-                </Form.Item>
+                {isEditing ? (
+                  <Form.Item name="status" label="Status">
+                    <Select
+                      options={[
+                        { value: 'active', label: 'Active — available for production & sales' },
+                        { value: 'inactive', label: 'Inactive — hidden from active lists' },
+                      ]}
+                    />
+                  </Form.Item>
+                ) : (
+                  <Form.Item name="returnableItem" valuePropName="checked">
+                    <Checkbox>Returnable item</Checkbox>
+                  </Form.Item>
+                )}
               </Col>
             </Row>
             <Form.Item name="description" label="Notes / description">
@@ -518,18 +529,6 @@ export default function BomItemFormFields({
                   </Select>
                 </Form.Item>
               </Col>
-              {isEditing && (
-                <Col xs={24} sm={8}>
-                  <Form.Item name="status" label="Status">
-                    <Select
-                      options={[
-                        { value: 'active', label: 'Active' },
-                        { value: 'inactive', label: 'Inactive' },
-                      ]}
-                    />
-                  </Form.Item>
-                </Col>
-              )}
             </Row>
 
             {!isEditing && (

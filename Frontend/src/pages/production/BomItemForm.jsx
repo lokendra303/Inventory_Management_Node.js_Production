@@ -132,8 +132,14 @@ export default function BomItemForm({
   const [existingCustomFields, setExistingCustomFields] = useState({});
   const autoDraftLock = useRef(false);
   const initDoneRef = useRef(false);
+  const editLoadedItemIdRef = useRef(null);
+  const unitsRef = useRef([]);
+  const onCancelRef = useRef(onCancel);
 
   const isEditing = Boolean(itemId);
+
+  unitsRef.current = units;
+  onCancelRef.current = onCancel;
 
   const loadMasterData = useCallback(async () => {
     const [
@@ -209,7 +215,7 @@ export default function BomItemForm({
 
   const resetCreateForm = useCallback(() => {
     form.resetFields();
-    form.setFieldsValue(defaultFormValues(units));
+    form.setFieldsValue(defaultFormValues(unitsRef.current));
     setImageUrl('');
     setComponents([{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }]);
     setKitFulfillmentMode('prebuilt');
@@ -218,7 +224,7 @@ export default function BomItemForm({
     setDraftRestored(false);
     setBinsForWarehouse([]);
     setExistingCustomFields({});
-  }, [form, units]);
+  }, [form]);
 
   const applyDraft = useCallback((draft) => {
     if (!draft?.data) return;
@@ -264,93 +270,110 @@ export default function BomItemForm({
   }, []);
 
   useEffect(() => {
-    if (!open) {
-      initDoneRef.current = false;
-      return undefined;
-    }
+    if (open) return undefined;
+    initDoneRef.current = false;
+    editLoadedItemIdRef.current = null;
+    resetCreateForm();
+    return undefined;
+  }, [open, resetCreateForm]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    let cancelled = false;
     const loadLookups = async () => {
       try {
         const [itemsRes, master] = await Promise.all([
           apiService.get('/items', { params: { limit: 5000 } }),
           loadMasterData(),
         ]);
+        if (cancelled) return;
         setCatalogItems(itemsRes.success ? itemsRes.data : []);
 
         if (!itemId && !resumeDraftId && !draftRestored) {
           form.setFieldsValue({ unit: pickDefaultUnit(master.units) });
         }
       } catch {
-        message.error('Failed to load form lookups');
+        if (!cancelled) message.error('Failed to load form lookups');
       }
     };
 
     loadLookups();
-    return undefined;
+    return () => {
+      cancelled = true;
+    };
   }, [open, itemId, resumeDraftId, draftRestored, form, loadMasterData]);
 
   useEffect(() => {
-    if (!open) {
-      resetCreateForm();
-      return undefined;
-    }
+    if (!open || !itemId) return undefined;
+    if (editLoadedItemIdRef.current === itemId) return undefined;
 
-    if (itemId) {
-      const loadItem = async () => {
-        try {
-          setLoading(true);
-          const [master, res] = await Promise.all([
-            loadMasterData(),
-            apiService.get(`/production/bom-items/${itemId}`),
-          ]);
-          if (!res.success || !res.data) {
-            message.error('BOM item not found');
-            onCancel?.();
-            return;
-          }
-          const item = res.data;
-          const custom = item.custom_fields || {};
-          const { brandId, manufacturerId, unitId } = resolveMasterDataIds(item, {
-            units: master.units,
-            brandOptions: master.brands,
-            manufacturerOptions: master.manufacturers,
-          });
-          setExistingCustomFields(custom);
-          const whId = item.warehouse_id || (item.warehouse_ids?.[0]);
-          form.setFieldsValue({
-            ...mapBomItemToFormValues(item),
-            category: item.category,
-            unit: unitId,
-            brand: brandId,
-            manufacturer: manufacturerId,
-            trackInventory: deriveTrackInventoryValue(item, whId),
-            isSellable: item.is_sellable !== 0 && item.is_sellable !== false,
-            customFields: extractTypeCustomFields(custom),
-            salesDescription: custom.salesDescription,
-            purchaseDescription: custom.purchaseDescription,
-            purchaseTaxRate: custom.purchaseTaxRate,
-          });
-          setImageUrl(item.image || '');
-          setKitFulfillmentMode(item.kit_fulfillment_mode || item.kitFulfillmentMode || 'prebuilt');
-          setComponents(normalizeComponents(item.composite_components || []).length
-            ? item.composite_components.map((c) => ({
-              itemId: c.component_item_id || c.itemId,
-              quantityRequired: Number(c.quantity_required ?? c.quantityRequired ?? 1),
-              consumptionTiming: c.consumption_timing || c.consumptionTiming || 'shipment',
-            }))
-            : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }]);
-          if (whId) await fetchBinsForWarehouse(whId);
-        } catch (err) {
-          message.error(err?.response?.data?.error || 'Failed to load BOM item');
-          onCancel?.();
-        } finally {
-          setLoading(false);
+    let cancelled = false;
+    editLoadedItemIdRef.current = itemId;
+
+    const loadItem = async () => {
+      try {
+        setLoading(true);
+        const [master, res] = await Promise.all([
+          loadMasterData(),
+          apiService.get(`/production/bom-items/${itemId}`),
+        ]);
+        if (cancelled) return;
+        if (!res.success || !res.data) {
+          message.error('BOM item not found');
+          onCancelRef.current?.();
+          return;
         }
-      };
-      loadItem();
-      return undefined;
-    }
+        const item = res.data;
+        const custom = item.custom_fields || {};
+        const { brandId, manufacturerId, unitId } = resolveMasterDataIds(item, {
+          units: master.units,
+          brandOptions: master.brands,
+          manufacturerOptions: master.manufacturers,
+        });
+        setExistingCustomFields(custom);
+        const whId = item.warehouse_id || (item.warehouse_ids?.[0]);
+        form.setFieldsValue({
+          ...mapBomItemToFormValues(item),
+          category: item.category,
+          unit: unitId,
+          brand: brandId,
+          manufacturer: manufacturerId,
+          trackInventory: deriveTrackInventoryValue(item, whId),
+          isSellable: item.is_sellable !== 0 && item.is_sellable !== false,
+          customFields: extractTypeCustomFields(custom),
+          salesDescription: custom.salesDescription,
+          purchaseDescription: custom.purchaseDescription,
+          purchaseTaxRate: custom.purchaseTaxRate,
+        });
+        setImageUrl(item.image || '');
+        setKitFulfillmentMode(item.kit_fulfillment_mode || item.kitFulfillmentMode || 'prebuilt');
+        setComponents(normalizeComponents(item.composite_components || []).length
+          ? item.composite_components.map((c) => ({
+            itemId: c.component_item_id || c.itemId,
+            quantityRequired: Number(c.quantity_required ?? c.quantityRequired ?? 1),
+            consumptionTiming: c.consumption_timing || c.consumptionTiming || 'shipment',
+          }))
+          : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }]);
+        if (whId) await fetchBinsForWarehouse(whId);
+      } catch (err) {
+        if (!cancelled) {
+          message.error(err?.response?.data?.error || 'Failed to load BOM item');
+          onCancelRef.current?.();
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
+    loadItem();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, itemId, form, fetchBinsForWarehouse, loadMasterData]);
+
+  useEffect(() => {
+    if (!open || itemId) return undefined;
     if (initDoneRef.current) return undefined;
     initDoneRef.current = true;
 
@@ -364,7 +387,7 @@ export default function BomItemForm({
     })();
 
     return undefined;
-  }, [open, itemId, resumeDraftId, form, onCancel, loadDraftById, resetCreateForm, tryLoadLatestDraft, fetchBinsForWarehouse, loadMasterData]);
+  }, [open, itemId, resumeDraftId, loadDraftById, resetCreateForm, tryLoadLatestDraft]);
 
   const saveDraft = useCallback(async (silent = false) => {
     if (isEditing || autoDraftLock.current) return false;

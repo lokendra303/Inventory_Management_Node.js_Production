@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   Col,
+  Dropdown,
   Input,
   Row,
   Space,
@@ -13,6 +14,7 @@ import {
   Popconfirm,
   Tooltip,
   Empty,
+  Modal,
 } from 'antd';
 import {
   PlusOutlined,
@@ -29,6 +31,9 @@ import {
   DeleteOutlined,
   PlayCircleOutlined,
   BlockOutlined,
+  CheckCircleOutlined,
+  StopOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
@@ -151,7 +156,9 @@ export default function BomItemsPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
+      if (statusFilter && statusFilter !== 'drafts') {
+        params.set('status', statusFilter);
+      }
       if (searchText.trim()) params.set('search', searchText.trim());
       const qs = params.toString();
       const res = await apiService.get(`/production/bom-items${qs ? `?${qs}` : ''}`);
@@ -227,6 +234,68 @@ export default function BomItemsPage() {
 
   const openItemDetails = (record) => {
     setViewingItem(record);
+  };
+
+  const deactivateBomItem = (item) => {
+    if (item.status !== 'active') return;
+
+    Modal.confirm({
+      title: 'Deactivate BOM item?',
+      icon: <StopOutlined style={{ color: '#ff4d4f' }} />,
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            <strong>{item.name}</strong>
+            {item.sku ? ` (${item.sku})` : ''} will be marked inactive and hidden from active lists.
+          </p>
+          <p style={{ margin: 0, color: '#8c8c8c', fontSize: 13 }}>
+            You can reactivate it from the Inactive tab or while editing the item.
+          </p>
+        </div>
+      ),
+      okText: 'Deactivate',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          const response = await apiService.put(`/production/bom-items/${item.id}`, { status: 'inactive' });
+          if (response.success) {
+            message.success('BOM item deactivated');
+            refreshAll();
+          } else {
+            message.error(response.error || 'Failed to deactivate BOM item');
+          }
+        } catch (error) {
+          message.error(
+            error?.response?.data?.error
+            || error?.message
+            || 'Failed to deactivate BOM item',
+            8
+          );
+        }
+      },
+    });
+  };
+
+  const activateBomItem = async (item) => {
+    if (item.status !== 'inactive') return;
+
+    try {
+      const response = await apiService.put(`/production/bom-items/${item.id}`, { status: 'active' });
+      if (response.success) {
+        message.success('BOM item activated');
+        refreshAll();
+      } else {
+        message.error(response.error || 'Failed to activate BOM item');
+      }
+    } catch (error) {
+      message.error(
+        error?.response?.data?.error
+        || error?.message
+        || 'Failed to activate BOM item',
+        8
+      );
+    }
   };
 
   const filteredDrafts = useMemo(() => {
@@ -442,18 +511,49 @@ export default function BomItemsPage() {
             />
           </Tooltip>
           {canManage ? (
-            <Tooltip title="Edit BOM & components">
-              <Button
-                type="primary"
-                ghost
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => openEdit(record)}
-                style={{ borderRadius: 8, fontWeight: 600 }}
+            <>
+              <Tooltip title="Edit BOM & components">
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => openEdit(record)}
+                  style={{
+                    borderRadius: 8,
+                    background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                    border: 'none',
+                    color: '#fff',
+                    boxShadow: '0 2px 8px rgba(102, 126, 234, 0.35)',
+                  }}
+                />
+              </Tooltip>
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    ...(record.status === 'active' ? [{
+                      key: 'deactivate',
+                      icon: <StopOutlined style={{ color: '#ff4d4f' }} />,
+                      label: 'Deactivate',
+                      onClick: () => deactivateBomItem(record),
+                    }] : []),
+                    ...(record.status === 'inactive' ? [{
+                      key: 'activate',
+                      icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+                      label: 'Activate',
+                      onClick: () => activateBomItem(record),
+                    }] : []),
+                  ],
+                }}
               >
-                Edit
-              </Button>
-            </Tooltip>
+                <Tooltip title="More actions">
+                  <Button
+                    size="small"
+                    icon={<MoreOutlined />}
+                    style={{ borderRadius: 8, border: '1px solid #d9d9d9', color: '#595959' }}
+                  />
+                </Tooltip>
+              </Dropdown>
+            </>
           ) : null}
         </Space>
       ),
