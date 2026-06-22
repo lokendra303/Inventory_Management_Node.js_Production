@@ -9,6 +9,9 @@ const { serializeDocumentMeta, parseDocumentMeta } = require('../../utils/docume
 const logger = require('../../utils/logger');
 const compositeInventoryService = require('../inventory/compositeInventory.service');
 const warehouseOptimizationService = require('../warehouse/warehouseOptimization.service');
+const batchSerialService = require('../inventory/batchSerial.service');
+const inventoryService = require('../inventory/inventory.service');
+const soConfirmationService = require('./soConfirmation.service');
 
 class SalesOrderService {
   async shipSalesOrder(institutionId, soId, shipmentData, userId) {
@@ -79,6 +82,21 @@ class SalesOrderService {
           userId
         );
 
+        await batchSerialService.shipForLine(
+          institutionId,
+          {
+            itemId: soLine.item_id,
+            warehouseId: soLine.warehouse_id,
+            quantity: qty,
+            batchAllocations: line.batchAllocations,
+            serialIds: line.serialIds,
+            soId,
+            soLineId: soLine.id,
+          },
+          userId,
+          connection
+        );
+
         const newShipped = alreadyShipped + qty;
         const nextStatus = newShipped >= ordered ? 'shipped' : 'partially_shipped';
         await connection.execute(
@@ -112,6 +130,17 @@ class SalesOrderService {
         [soStatus, institutionId, soId]
       );
 
+      let invoiceNumber = null;
+      if (soStatus === 'shipped') {
+        const invoiceResult = await soConfirmationService.createInvoiceForShippedSO(
+          institutionId,
+          soId,
+          userId,
+          connection
+        );
+        invoiceNumber = invoiceResult.invoiceNumber || null;
+      }
+
       logger.info('SO shipment created', {
         institutionId,
         soId,
@@ -129,7 +158,8 @@ class SalesOrderService {
         shipmentNumber,
         status: soStatus,
         totalOrdered,
-        totalShipped
+        totalShipped,
+        invoiceNumber,
       };
     });
   }
@@ -149,8 +179,11 @@ class SalesOrderService {
       lines,
       isPreorder = false,
       customerAddress,
-      shippingMethod = 'standard'
+      shippingMethod = 'standard',
+      status: requestedStatus,
     } = soData;
+
+    const isSalesReturn = requestedStatus === 'returned';
 
     const documentMetaJson = serializeDocumentMeta(documentMeta ?? soData.document_meta, 'salesOrder');
 
@@ -177,9 +210,10 @@ class SalesOrderService {
           `INSERT INTO sales_orders 
            (id, institution_id, so_number, customer_id, customer_name, channel, currency, exchange_rate,
             order_date, expected_ship_date, notes, document_meta, created_by, status, is_preorder, shipping_method) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [soId, institutionId, soNumber || `SO-${Date.now()}`, customerId || null, customerName, channel, currency,
-           resolvedRate, orderDate || null, expectedShipDate || null, notes || null, documentMetaJson, userId, isPreorder, shippingMethod]
+           resolvedRate, orderDate || null, expectedShipDate || null, notes || null, documentMetaJson, userId,
+           isSalesReturn ? 'returned' : 'draft', isPreorder, shippingMethod]
         );
 
         // Create SO lines with warehouse per line
@@ -212,7 +246,12 @@ class SalesOrderService {
             itemVariantId: line.itemVariantId || null,
             warehouseId: line.warehouseId,
             quantity: line.quantity,
-            unitPrice: line.unitPrice
+            unitPrice: line.unitPrice,
+            batchNumber: line.batchNumber,
+            manufactureDate: line.manufactureDate,
+            expiryDate: line.expiryDate,
+            serialNumbers: line.serialNumbers,
+            serialIds: line.serialIds,
           });
         }
 
@@ -222,21 +261,55 @@ class SalesOrderService {
           [subtotal, subtotal, totalCommittedDemand, soId]
         );
 
-        // Reserve stock for each line item
+        // Reserve stock for each line item (normal orders) or restore on sales return
         for (const line of createdLines) {
-          await compositeInventoryService.reserveForSalesLine(
-            institutionId,
-            {
-              itemId: line.itemId,
-              warehouseId: line.warehouseId,
-              quantity: line.quantity,
-              unitPrice: line.unitPrice,
-              soId,
-              soLineId: line.lineId,
-              itemVariantId: line.itemVariantId || undefined
-            },
-            userId
-          );
+          if (isSalesReturn) {
+            await inventoryService.returnSale(
+              institutionId,
+              {
+                itemId: line.itemId,
+                warehouseId: line.warehouseId,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+                soId,
+                soLineId: line.lineId,
+                returnReason: notes || 'Sales return',
+                itemVariantId: line.itemVariantId || undefined,
+              },
+              userId
+            );
+            await batchSerialService.restoreForSalesReturn(
+              institutionId,
+              {
+                itemId: line.itemId,
+                warehouseId: line.warehouseId,
+                quantity: line.quantity,
+                unitCost: line.unitPrice,
+                batchNumber: line.batchNumber,
+                manufactureDate: line.manufactureDate,
+                expiryDate: line.expiryDate,
+                serialNumbers: line.serialNumbers,
+                serialIds: line.serialIds,
+                returnLineId: line.lineId,
+              },
+              userId,
+              connection
+            );
+          } else {
+            await compositeInventoryService.reserveForSalesLine(
+              institutionId,
+              {
+                itemId: line.itemId,
+                warehouseId: line.warehouseId,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+                soId,
+                soLineId: line.lineId,
+                itemVariantId: line.itemVariantId || undefined
+              },
+              userId
+            );
+          }
         }
       });
 
@@ -288,7 +361,9 @@ class SalesOrderService {
 
     // Get SO lines
     const lines = await db.query(
-      `SELECT sol.*, i.hsn_code, i.name as item_name, i.unit, w.name as warehouse_name,
+      `SELECT sol.*, i.hsn_code, i.name as item_name, i.unit,
+              i.is_batch_tracked, i.is_serialized, i.has_expiry,
+              w.name as warehouse_name,
               iv.variant_name as variant_name, iv.sku as variant_sku
        FROM sales_order_lines sol
        JOIN items i ON sol.item_id = i.id

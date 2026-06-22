@@ -370,3 +370,5 @@ export function ImportSheetMatchGroupsPanel({
     </div>
   );
 }
+
+export default ImportSheetMatchGroupsPanel;

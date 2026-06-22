@@ -4,6 +4,7 @@ import { PlusOutlined, EyeOutlined, FileTextOutlined, SearchOutlined, StopOutlin
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatAmount } from '../../utils/numberFormat';
+import BatchSerialLineFields, { mapReceiveLineBatchSerial } from '../../components/inventory/BatchSerialLineFields';
 
 const PurchasesReceives = () => {
   const { currency } = useCurrency();
@@ -98,7 +99,10 @@ const PurchasesReceives = () => {
             pendingQty: pending,
             quantityReceived: pending,  // default to full pending qty; user can reduce for partial
             unitCost: line.unit_cost,
-            qualityStatus: 'accepted'
+            qualityStatus: 'accepted',
+            isBatchTracked: Boolean(line.is_batch_tracked),
+            isSerialized: Boolean(line.is_serialized),
+            hasExpiry: Boolean(line.has_expiry),
           };
         })
       });
@@ -128,8 +132,8 @@ const PurchasesReceives = () => {
           warehouseId: line.warehouseId,
           quantityReceived: Number(line.quantityReceived),
           unitCost: Number(line.unitCost),
-          // qualityStatus controls inventory: accepted = stock updated, rejected = stock NOT updated
-          qualityStatus: line.qualityStatus || 'accepted'
+          qualityStatus: line.qualityStatus || 'accepted',
+          ...(line.qualityStatus !== 'rejected' ? mapReceiveLineBatchSerial(line) : {}),
         }))
       };
 
@@ -421,7 +425,11 @@ const PurchasesReceives = () => {
                     All items in this PO have been fully received
                   </div>
                 )}
-                {fields.map(({ key, name }) => (
+                {fields.map(({ key, name }) => {
+                  const lineValues = receiveForm.getFieldValue(['lines', name]) || {};
+                  const qty = Number(lineValues.quantityReceived || 0);
+                  const isRejected = lineValues.qualityStatus === 'rejected';
+                  return (
                   <div key={key} style={{ border: '1px solid #d9d9d9', padding: 16, marginBottom: 8, borderRadius: 6, backgroundColor: '#fafafa' }}>
                     {/* hidden fields — sent to backend */}
                     <Form.Item name={[name, 'poLineId']} hidden><Input /></Form.Item>
@@ -498,8 +506,25 @@ const PurchasesReceives = () => {
                         </Select>
                       </Form.Item>
                     </div>
+
+                    {!isRejected && qty > 0 && (lineValues.isBatchTracked || lineValues.isSerialized) && (
+                      <BatchSerialLineFields
+                        form={receiveForm}
+                        lineName={name}
+                        itemId={lineValues.itemId}
+                        warehouseId={lineValues.warehouseId}
+                        tracking={{
+                          is_batch_tracked: lineValues.isBatchTracked,
+                          is_serialized: lineValues.isSerialized,
+                          has_expiry: lineValues.hasExpiry,
+                        }}
+                        quantity={qty}
+                        mode="receive"
+                      />
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Form.List>

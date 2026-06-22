@@ -122,6 +122,15 @@ class BatchSerialController {
       res.status(500).json({ success: false, error: e.message });
     }
   }
+
+  async getMovements(req, res) {
+    try {
+      const data = await batchSerialService.getMovements(req.institutionId, req.query);
+      res.json({ success: true, data });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  }
 }
 
 module.exports = new BatchSerialController();

@@ -30,6 +30,7 @@ export default function BatchTracking() {
   const [batches, setBatches] = useState([]);
   const [serials, setSerials] = useState([]);
   const [expiryAlerts, setExpiryAlerts] = useState([]);
+  const [movements, setMovements] = useState([]);
   const [items, setItems] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -73,16 +74,18 @@ export default function BatchTracking() {
         ...(batchFilters.batchNumber?.trim() ? { batchNumber: batchFilters.batchNumber.trim() } : {}),
       };
 
-      const [bRes, sRes, eRes, iRes, wRes] = await Promise.all([
+      const [bRes, sRes, eRes, mRes, iRes, wRes] = await Promise.all([
         apiService.get('/batch-serial/batches', { params: batchParams }),
         apiService.get('/batch-serial/serials'),
         apiService.get('/batch-serial/expiry-alerts'),
+        apiService.getBatchSerialMovements(),
         apiService.get('/items', { params: { status: 'active' } }),
         apiService.get('/warehouses', { params: { status: 'active' } }),
       ]);
       setBatches(bRes.data || []);
       setSerials(sRes.data || []);
       setExpiryAlerts(eRes.data || []);
+      setMovements(mRes.data || []);
       setItems(iRes.data || []);
       setWarehouses(wRes.data || []);
     } catch {
@@ -284,7 +287,7 @@ export default function BatchTracking() {
             ? [{ key: 'edit_dates', label: 'Add manufacture / expiry dates' }]
             : []),
           ...(remaining > 0 && record.status === 'active'
-            ? [{ key: 'consume', label: 'Consume qty' }]
+            ? [{ key: 'consume', label: 'Manual adjust (damage/write-off)' }]
             : []),
           ...(record.status !== 'damaged'
             ? [{ key: 'damaged', label: 'Mark damaged' }]
@@ -348,6 +351,66 @@ export default function BatchTracking() {
       key: 'received_date',
       width: 120,
       render: (v) => (v ? dayjs(v).format('DD MMM YYYY') : '-'),
+    },
+  ];
+
+  const movementTypeColors = {
+    receive: 'green',
+    ship: 'blue',
+    purchase_return: 'orange',
+    sales_return: 'purple',
+  };
+
+  const movementColumns = [
+    {
+      title: 'Type',
+      dataIndex: 'movement_type',
+      key: 'movement_type',
+      width: 130,
+      render: (v, record) => {
+        const manual = record.reference_type === 'manual_batch' || record.reference_type === 'manual_adjustment';
+        const label = manual
+          ? `${v?.replace('_', ' ')} (manual)`
+          : v?.replace('_', ' ');
+        return (
+          <Tag color={movementTypeColors[v] || 'default'}>{label?.toUpperCase()}</Tag>
+        );
+      },
+    },
+    {
+      title: 'Source',
+      dataIndex: 'reference_type',
+      key: 'reference_type',
+      width: 110,
+      render: (v) => {
+        const labels = {
+          grn_line: 'PO receive',
+          so_line: 'SO ship',
+          manual_batch: 'Manual batch',
+          manual_adjustment: 'Manual adjust',
+          purchase_return_line: 'Purchase return',
+          sales_return_line: 'Sales return',
+        };
+        return labels[v] || v || '-';
+      },
+    },
+    { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 130, ellipsis: true },
+    { title: 'Batch', dataIndex: 'batch_number', key: 'batch_number', width: 110, render: (v) => v || '-' },
+    { title: 'Serial', dataIndex: 'serial_number', key: 'serial_number', width: 110, render: (v) => v || '-' },
+    { title: 'Warehouse', dataIndex: 'warehouse_name', key: 'warehouse_name', width: 110, ellipsis: true },
+    {
+      title: 'Qty',
+      dataIndex: 'quantity',
+      key: 'quantity',
+      width: 70,
+      render: (v) => formatQty(v),
+    },
+    {
+      title: 'When',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 140,
+      render: (v) => (v ? dayjs(v).format('DD MMM YYYY HH:mm') : '-'),
     },
   ];
 
@@ -420,6 +483,21 @@ export default function BatchTracking() {
           action={<Button size="small" onClick={() => setActiveTab('expiry')}>View Alerts</Button>}
         />
       )}
+
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="Automatic traceability (recommended)"
+        description={
+          <>
+            Lifecycle rows are created automatically when you{' '}
+            <strong>receive a PO with batch #</strong> (item must have Batch/lot tracked enabled first){' '}
+            and <strong>ship a confirmed Sales Order</strong>.{' '}
+            &quot;New Batch&quot; and &quot;Manual adjust&quot; are for corrections only — they do not update main inventory.
+          </>
+        }
+      />
 
       <Tabs
         activeKey={activeTab}
@@ -522,6 +600,33 @@ export default function BatchTracking() {
                 pagination={{ pageSize: 20, size: 'small' }}
                 scroll={{ x: 'max-content' }}
               />
+            ),
+          },
+          {
+            key: 'movements',
+            label: 'Lifecycle',
+            children: (
+              <>
+                {movements.length === 0 && batches.length > 0 && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message="Batches exist but no lifecycle events yet"
+                    description="If batches were created with New Batch, use PO receive + SO ship for full traceability. Enable Batch/lot tracked on the item, receive with a batch number, confirm the SO, then ship."
+                  />
+                )}
+                <Table
+                  columns={movementColumns}
+                  dataSource={movements}
+                  rowKey="id"
+                  loading={loading}
+                  size="small"
+                  pagination={{ pageSize: 20, size: 'small' }}
+                  scroll={{ x: 'max-content' }}
+                  locale={{ emptyText: 'No movements yet — receive via PO (with batch #) or ship a confirmed SO' }}
+                />
+              </>
             ),
           },
         ]}
@@ -631,11 +736,11 @@ export default function BatchTracking() {
       </Modal>
 
       <Modal
-        title={selectedBatch ? `Consume — ${selectedBatch.batch_number}` : 'Consume Batch Quantity'}
+        title={selectedBatch ? `Manual adjust — ${selectedBatch.batch_number}` : 'Manual Batch Adjust'}
         open={consumeModal}
         onCancel={() => { setConsumeModal(false); setSelectedBatch(null); consumeForm.resetFields(); }}
         onOk={() => consumeForm.submit()}
-        okText="Consume"
+        okText="Adjust"
         width="min(420px, 96vw)"
       >
         {selectedBatch && (
@@ -646,10 +751,16 @@ export default function BatchTracking() {
             message={`Available: ${formatQty(selectedBatch.quantity_remaining ?? selectedBatch.quantity_available)}`}
           />
         )}
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="For normal sales shipping, use Sales Orders or Shipments — batch qty is deducted automatically (FEFO)."
+        />
         <Form form={consumeForm} layout="vertical" onFinish={handleConsumeBatch}>
           <Form.Item
             name="quantity"
-            label="Quantity to consume"
+            label="Quantity to adjust off batch"
             rules={[{ required: true, message: 'Quantity is required' }]}
           >
             <InputNumber

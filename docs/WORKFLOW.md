@@ -541,7 +541,7 @@ does all of the following in a single transaction, per line:
 
 1. Validates `warehouseId` matches the PO line's warehouse (mismatch ⇒ 400).
 2. Validates `quantity_received ≤ quantity_pending`.
-3. Inserts `grn_lines`.
+3. Inserts `grn_lines` (including optional `batch_number`, dates, `serial_numbers` snapshot).
 4. Updates `purchase_order_lines.quantity_received` and `status` to
    `pending | partially_received | received` via a SQL `CASE`.
 5. Upserts `inventory_projections`:
@@ -552,7 +552,12 @@ does all of the following in a single transaction, per line:
    - `version += 1`
 6. Inserts a row into `event_store` with `event_type = 'PurchaseReceived'`
    and idempotency key `receive-${grnLineId}`.
-7. Updates the PO header status (`partially_received` or `received`).
+7. For **accepted** lines on batch/serial-tracked items: calls
+   `batchSerial.service#receiveOnGrnLine` (creates/updates `item_batches`,
+   registers `item_serials`, writes `batch_serial_movements`, refreshes
+   `expiry_alerts`). See
+   [batch-serial-lifecycle.md](../Backend/docs/features/batch-serial-lifecycle.md).
+8. Updates the PO header status (`partially_received` or `received`).
 
 ```mermaid
 sequenceDiagram
@@ -561,8 +566,9 @@ sequenceDiagram
   participant API as /api/grn
   participant DB as MySQL (tx)
   participant EVT as event_store
+  participant BS as batchSerial.service
 
-  FE->>API: POST /api/grn (poId, lines[])
+  FE->>API: POST /api/grn (poId, lines[] + batch/serial)
   API->>DB: BEGIN
   loop per line
     API->>DB: validate line, qty ≤ pending
@@ -570,6 +576,7 @@ sequenceDiagram
     API->>DB: UPDATE purchase_order_lines (qty + status)
     API->>DB: UPSERT inventory_projections (WAC)
     API->>EVT: INSERT event_store (idempotency: receive-<lineId>)
+    API->>BS: receiveOnGrnLine (if item tracked)
   end
   API->>DB: UPDATE purchase_orders.status
   API->>DB: COMMIT
@@ -771,8 +778,21 @@ produces an adjustment row in `inventory_adjustments` and updates
 
 ### 9.5 Batch / Serial
 
-- API: `/api/batch-serial/*` — CRUD + expiry alerts.
-- Page: `BatchTracking.jsx`.
+Full lifecycle doc:
+[Backend/docs/features/batch-serial-lifecycle.md](../Backend/docs/features/batch-serial-lifecycle.md)
+
+| Surface | Path / page |
+|---------|-------------|
+| Standalone CRUD + alerts | `/api/batch-serial/*` — `BatchTracking.jsx` |
+| Purchase receive | `POST /api/grn` — `PurchasesReceives.jsx` |
+| Shipment | `POST /api/sales-orders/:id/ship` — `Shipments.jsx` |
+| Purchase return | `POST /api/purchase-returns/:id/confirm` — `PurchaseReturns.jsx` |
+| Sales return | `POST /api/sales-orders` (`status: returned`) — `SalesReturns.jsx` |
+| Lifecycle audit | `GET /api/batch-serial/movements` — Batch Tracking → Lifecycle tab |
+
+Item flags: `is_batch_tracked`, `is_serialized`, `has_expiry` on `items`.
+Ship/return use **FEFO** for batches when no explicit allocation is sent.
+Expiry alerts fire within 90 days of batch expiry while qty remains.
 
 ### 9.6 Reorder levels
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { Card, Table, Button, Space, Modal, message, Form, Input, Select, InputNumber, Row, Col, Upload, Timeline, Tag, Spin, Empty, Tabs, Badge, Statistic, Divider, Tooltip, Popconfirm, Dropdown, Alert, Typography, Checkbox, Radio, DatePicker } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, UploadOutlined, HistoryOutlined, SearchOutlined, DollarOutlined, BarcodeOutlined, AppstoreOutlined, UnorderedListOutlined, InboxOutlined, ShopOutlined, TagsOutlined, WarningOutlined, CloseOutlined, DeleteOutlined, CopyOutlined, MoreOutlined, StopOutlined, CheckCircleOutlined, CheckOutlined, ThunderboltOutlined, SettingOutlined, ImportOutlined, DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { lookupProductByBarcode } from '../../utils/openFoodFacts';
@@ -19,10 +19,6 @@ import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
 import { filterSelectOption } from '../../utils/selectFilter';
-import { ImportDefaultsPanel } from './ImportDefaultsPanel.jsx';
-import { ImportUpdateFieldsPanel } from './ImportUpdateFieldsPanel.jsx';
-import { ImportDuplicateGroupsPanel } from './ImportDuplicateGroupsPanel.jsx';
-import { ImportSheetMatchGroupsPanel } from './ImportSheetMatchGroupsPanel.jsx';
 import {
   assessImportRowIssues,
   buildExistingItemsMatchIndex,
@@ -80,6 +76,19 @@ import {
   parseImportNumeric,
   parseImportDateValue,
 } from './importItemHelpers';
+
+const ImportDefaultsPanel = lazy(() =>
+  import('./ImportDefaultsPanel.jsx').then((m) => ({ default: m.ImportDefaultsPanel }))
+);
+const ImportUpdateFieldsPanel = lazy(() =>
+  import('./ImportUpdateFieldsPanel.jsx').then((m) => ({ default: m.ImportUpdateFieldsPanel }))
+);
+const ImportDuplicateGroupsPanel = lazy(() =>
+  import('./ImportDuplicateGroupsPanel.jsx').then((m) => ({ default: m.ImportDuplicateGroupsPanel }))
+);
+const ImportSheetMatchGroupsPanel = lazy(() =>
+  import('./ImportSheetMatchGroupsPanel.jsx').then((m) => ({ default: m.ImportSheetMatchGroupsPanel }))
+);
 
 const VARIANT_MATRIX_GRID_TEMPLATE = 'minmax(0, 2.2fr) minmax(0, 1.5fr) minmax(0, 1.35fr) minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(64px, 0.6fr)';
 const VARIANT_MATRIX_MIN_WIDTH = '100%';
@@ -2009,6 +2018,10 @@ const Items = () => {
         isbn: values.isbn,
         mpn: values.mpn,
         supplierCode: normalizeOptionalText(values.supplierCode) || null,
+        isBatchTracked: Boolean(values.isBatchTracked),
+        isSerialized: Boolean(values.isSerialized),
+        hasExpiry: Boolean(values.hasExpiry),
+        shelfLifeDays: values.shelfLifeDays || null,
       };
       if (itemData.type === 'composite') {
         const normalizedComponents = normalizeCompositeComponents(compositeComponents);
@@ -2559,7 +2572,11 @@ const viewItem = (item) => {
       upc: normalizeOptionalText(fullItem.upc),
       ean: normalizeOptionalText(fullItem.ean),
       isbn: normalizeOptionalText(fullItem.isbn),
-      mpn: normalizeOptionalText(fullItem.mpn)
+      mpn: normalizeOptionalText(fullItem.mpn),
+      isBatchTracked: Boolean(fullItem.is_batch_tracked),
+      isSerialized: Boolean(fullItem.is_serialized),
+      hasExpiry: Boolean(fullItem.has_expiry),
+      shelfLifeDays: fullItem.shelf_life_days || null,
     });
     fetchBinsForWarehouse(finalWarehouseId);
     setModalVisible(true);
@@ -2789,6 +2806,7 @@ const viewItem = (item) => {
   const watchedSize = Form.useWatch('sizeCode', form);
   const watchedPackType = Form.useWatch('packType', form);
   const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
+  const watchedHasExpiry = Form.useWatch('hasExpiry', form) === true;
   const isVariantItem = watchedItemType === 'variant';
 
   const possibleDuplicateItems = useMemo(() => {
@@ -5571,7 +5589,7 @@ const viewItem = (item) => {
           resetCsvImportModal();
         }}
         width={1080}
-        destroyOnHidden
+        destroyOnClose
         footer={[
           <Button key="tpl" icon={<DownloadOutlined />} onClick={downloadItemsCsvTemplateFile}>
             Sample CSV
@@ -5833,29 +5851,31 @@ const viewItem = (item) => {
         </Row>
 
         {!isCsvUpdateImport && (
-          <ImportDefaultsPanel
-            importDefaults={csvImportModal.importDefaults || {}}
-            importPurpose={csvImportModal.importPurpose || CSV_IMPORT_PURPOSE_CREATE}
-            skuSource={csvImportModal.skuSource}
-            disabled={csvImportModal.busy}
-            coreTargets={CSV_IMPORT_CORE_TARGETS}
-            fieldConfigs={csvImportModal.fieldConfigs}
-            categories={categories}
-            unitOptions={unitOptions}
-            brandOptions={brandOptions}
-            manufacturerOptions={manufacturerOptions}
-            itemGroups={itemGroups}
-            taxRateOptions={taxRateOptions}
-            canViewCategories={canViewCategories}
-            defaultCount={importDefaultCount}
-            onFieldChange={(fieldId, value) => {
-              setCsvImportModal((prev) => ({
-                ...prev,
-                importDefaults: { ...(prev.importDefaults || {}), [fieldId]: value },
-                result: null,
-              }));
-            }}
-          />
+          <Suspense fallback={null}>
+            <ImportDefaultsPanel
+              importDefaults={csvImportModal.importDefaults || {}}
+              importPurpose={csvImportModal.importPurpose || CSV_IMPORT_PURPOSE_CREATE}
+              skuSource={csvImportModal.skuSource}
+              disabled={csvImportModal.busy}
+              coreTargets={CSV_IMPORT_CORE_TARGETS}
+              fieldConfigs={csvImportModal.fieldConfigs}
+              categories={categories}
+              unitOptions={unitOptions}
+              brandOptions={brandOptions}
+              manufacturerOptions={manufacturerOptions}
+              itemGroups={itemGroups}
+              taxRateOptions={taxRateOptions}
+              canViewCategories={canViewCategories}
+              defaultCount={importDefaultCount}
+              onFieldChange={(fieldId, value) => {
+                setCsvImportModal((prev) => ({
+                  ...prev,
+                  importDefaults: { ...(prev.importDefaults || {}), [fieldId]: value },
+                  result: null,
+                }));
+              }}
+            />
+          </Suspense>
         )}
 
         <Row gutter={12} style={{ marginBottom: 12 }}>
@@ -5895,7 +5915,8 @@ const viewItem = (item) => {
 
         {isCsvUpdateImport && csvImportModal.headers.length > 0 && (
           <div style={{ marginTop: 16 }}>
-            <ImportUpdateFieldsPanel
+            <Suspense fallback={null}>
+              <ImportUpdateFieldsPanel
               mapping={csvImportModal.mapping || {}}
               importDefaults={csvImportModal.importDefaults || {}}
               disabled={csvImportModal.busy}
@@ -5939,6 +5960,7 @@ const viewItem = (item) => {
                 });
               }}
             />
+            </Suspense>
           </div>
         )}
 
@@ -6163,7 +6185,8 @@ const viewItem = (item) => {
 
         {isCsvUpdateImport && csvImportModal.rows.length > 0 && csvImportModal.headers.length > 0
           && csvImportSheetMatchGroups.length > 0 && (
-          <ImportSheetMatchGroupsPanel
+          <Suspense fallback={null}>
+            <ImportSheetMatchGroupsPanel
             groups={csvImportSheetMatchGroups}
             groupPlans={csvImportModal.duplicateGroupPlans || {}}
             rows={csvImportModal.rows || []}
@@ -6244,11 +6267,13 @@ const viewItem = (item) => {
               );
             }}
           />
+          </Suspense>
         )}
 
         {csvImportModal.rows.length > 0 && csvImportModal.headers.length > 0 && csvImportDuplicateGroups.length > 0
           && !(isCsvUpdateImport && csvImportSheetMatchGroups.length > 0) && (
-          <ImportDuplicateGroupsPanel
+          <Suspense fallback={null}>
+            <ImportDuplicateGroupsPanel
             groups={csvImportDuplicateGroups}
             duplicateGroupPlans={csvImportModal.duplicateGroupPlans || {}}
             rows={csvImportModal.rows || []}
@@ -6330,6 +6355,7 @@ const viewItem = (item) => {
               }
             } : undefined}
           />
+          </Suspense>
         )}
 
         {csvImportModal.rows.length > 0 && csvImportModal.headers.length > 0 && (
@@ -8566,6 +8592,30 @@ const viewItem = (item) => {
                     </Checkbox>
                   </Form.Item>
                 </div>
+                {watchedTrackInventory && watchedItemType !== 'service' && (
+                  <div style={{ marginTop: 12, padding: '10px 12px', background: '#f0f5ff', borderRadius: 8, border: '1px solid #adc6ff' }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Batch / Serial tracking</div>
+                    <Space wrap size="middle">
+                      <Form.Item name="isBatchTracked" valuePropName="checked" noStyle>
+                        <Checkbox>Batch / lot tracked</Checkbox>
+                      </Form.Item>
+                      <Form.Item name="isSerialized" valuePropName="checked" noStyle>
+                        <Checkbox>Serialized (one # per unit)</Checkbox>
+                      </Form.Item>
+                      <Form.Item name="hasExpiry" valuePropName="checked" noStyle>
+                        <Checkbox>Track expiry date</Checkbox>
+                      </Form.Item>
+                    </Space>
+                    {watchedHasExpiry && (
+                      <Form.Item name="shelfLifeDays" label="Shelf life (days)" style={{ marginTop: 8, marginBottom: 0, maxWidth: 220 }}>
+                        <InputNumber min={1} style={{ width: '100%' }} placeholder="Optional" />
+                      </Form.Item>
+                    )}
+                    <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
+                      Required for batch/serial fields on purchase receive, shipment, and returns.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           {(isVariantItem || watchedTrackInventory) && (
@@ -9006,7 +9056,7 @@ const viewItem = (item) => {
         width="min(1200px, 98vw)"
         style={{ top: 8 }}
         styles={{ body: { background: '#f8f9ff', borderRadius: '0 0 12px 12px', maxHeight: '86vh', overflowY: 'auto', padding: 16 } }}
-        destroyOnHidden
+        destroyOnClose
       >
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           {/* --- Existing rules list --- */}

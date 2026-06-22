@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Table, Button, Space, Modal, Form, Input, Select,
-  InputNumber, message, DatePicker, Tag, Tooltip, Avatar,
+  InputNumber, message, DatePicker, Tag, Tooltip, Avatar, Alert,
 } from "antd";
 import {
   PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOutlined,
@@ -29,6 +29,7 @@ import {
   emptyDocumentMetaForm,
   formatDocumentMetaForApi,
 } from '../../constants/documentMetaFields';
+import BatchSerialLineFields, { mapShipLineBatchSerial } from '../../components/inventory/BatchSerialLineFields';
 
 const DEFAULT_SO_LINE = { discountRate: 0, taxRateId: undefined };
 
@@ -59,6 +60,11 @@ const SalesOrders = () => {
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
   const [selectedSOForCancel, setSelectedSOForCancel] = useState(null);
+  const [batchActionModal, setBatchActionModal] = useState(false);
+  const [batchActionMode, setBatchActionMode] = useState('confirm');
+  const [batchActionSO, setBatchActionSO] = useState(null);
+  const [batchActionLoading, setBatchActionLoading] = useState(false);
+  const [batchActionForm] = Form.useForm();
   const [form] = Form.useForm();
   const {
     documentCurrency,
@@ -373,10 +379,23 @@ const SalesOrders = () => {
               </Tooltip>
             )}
             {record.status === 'confirmed' && (
-              <Tooltip title="Mark as shipped">
+              <Tooltip title="Ship remaining (batch/serial if tracked)">
                 <Button
                   size="small"
                   icon={<SendOutlined />}
+                  loading={batchActionLoading && batchActionSO?.id === record.id}
+                  onClick={(e) => { e.stopPropagation(); shipSO(record); }}
+                >
+                  Ship
+                </Button>
+              </Tooltip>
+            )}
+            {record.status === 'partially_shipped' && (
+              <Tooltip title="Ship remaining qty">
+                <Button
+                  size="small"
+                  icon={<SendOutlined />}
+                  loading={batchActionLoading && batchActionSO?.id === record.id}
                   onClick={(e) => { e.stopPropagation(); shipSO(record); }}
                 >
                   Ship
@@ -483,29 +502,130 @@ const SalesOrders = () => {
   };
 
   const confirmSO = async (so) => {
-    try {
-      const response = await apiService.post(`/sales-orders/${so.id}/confirm`);
-      if (response.success) {
-        const invoiceNumber = response.data?.invoiceNumber;
-        message.success(invoiceNumber
-          ? `SO confirmed — Invoice ${invoiceNumber} generated with tax`
-          : 'Sales order confirmed successfully');
-        fetchData();
-      }
-    } catch (error) {
-      message.error(error.response?.data?.error || 'Failed to confirm sales order');
-    }
+    await openBatchActionFlow(so, 'confirm');
   };
 
   const shipSO = async (so) => {
-    try {
-      await apiService.put(`/sales-orders/${so.id}/status`, {
-        status: "shipped",
-      });
-      message.success("Sales order shipped");
+    await openBatchActionFlow(so, 'ship');
+  };
+
+  const executeConfirm = async (soId) => {
+    const response = await apiService.post(`/sales-orders/${soId}/confirm`, {});
+    if (response.success) {
+      message.success('Sales order confirmed — ship stock when ready');
       fetchData();
+    }
+  };
+
+  const executeShip = async (soId, linesPayload) => {
+    const response = await apiService.post(`/sales-orders/${soId}/ship`, {
+      shipmentNumber: `SHIP-${Date.now()}`,
+      lines: linesPayload,
+    });
+    const invoiceNumber = response.data?.invoiceNumber;
+    message.success(invoiceNumber
+      ? `Sales order shipped — Invoice ${invoiceNumber} generated`
+      : 'Sales order shipped');
+    fetchData();
+  };
+
+  const openBatchActionFlow = async (so, mode) => {
+    try {
+      const response = await apiService.get(`/sales-orders/${so.id}`);
+      if (!response.success) {
+        message.error('Failed to load sales order');
+        return;
+      }
+      const soData = response.data;
+      const lines = (soData.lines || []).map((line) => {
+        const ordered = Number(line.quantity_ordered || 0);
+        const shipped = Number(line.quantity_shipped || 0);
+        const pending = Math.max(ordered - shipped, 0);
+        const qty = mode === 'confirm' ? ordered : pending;
+        return {
+          soLineId: line.id,
+          itemId: line.item_id,
+          warehouseId: line.warehouse_id,
+          itemName: line.item_name,
+          warehouseName: line.warehouse_name,
+          quantity: qty,
+          quantityOrdered: ordered,
+          quantityShipped: shipped,
+          pendingQuantity: pending,
+          isBatchTracked: Boolean(line.is_batch_tracked),
+          isSerialized: Boolean(line.is_serialized),
+          hasExpiry: Boolean(line.has_expiry),
+        };
+      }).filter((line) => (mode === 'confirm' ? line.quantity > 0 : line.pendingQuantity > 0));
+
+      if (mode === 'ship' && lines.length === 0) {
+        message.info('Nothing left to ship on this order');
+        return;
+      }
+
+      if (mode === 'confirm') {
+        setBatchActionLoading(true);
+        try {
+          await executeConfirm(so.id);
+        } catch (error) {
+          message.error(error.response?.data?.error || 'Failed to confirm sales order');
+        } finally {
+          setBatchActionLoading(false);
+        }
+        return;
+      }
+
+      const hasTracked = lines.some((line) => line.isBatchTracked || line.isSerialized);
+
+      if (!hasTracked) {
+        setBatchActionLoading(true);
+        try {
+          await executeShip(so.id, lines.map((line) => ({
+            soLineId: line.soLineId,
+            quantity: line.pendingQuantity,
+          })));
+        } catch (error) {
+          message.error(error.response?.data?.error || 'Failed to ship sales order');
+        } finally {
+          setBatchActionLoading(false);
+        }
+        return;
+      }
+
+      batchActionForm.setFieldsValue({ soId: so.id, lines });
+      setBatchActionSO(soData);
+      setBatchActionMode(mode);
+      setBatchActionModal(true);
     } catch (error) {
-      message.error("Failed to ship sales order");
+      message.error(error.response?.data?.error || 'Failed to load sales order');
+    }
+  };
+
+  const handleBatchActionSubmit = async (values) => {
+    const soId = values.soId;
+    const linesPayload = (values.lines || [])
+      .filter((line) => Number(line.quantity) > 0)
+      .map((line) => ({
+        soLineId: line.soLineId,
+        quantity: Number(line.quantity),
+        ...mapShipLineBatchSerial(line),
+      }));
+
+    if (!linesPayload.length) {
+      message.warning('No lines to process');
+      return;
+    }
+
+    try {
+      setBatchActionLoading(true);
+      await executeShip(soId, linesPayload);
+      setBatchActionModal(false);
+      batchActionForm.resetFields();
+      setBatchActionSO(null);
+    } catch (error) {
+      message.error(error.response?.data?.error || `Failed to ${batchActionMode} sales order`);
+    } finally {
+      setBatchActionLoading(false);
     }
   };
 
@@ -1289,6 +1409,78 @@ const SalesOrders = () => {
         </Form>
       </Modal>
 
+      <Modal
+        title={`Ship SO — ${batchActionSO?.so_number || ''}`}
+        open={batchActionModal}
+        onCancel={() => { setBatchActionModal(false); batchActionForm.resetFields(); setBatchActionSO(null); }}
+        onOk={() => batchActionForm.submit()}
+        okText="Ship"
+        confirmLoading={batchActionLoading}
+        width="min(720px, 96vw)"
+        style={{ top: 16 }}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Batch / serial items"
+          description="Pick a batch or serial numbers below, or leave empty to auto-select (FEFO for batches, oldest serials first)."
+        />
+        <Form form={batchActionForm} layout="vertical" onFinish={handleBatchActionSubmit}>
+          <Form.Item name="soId" hidden><Input /></Form.Item>
+          <Form.List name="lines">
+            {(fields) => fields.map((field) => {
+              const row = batchActionForm.getFieldValue(['lines', field.name]) || {};
+              const maxQty = batchActionMode === 'confirm'
+                ? Number(row.quantityOrdered || row.quantity || 0)
+                : Number(row.pendingQuantity || 0);
+              return (
+                <div key={field.key} style={{ marginBottom: 12, padding: 12, border: '1px solid #f0f0f0', borderRadius: 6 }}>
+                  <Form.Item name={[field.name, 'soLineId']} hidden><Input /></Form.Item>
+                  <Form.Item name={[field.name, 'itemId']} hidden><Input /></Form.Item>
+                  <Form.Item name={[field.name, 'warehouseId']} hidden><Input /></Form.Item>
+                  <div style={{ marginBottom: 8 }}>
+                    <strong>{row.itemName}</strong>
+                    <div style={{ fontSize: 12, color: '#666' }}>{row.warehouseName}</div>
+                    {batchActionMode === 'ship' && (
+                      <div style={{ fontSize: 12, color: '#666' }}>
+                        Pending: {row.pendingQuantity ?? 0}
+                      </div>
+                    )}
+                  </div>
+                  {batchActionMode === 'ship' && (
+                    <Form.Item
+                      name={[field.name, 'quantity']}
+                      label="Ship Qty"
+                      rules={[{ required: true, message: 'Enter quantity' }]}
+                    >
+                      <InputNumber min={0} max={maxQty} step={0.01} style={{ width: '100%' }} />
+                    </Form.Item>
+                  )}
+                  {(row.isBatchTracked || row.isSerialized) && (
+                    <BatchSerialLineFields
+                      form={batchActionForm}
+                      lineName={field.name}
+                      itemId={row.itemId}
+                      warehouseId={row.warehouseId}
+                      tracking={{
+                        is_batch_tracked: row.isBatchTracked,
+                        is_serialized: row.isSerialized,
+                        has_expiry: row.hasExpiry,
+                      }}
+                      quantity={batchActionMode === 'confirm'
+                        ? row.quantity
+                        : (batchActionForm.getFieldValue(['lines', field.name, 'quantity']) || row.pendingQuantity)}
+                      mode="ship"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </Form.List>
+        </Form>
+      </Modal>
+
       <Modal title={`Sales Order Details - ${selectedSOForView?.so_number}`} open={viewModalVisible} onCancel={() => { setViewModalVisible(false); setSelectedSOForView(null); }} footer={[
           <Button key="email" icon={<MailOutlined />} onClick={() => handleEmailSO(selectedSOForView)}>Email</Button>,
           <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={() => printSO(selectedSOForView)}>Print</Button>,
@@ -1315,6 +1507,16 @@ const SalesOrders = () => {
             <Table dataSource={selectedSOForView.lines || []} rowKey="id" pagination={false} size="small" scroll={{ x: 'max-content' }}
               columns={[
                 { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 140, ellipsis: true },
+                {
+                  title: 'Tracking', key: 'tracking', width: 100,
+                  render: (_, row) => (
+                    <Space size={2} wrap>
+                      {row.is_batch_tracked ? <Tag color="geekblue">Batch</Tag> : null}
+                      {row.is_serialized ? <Tag color="purple">Serial</Tag> : null}
+                      {!row.is_batch_tracked && !row.is_serialized ? '-' : null}
+                    </Space>
+                  ),
+                },
                 { title: 'HSN', dataIndex: 'hsn_code', key: 'hsn_code', width: 80, render: v => v || '-' },
                 { title: 'Qty', dataIndex: 'quantity_ordered', key: 'quantity_ordered', width: 70 },
                 { title: 'Shipped', dataIndex: 'quantity_shipped', key: 'quantity_shipped', width: 80, render: v => v || 0 },

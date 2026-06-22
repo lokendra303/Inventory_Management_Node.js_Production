@@ -7,6 +7,7 @@ import { PlusOutlined, CheckOutlined, CloseOutlined, EyeOutlined, DeleteOutlined
 import apiService from '../../services/apiService';
 import dayjs from 'dayjs';
 import { useCurrency } from '../../contexts/CurrencyContext';
+import BatchSerialLinePanel, { buildReturnOutPayload } from '../../components/inventory/BatchSerialLinePanel';
 
 const { Option } = Select;
 
@@ -54,7 +55,7 @@ export default function PurchaseReturns() {
         vendorName: vendors.find(v => v.id === values.vendorId)?.display_name || values.vendorName,
         returnDate: values.returnDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
         reason: values.reason,
-        lines: validLines
+        lines: validLines.map((l) => buildReturnOutPayload(l))
       });
       message.success('Purchase return created');
       setCreateModal(false);
@@ -100,6 +101,16 @@ export default function PurchaseReturns() {
       setSelectedReturn(res.data);
       setDetailModal(true);
     } catch { message.error('Failed to load return details'); }
+  };
+
+  const itemTracking = (itemId) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return {};
+    return {
+      is_batch_tracked: Boolean(item.is_batch_tracked),
+      is_serialized: Boolean(item.is_serialized),
+      has_expiry: Boolean(item.has_expiry),
+    };
   };
 
   const addLine = () => setLines([...lines, { itemId: '', warehouseId: '', quantity: 1, unitCost: 0, returnReason: '' }]);
@@ -185,7 +196,8 @@ export default function PurchaseReturns() {
         </Form>
         <Divider>Return Lines</Divider>
         {lines.map((line, idx) => (
-          <div key={idx} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: 8, border: '1px solid #f0f0f0', borderRadius: 4 }}>
+          <div key={idx} style={{ marginBottom: 8, padding: 8, border: '1px solid #f0f0f0', borderRadius: 4 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <Select showSearch optionFilterProp="children" placeholder="Item" style={{ flex: 1, minWidth: 130 }}
               value={line.itemId || undefined} onChange={v => updateLine(idx, 'itemId', v)}>
               {items.map(i => <Option key={i.id} value={i.id}>{i.name}</Option>)}
@@ -201,6 +213,22 @@ export default function PurchaseReturns() {
             <Input placeholder="Reason" style={{ flex: 1, minWidth: 110 }}
               value={line.returnReason} onChange={e => updateLine(idx, 'returnReason', e.target.value)} />
             <Button danger icon={<DeleteOutlined />} onClick={() => removeLine(idx)} disabled={lines.length === 1} />
+            </div>
+            {line.itemId && line.warehouseId && (
+              <BatchSerialLinePanel
+                itemId={line.itemId}
+                warehouseId={line.warehouseId}
+                tracking={itemTracking(line.itemId)}
+                quantity={line.quantity}
+                mode="return_out"
+                value={line}
+                onChange={(patch) => {
+                  const updated = [...lines];
+                  updated[idx] = { ...updated[idx], ...patch };
+                  setLines(updated);
+                }}
+              />
+            )}
           </div>
         ))}
         <Button type="dashed" icon={<PlusOutlined />} onClick={addLine} style={{ marginTop: 8 }}>Add Line</Button>

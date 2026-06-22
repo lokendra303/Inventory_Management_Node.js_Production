@@ -6,6 +6,7 @@ import {
 import { PlusOutlined, EyeOutlined, CheckOutlined, CloseOutlined, DeleteOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import dayjs from 'dayjs';
+import BatchSerialLinePanel, { buildReturnInPayload } from '../../components/inventory/BatchSerialLinePanel';
 
 const { Option } = Select;
 const STATUS_COLORS = { draft: 'default', confirmed: 'success', cancelled: 'error' };
@@ -52,12 +53,13 @@ export default function SalesReturns() {
         orderDate: values.returnDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
         notes: `SALES RETURN - ${values.reason || ''}`,
         status: 'returned',
-        lines: validLines.map(l => ({
+        lines: validLines.map((l) => ({
           itemId: l.itemId,
           warehouseId: l.warehouseId,
           quantity: l.quantity,
           unitPrice: l.unitPrice,
-          notes: l.returnReason
+          notes: l.returnReason,
+          ...buildReturnInPayload(l),
         }))
       });
       message.success('Sales return created');
@@ -68,6 +70,16 @@ export default function SalesReturns() {
     } catch (e) {
       message.error(e.response?.data?.error || 'Failed to create sales return');
     }
+  };
+
+  const itemTracking = (itemId) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return {};
+    return {
+      is_batch_tracked: Boolean(item.is_batch_tracked),
+      is_serialized: Boolean(item.is_serialized),
+      has_expiry: Boolean(item.has_expiry),
+    };
   };
 
   const addLine = () => setLines([...lines, { itemId: '', warehouseId: '', quantity: 1, unitPrice: 0, returnReason: '' }]);
@@ -127,7 +139,8 @@ export default function SalesReturns() {
         </Form>
         <Divider>Return Lines</Divider>
         {lines.map((line, idx) => (
-          <div key={idx} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: 8, border: '1px solid #f0f0f0', borderRadius: 4 }}>
+          <div key={idx} style={{ marginBottom: 8, padding: 8, border: '1px solid #f0f0f0', borderRadius: 4 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <Select showSearch optionFilterProp="children" placeholder="Item" style={{ flex: 1, minWidth: 130 }}
               value={line.itemId || undefined} onChange={v => updateLine(idx, 'itemId', v)}>
               {items.map(i => <Option key={i.id} value={i.id}>{i.name}</Option>)}
@@ -143,6 +156,22 @@ export default function SalesReturns() {
             <Input placeholder="Reason" style={{ flex: 1, minWidth: 110 }}
               value={line.returnReason} onChange={e => updateLine(idx, 'returnReason', e.target.value)} />
             <Button danger icon={<DeleteOutlined />} onClick={() => removeLine(idx)} disabled={lines.length === 1} />
+            </div>
+            {line.itemId && line.warehouseId && (
+              <BatchSerialLinePanel
+                itemId={line.itemId}
+                warehouseId={line.warehouseId}
+                tracking={itemTracking(line.itemId)}
+                quantity={line.quantity}
+                mode="return_in"
+                value={line}
+                onChange={(patch) => {
+                  const updated = [...lines];
+                  updated[idx] = { ...updated[idx], ...patch };
+                  setLines(updated);
+                }}
+              />
+            )}
           </div>
         ))}
         <Button type="dashed" icon={<PlusOutlined />} onClick={addLine} style={{ marginTop: 8 }}>Add Line</Button>

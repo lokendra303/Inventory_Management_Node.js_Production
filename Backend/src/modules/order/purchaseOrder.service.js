@@ -8,6 +8,7 @@ const {
   getExchangeRateValidationError,
 } = require('../../utils/exchangeRateHelpers');
 const { serializeDocumentMeta, parseDocumentMeta } = require('../../utils/documentMeta');
+const batchSerialService = require('../inventory/batchSerial.service');
 
 class PurchaseOrderService {
   async createPurchaseOrder(institutionId, poData, userId) {
@@ -201,9 +202,19 @@ class PurchaseOrderService {
 
           await connection.execute(
             `INSERT INTO grn_lines 
-             (id, institution_id, grn_id, po_line_id, item_id, warehouse_id, quantity_received, unit_cost, line_total, quality_status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [grnLineId, institutionId, grnId, line.poLineId, line.itemId, line.warehouseId, line.quantityReceived, line.unitCost, lineTotal, line.qualityStatus || 'accepted']
+             (id, institution_id, grn_id, po_line_id, item_id, warehouse_id, quantity_received, unit_cost, line_total, quality_status,
+              batch_number, manufacture_date, expiry_date, serial_numbers) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              grnLineId, institutionId, grnId, line.poLineId, line.itemId, line.warehouseId,
+              line.quantityReceived, line.unitCost, lineTotal, line.qualityStatus || 'accepted',
+              line.batchNumber ? String(line.batchNumber).trim().toUpperCase() : null,
+              line.manufactureDate || null,
+              line.expiryDate || null,
+              line.serialNumbers
+                ? JSON.stringify(batchSerialService._parseSerialNumbers(line.serialNumbers))
+                : null,
+            ]
           );
 
           // Only update PO line received qty for accepted items
@@ -260,11 +271,43 @@ class PurchaseOrderService {
               [
                 institutionId,
                 `${line.itemId}:${line.warehouseId}`,
-                JSON.stringify({ itemId: line.itemId, warehouseId: line.warehouseId, quantity: qty, unitCost: cost, poId, poLineId: line.poLineId, grnNumber: resolvedGrnNumber, receivedDate: new Date().toISOString() }),
+                JSON.stringify({
+                  itemId: line.itemId,
+                  warehouseId: line.warehouseId,
+                  quantity: qty,
+                  unitCost: cost,
+                  poId,
+                  poLineId: line.poLineId,
+                  grnNumber: resolvedGrnNumber,
+                  receivedDate: new Date().toISOString(),
+                  batchNumber: line.batchNumber ? String(line.batchNumber).trim().toUpperCase() : null,
+                  expiryDate: line.expiryDate || null,
+                  serialNumbers: line.serialNumbers
+                    ? batchSerialService._parseSerialNumbers(line.serialNumbers)
+                    : null,
+                }),
                 JSON.stringify({ userId }),
                 `receive-${grnLineId}`,
                 userId
               ]
+            );
+
+            await batchSerialService.receiveOnGrnLine(
+              institutionId,
+              {
+                itemId: line.itemId,
+                warehouseId: line.warehouseId,
+                quantityReceived: qty,
+                unitCost: cost,
+                batchNumber: line.batchNumber,
+                manufactureDate: line.manufactureDate,
+                expiryDate: line.expiryDate,
+                serialNumbers: line.serialNumbers,
+                grnLineId,
+                receiptDate: formattedReceiptDate,
+              },
+              userId,
+              connection
             );
           }
         }
@@ -351,7 +394,9 @@ class PurchaseOrderService {
     const po = pos[0];
 
     const lines = await db.query(
-      `SELECT pol.*, i.hsn_code, i.sku, i.name as item_name, i.unit, w.name as warehouse_name
+      `SELECT pol.*, i.hsn_code, i.sku, i.name as item_name, i.unit,
+              i.is_batch_tracked, i.is_serialized, i.has_expiry,
+              w.name as warehouse_name
        FROM purchase_order_lines pol
        JOIN items i ON pol.item_id = i.id
        LEFT JOIN warehouses w ON pol.warehouse_id = w.id
@@ -395,7 +440,9 @@ class PurchaseOrderService {
 
     // Get GRN lines
     const lines = await db.query(
-      `SELECT gl.*, i.sku, i.name as item_name, i.unit, pol.quantity_ordered, w.name as warehouse_name
+      `SELECT gl.*, i.sku, i.name as item_name, i.unit,
+              i.is_batch_tracked, i.is_serialized, i.has_expiry,
+              pol.quantity_ordered, w.name as warehouse_name
        FROM grn_lines gl
        JOIN items i ON gl.item_id = i.id
        JOIN purchase_order_lines pol ON gl.po_line_id = pol.id

@@ -4,6 +4,7 @@ import { PlusOutlined, DownloadOutlined, PrinterOutlined, MailOutlined, SearchOu
 import InvoicePdfViewModal from '../../components/business/InvoicePdfViewModal';
 import moment from 'moment';
 import apiService from '../../services/apiService';
+import BatchSerialLineFields, { mapReceiveLineBatchSerial } from '../../components/inventory/BatchSerialLineFields';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatQuantity } from '../../utils/numberFormat';
 import { getCurrencies, formatDocumentAmount, formatCommercialDocAmount } from '../../utils/currency';
@@ -319,7 +320,10 @@ const PurchaseOrders = () => {
             quantityOrdered: line.quantity_ordered,
             quantityReceived: line.quantity_ordered - (line.quantity_received || 0),
             unitCost: line.unit_cost,
-            qualityStatus: 'accepted'
+            qualityStatus: 'accepted',
+            isBatchTracked: Boolean(line.is_batch_tracked),
+            isSerialized: Boolean(line.is_serialized),
+            hasExpiry: Boolean(line.has_expiry),
           })) || []
         });
         setReceiveModalVisible(true);
@@ -338,10 +342,13 @@ const PurchaseOrders = () => {
         receiptDate: values.receiptDate,
         notes: values.notes,
         lines: (values.lines || []).map(line => ({
-          ...line,
+          poLineId: line.poLineId,
+          itemId: line.itemId,
+          warehouseId: line.warehouseId,
           quantityReceived: Number(line.quantityReceived),
           unitCost: Number(line.unitCost),
-          qualityStatus: line.qualityStatus
+          qualityStatus: line.qualityStatus,
+          ...(line.qualityStatus !== 'rejected' ? mapReceiveLineBatchSerial(line) : {}),
         }))
       };
 
@@ -855,7 +862,11 @@ const PurchaseOrders = () => {
             {(fields) => (
               <div>
                 <h4>Items to Receive:</h4>
-                {fields.map(({ key, name }) => (
+                {fields.map(({ key, name }) => {
+                  const lineValues = receiveForm.getFieldValue(['lines', name]) || {};
+                  const qty = Number(lineValues.quantityReceived || 0);
+                  const isRejected = lineValues.qualityStatus === 'rejected';
+                  return (
                   <div key={key} style={{ 
                     border: '1px solid #d9d9d9', 
                     padding: '16px', 
@@ -927,8 +938,25 @@ const PurchaseOrders = () => {
                         </Select>
                       </Form.Item>
                     </div>
+
+                    {!isRejected && qty > 0 && (lineValues.isBatchTracked || lineValues.isSerialized) && (
+                      <BatchSerialLineFields
+                        form={receiveForm}
+                        lineName={name}
+                        itemId={lineValues.itemId}
+                        warehouseId={lineValues.warehouseId}
+                        tracking={{
+                          is_batch_tracked: lineValues.isBatchTracked,
+                          is_serialized: lineValues.isSerialized,
+                          has_expiry: lineValues.hasExpiry,
+                        }}
+                        quantity={qty}
+                        mode="receive"
+                      />
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Form.List>

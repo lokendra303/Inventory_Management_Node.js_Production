@@ -396,3 +396,5 @@ export function ImportDuplicateGroupsPanel({
     </div>
   );
 }
+
+export default ImportDuplicateGroupsPanel;

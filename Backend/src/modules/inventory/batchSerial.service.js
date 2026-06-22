@@ -67,6 +67,25 @@ class BatchSerialService {
       await this._checkAndCreateExpiryAlert(institutionId, itemId, warehouseId, id, expiryDate, qtyReceived);
     }
 
+    await this._ensureItemTrackingFlags(institutionId, itemId, {
+      batchTracked: true,
+      hasExpiry: Boolean(expiryDate),
+    });
+
+    await this._logMovement(
+      institutionId,
+      {
+        movementType: 'receive',
+        referenceType: 'manual_batch',
+        referenceId: id,
+        itemId,
+        warehouseId,
+        batchId: id,
+        quantity: qtyReceived,
+      },
+      userId
+    );
+
     logger.info('Batch created', { id, institutionId, itemId, batchNumber: normalizedBatchNumber, userId });
     return id;
   }
@@ -143,6 +162,20 @@ class BatchSerialService {
         institutionId, batch.item_id, batch.warehouse_id, batchId, batch.expiry_date, newAvailable
       );
     }
+
+    await this._logMovement(
+      institutionId,
+      {
+        movementType: 'ship',
+        referenceType: 'manual_adjustment',
+        referenceId: batchId,
+        itemId: batch.item_id,
+        warehouseId: batch.warehouse_id,
+        batchId,
+        quantity: qty,
+      },
+      userId
+    );
 
     logger.info('Batch consumed', { batchId, quantity: qty, remaining: newAvailable, institutionId, userId });
     return { quantityRemaining: newAvailable };
@@ -282,6 +315,11 @@ class BatchSerialService {
     if (created.length === 0) {
       throw new Error('No valid serial numbers provided');
     }
+
+    await this._ensureItemTrackingFlags(institutionId, itemId, {
+      serialized: true,
+      batchTracked: Boolean(batchId),
+    });
 
     logger.info('Serials created', { count: created.length, institutionId, itemId, userId });
     return created;
@@ -437,6 +475,662 @@ class BatchSerialService {
     );
 
     return batches.length;
+  }
+
+  // ─── LIFECYCLE (receives, shipments, returns) ────────────
+
+  async _exec(connection, sql, params) {
+    if (connection) {
+      const [rows] = await connection.execute(sql, params);
+      return rows;
+    }
+    return db.query(sql, params);
+  }
+
+  /**
+   * Turn on item-level tracking flags when batches/serials are created so GRN,
+   * ship, and return flows show the correct fields.
+   */
+  async _ensureItemTrackingFlags(institutionId, itemId, flags, connection = null) {
+    const { batchTracked, serialized, hasExpiry } = flags;
+    if (!batchTracked && !serialized && !hasExpiry) return;
+
+    const rows = await this._exec(
+      connection,
+      'SELECT is_batch_tracked, is_serialized, has_expiry FROM items WHERE id = ? AND institution_id = ?',
+      [itemId, institutionId]
+    );
+    if (!rows.length) return;
+
+    const item = rows[0];
+    const updates = [];
+    if (batchTracked && !item.is_batch_tracked) updates.push('is_batch_tracked = 1');
+    if (serialized && !item.is_serialized) updates.push('is_serialized = 1');
+    if (hasExpiry && !item.has_expiry) updates.push('has_expiry = 1');
+    if (!updates.length) return;
+
+    updates.push('updated_at = NOW()');
+    await this._exec(
+      connection,
+      `UPDATE items SET ${updates.join(', ')} WHERE id = ? AND institution_id = ?`,
+      [itemId, institutionId]
+    );
+  }
+
+  async _execResult(connection, sql, params) {
+    if (connection) {
+      const [result] = await connection.execute(sql, params);
+      return result;
+    }
+    return db.query(sql, params);
+  }
+
+  _parseSerialNumbers(serialNumbers) {
+    if (Array.isArray(serialNumbers)) {
+      return serialNumbers.map((s) => String(s).trim()).filter(Boolean);
+    }
+    if (typeof serialNumbers === 'string') {
+      return serialNumbers.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+    }
+    return [];
+  }
+
+  async getItemTracking(institutionId, itemId) {
+    const rows = await db.query(
+      'SELECT is_batch_tracked, is_serialized, has_expiry FROM items WHERE id = ? AND institution_id = ?',
+      [itemId, institutionId]
+    );
+    if (!rows.length) {
+      return { isBatchTracked: false, isSerialized: false, hasExpiry: false };
+    }
+    const item = rows[0];
+    return {
+      isBatchTracked: Boolean(item.is_batch_tracked),
+      isSerialized: Boolean(item.is_serialized),
+      hasExpiry: Boolean(item.has_expiry),
+    };
+  }
+
+  async _logMovement(institutionId, data, userId, connection = null) {
+    const {
+      movementType, referenceType, referenceId, itemId, warehouseId,
+      batchId, serialId, quantity,
+    } = data;
+    await this._exec(
+      connection,
+      `INSERT INTO batch_serial_movements
+       (id, institution_id, movement_type, reference_type, reference_id,
+        item_id, warehouse_id, batch_id, serial_id, quantity, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uuidv4(), institutionId, movementType, referenceType, referenceId,
+        itemId, warehouseId, batchId || null, serialId || null, quantity || 0, userId || null,
+      ]
+    );
+  }
+
+  async _receiveIntoBatch(institutionId, data, userId, connection = null) {
+    const {
+      itemId, warehouseId, batchNumber, manufactureDate, expiryDate, quantity, unitCost,
+    } = data;
+    const normalized = String(batchNumber || '').trim().toUpperCase();
+    if (!normalized) throw new Error('Batch number is required');
+
+    const existing = await this._exec(
+      connection,
+      `SELECT id, quantity_received, quantity_remaining, unit_cost, expiry_date, status
+       FROM item_batches
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND batch_number = ?`,
+      [institutionId, itemId, warehouseId, normalized]
+    );
+
+    if (existing.length) {
+      const batch = existing[0];
+      if (batch.status !== 'active') {
+        throw new Error(`Batch "${normalized}" is ${batch.status} and cannot receive more stock`);
+      }
+      const qty = parseFloat(quantity);
+      const newReceived = parseFloat(batch.quantity_received) + qty;
+      const newRemaining = parseFloat(batch.quantity_remaining) + qty;
+      await this._exec(
+        connection,
+        `UPDATE item_batches
+         SET quantity_received = ?, quantity_remaining = ?, unit_cost = ?
+         WHERE id = ?`,
+        [newReceived, newRemaining, unitCost ?? batch.unit_cost, batch.id]
+      );
+      const expiry = batch.expiry_date || expiryDate;
+      if (expiry) {
+        await this._checkAndCreateExpiryAlert(
+          institutionId, itemId, warehouseId, batch.id, expiry, newRemaining
+        );
+      }
+      await this._ensureItemTrackingFlags(institutionId, itemId, {
+        batchTracked: true,
+        hasExpiry: Boolean(expiry),
+      }, connection);
+      return batch.id;
+    }
+
+    const id = uuidv4();
+    const qty = parseFloat(quantity);
+    await this._exec(
+      connection,
+      `INSERT INTO item_batches
+       (id, institution_id, item_id, warehouse_id, batch_number,
+        manufacture_date, expiry_date, quantity_received, quantity_remaining, unit_cost, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+      [
+        id, institutionId, itemId, warehouseId, normalized,
+        manufactureDate || null, expiryDate || null, qty, qty, unitCost || 0,
+      ]
+    );
+    if (expiryDate) {
+      await this._checkAndCreateExpiryAlert(institutionId, itemId, warehouseId, id, expiryDate, qty);
+    }
+    await this._ensureItemTrackingFlags(institutionId, itemId, {
+      batchTracked: true,
+      hasExpiry: Boolean(expiryDate),
+    }, connection);
+    logger.info('Batch received into stock', { id, institutionId, itemId, batchNumber: normalized, userId });
+    return id;
+  }
+
+  async _allocateFefo(institutionId, itemId, warehouseId, quantity, connection = null) {
+    const batches = await this._exec(
+      connection,
+      `SELECT id, batch_number, quantity_remaining, expiry_date
+       FROM item_batches
+       WHERE institution_id = ? AND item_id = ? AND warehouse_id = ?
+         AND status = 'active' AND quantity_remaining > 0
+       ORDER BY CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END, expiry_date ASC, created_at ASC`,
+      [institutionId, itemId, warehouseId]
+    );
+
+    let remaining = parseFloat(quantity);
+    const allocations = [];
+    for (const batch of batches) {
+      if (remaining <= 0) break;
+      const available = parseFloat(batch.quantity_remaining);
+      const take = Math.min(available, remaining);
+      allocations.push({ batchId: batch.id, batchNumber: batch.batch_number, quantity: take });
+      remaining -= take;
+    }
+    if (remaining > 0.0001) {
+      throw new Error(`Insufficient batch stock: short by ${remaining.toFixed(2)}`);
+    }
+    return allocations;
+  }
+
+  async _consumeBatchInternal(institutionId, batchId, quantity, connection = null) {
+    const rows = await this._exec(
+      connection,
+      'SELECT * FROM item_batches WHERE institution_id = ? AND id = ?',
+      [institutionId, batchId]
+    );
+    if (!rows.length) throw new Error('Batch not found');
+
+    const batch = rows[0];
+    if (batch.status !== 'active') {
+      throw new Error(`Batch is ${batch.status} and cannot be consumed`);
+    }
+
+    const available = parseFloat(batch.quantity_remaining);
+    const qty = parseFloat(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantity must be greater than 0');
+    if (qty > available) {
+      throw new Error(`Insufficient batch quantity: available ${available}, requested ${qty}`);
+    }
+
+    const newAvailable = available - qty;
+    await this._exec(
+      connection,
+      'UPDATE item_batches SET quantity_remaining = ? WHERE id = ?',
+      [newAvailable, batchId]
+    );
+
+    if (batch.expiry_date) {
+      await this._checkAndCreateExpiryAlert(
+        institutionId, batch.item_id, batch.warehouse_id, batchId, batch.expiry_date, newAvailable
+      );
+    }
+    return { quantityRemaining: newAvailable };
+  }
+
+  async receiveOnGrnLine(institutionId, lineData, userId, connection = null) {
+    const {
+      itemId, warehouseId, quantityReceived, unitCost,
+      batchNumber, manufactureDate, expiryDate, serialNumbers,
+      grnLineId, receiptDate,
+    } = lineData;
+
+    const tracking = await this.getItemTracking(institutionId, itemId);
+    if (!tracking.isBatchTracked && !tracking.isSerialized) return null;
+
+    const qty = parseFloat(quantityReceived);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new Error('Invalid receive quantity for batch/serial tracking');
+    }
+
+    let batchId = null;
+
+    if (tracking.isBatchTracked) {
+      if (!String(batchNumber || '').trim()) {
+        throw new Error('Batch number is required for batch-tracked items');
+      }
+      if (tracking.hasExpiry && !expiryDate) {
+        throw new Error('Expiry date is required for items with expiry tracking');
+      }
+      batchId = await this._receiveIntoBatch(
+        institutionId,
+        {
+          itemId, warehouseId, batchNumber, manufactureDate, expiryDate,
+          quantity: qty, unitCost,
+        },
+        userId,
+        connection
+      );
+      await this._logMovement(
+        institutionId,
+        {
+          movementType: 'receive',
+          referenceType: 'grn_line',
+          referenceId: grnLineId,
+          itemId,
+          warehouseId,
+          batchId,
+          quantity: qty,
+        },
+        userId,
+        connection
+      );
+    }
+
+    if (tracking.isSerialized) {
+      const serials = this._parseSerialNumbers(serialNumbers);
+      const expectedCount = Math.round(qty);
+      if (serials.length !== expectedCount) {
+        throw new Error(
+          `Serial count (${serials.length}) must match receive quantity (${expectedCount}) for serialized items`
+        );
+      }
+
+      for (const sn of serials) {
+        const serialId = uuidv4();
+        try {
+          await this._exec(
+            connection,
+            `INSERT INTO item_serials
+             (id, institution_id, item_id, warehouse_id, serial_number, batch_id, received_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              serialId, institutionId, itemId, warehouseId, sn,
+              batchId || null, receiptDate || null,
+            ]
+          );
+        } catch (error) {
+          if (error.code === 'ER_DUP_ENTRY') {
+            throw new Error(`Serial number "${sn}" already exists for this item`);
+          }
+          throw error;
+        }
+        await this._logMovement(
+          institutionId,
+          {
+            movementType: 'receive',
+            referenceType: 'grn_line',
+            referenceId: grnLineId,
+            itemId,
+            warehouseId,
+            batchId,
+            serialId,
+            quantity: 1,
+          },
+          userId,
+          connection
+        );
+      }
+    }
+
+    return { batchId };
+  }
+
+  async shipForLine(institutionId, lineData, userId, connection = null) {
+    const {
+      itemId, warehouseId, quantity, batchAllocations, serialIds, soId, soLineId,
+    } = lineData;
+
+    const tracking = await this.getItemTracking(institutionId, itemId);
+    if (!tracking.isBatchTracked && !tracking.isSerialized) return null;
+
+    const qty = parseFloat(quantity);
+    const refId = soLineId;
+
+    if (tracking.isBatchTracked) {
+      let allocations = batchAllocations;
+      if (!allocations?.length) {
+        allocations = await this._allocateFefo(institutionId, itemId, warehouseId, qty, connection);
+      } else {
+        const total = allocations.reduce((sum, row) => sum + parseFloat(row.quantity), 0);
+        if (Math.abs(total - qty) > 0.0001) {
+          throw new Error(`Batch allocation total (${total}) must equal ship quantity (${qty})`);
+        }
+      }
+
+      for (const alloc of allocations) {
+        await this._consumeBatchInternal(institutionId, alloc.batchId, alloc.quantity, connection);
+        await this._logMovement(
+          institutionId,
+          {
+            movementType: 'ship',
+            referenceType: 'so_line',
+            referenceId: refId,
+            itemId,
+            warehouseId,
+            batchId: alloc.batchId,
+            quantity: alloc.quantity,
+          },
+          userId,
+          connection
+        );
+      }
+    }
+
+    if (tracking.isSerialized) {
+      let ids = serialIds;
+      if (!ids?.length) {
+        const serials = await this._exec(
+          connection,
+          `SELECT id FROM item_serials
+           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND status = 'available'
+           ORDER BY received_date ASC
+           LIMIT ${Math.max(1, Math.round(qty))}`,
+          [institutionId, itemId, warehouseId]
+        );
+        ids = serials.map((row) => row.id);
+      }
+      if (ids.length !== Math.round(qty)) {
+        throw new Error(`Need ${Math.round(qty)} serial(s) for shipment, got ${ids.length}`);
+      }
+
+      for (const serialId of ids) {
+        await this._exec(
+          connection,
+          `UPDATE item_serials SET status = 'sold', sold_date = CURDATE(), customer_reference = ?
+           WHERE institution_id = ? AND id = ?`,
+          [soId || null, institutionId, serialId]
+        );
+        const serialRows = await this._exec(
+          connection,
+          'SELECT batch_id FROM item_serials WHERE id = ?',
+          [serialId]
+        );
+        await this._logMovement(
+          institutionId,
+          {
+            movementType: 'ship',
+            referenceType: 'so_line',
+            referenceId: refId,
+            itemId,
+            warehouseId,
+            batchId: serialRows[0]?.batch_id || null,
+            serialId,
+            quantity: 1,
+          },
+          userId,
+          connection
+        );
+      }
+    }
+
+    return true;
+  }
+
+  async deductForPurchaseReturn(institutionId, lineData, userId, connection = null) {
+    const {
+      itemId, warehouseId, quantity, batchAllocations, serialIds, returnLineId, returnNumber,
+    } = lineData;
+
+    const tracking = await this.getItemTracking(institutionId, itemId);
+    if (!tracking.isBatchTracked && !tracking.isSerialized) return null;
+
+    const qty = parseFloat(quantity);
+
+    if (tracking.isBatchTracked) {
+      let allocations = batchAllocations;
+      if (!allocations?.length) {
+        allocations = await this._allocateFefo(institutionId, itemId, warehouseId, qty, connection);
+      }
+      for (const alloc of allocations) {
+        await this._consumeBatchInternal(institutionId, alloc.batchId, alloc.quantity, connection);
+        await this._logMovement(
+          institutionId,
+          {
+            movementType: 'purchase_return',
+            referenceType: 'purchase_return_line',
+            referenceId: returnLineId,
+            itemId,
+            warehouseId,
+            batchId: alloc.batchId,
+            quantity: alloc.quantity,
+          },
+          userId,
+          connection
+        );
+      }
+    }
+
+    if (tracking.isSerialized) {
+      let ids = serialIds;
+      if (!ids?.length) {
+        const serials = await this._exec(
+          connection,
+          `SELECT id FROM item_serials
+           WHERE institution_id = ? AND item_id = ? AND warehouse_id = ? AND status = 'available'
+           ORDER BY received_date ASC
+           LIMIT ${Math.max(1, Math.round(qty))}`,
+          [institutionId, itemId, warehouseId]
+        );
+        ids = serials.map((row) => row.id);
+      }
+      if (ids.length !== Math.round(qty)) {
+        throw new Error(`Need ${Math.round(qty)} serial(s) for purchase return, got ${ids.length}`);
+      }
+      for (const serialId of ids) {
+        await this._exec(
+          connection,
+          'DELETE FROM item_serials WHERE institution_id = ? AND id = ?',
+          [institutionId, serialId]
+        );
+        await this._logMovement(
+          institutionId,
+          {
+            movementType: 'purchase_return',
+            referenceType: 'purchase_return_line',
+            referenceId: returnLineId,
+            itemId,
+            warehouseId,
+            serialId,
+            quantity: 1,
+          },
+          userId,
+          connection
+        );
+      }
+    }
+
+    logger.info('Batch/serial deducted for purchase return', { returnNumber, itemId, quantity: qty, userId });
+    return true;
+  }
+
+  async restoreForSalesReturn(institutionId, lineData, userId, connection = null) {
+    const {
+      itemId, warehouseId, quantity, unitCost,
+      batchNumber, manufactureDate, expiryDate, serialNumbers, serialIds,
+      returnLineId,
+    } = lineData;
+
+    const tracking = await this.getItemTracking(institutionId, itemId);
+    if (!tracking.isBatchTracked && !tracking.isSerialized) return null;
+
+    const qty = parseFloat(quantity);
+    let batchId = null;
+
+    if (tracking.isBatchTracked) {
+      const normalizedBatch = String(batchNumber || `RTN-${Date.now()}`).trim().toUpperCase();
+      batchId = await this._receiveIntoBatch(
+        institutionId,
+        {
+          itemId,
+          warehouseId,
+          batchNumber: normalizedBatch,
+          manufactureDate,
+          expiryDate,
+          quantity: qty,
+          unitCost: unitCost || 0,
+        },
+        userId,
+        connection
+      );
+      await this._logMovement(
+        institutionId,
+        {
+          movementType: 'sales_return',
+          referenceType: 'sales_return_line',
+          referenceId: returnLineId,
+          itemId,
+          warehouseId,
+          batchId,
+          quantity: qty,
+        },
+        userId,
+        connection
+      );
+    }
+
+    if (tracking.isSerialized) {
+      if (serialIds?.length) {
+        for (const serialId of serialIds) {
+          await this._exec(
+            connection,
+            `UPDATE item_serials
+             SET status = 'available', sold_date = NULL, customer_reference = NULL, warehouse_id = ?
+             WHERE institution_id = ? AND id = ?`,
+            [warehouseId, institutionId, serialId]
+          );
+          await this._logMovement(
+            institutionId,
+            {
+              movementType: 'sales_return',
+              referenceType: 'sales_return_line',
+              referenceId: returnLineId,
+              itemId,
+              warehouseId,
+              serialId,
+              quantity: 1,
+            },
+            userId,
+            connection
+          );
+        }
+      } else {
+        const serials = this._parseSerialNumbers(serialNumbers);
+        const expectedCount = Math.round(qty);
+        if (serials.length !== expectedCount) {
+          throw new Error(
+            `Serial count (${serials.length}) must match return quantity (${expectedCount}) for serialized items`
+          );
+        }
+        for (const sn of serials) {
+          const existing = await this._exec(
+            connection,
+            `SELECT id, status FROM item_serials
+             WHERE institution_id = ? AND item_id = ? AND serial_number = ?`,
+            [institutionId, itemId, sn]
+          );
+          if (existing.length) {
+            await this._exec(
+              connection,
+              `UPDATE item_serials
+               SET status = 'available', sold_date = NULL, customer_reference = NULL,
+                   warehouse_id = ?, batch_id = ?
+               WHERE id = ?`,
+              [warehouseId, batchId, existing[0].id]
+            );
+            await this._logMovement(
+              institutionId,
+              {
+                movementType: 'sales_return',
+                referenceType: 'sales_return_line',
+                referenceId: returnLineId,
+                itemId,
+                warehouseId,
+                batchId,
+                serialId: existing[0].id,
+                quantity: 1,
+              },
+              userId,
+              connection
+            );
+          } else {
+            const serialId = uuidv4();
+            await this._exec(
+              connection,
+              `INSERT INTO item_serials
+               (id, institution_id, item_id, warehouse_id, serial_number, batch_id, status, received_date)
+               VALUES (?, ?, ?, ?, ?, ?, 'available', NOW())`,
+              [serialId, institutionId, itemId, warehouseId, sn, batchId]
+            );
+            await this._logMovement(
+              institutionId,
+              {
+                movementType: 'sales_return',
+                referenceType: 'sales_return_line',
+                referenceId: returnLineId,
+                itemId,
+                warehouseId,
+                batchId,
+                serialId,
+                quantity: 1,
+              },
+              userId,
+              connection
+            );
+          }
+        }
+      }
+    }
+
+    return { batchId };
+  }
+
+  async getMovements(institutionId, filters = {}) {
+    let query = `
+      SELECT m.*, i.name AS item_name, i.sku, w.name AS warehouse_name,
+             b.batch_number, s.serial_number
+      FROM batch_serial_movements m
+      JOIN items i ON m.item_id = i.id
+      JOIN warehouses w ON m.warehouse_id = w.id
+      LEFT JOIN item_batches b ON m.batch_id = b.id
+      LEFT JOIN item_serials s ON m.serial_id = s.id
+      WHERE m.institution_id = ?`;
+    const params = [institutionId];
+
+    if (filters.itemId) {
+      query += ' AND m.item_id = ?';
+      params.push(filters.itemId);
+    }
+    if (filters.referenceId) {
+      query += ' AND m.reference_id = ?';
+      params.push(filters.referenceId);
+    }
+    if (filters.movementType) {
+      query += ' AND m.movement_type = ?';
+      params.push(filters.movementType);
+    }
+
+    query += ' ORDER BY m.created_at DESC LIMIT 500';
+    return db.query(query, params);
   }
 }
 

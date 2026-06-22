@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Alert, Collapse, Row, Col, Input, InputNumber, Select, Typography } from 'antd';
-import { CSV_IMPORT_DEFAULTABLE_CORE_IDS, CSV_IMPORT_SKU_AUTO_RULE, CSV_IMPORT_PURPOSE_UPDATE } from './importConstants';
+import { CSV_IMPORT_DEFAULTABLE_CORE_IDS, CSV_IMPORT_SKU_AUTO_RULE, CSV_IMPORT_PURPOSE_UPDATE } from './importConstants.js';
 
 const { Text } = Typography;
 
@@ -346,3 +346,5 @@ export function ImportDefaultsPanel({
     />
   );
 }
+
+export default ImportDefaultsPanel;

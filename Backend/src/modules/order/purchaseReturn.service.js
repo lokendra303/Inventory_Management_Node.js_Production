@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const batchSerialService = require('../inventory/batchSerial.service');
 
 class PurchaseReturnService {
   async createPurchaseReturn(institutionId, data, userId) {
@@ -33,12 +34,18 @@ class PurchaseReturnService {
 
       for (const line of lines) {
         const lineTotal = parseFloat(line.quantity) * parseFloat(line.unitCost);
+        const lineId = uuidv4();
         await conn.execute(
           `INSERT INTO purchase_return_lines
-           (id, institution_id, return_id, item_id, warehouse_id, quantity, unit_cost, line_total, return_reason)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), institutionId, id, line.itemId, line.warehouseId,
-           line.quantity, line.unitCost, lineTotal, line.returnReason || null]
+           (id, institution_id, return_id, item_id, warehouse_id, quantity, unit_cost, line_total, return_reason,
+            batch_allocations, serial_ids)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            lineId, institutionId, id, line.itemId, line.warehouseId,
+            line.quantity, line.unitCost, lineTotal, line.returnReason || null,
+            line.batchAllocations ? JSON.stringify(line.batchAllocations) : null,
+            line.serialIds ? JSON.stringify(line.serialIds) : null,
+          ]
         );
       }
     });
@@ -121,6 +128,37 @@ class PurchaseReturnService {
          qty, `Purchase Return: ${returns[0].return_number}`,
          userId, returns[0].return_number]
       );
+
+      let batchAllocations = null;
+      let serialIds = null;
+      if (line.batch_allocations) {
+        try {
+          batchAllocations = typeof line.batch_allocations === 'string'
+            ? JSON.parse(line.batch_allocations)
+            : line.batch_allocations;
+        } catch { batchAllocations = null; }
+      }
+      if (line.serial_ids) {
+        try {
+          serialIds = typeof line.serial_ids === 'string'
+            ? JSON.parse(line.serial_ids)
+            : line.serial_ids;
+        } catch { serialIds = null; }
+      }
+
+      await batchSerialService.deductForPurchaseReturn(
+        institutionId,
+        {
+          itemId: line.item_id,
+          warehouseId: line.warehouse_id,
+          quantity: qty,
+          batchAllocations,
+          serialIds,
+          returnLineId: line.id,
+          returnNumber: returns[0].return_number,
+        },
+        userId
+      );
     }
 
     const debitNoteNumber = `DN-${Date.now()}`;
@@ -163,7 +201,9 @@ class PurchaseReturnService {
     if (!returns.length) return null;
 
     const lines = await db.query(
-      `SELECT prl.*, i.name as item_name, i.sku, w.name as warehouse_name
+      `SELECT prl.*, i.name as item_name, i.sku,
+              i.is_batch_tracked, i.is_serialized, i.has_expiry,
+              w.name as warehouse_name
        FROM purchase_return_lines prl
        JOIN items i ON prl.item_id = i.id
        JOIN warehouses w ON prl.warehouse_id = w.id

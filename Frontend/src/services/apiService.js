@@ -392,6 +392,7 @@ class ApiService {
   async getExpiryAlerts(params = {}) { return this.get('/batch-serial/expiry-alerts', { params }); }
   async acknowledgeExpiryAlert(alertId) { return this.put(`/batch-serial/expiry-alerts/${alertId}/acknowledge`); }
   async refreshExpiryAlerts() { return this.post('/batch-serial/expiry-alerts/refresh'); }
+  async getBatchSerialMovements(params = {}) { return this.get('/batch-serial/movements', { params }); }
 
   // Stock Count
   async getStockCounts(params = {}) { return this.get('/stock-counts', { params }); }

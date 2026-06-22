@@ -3,6 +3,7 @@ import { Table, Button, Tag, Modal, Form, Select, InputNumber, Input, message, C
 import { PlusOutlined, SendOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import dayjs from 'dayjs';
+import BatchSerialLineFields, { mapShipLineBatchSerial } from '../../components/inventory/BatchSerialLineFields';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -65,12 +66,17 @@ export default function Shipments() {
           const pending = Math.max(ordered - shipped, 0);
           return {
             soLineId: line.id,
+            itemId: line.item_id,
+            warehouseId: line.warehouse_id,
             itemName: line.item_name,
             warehouseName: line.warehouse_name,
             quantityOrdered: ordered,
             quantityShipped: shipped,
             pendingQuantity: pending,
-            quantity: pending > 0 ? pending : 0
+            quantity: pending > 0 ? pending : 0,
+            isBatchTracked: Boolean(line.is_batch_tracked),
+            isSerialized: Boolean(line.is_serialized),
+            hasExpiry: Boolean(line.has_expiry),
           };
         })
         .filter((line) => line.pendingQuantity > 0);
@@ -92,7 +98,8 @@ export default function Shipments() {
       .filter((line) => Number(line.quantity) > 0)
       .map((line) => ({
         soLineId: line.soLineId,
-        quantity: Number(line.quantity)
+        quantity: Number(line.quantity),
+        ...mapShipLineBatchSerial(line),
       }));
 
     if (!soId) {
@@ -237,7 +244,7 @@ export default function Shipments() {
       <Modal title="Ship Stock" open={createModal}
         onCancel={() => { setCreateModal(false); form.resetFields(); setSelectedOrder(null); }}
         onOk={() => form.submit()} okText="Create Shipment" confirmLoading={submitting}
-        width="min(480px, 96vw)" style={{ top: 16 }}>
+        width="min(720px, 96vw)" style={{ top: 16 }}>
         <Form form={form} layout="vertical" onFinish={handleShip}>
           <Form.Item name="soId" label="Sales Order" rules={[{ required: true, message: 'Sales order is required' }]}>
             <Select
@@ -256,7 +263,7 @@ export default function Shipments() {
               showIcon
               style={{ marginBottom: 12 }}
               message="No shippable sales orders"
-              description="Only Sales Orders in Confirmed or Partially Shipped status appear here."
+              description="Confirm a draft Sales Order first (Sales → Sales Orders → Confirm). Orders already fully shipped do not appear here."
             />
           )}
           <Form.Item name="shipmentNumber" label="Shipment Number (optional)">
@@ -299,6 +306,21 @@ export default function Shipments() {
                       >
                         <InputNumber min={0} max={Number(row.pendingQuantity || 0)} step={0.01} style={{ width: '100%' }} />
                       </Form.Item>
+                      {(row.isBatchTracked || row.isSerialized) && Number(form.getFieldValue(['lines', field.name, 'quantity']) || 0) > 0 && (
+                        <BatchSerialLineFields
+                          form={form}
+                          lineName={field.name}
+                          itemId={row.itemId}
+                          warehouseId={row.warehouseId}
+                          tracking={{
+                            is_batch_tracked: row.isBatchTracked,
+                            is_serialized: row.isSerialized,
+                            has_expiry: row.hasExpiry,
+                          }}
+                          quantity={form.getFieldValue(['lines', field.name, 'quantity']) || 0}
+                          mode="ship"
+                        />
+                      )}
                     </Card>
                   );
                 })}

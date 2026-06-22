@@ -564,7 +564,28 @@ const Inventory = () => {
                                 Cost: {formatCurrency(unitCost)}
                               </Tag>
                             )}
+                            {eventData.batchNumber && (
+                              <Tag style={{ borderRadius: 999, margin: 0, background: '#f0f5ff', color: '#1d39c4', border: '1px solid #adc6ff' }}>
+                                Batch: {eventData.batchNumber}
+                              </Tag>
+                            )}
+                            {eventData.expiryDate && (
+                              <Tag style={{ borderRadius: 999, margin: 0, background: '#fff1f0', color: '#cf1322', border: '1px solid #ffa39e' }}>
+                                Exp: {new Date(eventData.expiryDate).toLocaleDateString()}
+                              </Tag>
+                            )}
+                            {Array.isArray(eventData.serialNumbers) && eventData.serialNumbers.length > 0 && (
+                              <Tag style={{ borderRadius: 999, margin: 0, background: '#f9f0ff', color: '#531dab', border: '1px solid #d3adf7' }}>
+                                Serials: {eventData.serialNumbers.length}
+                              </Tag>
+                            )}
                           </div>
+
+                          {(eventData.grnNumber || event.reference_number) && (
+                            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: reason ? 8 : 0 }}>
+                              Ref: {eventData.grnNumber || event.reference_number}
+                            </div>
+                          )}
 
                           {reason && (
                             <div style={{ fontSize: 13, color: '#595959', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '10px 12px' }}>

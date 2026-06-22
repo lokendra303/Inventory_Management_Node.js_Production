@@ -21,4 +21,6 @@ router.get('/expiry-alerts',     requirePermission('inventory_view'),           
 router.put('/expiry-alerts/:alertId/acknowledge', requirePermission('inventory_view'), auditLog('expiry_alert_acknowledged'), ctrl.acknowledgeExpiryAlert);
 router.post('/expiry-alerts/refresh', requirePermission('inventory_management'),                           ctrl.refreshExpiryAlerts);
 
+router.get('/movements', requirePermission('inventory_view'), ctrl.getMovements);
+
 module.exports = router;

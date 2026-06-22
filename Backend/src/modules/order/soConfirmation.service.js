@@ -8,13 +8,14 @@ const { serializeDocumentMeta } = require('../../utils/documentMeta');
 
 class SOConfirmationService {
   /**
-   * Automatically process sales order confirmation
-   * This reduces inventory and creates shipment records
+   * Confirm a sales order — validates stock and marks as confirmed.
+   * Inventory is reduced on ship (POST /sales-orders/:id/ship), mirroring PO confirm → receive.
    */
-  async processSOConfirmation(institutionId, soId, userId) {
+  async processSOConfirmation(institutionId, soId, userId, options = {}) {
+    void options;
+
     try {
-      await db.transaction(async (connection) => {
-        // Get SO details
+      const result = await db.transaction(async (connection) => {
         const [soResult] = await connection.execute(
           `SELECT so.*, w.name as warehouse_name 
            FROM sales_orders so 
@@ -28,10 +29,13 @@ class SOConfirmationService {
         }
 
         const so = soResult[0];
+        if (so.status !== 'draft') {
+          throw new Error(`Cannot confirm sales order in status "${so.status}"`);
+        }
 
-        // Get SO lines
         const [lines] = await connection.execute(
-          `SELECT sol.*, i.sku, i.name as item_name, i.unit
+          `SELECT sol.*, i.sku, i.name as item_name, i.unit,
+                  i.is_batch_tracked, i.is_serialized, i.has_expiry
            FROM sales_order_lines sol
            JOIN items i ON sol.item_id = i.id
            WHERE sol.institution_id = ? AND sol.so_id = ?
@@ -43,8 +47,6 @@ class SOConfirmationService {
           throw new Error('No sales order lines found');
         }
 
-        // Check stock availability per line's warehouse
-        // Stock was already reserved at SO creation — check quantity_reserved not quantity_available
         for (const line of lines) {
           const requiredQty = Number(line.quantity_ordered);
           const fulfillmentMode = await compositeInventoryService.getFulfillmentMode(
@@ -92,133 +94,127 @@ class SOConfirmationService {
           }
         }
 
-        // Auto-generate shipment number
-        const shipmentNumber = `AUTO-SHIP-${so.so_number}-${Date.now()}`;
-
-        // Process each line item
-        for (const line of lines) {
-          // Ship stock (reduces inventory and moves reserved to pending/shipped)
-          await compositeInventoryService.shipForSalesLine(
-            institutionId,
-            {
-              itemId: line.item_id,
-              warehouseId: line.warehouse_id,
-              quantity: line.quantity_ordered,
-              unitPrice: line.unit_price,
-              soId,
-              soLineId: line.id,
-              itemVariantId: line.item_variant_id || undefined
-            },
-            shipmentNumber,
-            userId
-          );
-
-          // Update SO line status
-          await connection.execute(
-            `UPDATE sales_order_lines 
-             SET quantity_shipped = ?, status = 'shipped', updated_at = NOW()
-             WHERE id = ?`,
-            [line.quantity_ordered, line.id]
-          );
-
-          logger.info('Inventory reduced for item', {
-            itemId: line.item_id,
-            itemName: line.item_name,
-            warehouseId: line.warehouse_id,
-            quantity: line.quantity_ordered,
-            unitPrice: line.unit_price,
-            soId: soId
-          });
-        }
-
-        // Update SO status to shipped
         await connection.execute(
-          'UPDATE sales_orders SET status = ?, updated_at = NOW() WHERE id = ?',
-          ['shipped', soId]
+          `UPDATE sales_order_lines
+           SET status = 'reserved', updated_at = NOW()
+           WHERE institution_id = ? AND so_id = ?`,
+          [institutionId, soId]
         );
 
-        // Auto-generate sales invoice
-        const invoiceId = uuidv4();
-        const invoiceNumber = `SI-${so.so_number}-${Date.now()}`;
-        
-        let subtotal = 0;
-        let totalTax = 0;
-        let totalDiscount = 0;
-        
-        for (const line of lines) {
-          const lineBase     = parseFloat(line.quantity_ordered) * parseFloat(line.unit_price);
-          const taxRate      = parseFloat(line.tax_rate   || 0);
-          const discountRate = parseFloat(line.discount_rate || 0);
-          const discAmt      = lineBase * discountRate / 100;
-          const taxAmt       = (lineBase - discAmt) * taxRate / 100;
-          subtotal      += lineBase;
-          totalTax      += taxAmt;
-          totalDiscount += discAmt;
-        }
-        
-        const grandTotal = subtotal + totalTax - totalDiscount;
-        
-        const documentMetaJson = serializeDocumentMeta(so.document_meta);
+        await connection.execute(
+          'UPDATE sales_orders SET status = ?, updated_at = NOW() WHERE id = ?',
+          ['confirmed', soId]
+        );
 
-        await connection.execute(`
-          INSERT INTO sales_invoices (
-            id, institution_id, invoice_number, customer_id, customer_name, so_id,
-            invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
-            discount_amount, total_amount, paid_amount, balance_amount, document_meta, status, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?)
-        `, [
-          invoiceId, institutionId, invoiceNumber, so.customer_id, so.customer_name, soId,
-          new Date().toISOString().split('T')[0], null, so.currency || 'INR', 1,
-          subtotal, totalTax, totalDiscount, grandTotal, 0, grandTotal, documentMetaJson, userId
-        ]);
-        
-        // Add invoice lines with correct tax & discount
-        for (const line of lines) {
-          const lineBase     = parseFloat(line.quantity_ordered) * parseFloat(line.unit_price);
-          const taxRate      = parseFloat(line.tax_rate   || 0);
-          const discountRate = parseFloat(line.discount_rate || 0);
-          const discAmt      = Math.round(lineBase * discountRate / 100 * 100) / 100;
-          const taxAmt       = Math.round((lineBase - discAmt) * taxRate / 100 * 100) / 100;
-          const lineTotal    = Math.round((lineBase - discAmt + taxAmt) * 100) / 100;
-
-          await connection.execute(`
-            INSERT INTO sales_invoice_lines (
-              invoice_id, so_line_id, item_id, item_name, quantity, unit_price, line_total,
-              tax_rate, tax_amount, discount_rate, discount_amount
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            invoiceId, line.id, line.item_id, line.item_name, line.quantity_ordered,
-            line.unit_price, lineTotal, taxRate, taxAmt, discountRate, discAmt
-          ]);
-        }
-
-        logger.info('SO confirmation processed successfully', {
+        logger.info('SO confirmed — awaiting shipment', {
           soId,
           soNumber: so.so_number,
-          shipmentNumber,
-          invoiceNumber,
           totalLines: lines.length,
           institutionId,
-          userId
+          userId,
         });
 
         return {
           success: true,
-          shipmentNumber,
-          invoiceNumber,
+          message: 'Sales order confirmed. Ship stock to deduct inventory and generate invoice.',
           itemsProcessed: lines.length,
-          warehouseUpdated: so.warehouse_name || so.warehouse_id
+          warehouseUpdated: so.warehouse_name || so.warehouse_id,
         };
       });
+
+      return result;
     } catch (error) {
       logger.error('Failed to process SO confirmation', {
         soId,
         institutionId,
         userId,
-        error: error.message
+        error: error.message,
       });
       throw error;
     }
+  }
+
+  async createInvoiceForShippedSO(institutionId, soId, userId, connection) {
+    const [existing] = await connection.execute(
+      'SELECT id FROM sales_invoices WHERE institution_id = ? AND so_id = ? LIMIT 1',
+      [institutionId, soId]
+    );
+    if (existing.length > 0) {
+      return { invoiceId: existing[0].id, created: false };
+    }
+
+    const [soResult] = await connection.execute(
+      'SELECT * FROM sales_orders WHERE institution_id = ? AND id = ?',
+      [institutionId, soId]
+    );
+    if (soResult.length === 0) {
+      throw new Error('Sales order not found');
+    }
+    const so = soResult[0];
+
+    const [lines] = await connection.execute(
+      `SELECT sol.*, i.name as item_name
+       FROM sales_order_lines sol
+       JOIN items i ON sol.item_id = i.id
+       WHERE sol.institution_id = ? AND sol.so_id = ?
+       ORDER BY sol.line_number`,
+      [institutionId, soId]
+    );
+
+    const invoiceId = uuidv4();
+    const invoiceNumber = `SI-${so.so_number}-${Date.now()}`;
+
+    let subtotal = 0;
+    let totalTax = 0;
+    let totalDiscount = 0;
+
+    for (const line of lines) {
+      const lineBase = parseFloat(line.quantity_ordered) * parseFloat(line.unit_price);
+      const taxRate = parseFloat(line.tax_rate || 0);
+      const discountRate = parseFloat(line.discount_rate || 0);
+      const discAmt = lineBase * discountRate / 100;
+      const taxAmt = (lineBase - discAmt) * taxRate / 100;
+      subtotal += lineBase;
+      totalTax += taxAmt;
+      totalDiscount += discAmt;
+    }
+
+    const grandTotal = subtotal + totalTax - totalDiscount;
+    const documentMetaJson = serializeDocumentMeta(so.document_meta);
+
+    await connection.execute(`
+      INSERT INTO sales_invoices (
+        id, institution_id, invoice_number, customer_id, customer_name, so_id,
+        invoice_date, due_date, currency, exchange_rate, subtotal, tax_amount,
+        discount_amount, total_amount, paid_amount, balance_amount, document_meta, status, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?)
+    `, [
+      invoiceId, institutionId, invoiceNumber, so.customer_id, so.customer_name, soId,
+      new Date().toISOString().split('T')[0], null, so.currency || 'INR', 1,
+      subtotal, totalTax, totalDiscount, grandTotal, 0, grandTotal, documentMetaJson, userId,
+    ]);
+
+    for (const line of lines) {
+      const lineBase = parseFloat(line.quantity_ordered) * parseFloat(line.unit_price);
+      const taxRate = parseFloat(line.tax_rate || 0);
+      const discountRate = parseFloat(line.discount_rate || 0);
+      const discAmt = Math.round(lineBase * discountRate / 100 * 100) / 100;
+      const taxAmt = Math.round((lineBase - discAmt) * taxRate / 100 * 100) / 100;
+      const lineTotal = Math.round((lineBase - discAmt + taxAmt) * 100) / 100;
+
+      await connection.execute(`
+        INSERT INTO sales_invoice_lines (
+          invoice_id, so_line_id, item_id, item_name, quantity, unit_price, line_total,
+          tax_rate, tax_amount, discount_rate, discount_amount
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        invoiceId, line.id, line.item_id, line.item_name, line.quantity_ordered,
+        line.unit_price, lineTotal, taxRate, taxAmt, discountRate, discAmt,
+      ]);
+    }
+
+    logger.info('Sales invoice created on shipment', { soId, invoiceNumber, institutionId, userId });
+    return { invoiceId, invoiceNumber, created: true };
   }
 
   /**

@@ -126,12 +126,13 @@ class SalesOrderController {
         const result = await soConfirmationService.processSOConfirmation(
           req.institutionId, 
           soId, 
-          req.user.userId
+          req.user.userId,
+          req.body || {}
         );
         
         res.json({
           success: true,
-          message: 'Sales order confirmed and inventory updated successfully',
+          message: 'Sales order confirmed. Ship stock to deduct inventory and generate invoice.',
           data: result
         });
       } else {
@@ -162,12 +163,13 @@ class SalesOrderController {
       const result = await soConfirmationService.processSOConfirmation(
         req.institutionId, 
         soId, 
-        req.user.userId
+        req.user.userId,
+        req.body || {}
       );
       
       res.json({
         success: true,
-        message: 'Sales order confirmed successfully. Inventory has been updated automatically.',
+        message: 'Sales order confirmed. Ship stock to deduct inventory and generate invoice.',
         data: result
       });
     } catch (error) {

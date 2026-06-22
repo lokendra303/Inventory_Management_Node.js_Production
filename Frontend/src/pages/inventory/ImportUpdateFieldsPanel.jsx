@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Alert, Button, Col, Input, Row, Select, Table, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { CSV_IMPORT_SKU_AUTO_RULE } from './importConstants';
-import { ImportDefaultField } from './ImportDefaultsPanel';
+import { ImportDefaultField } from './ImportDefaultsPanel.jsx';
 
 const { Text } = Typography;
 
@@ -276,3 +276,5 @@ export function ImportUpdateFieldsPanel({
     </div>
   );
 }
+
+export default ImportUpdateFieldsPanel;

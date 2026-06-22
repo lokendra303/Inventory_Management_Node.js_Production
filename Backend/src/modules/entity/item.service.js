@@ -571,7 +571,11 @@ class ItemService {
       openingStock,
       openingValue,
       defaultBinId,
-      kitFulfillmentMode
+      kitFulfillmentMode,
+      isSerialized,
+      isBatchTracked,
+      hasExpiry,
+      shelfLifeDays,
     } = updateData;
 
     const updateFields = [];
@@ -677,6 +681,22 @@ class ItemService {
     if (maxStockLevel !== undefined) {
       updateFields.push('max_stock_level = ?');
       updateValues.push(maxStockLevel);
+    }
+    if (isSerialized !== undefined) {
+      updateFields.push('is_serialized = ?');
+      updateValues.push(isSerialized ? 1 : 0);
+    }
+    if (isBatchTracked !== undefined) {
+      updateFields.push('is_batch_tracked = ?');
+      updateValues.push(isBatchTracked ? 1 : 0);
+    }
+    if (hasExpiry !== undefined) {
+      updateFields.push('has_expiry = ?');
+      updateValues.push(hasExpiry ? 1 : 0);
+    }
+    if (shelfLifeDays !== undefined) {
+      updateFields.push('shelf_life_days = ?');
+      updateValues.push(shelfLifeDays || null);
     }
     if (type !== undefined) {
       updateFields.push('type = ?');
