@@ -61,6 +61,7 @@ const defaultFormValues = (units = []) => ({
   trackInventory: false,
   isSellable: true,
   unit: pickDefaultUnit(units),
+  bomAdditionalCharges: [],
 });
 
 const RESERVED_CUSTOM_FIELD_KEYS = new Set([
@@ -72,6 +73,7 @@ const RESERVED_CUSTOM_FIELD_KEYS = new Set([
   'salesDescription',
   'purchaseDescription',
   'purchaseTaxRate',
+  'bomAdditionalCharges',
 ]);
 
 const extractTypeCustomFields = (custom = {}) => {
@@ -121,6 +123,7 @@ export default function BomItemForm({
   const [manufacturerOptions, setManufacturerOptions] = useState([]);
   const [taxRateOptions, setTaxRateOptions] = useState([]);
   const [fieldConfigs, setFieldConfigs] = useState([]);
+  const [variantLibrary, setVariantLibrary] = useState([]);
   const [binsForWarehouse, setBinsForWarehouse] = useState([]);
   const [binsLoading, setBinsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
@@ -151,6 +154,7 @@ export default function BomItemForm({
       mfgRes,
       taxRes,
       compositeFieldConfigs,
+      variantLibraryRes,
     ] = await Promise.all([
       apiService.get('/units'),
       apiService.get('/warehouses'),
@@ -160,6 +164,7 @@ export default function BomItemForm({
       apiService.get('/manufacturers'),
       apiService.get('/tax/rates'),
       itemService.getFieldConfig('composite'),
+      apiService.get('/items/variant-library'),
     ]);
 
     const unitRows = unitsRes.success ? unitsRes.data : [];
@@ -175,6 +180,10 @@ export default function BomItemForm({
     setManufacturerOptions(manufacturerRows);
     setTaxRateOptions(taxRes.success ? taxRes.data : []);
     setFieldConfigs(Array.isArray(compositeFieldConfigs) ? compositeFieldConfigs : []);
+    const library = variantLibraryRes?.success
+      ? (variantLibraryRes.data || [])
+      : (Array.isArray(variantLibraryRes) ? variantLibraryRes : []);
+    setVariantLibrary(Array.isArray(library) ? library : []);
 
     return {
       units: unitRows,
@@ -284,7 +293,7 @@ export default function BomItemForm({
     const loadLookups = async () => {
       try {
         const [itemsRes, master] = await Promise.all([
-          apiService.get('/items', { params: { limit: 5000 } }),
+          apiService.get('/items', { params: { status: 'active', limit: 5000, includeVariants: '1' } }),
           loadMasterData(),
         ]);
         if (cancelled) return;
@@ -627,6 +636,8 @@ export default function BomItemForm({
             binsForWarehouse={binsForWarehouse}
             binsLoading={binsLoading}
             onWarehouseChange={fetchBinsForWarehouse}
+            variantLibrary={variantLibrary}
+            onRefreshVariantLibrary={refreshMasterData}
           />
         </Form>
       </Spin>

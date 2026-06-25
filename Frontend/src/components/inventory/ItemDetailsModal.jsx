@@ -8,6 +8,7 @@ import {
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
+import { mapSkuMetaToVariantFormFields } from '../../utils/variantLibraryHelpers';
 import { isOpeningStockReceipt, getInventoryLogReferenceDisplay } from '../../utils/inventoryReceipt';
 
 const toTitleText = (value) => String(value || '')
@@ -54,9 +55,11 @@ const fulfillmentLabel = (mode) => (
   mode === 'explode_on_ship' ? 'Explode on ship' : 'Pre-built'
 );
 
-const consumptionLabel = (timing) => (
-  String(timing || 'shipment').toLowerCase() === 'order' ? 'On order' : 'On shipment'
-);
+const consumptionLabel = (timing, kitFulfillmentMode) => {
+  const isExplode = String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship';
+  if (!isExplode) return 'At assembly';
+  return String(timing || 'shipment').toLowerCase() === 'order' ? 'At order' : 'At shipment';
+};
 
 const looksLikeUuid = (value) => (
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
@@ -162,6 +165,7 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
   const isComposite = String(viewingItem?.type || '').toLowerCase() === 'composite';
   const bomComponents = normalizeBomComponents(viewingItem);
   const kitFulfillmentMode = viewingItem?.kit_fulfillment_mode || viewingItem?.kitFulfillmentMode;
+  const variantTags = mapSkuMetaToVariantFormFields(viewingItem?.custom_fields || {});
 
   return (
     <Modal
@@ -232,6 +236,11 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
           <Row gutter={16}>
             {[
               [
+                ['Item Type', viewingItem.type ? String(viewingItem.type).replace(/_/g, ' ') : 'N/A'],
+                ['Variant / Packing', variantTags.variant || 'N/A'],
+                ['Colour', variantTags.colorCode || 'N/A'],
+                ['Size', variantTags.sizeCode || 'N/A'],
+                ['Pack Type', variantTags.packType || 'N/A'],
                 ['Cost Price', viewingItem.cost_price ? formatPrice(viewingItem.cost_price, currency, 'USD') : 'N/A'],
                 ['MRP', viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'],
                 ['Tax Rate', viewingItem.tax_rate ? `${viewingItem.tax_rate}%` : 'N/A'],
@@ -325,12 +334,19 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
                       title: 'Consumption',
                       dataIndex: 'consumptionTiming',
                       key: 'consumptionTiming',
-                      width: 130,
-                      render: (v) => (
-                        <Tag color={String(v).toLowerCase() === 'order' ? 'orange' : 'blue'} style={{ borderRadius: 20, marginInlineEnd: 0 }}>
-                          {consumptionLabel(v)}
-                        </Tag>
-                      ),
+                      width: 140,
+                      render: (v) => {
+                        const isExplode = String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship';
+                        const label = consumptionLabel(v, kitFulfillmentMode);
+                        return (
+                          <Tag
+                            color={!isExplode ? 'purple' : (String(v).toLowerCase() === 'order' ? 'orange' : 'blue')}
+                            style={{ borderRadius: 20, marginInlineEnd: 0 }}
+                          >
+                            {label}
+                          </Tag>
+                        );
+                      },
                     },
                   ]}
                 />

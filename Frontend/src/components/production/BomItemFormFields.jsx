@@ -12,6 +12,7 @@ import {
   Switch,
   Upload,
   message,
+  Alert,
 } from 'antd';
 import {
   AppstoreOutlined,
@@ -22,7 +23,9 @@ import {
   UploadOutlined,
   BuildOutlined,
 } from '@ant-design/icons';
+import ItemVariantTagFields from '../inventory/ItemVariantTagFields';
 import CompositeBomSection from '../inventory/CompositeBomSection';
+import BomCostSummary from './BomCostSummary';
 import ItemTypeCustomFields from '../inventory/ItemTypeCustomFields';
 import {
   BrandField,
@@ -62,6 +65,8 @@ export default function BomItemFormFields({
   binsForWarehouse = [],
   binsLoading = false,
   onWarehouseChange,
+  variantLibrary = [],
+  onRefreshVariantLibrary,
 }) {
   const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
   const watchedIsSellable = Form.useWatch('isSellable', form) !== false;
@@ -88,6 +93,27 @@ export default function BomItemFormFields({
           <Col xs={24} lg={16}>
             <Row gutter={16}>
               <Col xs={24} md={12}>
+                <Form.Item label="Item type">
+                  <Select
+                    disabled
+                    value="composite"
+                    options={[{ value: 'composite', label: 'Composite (BOM kit)' }]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item name="name" label="Item name" rules={[{ required: true, message: 'Name is required' }]}>
+                  <Input placeholder="Finished kit name" style={{ borderRadius: 8 }} />
+                </Form.Item>
+              </Col>
+            </Row>
+            <ItemVariantTagFields
+              variantLibrary={variantLibrary}
+              canManage={canManage}
+              onRefreshVariantLibrary={onRefreshVariantLibrary}
+            />
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
                 <SkuGeneratorField
                   excludeItemId={itemId}
                   itemType="composite"
@@ -96,11 +122,6 @@ export default function BomItemFormFields({
                   skuInputDisabled={isEditing}
                   canManage={canManage}
                 />
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item name="name" label="Item name" rules={[{ required: true, message: 'Name is required' }]}>
-                  <Input placeholder="Finished kit name" style={{ borderRadius: 8 }} />
-                </Form.Item>
               </Col>
             </Row>
             <Row gutter={16}>
@@ -425,7 +446,11 @@ export default function BomItemFormFields({
         </div>
         <Row gutter={16}>
           <Col xs={24} sm={8}>
-            <Form.Item name="costPrice" label="Cost price (per unit)">
+            <Form.Item
+              name="costPrice"
+              label="Cost price (per unit)"
+              tooltip="Use “Apply to cost price” in the BOM cost summary, or enter your final cost manually."
+            >
               <InputNumber
                 min={0}
                 step={0.01}
@@ -616,17 +641,33 @@ export default function BomItemFormFields({
               value={kitFulfillmentMode}
               onChange={onKitFulfillmentModeChange}
               options={[
-                { value: 'prebuilt', label: 'Pre-built kits — sell finished kit stock (assemble parts first)' },
-                { value: 'explode_on_ship', label: 'Explode on ship — consume BOM components when fulfilling orders' },
+                { value: 'prebuilt', label: 'Pre-built — assemble parts first, then sell finished kit stock' },
+                { value: 'explode_on_ship', label: 'Explode on ship — deduct parts when fulfilling sales (no kit stock)' },
               ]}
             />
           </Col>
         </Row>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12, borderRadius: 10 }}
+          message={
+            String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship'
+              ? 'Explode on ship: components leave inventory at order or shipment (per row below). Finished kit stock is not tracked.'
+              : 'Pre-built: components are consumed when you run BOM Operation → Assemble. Sales ship finished kit stock only.'
+          }
+        />
         <CompositeBomSection
           components={components}
           onComponentsChange={onComponentsChange}
           catalogItems={catalogItems}
           excludeItemId={itemId}
+          kitFulfillmentMode={kitFulfillmentMode}
+        />
+        <BomCostSummary
+          form={form}
+          components={components}
+          catalogItems={catalogItems}
         />
       </div>
     </>

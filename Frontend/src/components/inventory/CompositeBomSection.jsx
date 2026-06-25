@@ -1,6 +1,14 @@
 import React from 'react';
 import { Button, Col, Grid, InputNumber, Row, Select, Tooltip, Typography } from 'antd';
 import { DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { useCurrency } from '../../contexts/CurrencyContext.jsx';
+import { formatPrice } from '../../utils/currency';
+import {
+  getCatalogItemById,
+  resolveCatalogItemCost,
+  resolveCatalogItemSize,
+  resolveCatalogItemUnit,
+} from '../../utils/bomCostHelpers';
 
 const { Text: AntText } = Typography;
 
@@ -26,6 +34,41 @@ const PANEL_STYLE = {
   overflow: 'hidden',
 };
 
+const CONSUMPTION_OPTIONS = [
+  {
+    value: 'shipment',
+    label: 'At shipment',
+    description: 'Deduct component stock when the kit line is dispatched',
+  },
+  {
+    value: 'order',
+    label: 'At order',
+    description: 'Reserve component stock when the sales order is confirmed',
+  },
+];
+
+const consumptionOptionLabel = (value) => {
+  const row = CONSUMPTION_OPTIONS.find((o) => o.value === value);
+  return row?.label || 'At shipment';
+};
+
+const formatComponentTypeLabel = (type) => {
+  const key = String(type || 'simple').toLowerCase();
+  if (key === 'simple') return 'Simple';
+  if (key === 'variant') return 'Variant';
+  if (key === 'composite') return 'Composite';
+  if (key === 'service') return 'Service';
+  return key.charAt(0).toUpperCase() + key.slice(1);
+};
+
+const isBomComponentItem = (itemRow, excludeItemId) => {
+  const type = String(itemRow?.type || 'simple').toLowerCase();
+  return itemRow?.id !== excludeItemId
+    && itemRow?.status === 'active'
+    && type !== 'composite'
+    && type !== 'service';
+};
+
 /**
  * Bill of materials editor for composite / kit items.
  */
@@ -34,8 +77,11 @@ export default function CompositeBomSection({
   onComponentsChange,
   catalogItems = [],
   excludeItemId,
+  kitFulfillmentMode = 'prebuilt',
 }) {
   const screens = Grid.useBreakpoint();
+  const { currency } = useCurrency();
+  const isExplodeOnShip = String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship';
 
   const addRow = () => {
     onComponentsChange((prev) => [
@@ -52,11 +98,7 @@ export default function CompositeBomSection({
     onComponentsChange((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const selectableItems = catalogItems.filter(
-    (itemRow) => itemRow.id !== excludeItemId
-      && itemRow.status === 'active'
-      && ['simple', 'variant'].includes(String(itemRow.type || '').toLowerCase())
-  );
+  const selectableItems = catalogItems.filter((itemRow) => isBomComponentItem(itemRow, excludeItemId));
 
   return (
     <div style={PANEL_STYLE}>
@@ -104,34 +146,51 @@ export default function CompositeBomSection({
         }}
       >
         <div style={{ fontWeight: 700, color: '#334155', marginBottom: 8 }}>What each field means</div>
-        <ul style={{ margin: 0, paddingLeft: 18 }}>
-          <li>
-            <AntText strong>Component item</AntText>
-            {' — '}Pick another item already in your catalog (<AntText strong>simple</AntText> or{' '}
-            <AntText strong>variant</AntText> only). It is not duplicated or overwritten; this row only defines the
-            relationship to this kit.
-          </li>
-          <li style={{ marginTop: 6 }}>
-            <AntText strong>Qty per 1 kit</AntText>
-            {' — '}How many units of that component are consumed to build <AntText strong>one</AntText> unit of this
-            parent (e.g. 4 screws per assembled panel). Scale mentally: selling 10 kits would need{' '}
-            <AntText style={{ fontStyle: 'italic' }}>10 × qty</AntText> of each line.
-          </li>
-          <li style={{ marginTop: 6 }}>
-            <AntText strong>Consume when</AntText>
-            {' — '}For <AntText strong>Explode on ship</AntText> kits: <AntText strong>Order</AntText>
-            {' '}reserves components when the sales order is created; <AntText strong>Shipment</AntText>
-            {' '}consumes at dispatch. Pre-built kits use <AntText strong>BOM Operation</AntText>
-            {' '}to move parts into finished kit stock before selling.
-          </li>
-        </ul>
+        {isExplodeOnShip ? (
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <li>
+              <AntText strong>Component item</AntText>
+              {' — '}Pick an active inventory item (simple, variant, or custom type). Composite and service items cannot be components.
+            </li>
+            <li style={{ marginTop: 6 }}>
+              <AntText strong>Qty per 1 kit</AntText>
+              {' — '}How many units of the component are used for <AntText strong>one</AntText> kit sold/shipped
+              (e.g. 4 screws per panel).
+            </li>
+            <li style={{ marginTop: 6 }}>
+              <AntText strong>Consume when</AntText>
+              {' — '}Only for <AntText strong>Explode on ship</AntText> kits:
+              <AntText strong> At order</AntText> reserves parts when the sales order is confirmed;
+              <AntText strong> At shipment</AntText> deducts parts when the line is dispatched.
+              No finished kit stock is kept — parts leave inventory at sale/ship time.
+            </li>
+          </ul>
+        ) : (
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <li>
+              <AntText strong>Component item</AntText>
+              {' — '}Pick an active inventory item (simple, variant, or custom type). Composite and service items cannot be components.
+            </li>
+            <li style={{ marginTop: 6 }}>
+              <AntText strong>Qty per 1 kit</AntText>
+              {' — '}How many units of each component are consumed to build <AntText strong>one</AntText> finished kit
+              (e.g. 4 screws per assembled panel).
+            </li>
+            <li style={{ marginTop: 6 }}>
+              <AntText strong>Consumption</AntText>
+              {' — '}For <AntText strong>Pre-built</AntText> kits, parts are deducted during{' '}
+              <AntText strong>Production → BOM Operation → Assemble</AntText>, not at sales order or shipment.
+              You sell finished kit stock after assembly.
+            </li>
+          </ul>
+        )}
       </div>
       {components.length === 0 ? (
         <div style={{ padding: 14, fontSize: 13, color: '#64748b' }}>
           Add at least one row. Each row is one line on the BOM for this composite item.
         </div>
       ) : (
-        <div style={{ maxHeight: 340, overflowY: 'auto', padding: '12px 14px 14px' }}>
+        <div style={{ maxHeight: 420, overflowY: 'auto', padding: '12px 14px 14px' }}>
           {components.map((row, idx) => {
             const controlTopOffset = 22 + 8;
             const deletePaddingTop = screens.sm ? controlTopOffset : 0;
@@ -146,6 +205,21 @@ export default function CompositeBomSection({
             const duplicateRow = row.itemId && components.some(
               (c, i) => i !== idx && String(c.itemId) === String(row.itemId)
             );
+            const selectedItem = getCatalogItemById(catalogItems, row.itemId);
+            const qty = Number(row.quantityRequired) || 0;
+            const unitCost = selectedItem ? resolveCatalogItemCost(selectedItem) : 0;
+            const lineCost = qty * unitCost;
+            const metaChipStyle = {
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '2px 8px',
+              borderRadius: 999,
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              fontSize: 11,
+              color: '#475569',
+            };
             return (
               <div
                 key={`bom-${idx}`}
@@ -159,7 +233,7 @@ export default function CompositeBomSection({
                   <Col xs={24} sm={11} style={{ flex: '1 1 0', minWidth: 0 }}>
                     <div style={BOM_FIELD_LABEL_STYLE}>
                       Component item
-                      <Tooltip title="Search by SKU or name. Cannot be another composite or a service item.">
+                      <Tooltip title="Search by SKU or name. Type is shown for each option.">
                         <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
                       </Tooltip>
                     </div>
@@ -176,9 +250,30 @@ export default function CompositeBomSection({
                     >
                       {rowOptions.map((itemRow) => (
                         <Select.Option key={itemRow.id} value={itemRow.id}>
-                          <span>{itemRow.sku}</span>
-                          {' — '}
-                          <span style={{ color: '#64748b' }}>{itemRow.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <span>
+                              <span style={{ fontWeight: 600 }}>{itemRow.sku}</span>
+                              {' — '}
+                              <span style={{ color: '#64748b' }}>{itemRow.name}</span>
+                              {resolveCatalogItemSize(itemRow) !== '—' ? (
+                                <span style={{ color: '#94a3b8' }}>{` · ${resolveCatalogItemSize(itemRow)}`}</span>
+                              ) : null}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                color: '#6366f1',
+                                background: '#eef2ff',
+                                borderRadius: 999,
+                                padding: '1px 8px',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {formatComponentTypeLabel(itemRow.type)}
+                            </span>
+                          </div>
                         </Select.Option>
                       ))}
                     </Select>
@@ -191,8 +286,31 @@ export default function CompositeBomSection({
                         Select a component or remove this empty row before saving.
                       </AntText>
                     ) : null}
+                    {selectedItem ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: 6,
+                          marginTop: 8,
+                        }}
+                      >
+                        <span style={metaChipStyle}>
+                          <strong>Size:</strong> {resolveCatalogItemSize(selectedItem)}
+                        </span>
+                        <span style={metaChipStyle}>
+                          <strong>Unit:</strong> {resolveCatalogItemUnit(selectedItem)}
+                        </span>
+                        <span style={metaChipStyle}>
+                          <strong>Unit cost:</strong> {formatPrice(unitCost, currency, 'USD')}
+                        </span>
+                        <span style={{ ...metaChipStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca' }}>
+                          <strong>Line cost:</strong> {formatPrice(lineCost, currency, 'USD')}
+                        </span>
+                      </div>
+                    ) : null}
                   </Col>
-                  <Col xs={12} sm={6}>
+                  <Col xs={12} sm={isExplodeOnShip ? 6 : 11}>
                     <div style={BOM_FIELD_LABEL_STYLE}>
                       Qty per 1 kit
                       <Tooltip title="Whole-number or fractional quantities allowed (e.g. 0.5 kg per kit).">
@@ -209,24 +327,26 @@ export default function CompositeBomSection({
                       onChange={(value) => updateRow(idx, { quantityRequired: value })}
                     />
                   </Col>
-                  <Col xs={12} sm={5}>
-                    <div style={BOM_FIELD_LABEL_STYLE}>
-                      Consume when
-                      <Tooltip title="Shipment: consume when goods ship. Order: consume at order/booking stage. Pick what matches your process.">
-                        <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
-                      </Tooltip>
-                    </div>
-                    <Select
-                      value={row.consumptionTiming || 'shipment'}
-                      style={{ width: '100%', display: 'block' }}
-                      size="middle"
-                      onChange={(value) => updateRow(idx, { consumptionTiming: value })}
-                      options={[
-                        { value: 'shipment', label: 'Shipment' },
-                        { value: 'order', label: 'Order' },
-                      ]}
-                    />
-                  </Col>
+                  {isExplodeOnShip ? (
+                    <Col xs={12} sm={5}>
+                      <div style={BOM_FIELD_LABEL_STYLE}>
+                        Consume when
+                        <Tooltip title="At order: reserve parts when the sales order is confirmed. At shipment: deduct parts when the kit line is dispatched.">
+                          <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
+                        </Tooltip>
+                      </div>
+                      <Select
+                        value={row.consumptionTiming || 'shipment'}
+                        style={{ width: '100%', display: 'block' }}
+                        size="middle"
+                        onChange={(value) => updateRow(idx, { consumptionTiming: value })}
+                        options={CONSUMPTION_OPTIONS.map((opt) => ({
+                          value: opt.value,
+                          label: opt.label,
+                        }))}
+                      />
+                    </Col>
+                  ) : null}
                   <Col
                     xs={24}
                     sm={2}
@@ -251,19 +371,31 @@ export default function CompositeBomSection({
                     </Tooltip>
                   </Col>
                 </Row>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: '#94a3b8',
-                    marginTop: 8,
-                    lineHeight: 1.4,
-                    paddingLeft: 0,
-                    clear: 'both',
-                  }}
-                >
-                  <AntText type="secondary">Consume when:</AntText>{' '}
-                  Shipment = dispatch gate · Order = earlier commitment (matches the dropdown in this row).
-                </div>
+                {isExplodeOnShip ? (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: '#64748b',
+                      marginTop: 8,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {consumptionOptionLabel(row.consumptionTiming || 'shipment')}
+                    {' — '}
+                    {CONSUMPTION_OPTIONS.find((o) => o.value === (row.consumptionTiming || 'shipment'))?.description}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: '#64748b',
+                      marginTop: 8,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    Parts for this row are consumed during kit assembly (BOM Operation), not at order or shipment.
+                  </div>
+                )}
               </div>
             );
           })}

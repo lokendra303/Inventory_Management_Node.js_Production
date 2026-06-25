@@ -34,6 +34,10 @@ export function buildSkuContextFromValues(values = {}, opts = {}) {
   const warehouseLabel = warehouseRow?.code || warehouseRow?.name || warehouseId || '';
   const itemName = values.name || '';
   const categoryName = values.category || '';
+  const variantValue = String(values.variant || '').trim();
+  const colorValue = String(values.colorCode || '').trim();
+  const sizeValue = String(values.sizeCode || '').trim();
+  const packTypeValue = String(values.packType || '').trim();
 
   return {
     ruleId: selectedRuleId || undefined,
@@ -43,17 +47,21 @@ export function buildSkuContextFromValues(values = {}, opts = {}) {
     type: itemType,
     unit: unitLabel,
     warehouse: warehouseLabel,
+    variant: variantValue,
+    color: colorValue,
     hsnCode: values.hsnCode || '',
     mpn: values.mpn || '',
     barcode: values.barcode || values.ean || '',
     brandCode: toSkuCode(values.brand, 3),
     itemCode: toSkuCode(itemName, 4),
     categoryCode: toSkuCode(categoryName, 3),
-    typeCode: toSkuCode(itemType, 3),
+    typeCode: toSkuCode(packTypeValue || itemType, 3),
     unitCode: toSkuCode(unitLabel, 4),
     warehouseCode: toSkuCode(warehouseLabel, 4),
-    size: toSkuCode(unitLabel, 8),
-    typeValue: itemType,
+    variantCode: toSkuCode(variantValue, 4),
+    colorCode: toSkuCode(colorValue, 4),
+    size: toSkuCode(sizeValue || unitLabel, 8),
+    typeValue: packTypeValue || itemType,
   };
 }
 

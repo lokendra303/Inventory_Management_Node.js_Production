@@ -1,8 +1,13 @@
 import dayjs from 'dayjs';
+import {
+  buildSkuMetaFromFormValues,
+  mapSkuMetaToVariantFormFields,
+} from './variantLibraryHelpers';
 
 const TEXT_KEYS = [
   'sku', 'name', 'description', 'category', 'hsnCode', 'barcode', 'brand', 'manufacturer',
   'supplierCode', 'upc', 'mpn', 'ean', 'isbn', 'weight', 'salesDescription', 'purchaseDescription',
+  'variant', 'colorCode', 'sizeCode', 'packType',
 ];
 
 const NUMERIC_KEYS = [
@@ -38,7 +43,6 @@ export function serializeBomDraft(values = {}, components = [], kitFulfillmentMo
     _draftKind: 'bom',
   };
 }
-
 export function restoreBomDraftToForm(draftData = {}, form, setters = {}) {
   const {
     components: draftComponents,
@@ -126,6 +130,13 @@ export function mapBomItemToFormValues(item = {}) {
     returnableItem: Boolean(item.custom_fields?.returnableItem || item.custom_fields?.returnable),
     trackInventory: false,
     isSellable: item.is_sellable !== 0 && item.is_sellable !== false,
+    ...mapSkuMetaToVariantFormFields(item.custom_fields || {}),
+    bomAdditionalCharges: Array.isArray(item.custom_fields?.bomAdditionalCharges)
+      ? item.custom_fields.bomAdditionalCharges.map((row) => ({
+        label: row?.label || '',
+        amount: row?.amount != null ? Number(row.amount) : undefined,
+      }))
+      : [],
   };
 }
 
@@ -161,6 +172,29 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
   else delete customFields.purchaseDescription;
   if (values.purchaseTaxRate != null) customFields.purchaseTaxRate = values.purchaseTaxRate;
   else delete customFields.purchaseTaxRate;
+
+  const normalizedCharges = (Array.isArray(values.bomAdditionalCharges) ? values.bomAdditionalCharges : [])
+    .map((row) => ({
+      label: String(row?.label || '').trim(),
+      amount: Number(row?.amount),
+    }))
+    .filter((row) => row.label && Number.isFinite(row.amount) && row.amount >= 0);
+  if (normalizedCharges.length) customFields.bomAdditionalCharges = normalizedCharges;
+  else delete customFields.bomAdditionalCharges;
+
+  const skuMeta = buildSkuMetaFromFormValues(values);
+  if (skuMeta) {
+    customFields.skuMeta = {
+      ...((existingCustomFields || {}).skuMeta || {}),
+      ...skuMeta,
+    };
+  } else if (customFields.skuMeta) {
+    delete customFields.skuMeta.variant;
+    delete customFields.skuMeta.color;
+    delete customFields.skuMeta.size;
+    delete customFields.skuMeta.packType;
+    if (!Object.keys(customFields.skuMeta).length) delete customFields.skuMeta;
+  }
 
   Object.keys(customFields).forEach((key) => {
     const val = customFields[key];
@@ -206,5 +240,10 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
     purchaseDescription: undefined,
     purchaseTaxRate: undefined,
     trackInventory: undefined,
+    variant: undefined,
+    colorCode: undefined,
+    sizeCode: undefined,
+    packType: undefined,
+    bomAdditionalCharges: undefined,
   };
 }
