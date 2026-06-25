@@ -619,7 +619,12 @@ export default function BomItemFormFields({
                     </Form.Item>
                   </Col>
                 </Row>
-                <OpeningBatchFields form={form} warehouses={warehouses} hasExpiry={watchedHasExpiry} />
+                <OpeningBatchFields
+                  form={form}
+                  warehouses={warehouses}
+                  hasExpiry={watchedHasExpiry}
+                  canManageRules={canManage}
+                />
               </>
             )}
           </>

@@ -5,6 +5,7 @@ import { lookupProductByBarcode } from '../../utils/openFoodFacts';
 import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
 import apiService from '../../services/apiService';
 import skuGeneratorService from '../../services/skuGeneratorService';
+import { SkuRulesPanel } from '../../components/settings/SkuRulesPanel';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice, convertPrice, getCurrencies } from '../../utils/currency';
@@ -14,7 +15,7 @@ import ViewModeToggle from '../../components/common/ViewModeToggle';
 import ItemCatalogGrid from '../../components/inventory/ItemCatalogGrid';
 import ItemDetailsModal from '../../components/inventory/ItemDetailsModal';
 import { usePersistedViewMode } from '../../hooks/usePersistedViewMode';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
 import { filterSelectOption } from '../../utils/selectFilter';
@@ -457,6 +458,7 @@ function buildItemsCsvTemplate() {
 
 const Items = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, sessionSecondsLeft } = useAuth();
   const { currency } = useCurrency();
   const [items, setItems] = useState([]);
@@ -940,12 +942,16 @@ const Items = () => {
     skuRuleForm.setFieldsValue({ prefixStatic: next });
   };
 
-  const openSkuRulesModal = async () => {
-    setEditingSkuRule(null);
-    skuRuleForm.resetFields();
+  const openSkuRulesModal = () => {
     setSkuRulesOpen(true);
-    await loadSkuRules();
   };
+
+  useEffect(() => {
+    if (location.state?.openSkuRules) {
+      setSkuRulesOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate]);
 
   const DERIVED_TOKEN_BY_SOURCE = {
     category: 'CATEGORY',
@@ -5394,8 +5400,13 @@ const viewItem = (item) => {
             {canManageItems && (
               <Tooltip title="Configure SKU auto-generator rules (prefix, counter, date, per-category overrides)">
                 <Button
+                  type="button"
                   icon={<SettingOutlined />}
-                  onClick={openSkuRulesModal}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openSkuRulesModal();
+                  }}
                   style={{
                     background: '#fff',
                     color: '#764ba2',
@@ -9016,319 +9027,31 @@ const viewItem = (item) => {
         onBarcode={handleBarcodeScan}
       />
 
-      {/* -------------------- SKU Auto-Generator: Manage Rules ----------------- */}
       <Modal
-        title={<span><ThunderboltOutlined style={{ color: '#764ba2', marginRight: 8 }} />Manage SKU Rules</span>}
+        title={(
+          <span>
+            <ThunderboltOutlined style={{ color: '#764ba2', marginRight: 8 }} />
+            Manage SKU Rules
+          </span>
+        )}
         open={skuRulesOpen}
-        onCancel={() => { setSkuRulesOpen(false); setEditingSkuRule(null); skuRuleForm.resetFields(); }}
+        onCancel={() => setSkuRulesOpen(false)}
         footer={null}
         width="min(1200px, 98vw)"
         style={{ top: 8 }}
-        styles={{ body: { background: '#f8f9ff', borderRadius: '0 0 12px 12px', maxHeight: '86vh', overflowY: 'auto', padding: 16 } }}
+        styles={{
+          body: {
+            background: '#f8f9ff',
+            borderRadius: '0 0 12px 12px',
+            maxHeight: '86vh',
+            overflowY: 'auto',
+            padding: 16,
+          },
+        }}
         destroyOnClose
+        zIndex={1100}
       >
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          {/* --- Existing rules list --- */}
-          <div style={{ flex: '1 1 360px', minWidth: 340, background: '#fff', border: '1px solid #eef0f7', borderRadius: 12, padding: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <b style={{ fontSize: 14, color: '#1f2937' }}>Active Rules</b>
-              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={startNewSkuRule} style={{ background: '#764ba2', border: 'none' }}>
-                New Rule
-              </Button>
-            </div>
-            <Table
-              size="small"
-              rowKey="id"
-              loading={skuRulesLoading}
-              dataSource={skuRules}
-              pagination={false}
-              bordered
-              scroll={{ y: 520 }}
-              locale={{ emptyText: 'No rules yet. Create one to start auto-generating SKUs.' }}
-              columns={[
-                {
-                  title: 'Name',
-                  dataIndex: 'name',
-                  render: (v, r) => (
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{v}</div>
-                      <div style={{ fontSize: 11, color: '#8c8c8c' }}>
-                        {r.scope === 'category' ? `Category: ${r.scope_value}` : 'Institution default'}
-                        {r.is_default ? <Tag color="purple" style={{ marginLeft: 6 }}>Default</Tag> : null}
-                      </div>
-                    </div>
-                  )
-                },
-                {
-                  title: 'Next',
-                  render: (_, r) => {
-                    const n = (Number(r.counter_current) || 0) + 1;
-                    const padded = String(n).padStart(r.counter_padding || 4, '0');
-                    return <Tag color="geekblue">{r.use_counter ? padded : '—'}</Tag>;
-                  }
-                },
-                {
-                  title: '',
-                  width: 90,
-                  render: (_, r) => (
-                    <Space size={4}>
-                      <Button size="small" type="link" onClick={() => startEditSkuRule(r)}>Edit</Button>
-                      <Popconfirm title="Remove this rule?" onConfirm={() => removeSkuRule(r.id)} okText="Remove" okButtonProps={{ danger: true }}>
-                        <Button size="small" type="link" danger>Delete</Button>
-                      </Popconfirm>
-                    </Space>
-                  )
-                }
-              ]}
-            />
-          </div>
-
-          {/* --- Edit / create form --- */}
-          <div style={{ flex: '1 1 620px', minWidth: 420, background: '#fff', padding: 16, borderRadius: 12, border: '1px solid #eef0f7' }}>
-            <div style={{ fontWeight: 700, marginBottom: 12, color: '#1f2937' }}>
-              {editingSkuRule ? `Edit: ${editingSkuRule.name}` : 'Create a new rule'}
-            </div>
-            <Form
-              form={skuRuleForm}
-              layout="vertical"
-              size="middle"
-              labelCol={{ style: { paddingBottom: 2 } }}
-              initialValues={{
-                scope: 'default',
-                prefixMode: 'static',
-                prefixSources: ['name'],
-                prefixSourceConfig: buildDefaultDerivedConfig(),
-                prefixLength: 3,
-                separator: '-',
-                useDate: false,
-                dateFormat: 'YYMM',
-                useCounter: true,
-                counterStart: 1,
-                counterPadding: 4,
-                isDefault: false
-              }}
-            >
-              <div style={{ background: '#fafbff', border: '1px solid #edf0ff', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                <Row gutter={12}>
-                  <Col span={12}>
-                    <Form.Item name="name" label="Rule Name" rules={[{ required: true, message: 'Name is required' }]} style={{ marginBottom: 10 }}>
-                      <Input placeholder="e.g. Default, Electronics, Apparel" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="scope" label="Applies To" rules={[{ required: true }]} style={{ marginBottom: 10 }}>
-                      <Select>
-                        <Select.Option value="default">Institution default</Select.Option>
-                        <Select.Option value="category">Specific category</Select.Option>
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={12}>
-                  <Col span={12}>
-                    <Form.Item
-                      noStyle
-                      shouldUpdate={(prev, cur) => prev.scope !== cur.scope}
-                    >
-                      {({ getFieldValue }) => getFieldValue('scope') === 'category' ? (
-                        <Form.Item name="scopeValue" label="Category" rules={[{ required: true, message: 'Pick a category' }]} style={{ marginBottom: 0 }}>
-                          <Select
-                            placeholder="Select category"
-                            showSearch
-                            options={(categories || []).map(c => ({ value: c.name, label: c.name }))}
-                          />
-                        </Form.Item>
-                      ) : (
-                        <Form.Item name="isDefault" label="Usage" style={{ marginBottom: 0 }}>
-                          <Select>
-                            <Select.Option value={true}>Use as default</Select.Option>
-                            <Select.Option value={false}>Secondary (manual pick)</Select.Option>
-                          </Select>
-                        </Form.Item>
-                      )}
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </div>
-
-              <Divider style={{ margin: '10px 0 14px', fontSize: 12 }} orientation="left">Prefix</Divider>
-              <Row gutter={12}>
-                <Col span={10}>
-                  <Form.Item name="prefixMode" label="Mode" rules={[{ required: true }]}>
-                    <Select>
-                      <Select.Option value="static">Static text</Select.Option>
-                      <Select.Option value="derived">Derived from field</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={14}>
-                  <Form.Item noStyle shouldUpdate={(p, c) => p.prefixMode !== c.prefixMode}>
-                    {({ getFieldValue }) => getFieldValue('prefixMode') === 'static' ? (
-                      <>
-                        <Form.Item
-                          name="prefixStatic"
-                          label="Text"
-                          rules={[{ required: true, message: 'Enter a prefix' }]}
-                          style={{ marginBottom: 8 }}
-                        >
-                          <Input placeholder="e.g. ITEM or {BRAND}-{ITEM}-{SIZE}-{TYPE}-{SEQ}" maxLength={80} />
-                        </Form.Item>
-                        <div style={{ marginBottom: 6, fontSize: 12, color: '#6b7280' }}>Template tokens</div>
-                        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: 8 }}>
-                          {[
-                            '{BRAND}', '{ITEM}', '{VARIANT}', '{COLOR}', '{SIZE}', '{TYPE}', '{CATEGORY}',
-                            '{MANUFACTURER}', '{UNIT}', '{WAREHOUSE}', '{HSN}', '{MPN}', '{BARCODE}', '{DATE}', '{SEQ}'
-                          ].map((token) => (
-                            <Button key={token} size="small" onClick={() => insertSkuToken(token)}>
-                              {token}
-                            </Button>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <Form.Item noStyle shouldUpdate={(p, c) =>
-                        p.prefixSources !== c.prefixSources || p.prefixSourceConfig !== c.prefixSourceConfig
-                      }>
-                        {({ getFieldValue }) => {
-                          const selected = Array.isArray(getFieldValue('prefixSources'))
-                            ? getFieldValue('prefixSources').filter(Boolean)
-                            : [];
-                          return (
-                            <>
-                              <Form.Item name="prefixSources" label="Source fields" rules={[{ required: true, message: 'Select at least one field' }]}>
-                                <Select
-                                  mode="multiple"
-                                  maxTagCount="responsive"
-                                  placeholder="Choose one or more fields"
-                                  options={DERIVED_SOURCE_OPTIONS}
-                                  onChange={(nextValues) => {
-                                    const prevValues = skuRuleForm.getFieldValue('prefixSources') || [];
-                                    const ordered = preserveSelectionOrder(prevValues, nextValues);
-                                    skuRuleForm.setFieldsValue({ prefixSources: ordered });
-                                  }}
-                                />
-                              </Form.Item>
-                              {selected.length > 0 && (
-                                <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 10, marginTop: -4, background: '#fcfcff' }}>
-                                  {selected.map((src) => (
-                                    <Row gutter={10} key={src} style={{ marginBottom: 10, padding: '8px 8px 2px', background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8 }}>
-                                      <Col xs={24} sm={8}>
-                                        <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Field</div>
-                                        <div style={{ fontSize: 13, color: '#262626', textTransform: 'capitalize', fontWeight: 600 }}>
-                                          {DERIVED_SOURCE_LABELS[src] || src}
-                                        </div>
-                                      </Col>
-                                      <Col xs={12} sm={8}>
-                                        <Form.Item noStyle shouldUpdate={(p, c) =>
-                                          p?.prefixSourceConfig?.[src]?.mode !== c?.prefixSourceConfig?.[src]?.mode
-                                        }>
-                                          {({ getFieldValue }) => {
-                                            const mode = getFieldValue(['prefixSourceConfig', src, 'mode']) || 'abbr';
-                                            const isAbbr = mode === 'abbr';
-                                            return (
-                                              <Form.Item
-                                                name={['prefixSourceConfig', src, 'len']}
-                                                label={isAbbr ? 'Max initials' : 'Chars'}
-                                                style={{ marginBottom: 0 }}
-                                                labelCol={{ style: { paddingBottom: 2 } }}
-                                                extra={isAbbr
-                                                  ? 'Counts words first, then one initial per word — uses fewer if name has fewer words (max is upper limit only)'
-                                                  : 'Characters from start of field (spaces removed)'}
-                                              >
-                                                <InputNumber min={1} max={20} style={{ width: '100%' }} />
-                                              </Form.Item>
-                                            );
-                                          }}
-                                        </Form.Item>
-                                      </Col>
-                                      <Col xs={12} sm={8}>
-                                        <Form.Item name={['prefixSourceConfig', src, 'mode']} label="Pick style" style={{ marginBottom: 0 }} labelCol={{ style: { paddingBottom: 2 } }}>
-                                          <Select>
-                                            <Select.Option value="abbr">First letters</Select.Option>
-                                            <Select.Option value="slice">First chars</Select.Option>
-                                          </Select>
-                                        </Form.Item>
-                                      </Col>
-                                    </Row>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          );
-                        }}
-                      </Form.Item>
-                    )}
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Form.Item name="separator" label="Separator" style={{ marginBottom: 10 }}>
-                <Select>
-                  <Select.Option value="-">Dash (-)</Select.Option>
-                  <Select.Option value="_">Underscore (_)</Select.Option>
-                  <Select.Option value="">None</Select.Option>
-                </Select>
-              </Form.Item>
-
-              <Divider style={{ margin: '10px 0 14px', fontSize: 12 }} orientation="left">Date segment (optional)</Divider>
-              <Row gutter={12}>
-                <Col span={10}>
-                  <Form.Item name="useDate" label="Include date" style={{ marginBottom: 10 }}>
-                    <Select>
-                      <Select.Option value={false}>No</Select.Option>
-                      <Select.Option value={true}>Yes</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={14}>
-                  <Form.Item noStyle shouldUpdate={(p, c) => p.useDate !== c.useDate}>
-                    {({ getFieldValue }) => getFieldValue('useDate') ? (
-                      <Form.Item name="dateFormat" label="Format" rules={[{ required: true }]}>
-                        <Select>
-                          <Select.Option value="YY">YY (26)</Select.Option>
-                          <Select.Option value="YYMM">YYMM (2604)</Select.Option>
-                          <Select.Option value="YYYYMM">YYYYMM (202604)</Select.Option>
-                          <Select.Option value="YYYYMMDD">YYYYMMDD (20260421)</Select.Option>
-                        </Select>
-                      </Form.Item>
-                    ) : null}
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Divider style={{ margin: '10px 0 14px', fontSize: 12 }} orientation="left">Counter</Divider>
-              <Row gutter={12}>
-                <Col span={8}>
-                  <Form.Item name="useCounter" label="Include counter">
-                    <Select>
-                      <Select.Option value={true}>Yes</Select.Option>
-                      <Select.Option value={false}>No</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={8}>
-                  <Form.Item name="counterStart" label="Start at">
-                    <InputNumber min={1} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={8}>
-                  <Form.Item name="counterPadding" label="Zero-pad width">
-                    <InputNumber min={1} max={10} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                {editingSkuRule && (
-                  <Button onClick={() => { setEditingSkuRule(null); skuRuleForm.resetFields(); }}>Cancel edit</Button>
-                )}
-                <Button type="primary" onClick={submitSkuRule} style={{ background: '#764ba2', border: 'none' }}>
-                  {editingSkuRule ? 'Update Rule' : 'Create Rule'}
-                </Button>
-              </div>
-            </Form>
-          </div>
-        </div>
+        {skuRulesOpen ? <SkuRulesPanel active /> : null}
       </Modal>
 
     </div>

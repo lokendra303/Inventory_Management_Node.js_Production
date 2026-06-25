@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const CodeTemplateEngine = require('../../utils/codeTemplateEngine');
 
 /**
  * SkuGeneratorService — produces unique, human-readable SKUs on demand
@@ -335,123 +336,8 @@ class SkuGeneratorService {
   // Formatting helpers
   // ---------------------------------------------------------------------------
 
-  _slug(raw, length) {
-    if (!raw) return '';
-    const clean = String(raw)
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '');
-    return length ? clean.slice(0, length) : clean;
-  }
-
-  /** First letter of each word, capped at `length` (uses fewer when name has fewer words). */
-  _abbr(raw, length = 10) {
-    if (!raw) return '';
-    const text = String(raw).trim();
-    if (!text) return '';
-    const words = text
-      .split(/[^A-Za-z0-9]+/g)
-      .map((w) => w.trim())
-      .filter(Boolean);
-    if (words.length === 0) return '';
-    const cap = Math.max(1, Number(length) || 10);
-    return words.map((w) => w[0].toUpperCase()).join('').slice(0, cap);
-  }
-
-  _templatePrefix(rule, ctx, counter) {
-    const rawTemplate = String(rule.prefix_static || '');
-    const tokenPattern = /\{([^}]+)\}/g;
-    const datePart = this._datePart(rule);
-    const counterPart = this._counterPart(rule, counter);
-    const short = (v, n = 3) => this._slug(v, n);
-    const full = (v) => this._slug(v, null);
-    const extract = (value, len = 10, mode = 'abbr') => {
-      const width = Math.max(1, Number(len) || 10);
-      const m = String(mode || 'abbr').toLowerCase();
-      if (m === 'first' || m === 'abbr' || m === 'initials') return this._abbr(value, width);
-      if (m === 'slice' || m === 'chars') return this._slug(value, width);
-      return this._abbr(value, width);
-    };
-
-    return rawTemplate.replace(tokenPattern, (_, tokenExpr) => {
-      const [rawToken, rawLen, rawMode] = String(tokenExpr || '').split('|').map((p) => String(p || '').trim());
-      const t = String(rawToken || '').toUpperCase();
-      const customLen = rawLen ? Number(rawLen) : null;
-      const customMode = rawMode || null;
-      switch (t) {
-        case 'BRAND': return customLen || customMode ? extract(ctx.brand, customLen || 10, customMode || 'abbr') : full(ctx.brandCode || short(ctx.brand));
-        case 'ITEM': return customLen || customMode ? extract(ctx.item || ctx.name, customLen || 10, customMode || 'abbr') : full(ctx.itemCode || short(ctx.item || ctx.name));
-        case 'VARIANT': return customLen || customMode ? extract(ctx.variant, customLen || 10, customMode || 'abbr') : full(ctx.variantCode || short(ctx.variant));
-        case 'SIZE': return customLen || customMode ? extract(ctx.size || ctx.unit, customLen || 10, customMode || 'slice') : full(ctx.size || ctx.unit);
-        case 'TYPE': return customLen || customMode ? extract(ctx.type, customLen || 10, customMode || 'abbr') : full(ctx.typeCode || short(ctx.type));
-        case 'CATEGORY': return customLen || customMode ? extract(ctx.category, customLen || 10, customMode || 'abbr') : full(ctx.categoryCode || short(ctx.category));
-        case 'MANUFACTURER': return customLen || customMode ? extract(ctx.manufacturer, customLen || 10, customMode || 'abbr') : full(ctx.manufacturerCode || short(ctx.manufacturer));
-        case 'UNIT': return customLen || customMode ? extract(ctx.unit, customLen || 10, customMode || 'slice') : full(ctx.unitCode || short(ctx.unit));
-        case 'WAREHOUSE': return customLen || customMode ? extract(ctx.warehouse, customLen || 10, customMode || 'slice') : full(ctx.warehouseCode || short(ctx.warehouse));
-        case 'HSN': return full(ctx.hsnCode || ctx.hsn);
-        case 'MPN': return full(ctx.mpn);
-        case 'BARCODE': return full(ctx.barcode);
-        case 'NAME': return full(ctx.name);
-        case 'DATE': return datePart;
-        case 'SEQ':
-        case 'COUNTER': return counterPart;
-        default:
-          // Allow future/extensible tokens without code changes when ctx carries the same key.
-          return full(ctx[t.toLowerCase()] || ctx[rawToken] || '');
-      }
-    }).replace(/-{2,}/g, '-').replace(/(^-|-$)/g, '');
-  }
-
-  _prefix(rule, ctx, counter) {
-    if (rule.prefix_mode === 'static') {
-      // Template mode without schema changes:
-      // allow placeholders in static prefix, e.g. {BRAND}-{ITEM}-{SIZE}-{TYPE}-{SEQ}
-      if (String(rule.prefix_static || '').includes('{')) {
-        return this._templatePrefix(rule, ctx, counter);
-      }
-      return this._slug(rule.prefix_static, null) || '';
-    }
-    const source = rule.prefix_source;
-    const raw = source === 'category' ? ctx.category
-      : source === 'brand' ? ctx.brand
-      : source === 'name' ? ctx.name
-      : '';
-    // For human-readable abbreviations: "Face Wash" => "FW"
-    return this._abbr(raw, rule.prefix_length || 3);
-  }
-
-  _datePart(rule) {
-    if (!rule.use_date) return '';
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const yy = String(yyyy).slice(-2);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    switch ((rule.date_format || '').toUpperCase()) {
-      case 'YY': return yy;
-      case 'YYMM': return `${yy}${mm}`;
-      case 'YYYYMM': return `${yyyy}${mm}`;
-      case 'YYYYMMDD': return `${yyyy}${mm}${dd}`;
-      default: return '';
-    }
-  }
-
-  _counterPart(rule, counter) {
-    if (!rule.use_counter || counter == null) return '';
-    const width = Math.max(1, Number(rule.counter_padding) || 4);
-    return String(counter).padStart(width, '0');
-  }
-
   _format(rule, ctx, counter) {
-    if (rule.prefix_mode === 'static' && String(rule.prefix_static || '').includes('{')) {
-      return this._prefix(rule, ctx, counter);
-    }
-    const parts = [
-      this._prefix(rule, ctx, counter),
-      this._datePart(rule),
-      this._counterPart(rule, counter)
-    ].filter(Boolean);
-    return parts.join(rule.separator || '-');
+    return CodeTemplateEngine.format(rule, ctx, counter);
   }
 }
 

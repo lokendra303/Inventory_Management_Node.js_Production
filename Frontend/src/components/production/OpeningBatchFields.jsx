@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Form, Input, DatePicker, Select, Space, Typography } from 'antd';
+import { Alert, Button, Form, Input, DatePicker, Select, Space, Typography } from 'antd';
+import { SettingOutlined } from '@ant-design/icons';
+import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import batchGeneratorService from '../../services/batchGeneratorService';
 import { buildOpeningBatchPreviewContext } from '../../utils/batchGeneration';
@@ -14,6 +16,7 @@ export default function OpeningBatchFields({
   form,
   warehouses = [],
   hasExpiry = false,
+  canManageRules = false,
 }) {
   const [rules, setRules] = useState([]);
   const [rulesLoading, setRulesLoading] = useState(false);
@@ -84,7 +87,17 @@ export default function OpeningBatchFields({
         showIcon
         style={{ marginBottom: 12 }}
         message="Opening stock batch (production-style)"
-        description="Opening balance gets one warehouse lot via opening-stock rules (e.g. OPEN-{SKU}-{DATE}-{SEQ}). The lot is created when you save this BOM item."
+        description={(
+          <span>
+            Opening balance gets one warehouse lot via opening-stock rules (e.g. OPEN-{'{SKU}'}-{'{DATE}'}-{'{SEQ}'}). The lot is created when you save this BOM item.
+            {canManageRules ? (
+              <>
+                {' '}
+                <Link to="/production/batch-rules">Manage batch coding rules</Link>
+              </>
+            ) : null}
+          </span>
+        )}
       />
 
       <Form.Item name="openingBatchRuleId" hidden>
@@ -114,6 +127,11 @@ export default function OpeningBatchFields({
         <Text type="secondary" style={{ fontSize: 12 }}>
           {selectedRule?.prefix_static ? `Template: ${selectedRule.prefix_static}` : 'Default: OPEN-{SKU}-{DATE}-{SEQ}'}
         </Text>
+        {canManageRules ? (
+          <Link to="/production/batch-rules">
+            <Button size="small" icon={<SettingOutlined />}>Manage rules</Button>
+          </Link>
+        ) : null}
       </Space>
 
       <Space wrap>

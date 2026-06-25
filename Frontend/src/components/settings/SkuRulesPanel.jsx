@@ -1,48 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Modal, Form, Input, Select, Button, Table, Space, message, Tag, Alert, Card,
+  Form, Input, Button, Table, Space, message, Tag, Alert, Card,
 } from 'antd';
-import { PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import batchGeneratorService from '../../services/batchGeneratorService';
+import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import skuGeneratorService from '../../services/skuGeneratorService';
+import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import CodeRuleEditor from '../settings/CodeRuleEditor';
 import {
   buildDefaultDerivedConfig,
   buildPayloadFromFormValues,
   mapRuleToFormValues,
-  SAMPLE_BATCH_PREVIEW_CONTEXT,
+  SAMPLE_SKU_PREVIEW_CONTEXT,
 } from '../../utils/codeGeneratorConfig';
 
-const CONTEXT_OPTIONS = [
-  { value: 'kit_assembly', label: 'Kit assembly (ASM-…)' },
-  { value: 'opening_stock', label: 'Opening stock (OPEN-…)' },
-  { value: 'kit_disassembly', label: 'Kit disassembly (DSM-…)' },
-  { value: 'general', label: 'General receive (GRN / stock in)' },
-];
-
-const defaultTemplateForContext = (ctx) => {
-  if (ctx === 'opening_stock') return 'OPEN-{BRAND|3|abbr}-{SKU}-{DATE}-{SEQ}';
-  if (ctx === 'kit_disassembly') return 'DSM-{SKU}-{VARIANT}-{DATE}-{SEQ}';
-  if (ctx === 'general') return 'LOT-{CATEGORY|3|abbr}-{SKU}-{DATE}-{SEQ}';
-  return 'ASM-{BRAND|3|abbr}-{SKU}-{VARIANT}-{DATE}-{SEQ}';
-};
-
-export function BatchRulesPanel({ active = true }) {
+export function SkuRulesPanel({ active = true }) {
   const { user } = useAuth();
   const [rules, setRules] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [filterContext, setFilterContext] = useState('kit_assembly');
   const [form] = Form.useForm();
 
   const load = async () => {
     setLoading(true);
     try {
-      const list = await batchGeneratorService.listRules(filterContext);
-      setRules(Array.isArray(list) ? list : []);
+      const [rulesRes, catRes] = await Promise.allSettled([
+        skuGeneratorService.listRules(),
+        apiService.get('/categories'),
+      ]);
+      if (rulesRes.status === 'fulfilled') {
+        setRules(Array.isArray(rulesRes.value) ? rulesRes.value : []);
+      }
+      if (catRes.status === 'fulfilled' && catRes.value?.success) {
+        setCategories((catRes.value.data || []).map((c) => c.name).filter(Boolean));
+      }
     } catch (e) {
-      message.error(e?.response?.data?.error || 'Failed to load batch rules');
+      message.error(e?.response?.data?.error || 'Failed to load SKU rules');
     } finally {
       setLoading(false);
     }
@@ -50,7 +45,7 @@ export function BatchRulesPanel({ active = true }) {
 
   useEffect(() => {
     if (active) load();
-  }, [active, filterContext]);
+  }, [active]);
 
   const orgLabel = user?.institutionName || 'your organization';
 
@@ -58,20 +53,19 @@ export function BatchRulesPanel({ active = true }) {
     setEditing({ isNew: true });
     form.resetFields();
     form.setFieldsValue({
-      name: '',
-      context: filterContext,
+      name: 'Default SKU rule',
       scope: 'default',
       prefixMode: 'static',
-      prefixStatic: defaultTemplateForContext(filterContext),
+      prefixStatic: '{BRAND|3|abbr}-{ITEM|4|slice}-{VARIANT|4|slice}-{SEQ}',
       prefixSources: [],
       prefixSourceConfig: buildDefaultDerivedConfig(),
-      useDate: true,
-      dateFormat: 'YYYYMMDD',
+      useDate: false,
+      dateFormat: 'YYMM',
       useCounter: true,
       counterStart: 1,
-      counterPadding: 3,
+      counterPadding: 4,
       separator: '-',
-      isDefault: false,
+      isDefault: true,
     });
   };
 
@@ -86,11 +80,11 @@ export function BatchRulesPanel({ active = true }) {
       setSaving(true);
       const payload = buildPayloadFromFormValues(values);
       if (editing?.isNew) {
-        await batchGeneratorService.createRule(payload);
-        message.success('Batch rule created');
+        await skuGeneratorService.createRule(payload);
+        message.success('SKU rule created');
       } else if (editing?.id) {
-        await batchGeneratorService.updateRule(editing.id, payload);
-        message.success('Batch rule updated');
+        await skuGeneratorService.updateRule(editing.id, payload);
+        message.success('SKU rule updated');
       }
       setEditing(null);
       form.resetFields();
@@ -105,7 +99,7 @@ export function BatchRulesPanel({ active = true }) {
 
   const handleDelete = async (id) => {
     try {
-      await batchGeneratorService.deleteRule(id);
+      await skuGeneratorService.deleteRule(id);
       message.success('Rule archived');
       if (editing?.id === id) {
         setEditing(null);
@@ -132,7 +126,7 @@ export function BatchRulesPanel({ active = true }) {
       width: 140,
       render: (_, r) => (
         <Space size={4} wrap>
-          {r.is_default ? <Tag color="blue">Default</Tag> : null}
+          {r.is_default ? <Tag color="purple">Default</Tag> : null}
           {r.scope === 'category' ? <Tag>{r.scope_value}</Tag> : <Tag>Institution</Tag>}
         </Space>
       ),
@@ -156,35 +150,23 @@ export function BatchRulesPanel({ active = true }) {
     },
   ];
 
-  const previewCtx = {
-    ...SAMPLE_BATCH_PREVIEW_CONTEXT,
-    context: form.getFieldValue('context') || filterContext,
-  };
-
   return (
     <>
       <Alert
         type="info"
         showIcon
-        icon={<InfoCircleOutlined />}
+        icon={<ThunderboltOutlined />}
         style={{ marginBottom: 16, borderRadius: 10 }}
-        message={`Batch coding rules for ${orgLabel}`}
+        message={`SKU coding rules for ${orgLabel}`}
         description={
-          'Each organization has its own batch/lot templates and counters. '
-          + 'Use tokens like {SKU}, {BRAND}, {VARIANT}, {COLOR}, {SIZE}, {DATE}, {SEQ} — same power as SKU rules. '
-          + 'Set a default per operation type, or add category overrides for different product lines.'
+          'Fully customize how new item SKUs are generated. Use token templates ({BRAND}, {ITEM}, {VARIANT}, {COLOR}, {SIZE}, {TYPE}, {DATE}, {SEQ}) '
+          + 'or guided field mode. Category overrides take priority over the institution default.'
         }
       />
 
-      <Space style={{ marginBottom: 12 }} wrap>
-        <Select
-          value={filterContext}
-          onChange={setFilterContext}
-          style={{ width: 280 }}
-          options={CONTEXT_OPTIONS}
-        />
+      <Space style={{ marginBottom: 12 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={startCreate}>
-          New rule
+          New SKU rule
         </Button>
       </Space>
 
@@ -199,21 +181,22 @@ export function BatchRulesPanel({ active = true }) {
       />
 
       {editing && (
-        <Card size="small" title={editing.isNew ? 'New batch rule' : `Edit: ${editing.name}`}>
+        <Card size="small" title={editing.isNew ? 'New SKU rule' : `Edit: ${editing.name}`}>
           <Form form={form} layout="vertical" onFinish={handleSave}>
             <Form.Item name="name" label="Rule name" rules={[{ required: true }]}>
-              <Input placeholder="Kit assembly — cosmetics line" />
+              <Input placeholder="Cosmetics — brand + variant + counter" />
             </Form.Item>
             <CodeRuleEditor
               form={form}
-              ruleKind="batch"
-              showContextField
-              contextOptions={CONTEXT_OPTIONS}
-              samplePreviewContext={previewCtx}
+              ruleKind="sku"
+              categoryOptions={categories}
+              samplePreviewContext={SAMPLE_SKU_PREVIEW_CONTEXT}
             />
             <Space>
               <Button onClick={() => { setEditing(null); form.resetFields(); }}>Cancel</Button>
-              <Button type="primary" htmlType="submit" loading={saving}>Save rule</Button>
+              <Button type="primary" htmlType="submit" loading={saving} style={{ background: '#764ba2', border: 'none' }}>
+                Save rule
+              </Button>
             </Space>
           </Form>
         </Card>
@@ -222,17 +205,4 @@ export function BatchRulesPanel({ active = true }) {
   );
 }
 
-export default function BatchRulesModal({ open, onClose }) {
-  return (
-    <Modal
-      title="Batch coding rules"
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      width={960}
-      destroyOnClose
-    >
-      {open ? <BatchRulesPanel active={open} /> : null}
-    </Modal>
-  );
-}
+export default SkuRulesPanel;

@@ -59,6 +59,8 @@ import {
   ReorderLevels,
   KitAssembly,
   BomItems,
+  BatchRulesPage,
+  SkuRulesPage,
   BatchTracking,
   PurchaseReturns,
   ExchangeRateSettings,
@@ -105,6 +107,7 @@ const ProtectedWarehouseLocations = withPermission('warehouse_view')(WarehouseLo
 const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(InventoryAdjustments);
 const ProtectedKitAssembly = withPermission('production_management')(KitAssembly);
 const ProtectedBomItems = withPermission('production_view')(BomItems);
+const ProtectedBatchRulesPage = withPermission('production_management')(BatchRulesPage);
 const ProtectedInventoryShipments = withPermission('inventory_ship')(Shipments);
 const ProtectedPutaways = withPermission('inventory_receive')(Putaways);
 const ProtectedMoveOrders = withPermission('inventory_transfer')(MoveOrders);
@@ -187,6 +190,7 @@ function AppContent() {
               <Route path="/inventory/adjustments" element={<ProtectedInventoryAdjustments />} />
               <Route path="/inventory/kit-assembly" element={<Navigate to="/production/kit-assembly" replace />} />
               <Route path="/production/bom-items" element={<ProtectedBomItems />} />
+              <Route path="/production/batch-rules" element={<ProtectedBatchRulesPage />} />
               <Route path="/production/kit-assembly" element={<ProtectedKitAssembly />} />
               <Route path="/inventory/shipments" element={<ProtectedInventoryShipments />} />
               <Route path="/inventory/putaways" element={<ProtectedPutaways />} />
@@ -196,6 +200,8 @@ function AppContent() {
               <Route path="/inventory/batch-tracking" element={<ProtectedBatchTracking />} />
               <Route path="/inventory/reorder-levels" element={<ReorderLevels />} />
               <Route path="/items" element={<ProtectedItems />} />
+              <Route path="/items/sku-rules" element={<SkuRulesPage />} />
+              <Route path="/inventory/sku-rules" element={<Navigate to="/items/sku-rules" replace />} />
               <Route path="/items/trash" element={<ProtectedItemTrash />} />
               <Route path="/item-groups" element={<ProtectedItemGroups />} />
               <Route path="/sales/delivery-challans" element={<DeliveryChallans />} />

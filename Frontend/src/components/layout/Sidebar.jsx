@@ -490,6 +490,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       key: 'production', icon: <BuildOutlined />, label: 'Production',
       children: [
         hasPermission('production_view') && { key: '/production/bom-items', label: 'BOM Items' },
+        hasPermission('production_management') && { key: '/production/batch-rules', label: 'Batch coding rules' },
         hasPermission('production_management') && { key: '/production/kit-assembly', label: 'BOM Operation' },
       ].filter(Boolean),
     },
@@ -497,6 +498,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       key: 'items', icon: <TagsOutlined />, label: 'Items',
       children: [
         hasPermission('item_view') && { key: '/items',       label: 'Items' },
+        hasPermission('item_management') && { key: 'action:sku-rules', label: 'SKU coding rules' },
         hasAnyPermission('item_view', 'item_management') && { key: '/item-groups', label: 'Item Groups' },
         hasPermission('item_view') && { key: '/items/trash', label: 'Trash' },
       ].filter(Boolean),
@@ -573,6 +575,11 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
   ].filter(Boolean);
 
   const handleNavigate = (key) => {
+    if (key === 'action:sku-rules') {
+      navigate('/items', { state: { openSkuRules: true } });
+      if (isMobile && onClose) onClose();
+      return;
+    }
     if (typeof key === 'string' && key.startsWith('/')) {
       preloadRoute(key);
       navigate(key);

@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
+const CodeTemplateEngine = require('../../utils/codeTemplateEngine');
 
 const BATCH_CONTEXTS = new Set(['general', 'kit_assembly', 'kit_disassembly', 'opening_stock']);
 
@@ -74,9 +75,16 @@ class BatchGeneratorService {
   async buildContextFromItem(institutionId, itemId, warehouseId = null, connection = null) {
     const rows = await this._exec(
       connection,
-      `SELECT id, sku, name, category, type, unit, brand, manufacturer, hsn_code, mpn, barcode
-         FROM items
-        WHERE institution_id = ? AND id = ?
+      `SELECT i.id, i.sku, i.name, i.category, i.type, i.unit, i.brand, i.manufacturer,
+              i.hsn_code, i.mpn, i.barcode, i.custom_fields,
+              b.name AS brand_label,
+              m.name AS manufacturer_label,
+              u.symbol AS unit_symbol, u.name AS unit_name
+         FROM items i
+         LEFT JOIN brands b ON b.id = i.brand AND b.institution_id = i.institution_id
+         LEFT JOIN manufacturers m ON m.id = i.manufacturer AND m.institution_id = i.institution_id
+         LEFT JOIN units u ON u.id = i.unit AND u.institution_id = i.institution_id
+        WHERE i.institution_id = ? AND i.id = ?
         LIMIT 1`,
       [institutionId, itemId]
     );
@@ -95,10 +103,19 @@ class BatchGeneratorService {
       }
     }
 
+    const cf = this._safeParseJson(item.custom_fields, {});
+    const skuMeta = cf.skuMeta && typeof cf.skuMeta === 'object' ? cf.skuMeta : {};
+    const variant = this._extractMetaScalar(skuMeta.variant) || this._extractMetaScalar(cf.variant) || '';
+    const color = this._extractMetaScalar(skuMeta.color) || this._extractMetaScalar(skuMeta.colour) || '';
+    const size = this._extractMetaScalar(skuMeta.size) || this._extractMetaScalar(cf.size) || '';
+    const packType = this._extractMetaScalar(skuMeta.packType) || this._extractMetaScalar(skuMeta.type) || '';
+
     const sku = String(item.sku || '').trim();
     const name = String(item.name || '').trim();
     const category = String(item.category || '').trim();
-    const unit = String(item.unit || '').trim();
+    const unitLabel = String(item.unit_symbol || item.unit_name || item.unit || '').trim();
+    const brandName = String(item.brand_label || '').trim();
+    const manufacturerName = String(item.manufacturer_label || '').trim();
 
     return {
       itemId,
@@ -108,22 +125,47 @@ class BatchGeneratorService {
       item: name,
       category,
       type: item.type || '',
-      unit,
+      unit: unitLabel,
       warehouse: warehouseLabel,
-      brand: item.brand || '',
-      manufacturer: item.manufacturer || '',
+      brand: brandName,
+      manufacturer: manufacturerName,
+      variant,
+      color,
       hsnCode: item.hsn_code || '',
       mpn: item.mpn || '',
       barcode: item.barcode || '',
-      skuCode: this._slug(sku, null),
-      itemCode: this._slug(name, 4),
-      categoryCode: this._abbr(category, 3),
-      typeCode: this._slug(item.type, 3),
-      unitCode: this._slug(unit, 4),
-      warehouseCode: this._slug(warehouseLabel, 4),
-      size: this._slug(unit, 8),
-      typeValue: item.type || '',
+      skuCode: CodeTemplateEngine.slug(sku, null),
+      itemCode: CodeTemplateEngine.slug(name, 4),
+      categoryCode: CodeTemplateEngine.abbr(category, 3),
+      brandCode: CodeTemplateEngine.abbr(brandName, 3),
+      manufacturerCode: CodeTemplateEngine.abbr(manufacturerName, 3),
+      variantCode: CodeTemplateEngine.abbr(variant, 4),
+      colorCode: CodeTemplateEngine.abbr(color, 4),
+      typeCode: CodeTemplateEngine.slug(item.type, 3),
+      unitCode: CodeTemplateEngine.slug(unitLabel, 4),
+      warehouseCode: CodeTemplateEngine.slug(warehouseLabel, 4),
+      size: size || CodeTemplateEngine.slug(unitLabel, 8),
+      typeValue: packType || item.type || '',
     };
+  }
+
+  _safeParseJson(value, fallback = null) {
+    if (value == null) return fallback;
+    if (typeof value === 'object') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  _extractMetaScalar(value) {
+    if (value == null || value === '') return '';
+    if (Array.isArray(value)) {
+      const parts = value.map((v) => String(v || '').trim()).filter(Boolean);
+      return parts.length ? parts.join(', ') : '';
+    }
+    return String(value).trim();
   }
 
   async resolveRule(institutionId, ctx = {}, connection = null) {
@@ -262,8 +304,10 @@ class BatchGeneratorService {
     if (useDate && !BatchGeneratorService.DATE_FORMATS.has(String(dateFormat).toUpperCase())) {
       throw new Error('Invalid date format. Use YY, YYMM, YYYYMM or YYYYMMDD');
     }
-    if (!useCounter && !useDate && !String(prefixStatic || '').includes('{DATE}')) {
-      throw new Error('Rule must include a counter or date segment to stay unique');
+    const staticTemplate = String(prefixStatic || '');
+    const hasSeqInTemplate = staticTemplate.includes('{SEQ}') || staticTemplate.includes('{COUNTER}');
+    if (!useCounter && !useDate && !hasSeqInTemplate && !staticTemplate.includes('{DATE}')) {
+      throw new Error('Rule must include a counter, date segment, or {SEQ}/{DATE} token to stay unique');
     }
 
     return db.transaction(async (connection) => {
@@ -419,104 +463,8 @@ class BatchGeneratorService {
     return db.transaction(run);
   }
 
-  _slug(raw, length) {
-    if (!raw) return '';
-    const clean = String(raw).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '');
-    return length ? clean.slice(0, length) : clean;
-  }
-
-  _abbr(raw, length = 10) {
-    if (!raw) return '';
-    const words = String(raw).trim().split(/[^A-Za-z0-9]+/g).filter(Boolean);
-    if (!words.length) return '';
-    return words.map((w) => w[0].toUpperCase()).join('').slice(0, Math.max(1, Number(length) || 10));
-  }
-
-  _templatePrefix(rule, ctx, counter) {
-    const rawTemplate = String(rule.prefix_static || '');
-    const datePart = this._datePart(rule);
-    const counterPart = this._counterPart(rule, counter);
-    const short = (v, n = 3) => this._slug(v, n);
-    const full = (v) => this._slug(v, null);
-    const extract = (value, len = 10, mode = 'abbr') => {
-      const width = Math.max(1, Number(len) || 10);
-      const m = String(mode || 'abbr').toLowerCase();
-      if (m === 'slice' || m === 'chars') return this._slug(value, width);
-      return this._abbr(value, width);
-    };
-
-    return rawTemplate.replace(/\{([^}]+)\}/g, (_, tokenExpr) => {
-      const [rawToken, rawLen, rawMode] = String(tokenExpr || '').split('|').map((p) => String(p || '').trim());
-      const t = String(rawToken || '').toUpperCase();
-      switch (t) {
-        case 'SKU': return full(ctx.sku || ctx.skuCode);
-        case 'BRAND': return extract(ctx.brand, rawLen || 10, rawMode || 'abbr');
-        case 'ITEM': return extract(ctx.item || ctx.name, rawLen || 10, rawMode || 'abbr');
-        case 'NAME': return full(ctx.name);
-        case 'CATEGORY': return extract(ctx.category, rawLen || 10, rawMode || 'abbr');
-        case 'TYPE': return extract(ctx.type, rawLen || 10, rawMode || 'abbr');
-        case 'UNIT': return extract(ctx.unit, rawLen || 10, rawMode || 'slice');
-        case 'WAREHOUSE': return extract(ctx.warehouse, rawLen || 10, rawMode || 'slice');
-        case 'HSN': return full(ctx.hsnCode || ctx.hsn);
-        case 'MPN': return full(ctx.mpn);
-        case 'BARCODE': return full(ctx.barcode);
-        case 'DATE': return datePart;
-        case 'SEQ':
-        case 'COUNTER': return counterPart;
-        default:
-          return full(ctx[t.toLowerCase()] || ctx[rawToken] || '');
-      }
-    }).replace(/-{2,}/g, '-').replace(/(^-|-$)/g, '');
-  }
-
-  _prefix(rule, ctx, counter) {
-    if (rule.prefix_mode === 'static') {
-      if (String(rule.prefix_static || '').includes('{')) {
-        return this._templatePrefix(rule, ctx, counter);
-      }
-      return this._slug(rule.prefix_static, null) || '';
-    }
-    const source = rule.prefix_source;
-    const raw = source === 'category' ? ctx.category
-      : source === 'brand' ? ctx.brand
-      : source === 'sku' ? ctx.sku
-      : source === 'name' ? ctx.name
-      : '';
-    return source === 'sku' ? this._slug(raw, null) : this._abbr(raw, rule.prefix_length || 3);
-  }
-
-  _datePart(rule) {
-    if (!rule.use_date) return '';
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const yy = String(yyyy).slice(-2);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    switch ((rule.date_format || '').toUpperCase()) {
-      case 'YY': return yy;
-      case 'YYMM': return `${yy}${mm}`;
-      case 'YYYYMM': return `${yyyy}${mm}`;
-      case 'YYYYMMDD': return `${yyyy}${mm}${dd}`;
-      default: return '';
-    }
-  }
-
-  _counterPart(rule, counter) {
-    if (!rule.use_counter || counter == null) return '';
-    const width = Math.max(1, Number(rule.counter_padding) || 4);
-    return String(counter).padStart(width, '0');
-  }
-
   _format(rule, ctx, counter) {
-    if (rule.prefix_mode === 'static' && String(rule.prefix_static || '').includes('{')) {
-      return this._prefix(rule, ctx, counter);
-    }
-    const parts = [
-      this._prefix(rule, ctx, counter),
-      this._datePart(rule),
-      this._counterPart(rule, counter),
-    ].filter(Boolean);
-    return parts.join(rule.separator || '-');
+    return CodeTemplateEngine.format(rule, ctx, counter);
   }
 }
 

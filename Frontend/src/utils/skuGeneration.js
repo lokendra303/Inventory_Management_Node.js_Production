@@ -72,6 +72,7 @@ export function ensureSkuRuleRequirements(selectedRule, ctx, actionLabel = 'Gene
 
   const tokenRequirements = {
     BRAND: { label: 'Brand', value: ctx.brand },
+    SKU: { label: 'SKU', value: ctx.sku },
     ITEM: { label: 'Item Name', value: ctx.name || ctx.item },
     NAME: { label: 'Item Name', value: ctx.name || ctx.item },
     VARIANT: { label: 'Variant / Packing', value: ctx.variant },
