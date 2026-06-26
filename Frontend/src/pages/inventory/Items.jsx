@@ -7746,7 +7746,7 @@ const viewItem = (item) => {
                       label="Item type"
                       initialValue="simple"
                       rules={[{ required: true, message: 'Select item type' }]}
-                      tooltip="Simple: one SKU. Variant: options (e.g. size). Service: non-stock. BOM kits are managed under Production."
+                      tooltip="Simple: one SKU. Variant: options (e.g. size). Service: non-stock. BOM finished products are managed under Production."
                     >
                       <Select
                         placeholder={itemTypes.length ? 'Select type' : 'Select or add a type'}

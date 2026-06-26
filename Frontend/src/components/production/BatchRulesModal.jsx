@@ -14,9 +14,9 @@ import {
 } from '../../utils/codeGeneratorConfig';
 
 const CONTEXT_OPTIONS = [
-  { value: 'kit_assembly', label: 'Kit assembly (ASM-…)' },
+  { value: 'kit_assembly', label: 'Manufacturing assembly (ASM-…)' },
   { value: 'opening_stock', label: 'Opening stock (OPEN-…)' },
-  { value: 'kit_disassembly', label: 'Kit disassembly (DSM-…)' },
+  { value: 'kit_disassembly', label: 'Manufacturing disassembly (DSM-…)' },
   { value: 'general', label: 'General receive (GRN / stock in)' },
 ];
 
@@ -202,7 +202,7 @@ export function BatchRulesPanel({ active = true }) {
         <Card size="small" title={editing.isNew ? 'New batch rule' : `Edit: ${editing.name}`}>
           <Form form={form} layout="vertical" onFinish={handleSave}>
             <Form.Item name="name" label="Rule name" rules={[{ required: true }]}>
-              <Input placeholder="Kit assembly — cosmetics line" />
+              <Input placeholder="Manufacturing assembly — cosmetics line" />
             </Form.Item>
             <CodeRuleEditor
               form={form}

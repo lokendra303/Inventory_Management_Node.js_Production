@@ -96,7 +96,7 @@ const ItemTrash = () => {
             {item.sku ? ` (${item.sku})` : ''} from your catalog. This cannot be undone.
           </p>
           <p style={{ margin: 0, color: '#8c8c8c', fontSize: 13 }}>
-            Stock must already be zero. Items linked to sales, purchases, or kits cannot be deleted.
+            Stock must already be zero. Items linked to sales, purchases, or BOM products cannot be deleted.
           </p>
         </div>
       ),

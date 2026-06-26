@@ -78,7 +78,7 @@ export default function BatchGeneratorField({
 
   const handleGenerate = async () => {
     if (!compositeItemId || !warehouseId) {
-      message.warning('Select kit item and warehouse first');
+      message.warning('Select finished product and warehouse first');
       return;
     }
     setGenerating(true);
@@ -111,7 +111,7 @@ export default function BatchGeneratorField({
         description={
           selectedRule
             ? `Active rule: ${selectedRule.name} — template ${selectedRule.prefix_static || '(derived)'}`
-            : 'Default kit rule applies: ASM-{SKU}-{DATE}-{SEQ}. Pick a rule or click Generate to allocate the next lot number.'
+            : 'Default assembly rule applies: ASM-{SKU}-{DATE}-{SEQ}. Pick a rule or click Generate to allocate the next lot number.'
         }
       />
 

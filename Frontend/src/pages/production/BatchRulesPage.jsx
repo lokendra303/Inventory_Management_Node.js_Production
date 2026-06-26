@@ -24,7 +24,7 @@ export default function BatchRulesPage() {
         <div>
           <div style={{ color: '#fff', fontSize: 22, fontWeight: 700 }}>Batch coding rules</div>
           <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, maxWidth: 640 }}>
-            Configure how lot / batch numbers are generated for kit assembly, opening stock, disassembly, and general receiving.
+            Configure how lot / batch numbers are generated for manufacturing assembly, opening stock, disassembly, and general receiving.
             Rules are private to your organization.
           </div>
         </div>

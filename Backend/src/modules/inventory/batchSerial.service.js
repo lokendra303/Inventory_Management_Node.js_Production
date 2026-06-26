@@ -1302,11 +1302,11 @@ class BatchSerialService {
     const tracking = await this.getItemTracking(institutionId, itemId);
     const qty = parseFloat(quantity);
     if (!Number.isFinite(qty) || qty <= 0) {
-      throw new Error('Invalid kit assembly quantity for batch receive');
+      throw new Error('Invalid manufacturing assembly quantity for batch receive');
     }
 
     if (tracking.hasExpiry && !expiryDate) {
-      throw new Error('Expiry date is required for batch-tracked kits with expiry tracking');
+      throw new Error('Expiry date is required for batch-tracked finished products with expiry tracking');
     }
 
     let normalizedBatch = String(batchNumber || '').trim().toUpperCase();
@@ -1326,7 +1326,7 @@ class BatchSerialService {
       [institutionId, itemId, warehouseId, normalizedBatch]
     );
     if (dup.length) {
-      throw new Error(`Batch number "${normalizedBatch}" already exists for this kit in this warehouse`);
+      throw new Error(`Batch number "${normalizedBatch}" already exists for this finished product in this warehouse`);
     }
 
     const batchId = await this._receiveIntoBatch(

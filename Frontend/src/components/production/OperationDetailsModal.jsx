@@ -32,14 +32,17 @@ const statusTag = (status) => {
   return <Tag color={cfg.color}>{cfg.label}</Tag>;
 };
 
-const typeTag = (type) => (
-  <Tag
-    color={type === 'assemble' ? 'blue' : 'orange'}
-    icon={type === 'assemble' ? <BuildOutlined /> : <UndoOutlined />}
-  >
-    {type === 'assemble' ? 'Assemble' : 'Disassemble'}
-  </Tag>
-);
+const typeTag = (type) => {
+  const isAssemble = String(type || '').toLowerCase() === 'assemble';
+  return (
+    <Tag color={isAssemble ? 'blue' : 'orange'}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        {isAssemble ? <BuildOutlined /> : <UndoOutlined />}
+        {isAssemble ? 'Assemble' : 'Disassemble'}
+      </span>
+    </Tag>
+  );
+};
 
 const InfoRow = ({ label, value }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f5f5f5', fontSize: 13 }}>
@@ -131,7 +134,7 @@ const OperationDetailsModal = ({ open, operationId, seed, onClose, onResume }) =
     <Row gutter={16}>
       <Col xs={24} md={12}>
         <Card variant="borderless" style={{ borderRadius: 12, marginBottom: 12 }} styles={{ body: { padding: '14px 18px' } }}>
-          <InfoRow label="Kit" value={op?.kitName ? `${op.kitName} (${op.kitSku || ''})` : '—'} />
+          <InfoRow label="Finished product" value={op?.kitName ? `${op.kitName} (${op.kitSku || ''})` : '—'} />
           <InfoRow label="Warehouse" value={op?.warehouseName || '—'} />
           <InfoRow label="Quantity" value={op?.quantity} />
           <InfoRow label="Output batch" value={op?.outputBatchNumber || payload?.outputBatchNumber || '—'} />
@@ -177,11 +180,11 @@ const OperationDetailsModal = ({ open, operationId, seed, onClose, onResume }) =
     <div>
       <Card
         size="small"
-        title="Output kit batch"
+        title="Output batch"
         style={{ borderRadius: 12, marginBottom: 12 }}
       >
         <InfoRow label="Batch number" value={result?.outputBatchNumber || op?.outputBatchNumber} />
-        <InfoRow label="Unit kit cost" value={result?.unitKitCost != null ? formatMoney(result.unitKitCost) : '—'} />
+        <InfoRow label="Unit product cost" value={result?.unitKitCost != null ? formatMoney(result.unitKitCost) : '—'} />
       </Card>
       <Card size="small" title="Component batches consumed" style={{ borderRadius: 12 }}>
         {componentAllocRows.length === 0 ? (
@@ -199,9 +202,9 @@ const OperationDetailsModal = ({ open, operationId, seed, onClose, onResume }) =
     </div>
   ) : (
     <div>
-      <Card size="small" title="Kit batches consumed (FEFO)" style={{ borderRadius: 12, marginBottom: 12 }}>
+      <Card size="small" title="Finished goods batches consumed (FEFO)" style={{ borderRadius: 12, marginBottom: 12 }}>
         {kitAllocRows.length === 0 ? (
-          <Empty description="No kit batch consumption" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description="No finished goods batch consumption" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <Table
             size="small"

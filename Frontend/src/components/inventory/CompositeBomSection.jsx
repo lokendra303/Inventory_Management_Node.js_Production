@@ -38,7 +38,7 @@ const CONSUMPTION_OPTIONS = [
   {
     value: 'shipment',
     label: 'At shipment',
-    description: 'Deduct component stock when the kit line is dispatched',
+    description: 'Deduct component stock when the finished product line is dispatched',
   },
   {
     value: 'order',
@@ -70,7 +70,7 @@ const isBomComponentItem = (itemRow, excludeItemId) => {
 };
 
 /**
- * Bill of materials editor for composite / kit items.
+ * Bill of materials editor for composite / finished product items.
  */
 export default function CompositeBomSection({
   components,
@@ -117,7 +117,7 @@ export default function CompositeBomSection({
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           BOM components ({components.length})
-          <Tooltip title="Bill of Materials: lists each part (existing SKU) that makes up one unit of this kit/composite parent.">
+          <Tooltip title="Bill of Materials: lists each part (existing SKU) that makes up one unit of this finished product.">
             <InfoCircleOutlined style={{ color: '#94a3b8', cursor: 'help' }} />
           </Tooltip>
         </span>
@@ -153,16 +153,16 @@ export default function CompositeBomSection({
               {' — '}Pick an active inventory item (simple, variant, or custom type). Composite and service items cannot be components.
             </li>
             <li style={{ marginTop: 6 }}>
-              <AntText strong>Qty per 1 kit</AntText>
-              {' — '}How many units of the component are used for <AntText strong>one</AntText> kit sold/shipped
+              <AntText strong>Qty per 1 unit</AntText>
+              {' — '}How many units of the component are used for <AntText strong>one</AntText> finished unit sold/shipped
               (e.g. 4 screws per panel).
             </li>
             <li style={{ marginTop: 6 }}>
               <AntText strong>Consume when</AntText>
-              {' — '}Only for <AntText strong>Explode on ship</AntText> kits:
+              {' — '}Only for <AntText strong>Explode on ship</AntText> products:
               <AntText strong> At order</AntText> reserves parts when the sales order is confirmed;
               <AntText strong> At shipment</AntText> deducts parts when the line is dispatched.
-              No finished kit stock is kept — parts leave inventory at sale/ship time.
+              No finished goods stock is kept — parts leave inventory at sale/ship time.
             </li>
           </ul>
         ) : (
@@ -172,15 +172,15 @@ export default function CompositeBomSection({
               {' — '}Pick an active inventory item (simple, variant, or custom type). Composite and service items cannot be components.
             </li>
             <li style={{ marginTop: 6 }}>
-              <AntText strong>Qty per 1 kit</AntText>
-              {' — '}How many units of each component are consumed to build <AntText strong>one</AntText> finished kit
+              <AntText strong>Qty per 1 unit</AntText>
+              {' — '}How many units of each component are consumed to build <AntText strong>one</AntText> finished unit
               (e.g. 4 screws per assembled panel).
             </li>
             <li style={{ marginTop: 6 }}>
               <AntText strong>Consumption</AntText>
-              {' — '}For <AntText strong>Pre-built</AntText> kits, parts are deducted during{' '}
-              <AntText strong>Production → BOM Operation → Assemble</AntText>, not at sales order or shipment.
-              You sell finished kit stock after assembly.
+              {' — '}For <AntText strong>Pre-built</AntText> products, parts are deducted during{' '}
+              <AntText strong>Production → Manufacturing → Assemble</AntText>, not at sales order or shipment.
+              You sell finished goods stock after assembly.
             </li>
           </ul>
         )}
@@ -241,7 +241,7 @@ export default function CompositeBomSection({
                       showSearch
                       optionFilterProp="children"
                       value={row.itemId || undefined}
-                      placeholder="Select item — part of this kit"
+                      placeholder="Select item — part of this BOM"
                       popupMatchSelectWidth={false}
                       style={{ width: '100%', display: 'block' }}
                       size="middle"
@@ -312,8 +312,8 @@ export default function CompositeBomSection({
                   </Col>
                   <Col xs={12} sm={isExplodeOnShip ? 6 : 11}>
                     <div style={BOM_FIELD_LABEL_STYLE}>
-                      Qty per 1 kit
-                      <Tooltip title="Whole-number or fractional quantities allowed (e.g. 0.5 kg per kit).">
+                      Qty per 1 unit
+                      <Tooltip title="Whole-number or fractional quantities allowed (e.g. 0.5 kg per unit).">
                         <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
                       </Tooltip>
                     </div>
@@ -331,7 +331,7 @@ export default function CompositeBomSection({
                     <Col xs={12} sm={5}>
                       <div style={BOM_FIELD_LABEL_STYLE}>
                         Consume when
-                        <Tooltip title="At order: reserve parts when the sales order is confirmed. At shipment: deduct parts when the kit line is dispatched.">
+                        <Tooltip title="At order: reserve parts when the sales order is confirmed. At shipment: deduct parts when the finished product line is dispatched.">
                           <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
                         </Tooltip>
                       </div>
@@ -393,7 +393,7 @@ export default function CompositeBomSection({
                       lineHeight: 1.45,
                     }}
                   >
-                    Parts for this row are consumed during kit assembly (BOM Operation), not at order or shipment.
+                    Parts for this row are consumed during manufacturing assembly, not at order or shipment.
                   </div>
                 )}
               </div>

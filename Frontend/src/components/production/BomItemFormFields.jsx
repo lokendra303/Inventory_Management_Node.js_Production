@@ -97,13 +97,13 @@ export default function BomItemFormFields({
                   <Select
                     disabled
                     value="composite"
-                    options={[{ value: 'composite', label: 'Composite (BOM kit)' }]}
+                    options={[{ value: 'composite', label: 'Composite (BOM / finished good)' }]}
                   />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item name="name" label="Item name" rules={[{ required: true, message: 'Name is required' }]}>
-                  <Input placeholder="Finished kit name" style={{ borderRadius: 8 }} />
+                  <Input placeholder="Finished product name" style={{ borderRadius: 8 }} />
                 </Form.Item>
               </Col>
             </Row>
@@ -196,7 +196,7 @@ export default function BomItemFormFields({
                 >
                   {imageUrl ? (
                     <div style={{ position: 'relative', width: '100%', height: 200 }}>
-                      <img src={imageUrl} alt="kit" style={{ width: '100%', height: 200, objectFit: 'cover', borderRadius: 10 }} />
+                      <img src={imageUrl} alt="finished product" style={{ width: '100%', height: 200, objectFit: 'cover', borderRadius: 10 }} />
                       <div
                         style={{
                           position: 'absolute',
@@ -364,7 +364,7 @@ export default function BomItemFormFields({
         sectionStyle={sectionStyle}
         sectionHeader={sectionHeader}
         sectionIconStyle={sectionIconStyle}
-        title="BOM / kit specific fields"
+        title="BOM / finished product fields"
       />
 
       <div style={sectionStyle}>
@@ -387,7 +387,7 @@ export default function BomItemFormFields({
           </div>
           {!watchedIsSellable && (
             <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff7e6', borderRadius: 8, border: '1px solid #ffd591', fontSize: 12, color: '#ad6800' }}>
-              Production / internal kit only — not listed on sales orders or invoices. Purchase and BOM assembly still work.
+              Production / internal product only — not listed on sales orders or invoices. Purchase and manufacturing assembly still work.
             </div>
           )}
         </div>
@@ -521,7 +521,7 @@ export default function BomItemFormFields({
                 </Form.Item>
               )}
               <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
-                Required for batch/serial fields on kit assembly, shipment, and returns.
+                Required for batch/serial fields on manufacturing assembly, shipment, and returns.
               </div>
             </div>
           )}
@@ -634,7 +634,7 @@ export default function BomItemFormFields({
       <div style={sectionStyle}>
         <div style={sectionHeader}>
           <span style={sectionIconStyle}><BuildOutlined /></span>
-          Kit fulfilment &amp; BOM
+          Fulfillment &amp; BOM
         </div>
         <Row gutter={16} style={{ marginBottom: 12 }}>
           <Col xs={24} md={12}>
@@ -646,8 +646,8 @@ export default function BomItemFormFields({
               value={kitFulfillmentMode}
               onChange={onKitFulfillmentModeChange}
               options={[
-                { value: 'prebuilt', label: 'Pre-built — assemble parts first, then sell finished kit stock' },
-                { value: 'explode_on_ship', label: 'Explode on ship — deduct parts when fulfilling sales (no kit stock)' },
+                { value: 'prebuilt', label: 'Pre-built — assemble parts first, then sell finished goods stock' },
+                { value: 'explode_on_ship', label: 'Explode on ship — deduct parts when fulfilling sales (no finished goods stock)' },
               ]}
             />
           </Col>
@@ -658,8 +658,8 @@ export default function BomItemFormFields({
           style={{ marginBottom: 12, borderRadius: 10 }}
           message={
             String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship'
-              ? 'Explode on ship: components leave inventory at order or shipment (per row below). Finished kit stock is not tracked.'
-              : 'Pre-built: components are consumed when you run BOM Operation → Assemble. Sales ship finished kit stock only.'
+              ? 'Explode on ship: components leave inventory at order or shipment (per row below). Finished goods stock is not tracked.'
+              : 'Pre-built: components are consumed when you run Manufacturing → Assemble. Sales ship finished goods stock only.'
           }
         />
         <CompositeBomSection

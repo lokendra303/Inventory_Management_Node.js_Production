@@ -165,7 +165,7 @@ class ProductionController {
         req.body,
         req.user.userId
       );
-      res.status(201).json({ success: true, message: 'Kit assembled successfully', data: result });
+      res.status(201).json({ success: true, message: 'Finished goods assembled successfully', data: result });
     } catch (error) {
       logger.error('Kit assembly failed', { error: error.message, institutionId: req.institutionId });
       res.status(400).json({ success: false, error: error.message });
@@ -179,7 +179,7 @@ class ProductionController {
         req.body,
         req.user.userId
       );
-      res.status(201).json({ success: true, message: 'Kit disassembled successfully', data: result });
+      res.status(201).json({ success: true, message: 'Finished goods disassembled successfully', data: result });
     } catch (error) {
       logger.error('Kit disassembly failed', { error: error.message, institutionId: req.institutionId });
       res.status(400).json({ success: false, error: error.message });

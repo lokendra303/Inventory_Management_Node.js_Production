@@ -838,7 +838,7 @@ class ItemService {
     if (kitFulfillmentMode !== undefined) {
       const nextTypeForMode = type !== undefined ? type : oldItem?.type;
       if (String(nextTypeForMode || '').toLowerCase() !== 'composite') {
-        throw new Error('Kit fulfillment mode applies only to composite items');
+        throw new Error('Fulfillment mode applies only to composite / BOM finished products');
       }
       const normalizedKitMode =
         String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship'
@@ -1642,7 +1642,7 @@ class ItemService {
                   FROM composite_components
                  WHERE institution_id = ? AND component_item_id = ?`,
           params: [institutionId, itemId],
-          label: 'composite/kit items',
+          label: 'composite / BOM finished products',
         },
       ];
 

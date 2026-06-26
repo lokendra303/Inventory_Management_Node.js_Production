@@ -302,7 +302,7 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
               styles={{ body: { paddingTop: 8 } }}
             >
               {bomComponents.length === 0 ? (
-                <Empty description="No BOM components defined for this kit" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <Empty description="No BOM components defined for this finished product" image={Empty.PRESENTED_IMAGE_SIMPLE} />
               ) : (
                 <Table
                   size="small"
@@ -322,7 +322,7 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
                       ),
                     },
                     {
-                      title: 'Qty per kit',
+                      title: 'Qty per unit',
                       dataIndex: 'quantityRequired',
                       key: 'quantityRequired',
                       width: 110,

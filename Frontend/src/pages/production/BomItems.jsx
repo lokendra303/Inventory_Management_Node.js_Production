@@ -430,7 +430,7 @@ export default function BomItemsPage() {
 
   const columns = [
     {
-      title: 'KIT / SKU',
+      title: 'PRODUCT / SKU',
       key: 'name',
       render: (_, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -502,7 +502,7 @@ export default function BomItemsPage() {
       align: 'center',
       render: (_, record) => (
         <Space size={4}>
-          <Tooltip title="View kit details">
+          <Tooltip title="View product details">
             <Button
               size="small"
               icon={<EyeOutlined />}
@@ -584,7 +584,7 @@ export default function BomItemsPage() {
           <div>
             <div style={{ color: '#fff', fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>BOM Items</div>
             <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, maxWidth: 420 }}>
-              Composite kits with bill of materials — manage components, fulfillment mode & opening stock
+              Finished products with bill of materials — manage components, fulfillment mode & opening stock
             </div>
           </div>
         </div>
@@ -613,7 +613,7 @@ export default function BomItemsPage() {
       {/* Stats */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {[
-          { title: 'Total kits', value: stats.total, icon: <AppstoreOutlined />, color: '#667eea', bg: '#f0f0ff' },
+          { title: 'Total products', value: stats.total, icon: <AppstoreOutlined />, color: '#667eea', bg: '#f0f0ff' },
           { title: 'Active', value: stats.active, icon: <BlockOutlined />, color: '#52c41a', bg: '#f6ffed' },
           { title: 'Pre-built', value: stats.prebuilt, icon: <InboxOutlined />, color: '#2563eb', bg: '#eff6ff' },
           { title: 'Total stock', value: stats.totalStock, icon: <BuildOutlined />, color: '#fa8c16', bg: '#fff7e6' },
@@ -714,7 +714,7 @@ export default function BomItemsPage() {
             showTotal: (t) => (
               isDraftView
                 ? `Showing ${t} draft${t !== 1 ? 's' : ''}`
-                : `Showing ${t} kit${t !== 1 ? 's' : ''}`
+                : `Showing ${t} product${t !== 1 ? 's' : ''}`
             ),
             style: { padding: '12px 24px 20px', margin: 0 },
           }}
@@ -727,7 +727,7 @@ export default function BomItemsPage() {
                     {isDraftView
                       ? 'No BOM drafts saved yet.'
                       : 'No BOM items yet.'}
-                    {!isDraftView && canManage ? ' Create your first kit to get started.' : ''}
+                    {!isDraftView && canManage ? ' Create your first BOM product to get started.' : ''}
                   </span>
                 )}
               >

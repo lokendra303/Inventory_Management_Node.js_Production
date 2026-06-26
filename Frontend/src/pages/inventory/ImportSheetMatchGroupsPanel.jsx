@@ -309,7 +309,7 @@ export function ImportSheetMatchGroupsPanel({
                       <Input.TextArea
                         rows={2}
                         disabled={disabled}
-                        placeholder="e.g. Merged from kit stock sheet"
+                        placeholder="e.g. Merged from finished goods stock sheet"
                         value={plan.note || ''}
                         onChange={(e) => onPlanChange(group.groupKey, { note: e.target.value })}
                       />

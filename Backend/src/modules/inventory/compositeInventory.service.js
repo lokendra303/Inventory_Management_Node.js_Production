@@ -114,7 +114,7 @@ class CompositeInventoryService {
   async getAvailability(institutionId, compositeItemId, warehouseId) {
     const row = await this.getItemRow(institutionId, compositeItemId);
     if (String(row.type || '').toLowerCase() !== 'composite') {
-      throw new Error('Item is not a composite kit');
+      throw new Error('Item is not a composite / BOM finished product');
     }
 
     const components = await itemService.getCompositeComponents(institutionId, compositeItemId);
@@ -209,7 +209,7 @@ class CompositeInventoryService {
   async previewDisassembly(institutionId, compositeItemId, warehouseId, quantity) {
     const row = await this.getItemRow(institutionId, compositeItemId);
     if (String(row.type || '').toLowerCase() !== 'composite') {
-      throw new Error('Item is not a composite kit');
+      throw new Error('Item is not a composite / BOM finished product');
     }
 
     const qty = Number(quantity);
@@ -293,7 +293,7 @@ class CompositeInventoryService {
 
     const row = await this.getItemRow(institutionId, compositeItemId);
     if (String(row.type || '').toLowerCase() !== 'composite') {
-      throw new Error('Only composite kit items can be assembled');
+      throw new Error('Only composite / BOM finished products can be assembled');
     }
 
     const components = await itemService.getCompositeComponents(institutionId, compositeItemId);
@@ -308,7 +308,7 @@ class CompositeInventoryService {
     );
     if (qty > buildable) {
       throw new Error(
-        `Insufficient components to assemble ${qty} kit(s). Maximum buildable from parts: ${buildable}`
+        `Insufficient components to assemble ${qty} unit(s). Maximum buildable from parts: ${buildable}`
       );
     }
 
@@ -498,7 +498,7 @@ class CompositeInventoryService {
 
     const row = await this.getItemRow(institutionId, compositeItemId);
     if (String(row.type || '').toLowerCase() !== 'composite') {
-      throw new Error('Only composite kit items can be disassembled');
+      throw new Error('Only composite / BOM finished products can be disassembled');
     }
 
     const components = await itemService.getCompositeComponents(institutionId, compositeItemId);
@@ -514,7 +514,7 @@ class CompositeInventoryService {
     const kitAvailable = kitProj ? Number(kitProj.quantity_available) : 0;
     if (kitAvailable < qty) {
       throw new Error(
-        `Insufficient finished kit stock to disassemble. Available: ${kitAvailable}, requested: ${qty}`
+        `Insufficient finished goods stock to disassemble. Available: ${kitAvailable}, requested: ${qty}`
       );
     }
 
@@ -527,8 +527,8 @@ class CompositeInventoryService {
       );
       if (batchAvail < qty) {
         throw new Error(
-          `Insufficient kit batch stock to disassemble. Batch available: ${batchAvail}, requested: ${qty}. ` +
-            'Assemble kits with batch tracking or reconcile batch quantities.'
+          `Insufficient finished goods batch stock to disassemble. Batch available: ${batchAvail}, requested: ${qty}. ` +
+            'Assemble finished goods with batch tracking or reconcile batch quantities.'
         );
       }
     }
@@ -676,8 +676,8 @@ class CompositeInventoryService {
           warehouseId
         );
         throw new Error(
-          `Insufficient finished kit stock (available ${availableQty}, requested ${quantity}). ` +
-            `Assemble kits first — up to ${buildable} can be built from components.`
+          `Insufficient finished goods stock (available ${availableQty}, requested ${quantity}). ` +
+            `Assemble finished goods first — up to ${buildable} can be built from components.`
         );
       }
       return inventoryService.reserveStock(
@@ -781,7 +781,7 @@ class CompositeInventoryService {
         const availableQty = stock ? Number(stock.quantity_available) : 0;
         if (availableQty < compQty) {
           throw new Error(
-            `Insufficient component stock for kit shipment (${c.component_name || c.component_item_id}): ` +
+            `Insufficient component stock for finished product shipment (${c.component_name || c.component_item_id}): ` +
               `available ${availableQty}, required ${compQty}`
           );
         }

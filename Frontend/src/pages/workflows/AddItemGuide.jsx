@@ -43,7 +43,7 @@ export function AddItemGuide() {
             <li><Text strong>Simple</Text> — one SKU; optional “quick variant” tags (colour, size, pack) are labels only.</li>
             <li><Text strong>Variant</Text> — many SKUs from a matrix (e.g. size × colour); stock and prices are set per child row.</li>
             <li><Text strong>Service</Text> — non-stock; inventory sections are largely irrelevant.</li>
-            <li><Text strong>BOM / kit items</Text> — managed under <Text code>Production → BOM Items</Text>, not on this form.</li>
+            <li><Text strong>BOM / finished products</Text> — managed under <Text code>Production → BOM Items</Text>, not on this form.</li>
           </ul>
         }
       />
@@ -60,7 +60,7 @@ export function AddItemGuide() {
             { field: 'SKU', info: 'Unique code for this item or variant line. Used on documents, barcodes, and duplicate checks. Optional SKU rules / Generate SKU help auto-build it from category and attributes.' },
             { field: 'Item Name', info: 'Name shown in lists, orders, and invoices.' },
             { field: 'Variant / Packing, Colour, Size, Pack Type', info: 'For non-variant items: optional labels (e.g. 100ML, Red, Large) to refine naming and SKU generation — not full multi-attribute variants.' },
-            { field: 'Item type', info: 'Controls whether you get a single row, a variant matrix, or a service item. BOM kits use Production.' },
+            { field: 'Item type', info: 'Controls whether you get a single row, a variant matrix, or a service item. BOM finished products use Production.' },
             { field: 'Category', info: 'Reporting group and input for default SKU rules.' },
             { field: 'Unit', info: 'How stock and prices are counted (pieces, kg, box, etc.).' },
             { field: 'Item Group', info: 'Optional higher-level grouping for filters and reporting.' },
@@ -77,19 +77,19 @@ export function AddItemGuide() {
         />
       </Card>
 
-      <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} title="Production — BOM items (kits)">
+      <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }} title="Production — BOM items (finished products)">
         <Paragraph type="secondary" style={{ marginTop: 0 }}>
-          BOM / composite kits are created under <Text code>Production → BOM Items</Text>, not on the Items page. Use <Text code>Production → BOM Operation</Text> to assemble or disassemble finished kits from parts.
+          BOM / finished products are created under <Text code>Production → BOM Items</Text>, not on the Items page. Use <Text code>Production → Manufacturing</Text> to assemble or disassemble finished goods from parts.
         </Paragraph>
         <Table
           {...tableProps}
           rowKey="field"
           columns={[colField, colInfo]}
           dataSource={[
-            { field: 'Component item', info: 'An existing catalogue item (simple or variant only). Each row is one BOM line for the parent kit.' },
-            { field: 'Qty per 1 kit', info: 'How many units of the component belong to exactly one unit of the parent kit.' },
-            { field: 'Fulfillment mode', info: 'Pre-built: sell finished kit stock. Explode on ship: consume components when shipping sales orders.' },
-            { field: 'Consume when → Shipment / Order', info: 'For explode-on-ship kits: when component stock is reserved or consumed.' },
+            { field: 'Component item', info: 'An existing catalogue item (simple or variant only). Each row is one BOM line for the parent finished product.' },
+            { field: 'Qty per 1 unit', info: 'How many units of the component belong to exactly one unit of the finished product.' },
+            { field: 'Fulfillment mode', info: 'Pre-built: sell finished goods stock. Explode on ship: consume components when shipping sales orders.' },
+            { field: 'Consume when → Shipment / Order', info: 'For explode-on-ship products: when component stock is reserved or consumed.' },
           ]}
         />
       </Card>

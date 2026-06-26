@@ -7,7 +7,7 @@ const BATCH_CONTEXTS = new Set(['general', 'kit_assembly', 'kit_disassembly', 'o
 
 const DEFAULT_RULES = {
   kit_assembly: {
-    name: 'Kit assembly lot (default)',
+    name: 'Manufacturing assembly lot (default)',
     prefixStatic: 'ASM-{SKU}-{DATE}-{SEQ}',
     useDate: true,
     dateFormat: 'YYYYMMDD',
@@ -16,7 +16,7 @@ const DEFAULT_RULES = {
     counterPadding: 3,
   },
   kit_disassembly: {
-    name: 'Kit disassembly component lot (default)',
+    name: 'Manufacturing disassembly component lot (default)',
     prefixStatic: 'DSM-{SKU}-{DATE}-{SEQ}',
     useDate: true,
     dateFormat: 'YYYYMMDD',

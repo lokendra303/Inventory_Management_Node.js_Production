@@ -30,7 +30,7 @@ import {
   SaveOutlined,
   CheckCircleOutlined,
   DollarOutlined,
-  FileSearchOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
@@ -47,6 +47,29 @@ const BatchRulesModal = lazy(() => import('../../components/production/BatchRule
 
 const PAGE_BG = '#f0f2f5';
 const GRADIENT = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+const CARD_SHADOW = '0 2px 12px rgba(0,0,0,0.06)';
+const SECTION_LABEL = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: '#475569',
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
+  marginBottom: 10,
+  display: 'block',
+};
+
+const OPERATION_TYPES = [
+  {
+    value: 'assemble',
+    title: 'Assemble',
+    description: 'Build finished goods from parts',
+  },
+  {
+    value: 'disassemble',
+    title: 'Disassemble',
+    description: 'Break down finished goods into parts',
+  },
+];
 
 const statusTag = (status) => {
   const map = {
@@ -54,8 +77,20 @@ const statusTag = (status) => {
     done: { color: 'green', label: 'Done' },
     cancelled: { color: 'default', label: 'Cancelled' },
   };
-  const cfg = map[status] || { color: 'default', label: status };
+  const cfg = map[status] || { color: 'default', label: status || '—' };
   return <Tag color={cfg.color}>{cfg.label}</Tag>;
+};
+
+const operationTypeTag = (type) => {
+  const isAssemble = String(type || '').toLowerCase() === 'assemble';
+  return (
+    <Tag color={isAssemble ? 'blue' : 'orange'}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        {isAssemble ? <BuildOutlined /> : <UndoOutlined />}
+        {isAssemble ? 'Assemble' : 'Disassemble'}
+      </span>
+    </Tag>
+  );
 };
 
 const formatMoney = (n) => {
@@ -124,7 +159,7 @@ export default function KitAssembly() {
       const params = new URLSearchParams({ limit: '100' });
       if (status && status !== 'all') params.set('status', status);
       const res = await apiService.get(`/production/operations?${params}`);
-      setHistory(res.success ? res.data : []);
+      setHistory(Array.isArray(res?.data) ? res.data : []);
     } catch {
       message.error('Failed to load operation history');
     } finally {
@@ -160,7 +195,7 @@ export default function KitAssembly() {
       }
     } catch (err) {
       setAvailability(null);
-      message.error(err?.response?.data?.error || 'Could not load kit availability');
+      message.error(err?.response?.data?.error || 'Could not load manufacturing availability');
     } finally {
       setLoadingAvail(false);
     }
@@ -290,8 +325,8 @@ export default function KitAssembly() {
         const verb = operationType === 'assemble' ? 'Assembled' : 'Disassembled';
         message.success(
           batchNo
-            ? `${verb} ${values.quantity} kit(s) — ${res.data?.operationNumber || ''} batch ${batchNo}`
-            : `${verb} ${values.quantity} kit(s) — ${res.data?.operationNumber || 'done'}`
+            ? `${verb} ${values.quantity} unit(s) — ${res.data?.operationNumber || ''} batch ${batchNo}`
+            : `${verb} ${values.quantity} unit(s) — ${res.data?.operationNumber || 'done'}`
         );
         form.resetFields();
         setDraftId(null);
@@ -340,7 +375,7 @@ export default function KitAssembly() {
 
   const componentColumns = [
     { title: 'Component', dataIndex: 'name', key: 'name', render: (t, r) => `${t || '—'} (${r.sku || ''})` },
-    { title: 'Per kit', dataIndex: 'quantityRequiredPerKit', key: 'qty' },
+    { title: 'Per unit', dataIndex: 'quantityRequiredPerKit', key: 'qty' },
     { title: 'Available', dataIndex: 'available', key: 'avail' },
     {
       title: 'Avg cost',
@@ -349,7 +384,7 @@ export default function KitAssembly() {
       render: (v) => formatMoney(v),
     },
     {
-      title: 'Kits possible',
+      title: 'Units buildable',
       dataIndex: 'kitsSupportable',
       key: 'kits',
       render: (v) => <Tag color={v > 0 ? 'green' : 'red'}>{v}</Tag>,
@@ -394,20 +429,16 @@ export default function KitAssembly() {
       title: 'Type',
       dataIndex: 'operationType',
       key: 'type',
-      render: (t) => (
-        <Tag color={t === 'assemble' ? 'blue' : 'orange'} icon={t === 'assemble' ? <BuildOutlined /> : <UndoOutlined />}>
-          {t === 'assemble' ? 'Assemble' : 'Disassemble'}
-        </Tag>
-      ),
+      render: (t) => operationTypeTag(t),
     },
     {
-      title: 'Kit',
+      title: 'Finished product',
       key: 'kit',
       render: (_, r) => `${r.kitName || '—'} (${r.kitSku || ''})`,
     },
     { title: 'Qty', dataIndex: 'quantity', key: 'qty' },
     { title: 'Batch', dataIndex: 'outputBatchNumber', key: 'batch', render: (v) => v || '—' },
-    { title: 'Status', dataIndex: 'status', key: 'status', render: statusTag },
+    { title: 'Status', dataIndex: 'status', key: 'status', render: (status) => statusTag(status) },
     {
       title: 'By',
       key: 'by',
@@ -426,7 +457,7 @@ export default function KitAssembly() {
       key: 'actions',
       render: (_, r) => (
         <Space size={4} onClick={(e) => e.stopPropagation()}>
-          <Button type="link" size="small" icon={<FileSearchOutlined />} onClick={() => viewOperationDetails(r)}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => viewOperationDetails(r)}>
             View
           </Button>
           {r.status === 'draft' && canManage ? (
@@ -450,36 +481,36 @@ export default function KitAssembly() {
               message="Batch-tracked components use FEFO during assembly unless you specify lots manually."
             />
           ) : null}
-          <Row gutter={16}>
-            <Col xs={24} sm={6}>
-              <Card size="small" style={{ borderRadius: 10 }}>
-                <Text type="secondary">Kits on hand</Text>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>{availability.kitOnHand}</div>
-                <Text type="secondary">Available: {availability.kitAvailable}</Text>
+          <Row gutter={[12, 12]}>
+            <Col xs={24} sm={12}>
+              <Card size="small" style={{ borderRadius: 10, height: '100%' }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Finished goods on hand</Text>
+                <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{availability.kitOnHand}</div>
+                <Text type="secondary" style={{ fontSize: 12 }}>Available: {availability.kitAvailable}</Text>
               </Card>
             </Col>
-            <Col xs={24} sm={6}>
-              <Card size="small" style={{ borderRadius: 10 }}>
-                <Text type="secondary">Buildable from parts</Text>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>{availability.buildableFromComponents}</div>
+            <Col xs={24} sm={12}>
+              <Card size="small" style={{ borderRadius: 10, height: '100%' }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Buildable from parts</Text>
+                <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{availability.buildableFromComponents}</div>
               </Card>
             </Col>
-            <Col xs={24} sm={6}>
-              <Card size="small" style={{ borderRadius: 10 }}>
-                <Text type="secondary">
+            <Col xs={24} sm={12}>
+              <Card size="small" style={{ borderRadius: 10, height: '100%' }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
                   <DollarOutlined /> Est. unit cost
                 </Text>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>{formatMoney(estimatedUnitCost)}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{formatMoney(estimatedUnitCost)}</div>
                 {qty > 0 ? (
-                  <Text type="secondary">Total: {formatMoney(estimatedTotalCost)}</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Total: {formatMoney(estimatedTotalCost)}</Text>
                 ) : null}
               </Card>
             </Col>
             {operationType === 'assemble' ? (
-              <Col xs={24} sm={6}>
-                <Card size="small" style={{ borderRadius: 10 }}>
-                  <Text type="secondary">Next kit batch #</Text>
-                  <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 13 }}>
+              <Col xs={24} sm={12}>
+                <Card size="small" style={{ borderRadius: 10, height: '100%' }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Next output batch #</Text>
+                  <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-all' }}>
                     {availability.suggestedOutputBatchNumber || '—'}
                   </div>
                 </Card>
@@ -495,7 +526,24 @@ export default function KitAssembly() {
           />
         </Space>
       ) : (
-        <Text type="secondary">Select a kit and warehouse to see stock, cost, and BOM usage.</Text>
+        <div
+          style={{
+            minHeight: 360,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '32px 16px',
+          }}
+        >
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={(
+              <span style={{ color: '#64748b', maxWidth: 320, display: 'inline-block' }}>
+                Select a finished product and warehouse to preview stock, cost, and BOM usage.
+              </span>
+            )}
+          />
+        </div>
       )}
     </Spin>
   );
@@ -505,11 +553,11 @@ export default function KitAssembly() {
       {disassemblyPreview ? (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           {!disassemblyPreview.kitSufficient ? (
-            <Alert type="error" showIcon message={`Insufficient kit stock (available: ${disassemblyPreview.kitAvailable})`} />
+            <Alert type="error" showIcon message={`Insufficient finished goods stock (available: ${disassemblyPreview.kitAvailable})`} />
           ) : null}
           {disassemblyPreview.kitBatchAllocations?.length > 0 ? (
             <>
-              <Text strong><FileSearchOutlined /> Kit batches to consume (FEFO)</Text>
+              <Text strong><EyeOutlined /> Finished goods batches to consume (FEFO)</Text>
               <Table
                 size="small"
                 rowKey="batchId"
@@ -529,7 +577,7 @@ export default function KitAssembly() {
             dataSource={disassemblyPreview.componentPreview || []}
             columns={[
               { title: 'Component', dataIndex: 'name', render: (t, r) => `${t} (${r.sku})` },
-              { title: 'Per kit', dataIndex: 'quantityPerKit' },
+              { title: 'Per unit', dataIndex: 'quantityPerKit' },
               { title: 'Returned', dataIndex: 'quantityReturned' },
               {
                 title: 'Batch',
@@ -540,33 +588,98 @@ export default function KitAssembly() {
           />
         </Space>
       ) : (
-        <Text type="secondary">Enter quantity to preview FEFO kit batch consumption.</Text>
+        <div
+          style={{
+            minHeight: 160,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px 16px',
+          }}
+        >
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Enter quantity to preview FEFO finished-goods batch consumption."
+          />
+        </div>
       )}
     </Spin>
   ) : null;
 
   const newOperationTab = (
-    <Row gutter={[24, 24]}>
-      <Col xs={24} lg={10}>
-        <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-          <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }} size="middle">
-            <Text type="secondary">Operation type</Text>
-            <Segmented
-              block
-              value={operationType}
-              onChange={setOperationType}
-              options={[
-                { label: 'Assemble kits', value: 'assemble', icon: <BuildOutlined /> },
-                { label: 'Disassemble kits', value: 'disassemble', icon: <UndoOutlined /> },
-              ]}
-            />
+    <Row gutter={[24, 24]} align="stretch">
+      <Col xs={24} xl={11} style={{ display: 'flex' }}>
+        <Card
+          bordered={false}
+          style={{ borderRadius: 12, boxShadow: CARD_SHADOW, width: '100%' }}
+          styles={{ body: { padding: '20px 24px 24px' } }}
+        >
+          <div style={{ marginBottom: 20 }}>
+            <span style={SECTION_LABEL}>Operation type</span>
+            <Row gutter={[12, 12]}>
+              {OPERATION_TYPES.map((opt) => {
+                const selected = operationType === opt.value;
+                const isAssemble = opt.value === 'assemble';
+                return (
+                  <Col xs={24} sm={12} key={opt.value}>
+                    <button
+                      type="button"
+                      onClick={() => setOperationType(opt.value)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        border: `2px solid ${selected ? '#667eea' : '#e2e8f0'}`,
+                        borderRadius: 12,
+                        padding: '14px 16px',
+                        cursor: 'pointer',
+                        background: selected
+                          ? 'linear-gradient(135deg, #f0f4ff 0%, #f5f0ff 100%)'
+                          : '#fff',
+                        boxShadow: selected ? '0 4px 14px rgba(102, 126, 234, 0.15)' : 'none',
+                        transition: 'border-color 0.2s, box-shadow 0.2s, background 0.2s',
+                      }}
+                    >
+                      <Space align="start" size={12}>
+                        <div
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 10,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: selected ? GRADIENT : '#f1f5f9',
+                            color: selected ? '#fff' : '#64748b',
+                            fontSize: 18,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {isAssemble ? <BuildOutlined /> : <UndoOutlined />}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 15 }}>{opt.title}</div>
+                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, lineHeight: 1.4 }}>
+                            {opt.description}
+                          </div>
+                        </div>
+                      </Space>
+                    </button>
+                  </Col>
+                );
+              })}
+            </Row>
             {draftId ? (
-              <Alert type="info" showIcon message={`Editing draft operation`} />
+              <Alert type="info" showIcon message="Editing draft operation" style={{ marginTop: 12, borderRadius: 10 }} />
             ) : null}
-          </Space>
+          </div>
 
-          <Form form={form} layout="vertical" onValuesChange={onFieldsChange}>
-            <Form.Item name="compositeItemId" label="Kit item" rules={[{ required: true }]}>
+          <Form form={form} layout="vertical" onValuesChange={onFieldsChange} requiredMark="optional">
+            <Form.Item
+              name="compositeItemId"
+              label="Finished product"
+              tooltip="BOM item — the assembled product you are building or breaking down"
+              rules={[{ required: true, message: 'Select a finished product' }]}
+            >
               <Select
                 showSearch
                 placeholder="Select BOM item"
@@ -577,7 +690,7 @@ export default function KitAssembly() {
                 }))}
               />
             </Form.Item>
-            <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true }]}>
+            <Form.Item name="warehouseId" label="Warehouse" rules={[{ required: true, message: 'Select a warehouse' }]}>
               <Select
                 showSearch
                 placeholder="Warehouse"
@@ -596,7 +709,7 @@ export default function KitAssembly() {
             {operationType === 'assemble' ? (
               <>
                 <Divider orientation="left" plain style={{ margin: '8px 0 16px' }}>
-                  Kit batch / lot
+                  Output batch / lot
                 </Divider>
                 <Suspense fallback={null}>
                   <BatchGeneratorField
@@ -618,7 +731,7 @@ export default function KitAssembly() {
                     <Form.Item
                       name="outputExpiryDate"
                       label="Expiry date"
-                      rules={kitHasExpiry ? [{ required: true, message: 'Expiry is required for this kit' }] : []}
+                      rules={kitHasExpiry ? [{ required: true, message: 'Expiry is required for this finished product' }] : []}
                     >
                       <DatePicker
                         style={{ width: '100%' }}
@@ -634,7 +747,7 @@ export default function KitAssembly() {
                 type="warning"
                 showIcon
                 style={{ marginBottom: 16 }}
-                message="Disassembly consumes kit batches (FEFO) and creates DSM batches for batch-tracked components."
+                message="Disassembly consumes finished goods batches (FEFO) and creates DSM batches for batch-tracked components."
               />
             )}
 
@@ -643,7 +756,16 @@ export default function KitAssembly() {
             </Form.Item>
 
             {canManage ? (
-              <Space wrap>
+              <div
+                style={{
+                  marginTop: 8,
+                  paddingTop: 16,
+                  borderTop: '1px solid #f0f0f0',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}
+              >
                 <Button
                   icon={<SaveOutlined />}
                   loading={savingDraft}
@@ -683,34 +805,33 @@ export default function KitAssembly() {
                     Cancel draft
                   </Button>
                 ) : null}
-              </Space>
+              </div>
             ) : null}
           </Form>
         </Card>
       </Col>
 
-      <Col xs={24} lg={14}>
+      <Col xs={24} xl={13} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         <Card
-          title={(
-            <Space>
-              <span>Stock & cost preview</span>
-              <Button
-                size="small"
-                icon={<ReloadOutlined />}
-                onClick={() => {
-                  const a = form.getFieldsValue();
-                  loadAvailability(a.compositeItemId, a.warehouseId);
-                  if (operationType === 'disassemble') {
-                    loadDisassemblyPreview(a.compositeItemId, a.warehouseId, a.quantity);
-                  }
-                }}
-              >
-                Refresh
-              </Button>
-            </Space>
+          title="Stock & cost preview"
+          extra={(
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={() => {
+                const a = form.getFieldsValue();
+                loadAvailability(a.compositeItemId, a.warehouseId);
+                if (operationType === 'disassemble') {
+                  loadDisassemblyPreview(a.compositeItemId, a.warehouseId, a.quantity);
+                }
+              }}
+            >
+              Refresh
+            </Button>
           )}
           bordered={false}
-          style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: 24 }}
+          style={{ borderRadius: 12, boxShadow: CARD_SHADOW, flex: 1 }}
+          styles={{ body: { padding: '16px 20px 20px', minHeight: 420 } }}
         >
           {availabilityPanel}
         </Card>
@@ -719,7 +840,8 @@ export default function KitAssembly() {
           <Card
             title="Disassembly preview (FEFO)"
             bordered={false}
-            style={{ borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
+            style={{ borderRadius: 12, boxShadow: CARD_SHADOW }}
+            styles={{ body: { padding: '16px 20px 20px', minHeight: 200 } }}
           >
             {disassemblyPanel}
           </Card>
@@ -774,16 +896,18 @@ export default function KitAssembly() {
         }}
       >
         <Title level={3} style={{ color: '#fff', margin: 0 }}>
-          <BuildOutlined /> BOM Operation
+          <BuildOutlined /> Manufacturing
         </Title>
         <Text style={{ color: 'rgba(255,255,255,0.85)', display: 'block', marginTop: 8 }}>
-          Assemble or disassemble kits with draft workflow, cost preview, FEFO disassembly, and full operation history.
+          Assemble or disassemble finished goods from parts — draft workflow, cost preview, FEFO disassembly, and full operation history.
         </Text>
       </div>
 
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
+        destroyInactiveTabPane
+        style={{ marginBottom: 0 }}
         items={[
           { key: 'new', label: 'New operation', children: newOperationTab },
           { key: 'history', label: <span><HistoryOutlined /> History</span>, children: historyTab },

@@ -62,7 +62,7 @@ class ProductionService {
   async previewKitBatchNumber(institutionId, compositeItemId, warehouseId, ruleId = null) {
     await this.getBomItem(institutionId, compositeItemId);
     if (!warehouseId) {
-      throw new Error('Warehouse is required to preview kit batch number');
+      throw new Error('Warehouse is required to preview output batch number');
     }
     const batchGen = require('../settings/batchGenerator.service');
     const ctx = await batchGen.buildContextFromItem(institutionId, compositeItemId, warehouseId);

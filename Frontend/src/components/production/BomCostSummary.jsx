@@ -64,12 +64,12 @@ export default function BomCostSummary({
           fontSize: 13,
         }}
       >
-        Expected kit cost (from BOM)
+        Expected unit cost (from BOM)
       </div>
       <div style={{ padding: '12px 14px 14px' }}>
         <div style={{ marginBottom: 12 }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-            Add overhead or extra costs per finished kit (electricity, packaging, labour, etc.).
+            Add overhead or extra costs per finished unit (electricity, packaging, labour, etc.).
           </Text>
           <Space size={[6, 6]} wrap style={{ marginBottom: 10 }}>
             {BOM_CHARGE_PRESETS.map((preset) => (
@@ -157,7 +157,7 @@ export default function BomCostSummary({
               borderTop: '1px dashed #e2e8f0',
             }}
           >
-            <Text strong style={{ color: '#1e293b' }}>Expected cost per kit</Text>
+            <Text strong style={{ color: '#1e293b' }}>Expected cost per unit</Text>
             <Text strong style={{ color: '#4f46e5', fontSize: 16 }}>
               {formatPrice(expectedCost, currency, 'USD')}
             </Text>

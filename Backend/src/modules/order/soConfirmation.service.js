@@ -70,7 +70,7 @@ class SOConfirmationService {
               const availableQty = stock ? Number(stock.quantity_available) : 0;
               if (availableQty < compQty) {
                 throw new Error(
-                  `Insufficient component stock for kit ${line.item_name} (${c.component_name || c.sku}): ` +
+                  `Insufficient component stock for finished product ${line.item_name} (${c.component_name || c.sku}): ` +
                     `available ${availableQty}, required ${compQty}`
                 );
               }
