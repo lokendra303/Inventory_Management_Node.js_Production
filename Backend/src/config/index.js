@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 
 const ENV_PROFILE = (process.env.ENV_PROFILE || '').trim().toUpperCase();
 
@@ -25,6 +25,13 @@ function buildCorsOrigins() {
   return [
     fe,
     'http://localhost:3001',
+    'http://localhost:8081',
+    'http://localhost:8082',
+    'http://localhost:8090',
+    'http://localhost:19006',
+    // Expo web / Metro dev — any localhost port
+    /^http:\/\/localhost:\d+$/,
+    /^http:\/\/127\.0\.0\.1:\d+$/,
     /^http:\/\/192\.168\./,
     /^http:\/\/172\./,
     /^http:\/\/10\./,
@@ -94,7 +101,8 @@ module.exports = {
   
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60 * 1000,
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS)
+      || (process.env.NODE_ENV === 'development' ? 5000 : 1000),
   },
 
   razorpay: {
@@ -106,7 +114,7 @@ module.exports = {
     level: process.env.LOG_LEVEL || 'info'
   },
 
-  /** Platform (super-admin) console — separate from tenant JWT expiry */
+  /** Platform (super-admin) console â€” separate from tenant JWT expiry */
   platform: {
     jwtExpiresIn: process.env.PLATFORM_JWT_EXPIRES_IN || '8h',
   },
