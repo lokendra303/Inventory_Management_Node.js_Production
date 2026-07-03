@@ -410,6 +410,11 @@ class ThirdPartyInvoiceController {
       }
       const invoiceData = {
         ...buildInvoicePartyPayload(invoice, partyAddressesParsed),
+        // Third-party invoices snapshot their own bill-to/ship-to in party_addresses
+        // and are edited independently of the customer master. Force the manual-party
+        // path so the PDF renders the saved snapshot instead of re-deriving addresses
+        // from the linked customer record.
+        customerId: null,
         documentMeta,
         lines: lines.map((line) => ({
           itemName: line.description,
