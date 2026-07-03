@@ -21,7 +21,12 @@ function clipMetaValue(value, maxLen = 48) {
 }
 
 function metaValueText(value) {
-  return String(value ?? '').trim();
+  // Add a space after any comma that lacks one so PDFKit can wrap long
+  // comma-separated lists (e.g. multiple "PO/date" refs) instead of treating
+  // them as one unbreakable token that overflows and gets clipped.
+  return String(value ?? '')
+    .trim()
+    .replace(/,(?!\s)/g, ', ');
 }
 
 /** Per-cell body cap (pt) so one field cannot blow up the header band; content wraps until this height. */

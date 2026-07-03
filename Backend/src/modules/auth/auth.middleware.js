@@ -75,6 +75,14 @@ const extractInstitutionContext = async (req, res, next) => {
         code: 'SESSION_REVOKED',
       });
     }
+    if (error.code === 'DB_UNAVAILABLE') {
+      // Transient DB/network issue — retryable, and must not force a logout.
+      return res.status(503).json({
+        success: false,
+        error: 'Service temporarily unavailable. Please retry.',
+        code: 'DB_UNAVAILABLE',
+      });
+    }
     return res.status(401).json({
       success: false,
       error: 'Invalid or expired token',

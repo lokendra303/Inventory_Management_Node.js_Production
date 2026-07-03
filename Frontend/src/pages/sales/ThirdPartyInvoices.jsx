@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Card, Button, Table, Tag, message, Modal, Input, Select, Tooltip, Alert,
+  Card, Button, Table, Tag, message, Modal, Input, Select, Tooltip, Alert, Popconfirm,
 } from 'antd';
 import {
   FileTextOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined,
   EditOutlined, PrinterOutlined, SearchOutlined, ReloadOutlined,
-  CheckCircleOutlined, StopOutlined,
+  CheckCircleOutlined, StopOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import ThirdPartyInvoiceForm from '../../components/forms/ThirdPartyInvoiceForm';
 import InvoicePdfViewModal from '../../components/business/InvoicePdfViewModal';
+import { useAuth } from '../../hooks/useAuth.jsx';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatCommercialDocAmount } from '../../utils/currency';
 import { assertPdfBlob, printPdfBlob } from '../../utils/printPdfBlob';
@@ -22,6 +23,8 @@ const STATUS_CONFIG = {
 
 const ThirdPartyInvoices = () => {
   const { formatCurrency } = useCurrency();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
@@ -130,6 +133,23 @@ const ThirdPartyInvoices = () => {
     }
   };
 
+  const handleDelete = async (invoiceId) => {
+    try {
+      setLoading(true);
+      const response = await apiService.delete(`/third-party-invoices/${invoiceId}`);
+      if (response.success) {
+        message.success(response.message || 'Invoice deleted');
+        fetchInvoices();
+      } else {
+        message.error(response.error || 'Failed to delete invoice');
+      }
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to delete invoice');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredInvoices = invoices.filter((inv) => {
     const textMatch = !searchText
       || inv.invoice_number?.toLowerCase().includes(searchText.toLowerCase())
@@ -179,7 +199,7 @@ const ThirdPartyInvoices = () => {
     {
       title: 'Actions',
       key: 'actions',
-      width: 160,
+      width: 200,
       render: (_, record) => (
         <div style={{ display: 'flex', gap: 2 }}>
           {record.status === 'draft' && (
@@ -240,6 +260,20 @@ const ThirdPartyInvoices = () => {
               onClick={() => handlePrintPDF(record.id)}
             />
           </Tooltip>
+          {isSuperAdmin && (
+            <Popconfirm
+              title="Delete this invoice?"
+              description={`"${record.invoice_number}" will be permanently removed. This cannot be undone.`}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+              cancelText="Cancel"
+              onConfirm={() => handleDelete(record.id)}
+            >
+              <Tooltip title="Delete (super admin only)">
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </div>
       ),
     },

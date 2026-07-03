@@ -1,6 +1,6 @@
 const express = require('express');
 const thirdPartyInvoiceController = require('./thirdPartyInvoice.controller');
-const { requirePermission, validateInstitutionConsistency, auditLog } = require('../auth/auth.middleware');
+const { requirePermission, requireRole, validateInstitutionConsistency, auditLog } = require('../auth/auth.middleware');
 const { validate, schemas } = require('../../utils/validation');
 
 const router = express.Router();
@@ -52,6 +52,14 @@ router.put('/:id/status',
 router.get('/:id/pdf',
   requirePermission('invoice_view'),
   thirdPartyInvoiceController.generateInvoicePDF
+);
+
+// Deletion is restricted to the company super admin (institution owner) only.
+router.delete('/:id',
+  requireRole('super_admin'),
+  validateInstitutionConsistency,
+  auditLog('third_party_invoice_deleted'),
+  thirdPartyInvoiceController.deleteThirdPartyInvoice
 );
 
 module.exports = router;

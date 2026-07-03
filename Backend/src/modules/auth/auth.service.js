@@ -11,6 +11,27 @@ const userSessionService = require('./userSession.service');
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Transient MySQL/socket failures — distinct from an invalid token, so callers can
+// return a retryable 503 instead of a 401 that logs the user out.
+const DB_CONNECTIVITY_CODES = new Set([
+  'ECONNRESET',
+  'PROTOCOL_CONNECTION_LOST',
+  'ETIMEDOUT',
+  'ECONNREFUSED',
+  'EPIPE',
+  'ENOTFOUND',
+  'ER_CON_COUNT_ERROR',
+  'PROTOCOL_SEQUENCE_TIMEOUT',
+]);
+
+function isDbConnectivityError(error) {
+  if (!error) return false;
+  if (DB_CONNECTIVITY_CODES.has(error.code)) return true;
+  if (error.fatal === true) return true;
+  return /ECONNRESET|ETIMEDOUT|ECONNREFUSED|EPIPE|connection lost|read ECONNRESET/i
+    .test(String(error.message || ''));
+}
+
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
@@ -479,6 +500,13 @@ class AuthService {
       };
     } catch (error) {
       if (error.code === 'SESSION_REVOKED') throw error;
+      // A transient DB connectivity failure must NOT be reported as a bad token,
+      // otherwise a momentary network blip logs the user out.
+      if (isDbConnectivityError(error)) {
+        const dbErr = new Error('Database temporarily unavailable');
+        dbErr.code = 'DB_UNAVAILABLE';
+        throw dbErr;
+      }
       throw new Error('Invalid token');
     }
   }

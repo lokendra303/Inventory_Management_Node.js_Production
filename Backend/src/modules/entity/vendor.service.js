@@ -340,7 +340,8 @@ class VendorService {
     const addresses = await db.query(
       `SELECT * FROM addresses
         WHERE entity_type = 'vendor'
-          AND entity_id COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci`,
+          AND entity_id COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci
+        ORDER BY id ASC`,
       [vendorId]
     );
     
@@ -374,15 +375,22 @@ class VendorService {
         pin_code: addr.pin_code || '',
       };
       vendor[`${prefix}_addresses`].push(normalizedAddress);
-      if (!vendor[`${prefix}_address1`]) {
-        vendor[`${prefix}_attention`] = addr.attention;
-        vendor[`${prefix}_country`] = addr.country;
-        vendor[`${prefix}_address1`] = addr.address1;
-        vendor[`${prefix}_address2`] = addr.address2;
-        vendor[`${prefix}_city`] = addr.city;
-        vendor[`${prefix}_state`] = addr.state;
-        vendor[`${prefix}_pin_code`] = addr.pin_code;
-      }
+    });
+
+    // Flat "primary" fields must mirror the FIRST address of each list. The edit
+    // form treats these as the primary and `*_addresses.slice(1)` as extras; if the
+    // primary points at a different row (e.g. the loader's last-wins merge), re-saving
+    // drops the real first address and duplicates another. Keep them in sync here.
+    ['billing', 'shipping'].forEach((prefix) => {
+      const first = vendor[`${prefix}_addresses`][0];
+      if (!first) return;
+      vendor[`${prefix}_attention`] = first.attention;
+      vendor[`${prefix}_country`] = first.country;
+      vendor[`${prefix}_address1`] = first.address1;
+      vendor[`${prefix}_address2`] = first.address2;
+      vendor[`${prefix}_city`] = first.city;
+      vendor[`${prefix}_state`] = first.state;
+      vendor[`${prefix}_pin_code`] = first.pin_code;
     });
     
     vendor.bank_details = (Array.isArray(vendorBanks) && vendorBanks.length > 0 ? vendorBanks : (Array.isArray(legacyBanks) ? legacyBanks : []))

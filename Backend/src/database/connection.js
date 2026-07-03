@@ -16,6 +16,10 @@ class Database {
         queueLimit: 0,
         charset: 'utf8mb4_unicode_ci',
         timezone: '+00:00',
+        // Keep pooled sockets alive so remote MySQL (and NAT/firewalls) don't
+        // silently drop idle connections and cause ECONNRESET on the next query.
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10000,
       });
       
       // Test connection

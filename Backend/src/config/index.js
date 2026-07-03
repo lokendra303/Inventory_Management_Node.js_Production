@@ -53,7 +53,11 @@ function resolveUploadPublicUrl(relativePath) {
   if (!raw) return '';
   if (/^https?:\/\//i.test(raw)) return raw;
   const p = raw.startsWith('/') ? raw : `/${raw}`;
-  const base = resolvePublicBaseUrl().replace(/\/$/, '');
+  // UPLOADS_BASE_URL lets local dev (where uploaded logo/stamp files are not on
+  // disk) fetch assets from the server that actually hosts them. Falls back to
+  // the public base URL, so production behaviour is unchanged unless set.
+  const uploadsBase = (getEnvByProfile('UPLOADS_BASE_URL') || '').replace(/\/$/, '');
+  const base = (uploadsBase || resolvePublicBaseUrl()).replace(/\/$/, '');
   if (p.startsWith('/uploads/')) {
     return `${base}/api${p}`;
   }

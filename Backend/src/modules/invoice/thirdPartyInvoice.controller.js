@@ -20,9 +20,17 @@ const InvoiceService = require('./invoice.service');
 
 function nextInvoiceNumber(lastNumber) {
   if (lastNumber) {
-    const match = String(lastNumber).match(/\d+$/);
-    const nextNum = match ? parseInt(match[0], 10) + 1 : 1;
-    return `TPI${String(nextNum).padStart(6, '0')}`;
+    const str = String(lastNumber);
+    const match = str.match(/(\d+)(\D*)$/);
+    if (match) {
+      const digits = match[1];
+      const suffix = match[2] || '';
+      const prefix = str.slice(0, match.index);
+      const nextNum = parseInt(digits, 10) + 1;
+      // Preserve the existing prefix/width so custom schemes (e.g. KB/TI/00012) continue.
+      return `${prefix}${String(nextNum).padStart(digits.length, '0')}${suffix}`;
+    }
+    return `${str}-1`;
   }
   return 'TPI000001';
 }
@@ -177,6 +185,15 @@ class ThirdPartyInvoiceController {
         data: result,
       });
     } catch (error) {
+      if (error?.errno === 1062) {
+        const num = (req.body?.invoiceNumber && String(req.body.invoiceNumber).trim()) || '';
+        return res.status(409).json({
+          success: false,
+          error: num
+            ? `Invoice number "${num}" already exists. Use a different number or leave it blank to auto-generate.`
+            : 'Invoice number already exists. Use a different number.',
+        });
+      }
       logger.error('Error creating third-party invoice:', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to create third-party invoice' });
     }
@@ -315,14 +332,22 @@ class ThirdPartyInvoiceController {
           invoiceData.partyAddresses ?? invoiceData.party_addresses
         ) || invoiceData.partyAddress || null;
 
+        // Only overwrite invoice_number when a non-empty value is provided, so an
+        // omitted/blank field never wipes the existing number.
+        const newInvoiceNumber = invoiceData.invoiceNumber && String(invoiceData.invoiceNumber).trim()
+          ? String(invoiceData.invoiceNumber).trim()
+          : null;
+
         await connection.execute(`
           UPDATE third_party_invoices SET
+            invoice_number = COALESCE(?, invoice_number),
             party_type = ?, party_id = ?, party_name = ?, party_gstin = ?, party_address = ?, party_addresses = ?,
             invoice_date = ?, due_date = ?, currency = ?, exchange_rate = ?,
             subtotal = ?, tax_amount = ?, discount_amount = ?, total_amount = ?,
             reference = ?, notes = ?, document_meta = ?, updated_by = ?, updated_at = NOW()
           WHERE id = ? AND institution_id = ?
         `, [
+          newInvoiceNumber,
           invoiceData.partyType || 'other',
           invoiceData.partyId || null,
           invoiceData.partyName?.trim(),
@@ -361,6 +386,15 @@ class ThirdPartyInvoiceController {
 
       res.json({ success: true, message: 'Third-party invoice updated successfully' });
     } catch (error) {
+      if (error?.errno === 1062) {
+        const num = (req.body?.invoiceNumber && String(req.body.invoiceNumber).trim()) || '';
+        return res.status(409).json({
+          success: false,
+          error: num
+            ? `Invoice number "${num}" already exists. Use a different number.`
+            : 'Invoice number already exists. Use a different number.',
+        });
+      }
       logger.error('Error updating third-party invoice:', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to update third-party invoice' });
     }
@@ -381,6 +415,37 @@ class ThirdPartyInvoiceController {
     } catch (error) {
       logger.error('Error updating third-party invoice status:', error);
       res.status(500).json({ success: false, error: 'Failed to update invoice status' });
+    }
+  }
+
+  async deleteThirdPartyInvoice(req, res) {
+    try {
+      const { institutionId } = req;
+      const { id } = req.params;
+
+      const [invoice] = await db.query(
+        'SELECT id, invoice_number FROM third_party_invoices WHERE id = ? AND institution_id = ?',
+        [id, institutionId]
+      );
+      if (!invoice) {
+        return res.status(404).json({ success: false, error: 'Third-party invoice not found' });
+      }
+
+      await db.transaction(async (connection) => {
+        await connection.execute('DELETE FROM third_party_invoice_lines WHERE invoice_id = ?', [id]);
+        await connection.execute(
+          'DELETE FROM third_party_invoices WHERE id = ? AND institution_id = ?',
+          [id, institutionId]
+        );
+      });
+
+      res.json({
+        success: true,
+        message: `Third-party invoice ${invoice.invoice_number} deleted successfully`,
+      });
+    } catch (error) {
+      logger.error('Error deleting third-party invoice:', error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to delete third-party invoice' });
     }
   }
 

@@ -688,6 +688,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
             rateMissing={rateMissing}
             rateSource={rateSource}
             unitField="unitPrice"
+            getTaxRate={(l) => Number(l?.taxRate) || 0}
           />
           {gstBreakdown && (
             <Card size="small" style={{ marginTop: 12 }} title={<><ThunderboltOutlined /> GST Summary</>}>
