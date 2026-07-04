@@ -15,6 +15,17 @@ const NUMERIC_KEYS = [
   'taxRate', 'purchaseTaxRate', 'shelfLifeDays', 'length', 'width', 'height',
 ];
 
+function optionalText(value) {
+  if (value == null || value === '') return undefined;
+  return String(value).trim() || undefined;
+}
+
+function optionalNumber(value, fallback = undefined) {
+  if (value == null || value === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export function hasBomDraftContent(values = {}, components = [], imageUrl = '') {
   const hasText = TEXT_KEYS.some((k) => String(values[k] || '').trim());
   const hasNumeric = NUMERIC_KEYS.some((k) => Number(values[k]) > 0);
@@ -152,14 +163,6 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
   const itemIsSellable = values.isSellable !== false;
   const tracksInventory = values.trackInventory === true;
 
-  const dimensions = (values.length || values.width || values.height)
-    ? {
-      length: values.length || 0,
-      width: values.width || 0,
-      height: values.height || 0,
-    }
-    : null;
-
   const customFields = {
     ...existingCustomFields,
     ...(values.customFields && typeof values.customFields === 'object' ? values.customFields : {}),
@@ -201,49 +204,73 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
     if (val === undefined || val === null || val === '') delete customFields[key];
   });
 
-  return {
-    ...values,
+  const dimensions = (values.length || values.width || values.height)
+    ? {
+      length: optionalNumber(values.length, 0),
+      width: optionalNumber(values.width, 0),
+      height: optionalNumber(values.height, 0),
+    }
+    : undefined;
+
+  const payload = {
+    sku: optionalText(values.sku),
+    name: optionalText(values.name),
     type: 'composite',
-    image: imageUrl || undefined,
-    kitFulfillmentMode,
-    components,
+    description: optionalText(values.description),
+    category: optionalText(values.category),
+    unit: values.unit || 'pcs',
+    barcode: optionalText(values.barcode),
+    hsnCode: optionalText(values.hsnCode),
+    supplierCode: optionalText(values.supplierCode),
+    upc: optionalText(values.upc),
+    mpn: optionalText(values.mpn),
+    ean: optionalText(values.ean),
+    isbn: optionalText(values.isbn),
+    brand: values.brand || undefined,
+    manufacturer: values.manufacturer || undefined,
+    weight: optionalText(values.weight),
     dimensions,
-    itemGroupId: values.itemGroupId || null,
-    salesAccount: values.salesAccount,
-    purchaseAccount: values.purchaseAccount,
+    image: imageUrl || undefined,
+    kitFulfillmentMode: kitFulfillmentMode || 'prebuilt',
+    components,
+    itemGroupId: values.itemGroupId || undefined,
+    valuationMethod: values.valuationMethod || 'fifo',
+    allowNegativeStock: Boolean(values.allowNegativeStock),
+    purchaseAccount: values.purchaseAccount || 'cogs',
+    salesAccount: itemIsSellable ? (values.salesAccount || undefined) : undefined,
     isSellable: itemIsSellable,
-    sellingPrice: itemIsSellable && values.sellingPrice != null ? values.sellingPrice : 0,
-    mrp: itemIsSellable && values.mrp != null ? values.mrp : null,
-    taxRate: itemIsSellable ? values.taxRate : 0,
+    costPrice: optionalNumber(values.costPrice, 0),
+    sellingPrice: itemIsSellable ? optionalNumber(values.sellingPrice, 0) : 0,
+    mrp: itemIsSellable ? optionalNumber(values.mrp) : undefined,
+    taxRate: itemIsSellable ? optionalNumber(values.taxRate, 0) : 0,
     isBatchTracked: tracksInventory ? Boolean(values.isBatchTracked) : false,
     isSerialized: tracksInventory ? Boolean(values.isSerialized) : false,
     hasExpiry: tracksInventory ? Boolean(values.hasExpiry) : false,
-    shelfLifeDays: tracksInventory && values.hasExpiry ? (values.shelfLifeDays || null) : null,
-    minStockLevel: tracksInventory ? (values.minStockLevel ?? 0) : 0,
-    maxStockLevel: tracksInventory ? (values.maxStockLevel ?? 0) : 0,
-    openingStock: !isEditing && tracksInventory ? (Number(values.openingStock) || 0) : undefined,
-    openingValue: !isEditing && tracksInventory ? (Number(values.openingValue) || 0) : undefined,
-    warehouseId: !isEditing && tracksInventory ? values.warehouseId : undefined,
-    defaultBinId: !isEditing && tracksInventory ? (values.defaultBinId || null) : undefined,
+    shelfLifeDays: tracksInventory && values.hasExpiry ? optionalNumber(values.shelfLifeDays) : undefined,
+    minStockLevel: tracksInventory ? optionalNumber(values.minStockLevel, 0) : 0,
+    maxStockLevel: tracksInventory ? optionalNumber(values.maxStockLevel, 0) : 0,
     customFields: Object.keys(customFields).length ? customFields : undefined,
-    openingManufactureDate: tracksInventory && values.openingManufactureDate?.format
-      ? values.openingManufactureDate.format('YYYY-MM-DD')
-      : undefined,
-    openingExpiryDate: tracksInventory && values.openingExpiryDate?.format
-      ? values.openingExpiryDate.format('YYYY-MM-DD')
-      : undefined,
-    length: undefined,
-    width: undefined,
-    height: undefined,
-    returnableItem: undefined,
-    salesDescription: undefined,
-    purchaseDescription: undefined,
-    purchaseTaxRate: undefined,
-    trackInventory: undefined,
-    variant: undefined,
-    colorCode: undefined,
-    sizeCode: undefined,
-    packType: undefined,
-    bomAdditionalCharges: undefined,
+    status: values.status || undefined,
   };
+
+  if (!isEditing && tracksInventory) {
+    payload.openingStock = optionalNumber(values.openingStock, 0);
+    payload.openingValue = optionalNumber(values.openingValue, 0);
+    payload.warehouseId = values.warehouseId || undefined;
+    payload.defaultBinId = values.defaultBinId || undefined;
+    payload.openingBatchNumber = optionalText(values.openingBatchNumber);
+    payload.openingManufactureDate = values.openingManufactureDate?.format
+      ? values.openingManufactureDate.format('YYYY-MM-DD')
+      : optionalText(values.openingManufactureDate);
+    payload.openingExpiryDate = values.openingExpiryDate?.format
+      ? values.openingExpiryDate.format('YYYY-MM-DD')
+      : optionalText(values.openingExpiryDate);
+    payload.openingBatchRuleId = values.openingBatchRuleId || undefined;
+  }
+
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined) delete payload[key];
+  });
+
+  return payload;
 }

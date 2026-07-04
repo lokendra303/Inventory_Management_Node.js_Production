@@ -27,7 +27,9 @@ const ThirdPartyInvoices = () => {
   const isSuperAdmin = user?.role === 'super_admin';
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [viewInvoiceId, setViewInvoiceId] = useState(null);
   const [viewInvoiceNumber, setViewInvoiceNumber] = useState('');
@@ -40,14 +42,11 @@ const ThirdPartyInvoices = () => {
     try {
       setLoading(true);
       const response = await apiService.get('/third-party-invoices', {
-        params: { page: pagination.current, limit: pagination.pageSize },
+        params: { page, limit: pageSize },
       });
       if (response.success) {
         setInvoices(response.data?.invoices || []);
-        setPagination((prev) => ({
-          ...prev,
-          total: response.data?.pagination?.total || 0,
-        }));
+        setTotal(response.data?.pagination?.total || 0);
       } else {
         message.error(response.error || 'Failed to fetch invoices');
       }
@@ -56,7 +55,7 @@ const ThirdPartyInvoices = () => {
     } finally {
       setLoading(false);
     }
-  }, [pagination.current, pagination.pageSize]);
+  }, [page, pageSize]);
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
@@ -339,9 +338,14 @@ const ThirdPartyInvoices = () => {
           rowKey="id"
           loading={loading}
           pagination={{
-            ...pagination,
+            current: page,
+            pageSize,
+            total,
             showSizeChanger: true,
-            onChange: (page, pageSize) => setPagination((p) => ({ ...p, current: page, pageSize })),
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
           }}
           scroll={{ x: 900 }}
         />
