@@ -356,6 +356,7 @@ const ThirdPartyInvoices = () => {
         destroyOnClose
       >
         <ThirdPartyInvoiceForm
+          key={modalMode === 'edit' ? `edit-${selectedInvoiceId}` : 'create'}
           invoiceId={modalMode === 'edit' ? selectedInvoiceId : null}
           onSave={() => {
             setModalVisible(false);

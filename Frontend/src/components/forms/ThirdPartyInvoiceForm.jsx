@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Form, Input, Select, DatePicker, InputNumber, Button, Card, Row, Col,
-  Table, Space, Typography, message, Radio, Tag, Tooltip,
+  Table, Space, Typography, message, Radio, Tag, Tooltip, Spin,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -72,6 +72,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
   } = useCommercialDocumentCurrency(form);
 
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(Boolean(invoiceId));
   const [customers, setCustomers] = useState([]);
   const [taxRates, setTaxRates] = useState([]);
   const [companyGstin, setCompanyGstin] = useState('');
@@ -291,9 +292,13 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
   const loadInvoice = useCallback(async () => {
     if (!invoiceId) return;
     try {
+      setInitializing(true);
       setLoading(true);
       const res = await apiService.get(`/third-party-invoices/${invoiceId}`);
-      if (!res.success) return;
+      if (!res.success) {
+        message.error(res.error || 'Failed to load invoice');
+        return;
+      }
       const { invoice, lines } = res.data;
       const mode = invoice.party_id ? 'customer' : 'manual';
       setPartyMode(mode);
@@ -323,7 +328,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
         shippingAddressId: partyAddr.partyAddressSelection?.shippingAddressId || null,
         invoiceDate: invoice.invoice_date ? dayjs(invoice.invoice_date) : null,
         dueDate: invoice.due_date ? dayjs(invoice.due_date) : null,
-        currency: invoice.currency,
+        currency: invoice.currency || institutionCurrency,
         exchangeRate: Number.isFinite(er) && er > 0 ? er : 1,
         reference: invoice.reference,
         notes: invoice.notes,
@@ -343,39 +348,54 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
           description: l.description,
           hsnCode: l.hsn_code,
           unit: l.unit || 'Nos',
-          quantity: l.quantity,
-          unitPrice: l.unit_price,
-          taxRate: l.tax_rate || 0,
-          discountRate: l.discount_rate || 0,
+          quantity: Number(l.quantity) || 0,
+          unitPrice: Number(l.unit_price) || 0,
+          taxRate: Number(l.tax_rate) || 0,
+          discountRate: Number(l.discount_rate) || 0,
         })));
       }
     } catch {
       message.error('Failed to load invoice');
     } finally {
       setLoading(false);
+      setInitializing(false);
     }
-  }, [invoiceId, form]);
+  }, [invoiceId, form, institutionCurrency]);
 
   useEffect(() => {
     loadCustomers();
     loadTaxRates();
     loadCompanyGstin();
-    if (invoiceId) {
-      loadInvoice();
-    } else {
-      const today = dayjs();
-      form.setFieldsValue({
-        invoiceDate: today,
-        dueDate: today.add(30, 'day'),
-        currency: institutionCurrency,
-        exchangeRate: 1,
-        partyType: 'other',
-        billingAddress: { ...EMPTY_INVOICE_ADDRESS },
-        shippingAddress: { ...EMPTY_INVOICE_ADDRESS },
-        documentMeta: emptyDocumentMetaForm('salesInvoice'),
-      });
-    }
-  }, [invoiceId, institutionCurrency, form, loadInvoice]);
+  }, []);
+
+  useEffect(() => {
+    if (!invoiceId) return;
+    setInitializing(true);
+    loadInvoice();
+  }, [invoiceId, loadInvoice]);
+
+  useEffect(() => {
+    if (invoiceId) return;
+    setInitializing(false);
+    setPartyMode('manual');
+    setSelectedParty(null);
+    setShipSameAsBill(true);
+    setInvoiceLines([{ key: 1, taxRate: 18, discountRate: 0, unit: 'Nos' }]);
+    const today = dayjs();
+    form.setFieldsValue({
+      invoiceDate: today,
+      dueDate: today.add(30, 'day'),
+      currency: institutionCurrency,
+      exchangeRate: 1,
+      partyType: 'other',
+      partyId: null,
+      partyName: undefined,
+      partyGstin: undefined,
+      billingAddress: { ...EMPTY_INVOICE_ADDRESS },
+      shippingAddress: { ...EMPTY_INVOICE_ADDRESS },
+      documentMeta: emptyDocumentMetaForm('salesInvoice'),
+    });
+  }, [invoiceId, institutionCurrency, form]);
 
   const sym = getCurrencySymbol(invoiceCurrency);
 
@@ -501,8 +521,16 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
     },
   ];
 
+  if (initializing) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <Spin size="large" tip="Loading invoice..." />
+      </div>
+    );
+  }
+
   return (
-    <Form form={form} layout="vertical">
+    <Form form={form} layout="vertical" preserve={false}>
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Card size="small" title="Party (Bill To / Ship To)" style={{ marginBottom: 16 }}>
@@ -677,7 +705,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
 
       <Row gutter={16} style={{ marginTop: 16 }}>
         <Col xs={24} md={14}>
-          <DocumentMetaFields form={form} documentType="salesInvoice" />
+          <DocumentMetaFields form={form} docType="salesInvoice" />
         </Col>
         <Col xs={24} md={10}>
           <DocumentTotalsSummary
