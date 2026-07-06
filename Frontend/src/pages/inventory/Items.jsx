@@ -128,7 +128,40 @@ const isBlankVariantMatrixValue = (value) => (
 
 const { Text: AntText } = Typography;
 
-/** CSV → { headers, rows }. `headerLineNumber` is 1-based line in the file (per Excel). */
+const CSV_IMPORT_MAX_ROWS = 5000;
+
+/** Keep only selected headers that still exist in the file. `null`/`undefined` → all columns; `[]` → none. */
+function resolveCsvSelectedHeaders(allHeaders, selectedHeaders) {
+  const all = Array.isArray(allHeaders) ? allHeaders : [];
+  if (!all.length) return [];
+  if (selectedHeaders == null) return [...all];
+  if (!Array.isArray(selectedHeaders)) return [...all];
+  if (selectedHeaders.length === 0) return [];
+  const allowed = new Set(all);
+  const picked = selectedHeaders.filter((h) => allowed.has(h));
+  return picked.length > 0 ? picked : [...all];
+}
+
+function resolveCsvActiveHeaders(allHeaders, includedHeaders) {
+  const all = Array.isArray(allHeaders) ? allHeaders : [];
+  if (includedHeaders == null) return all;
+  if (!Array.isArray(includedHeaders)) return all;
+  if (includedHeaders.length === 0) return [];
+  const wanted = new Set(includedHeaders);
+  return all.filter((h) => wanted.has(h));
+}
+
+function pruneCsvMappingForHeaders(mapping = {}, activeHeaders = [], matchFileColumn = '') {
+  const allowed = new Set(activeHeaders);
+  const next = {};
+  Object.entries(mapping || {}).forEach(([key, col]) => {
+    if (!col || allowed.has(col)) next[key] = col;
+  });
+  const nextMatchCol = matchFileColumn && allowed.has(matchFileColumn) ? matchFileColumn : '';
+  return { mapping: next, matchFileColumn: nextMatchCol };
+}
+
+/** CSV → { headers, rows, allHeaders }. `headerLineNumber` is 1-based line in the file (per Excel). */
 function parseCsvToRows(text, options = {}) {
   const headerLineNumber = Math.max(1, Math.floor(Number(options.headerLineNumber) || 1));
   const rows = [];
@@ -136,7 +169,7 @@ function parseCsvToRows(text, options = {}) {
   while (lines.length && lines[lines.length - 1] === '') {
     lines.pop();
   }
-  if (lines.length === 0) return { headers: [], rows: [] };
+  if (lines.length === 0) return { headers: [], rows: [], allHeaders: [] };
 
   const splitLine = (line) => {
     const out = [];
@@ -164,22 +197,26 @@ function parseCsvToRows(text, options = {}) {
 
   const headerIndex = headerLineNumber - 1;
   if (headerIndex >= lines.length) {
-    return { headers: [], rows: [] };
+    return { headers: [], rows: [], allHeaders: [] };
   }
 
-  const headers = splitLine(lines[headerIndex]).map((h) => h.replace(/^\uFEFF/, ''));
+  const allHeaders = splitLine(lines[headerIndex]).map((h) => h.replace(/^\uFEFF/, ''));
+  const headers = resolveCsvActiveHeaders(allHeaders, options.includedHeaders);
+  const headerPositions = headers.map((h) => allHeaders.indexOf(h));
+
   for (let i = headerIndex + 1; i < lines.length; i += 1) {
     const rawLine = lines[i];
     if (!String(rawLine).trim()) continue;
     const cols = splitLine(rawLine);
     const obj = {};
     headers.forEach((h, idx) => {
-      obj[h] = cols[idx] ?? '';
+      const colIdx = headerPositions[idx];
+      obj[h] = colIdx >= 0 ? (cols[colIdx] ?? '') : '';
     });
     obj.__sourceLine = i + 1;
     rows.push(obj);
   }
-  return { headers, rows };
+  return { headers, rows, allHeaders };
 }
 
 function countCsvTextLines(text) {
@@ -199,19 +236,19 @@ function isExcelImportFileName(name = '') {
 function parseExcelBufferToRows(buffer, options = {}) {
   const headerLineNumber = Math.max(1, Math.floor(Number(options.headerLineNumber) || 1));
   if (!buffer || !(buffer instanceof ArrayBuffer)) {
-    return { headers: [], rows: [], sheetRowCount: 0 };
+    return { headers: [], rows: [], allHeaders: [], sheetRowCount: 0 };
   }
   let workbook;
   try {
     workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
   } catch {
-    return { headers: [], rows: [], sheetRowCount: 0 };
+    return { headers: [], rows: [], allHeaders: [], sheetRowCount: 0 };
   }
   const sheetName = workbook.SheetNames?.[0];
-  if (!sheetName) return { headers: [], rows: [], sheetRowCount: 0 };
+  if (!sheetName) return { headers: [], rows: [], allHeaders: [], sheetRowCount: 0 };
   const ws = workbook.Sheets[sheetName];
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-  if (!aoa.length) return { headers: [], rows: [], sheetRowCount: 0 };
+  if (!aoa.length) return { headers: [], rows: [], allHeaders: [], sheetRowCount: 0 };
 
   const rowIsBlank = (row) => {
     if (!row || !row.length) return true;
@@ -223,7 +260,7 @@ function parseExcelBufferToRows(buffer, options = {}) {
   const sheetRowCount = aoa.length;
   const headerIdx = headerLineNumber - 1;
   if (headerIdx >= aoa.length) {
-    return { headers: [], rows: [], sheetRowCount };
+    return { headers: [], rows: [], allHeaders: [], sheetRowCount };
   }
 
   const headerRow = aoa[headerIdx] || [];
@@ -240,7 +277,7 @@ function parseExcelBufferToRows(buffer, options = {}) {
   }
   const baseHeaders = headerCells.map((h, i) => h || `Column_${i + 1}`);
   const usedNames = new Set();
-  const headers = baseHeaders.map((h) => {
+  const allHeaders = baseHeaders.map((h) => {
     let name = h;
     if (usedNames.has(name)) {
       let n = 2;
@@ -250,6 +287,8 @@ function parseExcelBufferToRows(buffer, options = {}) {
     usedNames.add(name);
     return name;
   });
+  const headers = resolveCsvActiveHeaders(allHeaders, options.includedHeaders);
+  const headerPositions = headers.map((h) => allHeaders.indexOf(h));
 
   const rows = [];
   for (let r = headerIdx + 1; r < aoa.length; r += 1) {
@@ -257,7 +296,8 @@ function parseExcelBufferToRows(buffer, options = {}) {
     if (rowIsBlank(cells)) continue;
     const obj = {};
     headers.forEach((h, idx) => {
-      const cell = cells[idx];
+      const colIdx = headerPositions[idx];
+      const cell = colIdx >= 0 ? cells[colIdx] : '';
       if (cell instanceof Date) {
         obj[h] = Number.isNaN(cell.getTime()) ? '' : cell.toISOString().slice(0, 10);
       } else if (cell != null && cell !== '') {
@@ -269,7 +309,135 @@ function parseExcelBufferToRows(buffer, options = {}) {
     obj.__sourceLine = r + 1;
     rows.push(obj);
   }
-  return { headers, rows, sheetRowCount };
+  return { headers, rows, allHeaders, sheetRowCount };
+}
+
+/**
+ * Re-parse uploaded CSV/Excel from cached source text/buffer.
+ * Only selected columns are stored in row objects (smaller memory footprint).
+ */
+function rebuildCsvImportFromSource(prev, excelBuffer, options = {}) {
+  const headerLineNumber = Math.max(1, Math.floor(Number(options.headerLineNumber ?? prev.headerLineNumber) || 1));
+  const resetFilters = options.resetFilters === true;
+  const rebuildMapping = options.rebuildMapping === true;
+
+  let parsed;
+  let fileLineCount = 0;
+
+  if (prev.csvImportSourceFormat === 'xlsx' && excelBuffer) {
+    const probe = parseExcelBufferToRows(excelBuffer, { headerLineNumber });
+    fileLineCount = probe.sheetRowCount;
+    const allHeaders = probe.allHeaders || probe.headers;
+    const selectedHeaders = resolveCsvSelectedHeaders(
+      allHeaders,
+      Object.prototype.hasOwnProperty.call(options, 'selectedHeaders')
+        ? options.selectedHeaders
+        : prev.selectedHeaders
+    );
+    if (selectedHeaders.length === 0) {
+      return {
+        headerLineNumber,
+        fileLineCount,
+        allHeaders,
+        selectedHeaders: [],
+        headers: [],
+        rows: [],
+        totalRows: 0,
+        mapping: pruneCsvMappingForHeaders(prev.mapping, [], prev.matchFileColumn).mapping,
+        matchFileColumn: '',
+        resetFilters: options.resetFilters === true,
+      };
+    }
+    const includedHeaders = selectedHeaders.length < allHeaders.length ? selectedHeaders : undefined;
+    parsed = includedHeaders
+      ? parseExcelBufferToRows(excelBuffer, { headerLineNumber, includedHeaders })
+      : probe;
+    parsed.allHeaders = allHeaders;
+    parsed.selectedHeaders = selectedHeaders;
+  } else if (prev.csvImportRawText) {
+    const probe = parseCsvToRows(prev.csvImportRawText, { headerLineNumber });
+    fileLineCount = countCsvTextLines(prev.csvImportRawText);
+    const allHeaders = probe.allHeaders || probe.headers;
+    const selectedHeaders = resolveCsvSelectedHeaders(
+      allHeaders,
+      Object.prototype.hasOwnProperty.call(options, 'selectedHeaders')
+        ? options.selectedHeaders
+        : prev.selectedHeaders
+    );
+    if (selectedHeaders.length === 0) {
+      return {
+        headerLineNumber,
+        fileLineCount,
+        allHeaders,
+        selectedHeaders: [],
+        headers: [],
+        rows: [],
+        totalRows: 0,
+        mapping: pruneCsvMappingForHeaders(prev.mapping, [], prev.matchFileColumn).mapping,
+        matchFileColumn: '',
+        resetFilters: options.resetFilters === true,
+      };
+    }
+    const includedHeaders = selectedHeaders.length < allHeaders.length ? selectedHeaders : undefined;
+    parsed = includedHeaders
+      ? parseCsvToRows(prev.csvImportRawText, { headerLineNumber, includedHeaders })
+      : probe;
+    parsed.allHeaders = allHeaders;
+    parsed.selectedHeaders = selectedHeaders;
+  } else {
+    return null;
+  }
+
+  const allHeaders = parsed.allHeaders || parsed.headers || [];
+  const headers = parsed.headers || [];
+  const hasHeaders = headers.some((h) => String(h).trim());
+  if (!hasHeaders) {
+    return {
+      error: 'no_headers',
+      headerLineNumber,
+      fileLineCount,
+      allHeaders: [],
+      selectedHeaders: null,
+      headers: [],
+      rows: [],
+      resetFilters,
+    };
+  }
+
+  const totalRows = parsed.rows?.length || 0;
+  const rows = (parsed.rows || []).slice(0, CSV_IMPORT_MAX_ROWS);
+  const isUpdate = prev.importPurpose === CSV_IMPORT_PURPOSE_UPDATE;
+  const matchField = prev.matchField || CSV_IMPORT_DEFAULT_MATCH_FIELD;
+
+  let mapping = prev.mapping || {};
+  let matchFileColumn = prev.matchFileColumn || '';
+  if (rebuildMapping && !isUpdate) {
+    mapping = buildInitialCsvMapping(headers, prev.fieldConfigs || [], {
+      importPurpose: prev.importPurpose,
+      matchField,
+    });
+    matchFileColumn = '';
+  } else {
+    const pruned = pruneCsvMappingForHeaders(mapping, headers, matchFileColumn);
+    mapping = pruned.mapping;
+    matchFileColumn = pruned.matchFileColumn;
+    if (isUpdate && !matchFileColumn) {
+      matchFileColumn = guessMatchFileColumn(headers, matchField);
+    }
+  }
+
+  return {
+    headerLineNumber,
+    fileLineCount,
+    allHeaders,
+    selectedHeaders: parsed.selectedHeaders,
+    headers,
+    rows,
+    totalRows,
+    mapping,
+    matchFileColumn,
+    resetFilters,
+  };
 }
 
 const CSV_IMPORT_CORE_TARGETS = [
@@ -541,6 +709,8 @@ const Items = () => {
     csvImportRawText: '',
     csvImportFileLineCount: 0,
     headerLineNumber: 1,
+    allHeaders: [],
+    selectedHeaders: null,
     headers: [],
     rows: [],
     csvImportPreviewFilters: {
@@ -1558,6 +1728,8 @@ const Items = () => {
       csvImportRawText: '',
       csvImportFileLineCount: 0,
       headerLineNumber: 1,
+      allHeaders: [],
+      selectedHeaders: null,
       headers: [],
       rows: [],
       csvImportPreviewFilters: {
@@ -1631,6 +1803,8 @@ const Items = () => {
       csvImportRawText: '',
       csvImportFileLineCount: 0,
       headerLineNumber: 1,
+      allHeaders: [],
+      selectedHeaders: null,
       headers: [],
       rows: [],
       csvImportPreviewFilters: {
@@ -1661,10 +1835,74 @@ const Items = () => {
     setItemFormOpenedFromImport(false);
   }, [warehouses]);
 
+  const applyCsvImportRebuild = useCallback((prev, sourcePatch, excelBuffer, options = {}) => {
+    const merged = { ...prev, ...sourcePatch };
+    const rebuilt = rebuildCsvImportFromSource(merged, excelBuffer, options);
+    if (!rebuilt) return prev;
+
+    const isUpdate = merged.importPurpose === CSV_IMPORT_PURPOSE_UPDATE;
+    const emptyPreviewFilters = {
+      hideMissingSku: false,
+      hideMissingName: false,
+      onlyReady: false,
+      onlyIssues: false,
+    };
+
+    if (rebuilt.error === 'no_headers') {
+      setTimeout(() => {
+        message.error(
+          merged.csvImportSourceFormat === 'xlsx'
+            ? 'No header row found at the selected line. Change “Header row” or try the first sheet of the workbook.'
+            : 'No header row found at the selected line. Change “Header row” and upload again, or pick another line after upload.'
+        );
+      }, 0);
+      return {
+        ...merged,
+        csvImportFileLineCount: rebuilt.fileLineCount,
+        headerLineNumber: rebuilt.headerLineNumber,
+        allHeaders: [],
+        selectedHeaders: null,
+        headers: [],
+        rows: [],
+        csvImportPreviewFilters: emptyPreviewFilters,
+        mapping: {},
+        result: null,
+      };
+    }
+
+    if (rebuilt.totalRows > CSV_IMPORT_MAX_ROWS) {
+      setTimeout(() => {
+        message.warning(`Importing the first ${CSV_IMPORT_MAX_ROWS} data rows only`);
+      }, 0);
+    }
+
+    return {
+      ...merged,
+      csvImportFileLineCount: rebuilt.fileLineCount,
+      headerLineNumber: rebuilt.headerLineNumber,
+      allHeaders: rebuilt.allHeaders,
+      selectedHeaders: rebuilt.selectedHeaders,
+      headers: rebuilt.headers,
+      rows: rebuilt.rows,
+      csvImportPreviewFilters: rebuilt.resetFilters
+        ? emptyPreviewFilters
+        : {
+          ...merged.csvImportPreviewFilters,
+          onlyMatched: isUpdate ? (merged.csvImportPreviewFilters?.onlyMatched ?? true) : false,
+        },
+      mapping: rebuilt.mapping,
+      matchFileColumn: rebuilt.matchFileColumn,
+      importDefaults: isUpdate && options.rebuildMapping ? {} : merged.importDefaults,
+      catalogItemPicks: options.preserveCatalogPicks ? (merged.catalogItemPicks || {}) : {},
+      addedRowIndexes: options.preserveProgress ? (merged.addedRowIndexes || {}) : {},
+      supersededRowIndexes: options.preserveProgress ? (merged.supersededRowIndexes || {}) : {},
+      result: null,
+    };
+  }, []);
+
   const handleCsvImportBeforeUpload = useCallback((file) => {
     const isExcel = isExcelImportFileName(file.name);
     const reader = new FileReader();
-    const maxRows = 5000;
 
     if (isExcel) {
       reader.onload = (e) => {
@@ -1675,58 +1913,20 @@ const Items = () => {
         }
         csvImportExcelBufferRef.current = buf;
         setCsvImportModal((prev) => {
-          const headerLineNumber = Math.max(1, Math.floor(Number(prev.headerLineNumber) || 1));
-          const { headers, rows, sheetRowCount } = parseExcelBufferToRows(buf, { headerLineNumber });
-          if (!headers.some((h) => String(h).trim())) {
+          const next = applyCsvImportRebuild(
+            prev,
+            { csvImportSourceFormat: 'xlsx', csvImportRawText: '' },
+            buf,
+            { rebuildMapping: true }
+          );
+          if (next.headers?.length) {
             setTimeout(() => {
-              message.error('No header row found at the selected line. Change “Header line” or try the first sheet of the workbook.');
+              message.success(
+                `Excel (first sheet): row ${next.headerLineNumber} as header — ${next.rows.length} data row(s), ${next.selectedHeaders.length} of ${next.allHeaders.length} column(s)`
+              );
             }, 0);
-            return {
-              ...prev,
-              csvImportSourceFormat: 'xlsx',
-              csvImportRawText: '',
-              csvImportFileLineCount: sheetRowCount,
-              headerLineNumber,
-              headers: [],
-              rows: [],
-              csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
-              mapping: {},
-              result: null,
-            };
           }
-          const limited = rows.slice(0, maxRows);
-          setTimeout(() => {
-            if (rows.length > maxRows) {
-              message.warning(`Importing the first ${maxRows} data rows only`);
-            }
-            message.success(`Excel (first sheet): row ${headerLineNumber} as header — ${limited.length} data row(s), ${headers.length} column(s)`);
-          }, 0);
-          const matchField = prev.matchField || CSV_IMPORT_DEFAULT_MATCH_FIELD;
-          const isUpdate = prev.importPurpose === CSV_IMPORT_PURPOSE_UPDATE;
-          const mapping = buildInitialCsvMapping(headers, prev.fieldConfigs || [], {
-            importPurpose: prev.importPurpose,
-            matchField,
-          });
-          const matchFileColumn = isUpdate ? guessMatchFileColumn(headers, matchField) : '';
-          return {
-            ...prev,
-            csvImportSourceFormat: 'xlsx',
-            csvImportRawText: '',
-            csvImportFileLineCount: sheetRowCount,
-            headerLineNumber,
-            headers,
-            rows: limited,
-            csvImportPreviewFilters: {
-              ...prev.csvImportPreviewFilters,
-              onlyMatched: isUpdate,
-            },
-            mapping,
-            matchField,
-            matchFileColumn,
-            importDefaults: isUpdate ? {} : prev.importDefaults,
-            catalogItemPicks: {},
-            result: null,
-          };
+          return next;
         });
       };
       reader.onerror = () => message.error('Could not read file');
@@ -1737,161 +1937,60 @@ const Items = () => {
     csvImportExcelBufferRef.current = null;
     reader.onload = (e) => {
       const text = String(e.target?.result || '');
-      const fileLineCount = countCsvTextLines(text);
       setCsvImportModal((prev) => {
-        const headerLineNumber = Math.max(1, Math.floor(Number(prev.headerLineNumber) || 1));
-        const { headers, rows } = parseCsvToRows(text, { headerLineNumber });
-        if (!headers.some((h) => String(h).trim())) {
+        const next = applyCsvImportRebuild(
+          prev,
+          { csvImportSourceFormat: 'csv', csvImportRawText: text },
+          null,
+          { rebuildMapping: true }
+        );
+        if (next.headers?.length) {
           setTimeout(() => {
-            message.error('No header row found at the selected line. Change “Header line” and upload again, or pick another line after upload.');
+            message.success(
+              `CSV: line ${next.headerLineNumber} as header — ${next.rows.length} data row(s), ${next.selectedHeaders.length} of ${next.allHeaders.length} column(s)`
+            );
           }, 0);
-          return {
-            ...prev,
-            csvImportSourceFormat: 'csv',
-            csvImportRawText: text,
-            csvImportFileLineCount: fileLineCount,
-            headerLineNumber,
-            headers: [],
-            rows: [],
-            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
-            mapping: {},
-            result: null,
-          };
         }
-        const limited = rows.slice(0, maxRows);
-        setTimeout(() => {
-          if (rows.length > maxRows) {
-            message.warning(`Importing the first ${maxRows} data rows only`);
-          }
-          message.success(`CSV: line ${headerLineNumber} as header — ${limited.length} data row(s), ${headers.length} column(s)`);
-        }, 0);
-        const matchField = prev.matchField || CSV_IMPORT_DEFAULT_MATCH_FIELD;
-        const isUpdate = prev.importPurpose === CSV_IMPORT_PURPOSE_UPDATE;
-        const mapping = buildInitialCsvMapping(headers, prev.fieldConfigs || [], {
-          importPurpose: prev.importPurpose,
-          matchField,
-        });
-        const matchFileColumn = isUpdate ? guessMatchFileColumn(headers, matchField) : '';
-        return {
-          ...prev,
-          csvImportSourceFormat: 'csv',
-          csvImportRawText: text,
-          csvImportFileLineCount: fileLineCount,
-          headerLineNumber,
-          headers,
-          rows: limited,
-          csvImportPreviewFilters: {
-            ...prev.csvImportPreviewFilters,
-            onlyMatched: isUpdate,
-          },
-          mapping,
-          matchField,
-          matchFileColumn,
-          importDefaults: isUpdate ? {} : prev.importDefaults,
-          catalogItemPicks: {},
-          result: null,
-        };
+        return next;
       });
     };
     reader.onerror = () => message.error('Could not read file');
     reader.readAsText(file);
     return false;
-  }, []);
+  }, [applyCsvImportRebuild]);
 
   const applyCsvHeaderLineNumber = useCallback((rawLineNum) => {
     const n = Math.max(1, Math.floor(Number(rawLineNum) || 1));
     setCsvImportModal((prev) => {
-      if (prev.csvImportSourceFormat === 'xlsx' && csvImportExcelBufferRef.current) {
-        const buf = csvImportExcelBufferRef.current;
-        const { headers, rows, sheetRowCount } = parseExcelBufferToRows(buf, { headerLineNumber: n });
-        if (!headers.some((h) => String(h).trim())) {
-          setTimeout(() => {
-            message.warning('That row has no column headers — try another row number.');
-          }, 0);
-          return {
-            ...prev,
-            headerLineNumber: n,
-            csvImportFileLineCount: sheetRowCount,
-            headers: [],
-            rows: [],
-            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
-            mapping: {},
-            result: null,
-          };
-        }
-        const maxRows = 5000;
-        const limited = rows.slice(0, maxRows);
-        setTimeout(() => {
-          if (rows.length > maxRows) {
-            message.warning(`Importing the first ${maxRows} data rows only`);
-          }
-        }, 0);
-        return {
-          ...prev,
-          headerLineNumber: n,
-          csvImportFileLineCount: sheetRowCount,
-          headers,
-          rows: limited,
-          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
-          mapping: prev.importPurpose === CSV_IMPORT_PURPOSE_UPDATE
-            ? (prev.mapping || {})
-            : buildInitialCsvMapping(headers, prev.fieldConfigs || [], {
-              importPurpose: prev.importPurpose,
-              matchField: prev.matchField,
-            }),
-          matchFileColumn: prev.importPurpose === CSV_IMPORT_PURPOSE_UPDATE
-            ? guessMatchFileColumn(headers, prev.matchField)
-            : '',
-          result: null,
-        };
+      if (!prev.csvImportRawText && !csvImportExcelBufferRef.current) {
+        return { ...prev, headerLineNumber: n };
       }
-      if (prev.csvImportSourceFormat === 'csv' && prev.csvImportRawText) {
-        const { headers, rows } = parseCsvToRows(prev.csvImportRawText, { headerLineNumber: n });
-        const fileLineCount = countCsvTextLines(prev.csvImportRawText);
-        if (!headers.some((h) => String(h).trim())) {
-          setTimeout(() => {
-            message.warning('That line has no column headers — try another line number.');
-          }, 0);
-          return {
-            ...prev,
-            headerLineNumber: n,
-            csvImportFileLineCount: fileLineCount,
-            headers: [],
-            rows: [],
-            csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
-            mapping: {},
-            result: null,
-          };
-        }
-        const maxRows = 5000;
-        const limited = rows.slice(0, maxRows);
+      const next = applyCsvImportRebuild(prev, {}, csvImportExcelBufferRef.current, {
+        headerLineNumber: n,
+        selectedHeaders: null,
+        rebuildMapping: prev.importPurpose !== CSV_IMPORT_PURPOSE_UPDATE,
+        resetFilters: true,
+      });
+      if (!next.headers?.length && (prev.csvImportRawText || csvImportExcelBufferRef.current)) {
         setTimeout(() => {
-          if (rows.length > maxRows) {
-            message.warning(`Importing the first ${maxRows} data rows only`);
-          }
+          message.warning('That row has no column headers — try another row number.');
         }, 0);
-        return {
-          ...prev,
-          headerLineNumber: n,
-          csvImportFileLineCount: fileLineCount,
-          headers,
-          rows: limited,
-          csvImportPreviewFilters: { hideMissingSku: false, hideMissingName: false, onlyReady: false, onlyIssues: false },
-          mapping: prev.importPurpose === CSV_IMPORT_PURPOSE_UPDATE
-            ? (prev.mapping || {})
-            : buildInitialCsvMapping(headers, prev.fieldConfigs || [], {
-              importPurpose: prev.importPurpose,
-              matchField: prev.matchField,
-            }),
-          matchFileColumn: prev.importPurpose === CSV_IMPORT_PURPOSE_UPDATE
-            ? guessMatchFileColumn(headers, prev.matchField)
-            : '',
-          result: null,
-        };
       }
-      return { ...prev, headerLineNumber: n };
+      return next;
     });
-  }, []);
+  }, [applyCsvImportRebuild]);
+
+  const applyCsvColumnSelection = useCallback((nextSelected) => {
+    setCsvImportModal((prev) => {
+      if (!prev.allHeaders?.length) return prev;
+      const selected = Array.isArray(nextSelected) ? nextSelected : [];
+      const next = applyCsvImportRebuild(prev, {}, csvImportExcelBufferRef.current, {
+        selectedHeaders: selected,
+        preserveCatalogPicks: selected.length > 0,
+      });
+      return next;
+    });
+  }, [applyCsvImportRebuild]);
 
   const downloadItemsCsvTemplateFile = useCallback(() => {
     const blob = new Blob([buildItemsCsvTemplate()], { type: 'text/csv;charset=utf-8' });
@@ -5621,7 +5720,7 @@ const viewItem = (item) => {
           message={isCsvUpdateImport ? 'Match file rows to existing items, then update in form' : 'Map your file columns to item fields'}
           description={
             <span>
-              Choose which <AntText strong>row</AntText> in the file contains column names (CSV line or Excel sheet row). CSV and Excel (
+              Choose which <AntText strong>row</AntText> in the file contains column names (CSV line or Excel sheet row), then pick which <AntText strong>columns</AntText> to load. CSV and Excel (
               <AntText strong>.xlsx</AntText>
               ,{' '}
               <AntText strong>.xls</AntText>
@@ -5901,6 +6000,93 @@ const viewItem = (item) => {
           <p className="ant-upload-text">Drop a CSV or Excel file here, or click to select</p>
           <p className="ant-upload-hint">UTF-8 CSV recommended. Excel: first sheet only (.xlsx / .xls). Use “Header row” if titles or blank rows appear before column names.</p>
         </Upload.Dragger>
+
+        {csvImportModal.allHeaders?.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 12 }}>
+              File columns ({(
+                csvImportModal.selectedHeaders == null
+                  ? csvImportModal.allHeaders.length
+                  : (csvImportModal.selectedHeaders?.length || 0)
+              )} of {csvImportModal.allHeaders.length} loaded)
+            </div>
+            <Space wrap style={{ marginBottom: 8 }}>
+              <Button
+                size="small"
+                disabled={csvImportModal.busy}
+                onClick={() => applyCsvColumnSelection(csvImportModal.allHeaders)}
+              >
+                Select all
+              </Button>
+              <Button
+                size="small"
+                disabled={
+                  csvImportModal.busy
+                  || (Array.isArray(csvImportModal.selectedHeaders) && csvImportModal.selectedHeaders.length === 0)
+                }
+                onClick={() => applyCsvColumnSelection([])}
+              >
+                Deselect all
+              </Button>
+              <Button
+                size="small"
+                disabled={csvImportModal.busy}
+                onClick={() => {
+                  const guessed = new Set();
+                  CSV_IMPORT_CORE_TARGETS.forEach((t) => {
+                    const col = guessCsvColumnForTarget(t.id, csvImportModal.allHeaders);
+                    if (col) guessed.add(col);
+                  });
+                  (csvImportModal.fieldConfigs || []).forEach((c) => {
+                    const fn = c.field_name || c.fieldName;
+                    if (!fn) return;
+                    const col = guessCsvColumnForTarget(fn, csvImportModal.allHeaders);
+                    if (col) guessed.add(col);
+                  });
+                  if (isCsvUpdateImport) {
+                    const matchCol = guessMatchFileColumn(csvImportModal.allHeaders, csvImportModal.matchField);
+                    if (matchCol) guessed.add(matchCol);
+                    Object.values(csvImportModal.mapping || {}).forEach((col) => {
+                      if (col) guessed.add(col);
+                    });
+                  }
+                  const picked = csvImportModal.allHeaders.filter((h) => guessed.has(h));
+                  applyCsvColumnSelection(picked.length > 0 ? picked : csvImportModal.allHeaders);
+                }}
+              >
+                Suggested only
+              </Button>
+            </Space>
+            <Checkbox.Group
+              value={
+                csvImportModal.selectedHeaders == null
+                  ? csvImportModal.allHeaders
+                  : (csvImportModal.selectedHeaders || [])
+              }
+              disabled={csvImportModal.busy}
+              onChange={applyCsvColumnSelection}
+              style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', maxHeight: 160, overflowY: 'auto', padding: '8px 12px', border: '1px solid #f0f0f0', borderRadius: 6 }}
+            >
+              {csvImportModal.allHeaders.map((header) => (
+                <Checkbox key={header} value={header} style={{ marginInlineStart: 0 }}>
+                  {header}
+                </Checkbox>
+              ))}
+            </Checkbox.Group>
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 6 }}>
+              Uncheck columns you do not need, or use <AntText strong>Deselect all</AntText> then tick only the columns to import. Unselected columns are not kept in memory.
+            </AntText>
+            {(Array.isArray(csvImportModal.selectedHeaders) && csvImportModal.selectedHeaders.length === 0) && (
+              <Alert
+                showIcon
+                type="warning"
+                style={{ marginTop: 8 }}
+                message="No columns selected"
+                description="Tick at least one column before mapping or importing."
+              />
+            )}
+          </div>
+        )}
 
         {isCsvUpdateImport && csvImportModal.headers.length > 0 && (
           <div style={{ marginTop: 16 }}>
