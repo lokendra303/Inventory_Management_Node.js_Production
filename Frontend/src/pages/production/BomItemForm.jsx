@@ -22,6 +22,7 @@ import {
   restoreBomDraftToForm,
   serializeBomDraft,
 } from '../../utils/bomDraft';
+import { validateBomBusinessRules } from '../../utils/bomFormValidation';
 
 const AUTO_DRAFT_MS = 45000;
 
@@ -58,8 +59,10 @@ const defaultFormValues = (units = []) => ({
   isSerialized: false,
   hasExpiry: false,
   returnableItem: false,
-  trackInventory: false,
+  trackInventory: true,
   isSellable: true,
+  isPurchasable: false,
+  isManufacturable: true,
   unit: pickDefaultUnit(units),
   bomAdditionalCharges: [],
 });
@@ -342,14 +345,17 @@ export default function BomItemForm({
         });
         setExistingCustomFields(custom);
         const whId = item.warehouse_id || (item.warehouse_ids?.[0]);
+        const itemExplode = String(item.kit_fulfillment_mode || item.kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship';
         form.setFieldsValue({
           ...mapBomItemToFormValues(item),
           category: item.category,
           unit: unitId,
           brand: brandId,
           manufacturer: manufacturerId,
-          trackInventory: deriveTrackInventoryValue(item, whId),
+          trackInventory: itemExplode ? false : deriveTrackInventoryValue(item, whId),
           isSellable: item.is_sellable !== 0 && item.is_sellable !== false,
+          isPurchasable: item.is_purchasable !== 0 && item.is_purchasable !== false,
+          isManufacturable: item.is_manufacturable !== 0 && item.is_manufacturable !== false,
           customFields: extractTypeCustomFields(custom),
           salesDescription: custom.salesDescription,
           purchaseDescription: custom.purchaseDescription,
@@ -454,20 +460,17 @@ export default function BomItemForm({
     }
   };
 
-  const validateComponents = () => {
-    const emptyRows = components.filter((row) => !row.itemId);
-    if (emptyRows.length > 0) {
-      message.error('Select a component item for each BOM row (or remove empty rows)');
-      return false;
-    }
-    const normalizedComponents = normalizeComponents(components);
-    if (normalizedComponents.length === 0) {
-      message.error('Add at least one BOM component');
-      return false;
-    }
-    const duplicateSet = new Set(normalizedComponents.map((row) => row.itemId));
-    if (duplicateSet.size !== normalizedComponents.length) {
-      message.error('Duplicate component is not allowed — use one row and increase qty');
+  const validateBeforeSubmit = () => {
+    const values = form.getFieldsValue();
+    const result = validateBomBusinessRules({
+      values,
+      components,
+      catalogItems,
+      kitFulfillmentMode,
+      isEditing,
+    });
+    if (!result.ok) {
+      message.error(result.message);
       return false;
     }
     return true;
@@ -476,20 +479,9 @@ export default function BomItemForm({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      if (!validateComponents()) throw new Error('validation_failed');
+      if (!validateBeforeSubmit()) throw new Error('validation_failed');
 
       const openingStock = Number(values.openingStock) || 0;
-      if (
-        !isEditing &&
-        values.trackInventory &&
-        openingStock > 0 &&
-        values.warehouseId &&
-        values.hasExpiry &&
-        !values.openingExpiryDate
-      ) {
-        message.error('Expiry date is required when Has expiry is on and opening stock is set');
-        throw new Error('validation_failed');
-      }
 
       const payload = buildBomSubmitPayload(values, {
         components: normalizeComponents(components),

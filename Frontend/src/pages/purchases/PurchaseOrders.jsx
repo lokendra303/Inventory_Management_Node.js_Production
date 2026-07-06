@@ -30,7 +30,7 @@ import {
 const DEFAULT_LINE = { discountRate: 0, taxRateId: undefined };
 
 const PurchaseOrders = () => {
-  const { formatCurrency, baseCurrency } = useCurrency();
+  const { baseCurrency } = useCurrency();
   const { taxRates, getRateById } = useTaxRates();
   const [pos, setPOs] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -154,7 +154,7 @@ const PurchaseOrders = () => {
         apiService.get('/purchase-orders').catch(() => ({ success: false, data: [] })),
         apiService.get('/vendors').catch(() => ({ success: false, data: [] })),
         apiService.get('/warehouses'),
-        apiService.get('/items')
+        apiService.get('/items', { params: { status: 'active', purchasableOnly: '1' } })
       ]);
       
       setPOs(posRes.success ? posRes.data : []);

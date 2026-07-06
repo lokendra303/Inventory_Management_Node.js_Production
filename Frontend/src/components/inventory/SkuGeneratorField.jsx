@@ -20,6 +20,7 @@ export default function SkuGeneratorField({
   skuInputDisabled = false,
   canManage = true,
   onOpenSkuRules = null,
+  skuLabel = 'SKU',
 }) {
   const form = Form.useFormInstance();
   const [skuRules, setSkuRules] = useState([]);
@@ -52,7 +53,7 @@ export default function SkuGeneratorField({
 
   const validateSkuAvailability = async (_, value) => {
     const sku = String(value || '').trim();
-    if (!sku) return Promise.reject(new Error('Please input SKU!'));
+    if (!sku) return Promise.reject(new Error(`Please enter ${skuLabel}!`));
     try {
       const res = await apiService.get('/items/check-sku', {
         params: {
@@ -115,7 +116,7 @@ export default function SkuGeneratorField({
         name="sku"
         label={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span>SKU</span>
+            <span>{skuLabel}</span>
             {canManage && onOpenSkuRules && (
               <Tooltip title="Manage SKU rules">
                 <Button

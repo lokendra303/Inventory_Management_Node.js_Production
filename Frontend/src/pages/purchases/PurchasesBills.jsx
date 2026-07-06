@@ -90,7 +90,7 @@ const PurchasesBills = () => {
       const itemIds = [...new Set((invoiceData.lines || []).map(l => l.item_id).filter(Boolean))];
       if (itemIds.length > 0) {
         try {
-          const itemsRes = await apiService.get('/items');
+          const itemsRes = await apiService.get('/items', { params: { status: 'active', purchasableOnly: '1' } });
           if (itemsRes.success) {
             const masterData = {};
             (itemsRes.data || []).forEach(item => {

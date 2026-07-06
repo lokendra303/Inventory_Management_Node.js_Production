@@ -203,7 +203,19 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
                   <Tag color="green" style={{ borderRadius: 20 }}>Sellable</Tag>
                 )}
                 {viewingItem.type !== 'service' && viewingItem.is_sellable === 0 && (
-                  <Tag color="orange" style={{ borderRadius: 20 }}>Production only</Tag>
+                  <Tag color="orange" style={{ borderRadius: 20 }}>Not for sale</Tag>
+                )}
+                {viewingItem.type !== 'service' && viewingItem.is_purchasable !== 0 && viewingItem.is_purchasable !== false && (
+                  <Tag color="gold" style={{ borderRadius: 20 }}>Purchasable</Tag>
+                )}
+                {viewingItem.type !== 'service' && (viewingItem.is_purchasable === 0 || viewingItem.is_purchasable === false) && (
+                  <Tag color="default" style={{ borderRadius: 20 }}>Not purchasable</Tag>
+                )}
+                {isComposite && viewingItem.is_manufacturable !== 0 && viewingItem.is_manufacturable !== false && (
+                  <Tag color="cyan" style={{ borderRadius: 20 }}>Sub-assembly</Tag>
+                )}
+                {isComposite && (viewingItem.is_manufacturable === 0 || viewingItem.is_manufacturable === false) && (
+                  <Tag color="default" style={{ borderRadius: 20 }}>Not in other BOMs</Tag>
                 )}
                 {isComposite && (
                   <Tag color="geekblue" style={{ borderRadius: 20 }}>

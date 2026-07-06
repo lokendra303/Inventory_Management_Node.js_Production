@@ -141,6 +141,8 @@ export function mapBomItemToFormValues(item = {}) {
     returnableItem: Boolean(item.custom_fields?.returnableItem || item.custom_fields?.returnable),
     trackInventory: false,
     isSellable: item.is_sellable !== 0 && item.is_sellable !== false,
+    isPurchasable: item.is_purchasable !== 0 && item.is_purchasable !== false,
+    isManufacturable: item.is_manufacturable !== 0 && item.is_manufacturable !== false,
     ...mapSkuMetaToVariantFormFields(item.custom_fields || {}),
     bomAdditionalCharges: Array.isArray(item.custom_fields?.bomAdditionalCharges)
       ? item.custom_fields.bomAdditionalCharges.map((row) => ({
@@ -161,7 +163,10 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
   } = extras;
 
   const itemIsSellable = values.isSellable !== false;
-  const tracksInventory = values.trackInventory === true;
+  const itemIsPurchasable = values.isPurchasable === true;
+  const itemIsManufacturable = values.isManufacturable !== false;
+  const isExplodeMode = String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship';
+  const tracksInventory = !isExplodeMode && values.trackInventory === true;
 
   const customFields = {
     ...existingCustomFields,
@@ -173,7 +178,7 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
   else delete customFields.salesDescription;
   if (values.purchaseDescription) customFields.purchaseDescription = values.purchaseDescription;
   else delete customFields.purchaseDescription;
-  if (values.purchaseTaxRate != null) customFields.purchaseTaxRate = values.purchaseTaxRate;
+  if (itemIsPurchasable && values.purchaseTaxRate != null) customFields.purchaseTaxRate = values.purchaseTaxRate;
   else delete customFields.purchaseTaxRate;
 
   const normalizedCharges = (Array.isArray(values.bomAdditionalCharges) ? values.bomAdditionalCharges : [])
@@ -221,7 +226,7 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
     unit: values.unit || 'pcs',
     barcode: optionalText(values.barcode),
     hsnCode: optionalText(values.hsnCode),
-    supplierCode: optionalText(values.supplierCode),
+    supplierCode: itemIsPurchasable ? optionalText(values.supplierCode) : undefined,
     upc: optionalText(values.upc),
     mpn: optionalText(values.mpn),
     ean: optionalText(values.ean),
@@ -236,9 +241,11 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
     itemGroupId: values.itemGroupId || undefined,
     valuationMethod: values.valuationMethod || 'fifo',
     allowNegativeStock: Boolean(values.allowNegativeStock),
-    purchaseAccount: values.purchaseAccount || 'cogs',
+    purchaseAccount: itemIsPurchasable ? (values.purchaseAccount || 'cogs') : undefined,
     salesAccount: itemIsSellable ? (values.salesAccount || undefined) : undefined,
     isSellable: itemIsSellable,
+    isPurchasable: itemIsPurchasable,
+    isManufacturable: itemIsManufacturable,
     costPrice: optionalNumber(values.costPrice, 0),
     sellingPrice: itemIsSellable ? optionalNumber(values.sellingPrice, 0) : 0,
     mrp: itemIsSellable ? optionalNumber(values.mrp) : undefined,

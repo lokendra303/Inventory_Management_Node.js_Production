@@ -6,6 +6,12 @@ const itemPriceHistoryService = require('./itemPriceHistory.service');
 const itemGroupService = require('./itemGroup.service');
 
 class ItemService {
+  _normalizeUsageFlag(value, defaultValue = true) {
+    if (value === false || value === 0 || value === '0') return false;
+    if (value === true || value === 1 || value === '1') return true;
+    return defaultValue;
+  }
+
   _normalizeCompositeComponents(components = []) {
     if (!Array.isArray(components)) return [];
     return components
@@ -19,6 +25,51 @@ class ItemService {
         ...component,
         consumptionTiming: ['order', 'shipment'].includes(component.consumptionTiming) ? component.consumptionTiming : 'shipment'
       }));
+  }
+
+  async _getCompositeBomComponentIds(institutionId, compositeItemId) {
+    const rows = await db.query(
+      `SELECT cc.component_item_id, i.type
+         FROM composite_components cc
+         JOIN items i ON i.id = cc.component_item_id AND i.institution_id = cc.institution_id
+        WHERE cc.institution_id = ? AND cc.composite_item_id = ?`,
+      [institutionId, compositeItemId]
+    );
+    return rows.map((row) => ({
+      itemId: String(row.component_item_id),
+      type: String(row.type || '').toLowerCase(),
+    }));
+  }
+
+  async _compositeBomContainsItem(institutionId, rootCompositeId, targetItemId, visited = new Set()) {
+    const rootKey = String(rootCompositeId);
+    if (visited.has(rootKey)) return false;
+    visited.add(rootKey);
+
+    const children = await this._getCompositeBomComponentIds(institutionId, rootCompositeId);
+    for (const child of children) {
+      if (String(child.itemId) === String(targetItemId)) return true;
+      if (child.type === 'composite') {
+        const found = await this._compositeBomContainsItem(
+          institutionId,
+          child.itemId,
+          targetItemId,
+          visited
+        );
+        if (found) return true;
+      }
+    }
+    return false;
+  }
+
+  async _assertNoCompositeComponentCycle(institutionId, parentCompositeId, componentIds = []) {
+    for (const componentId of componentIds) {
+      if (await this._compositeBomContainsItem(institutionId, componentId, parentCompositeId)) {
+        throw new Error(
+          'Circular BOM is not allowed: a sub-assembly already uses this finished product in its own BOM'
+        );
+      }
+    }
   }
 
   async _replaceCompositeComponents(institutionId, compositeItemId, components = []) {
@@ -53,7 +104,7 @@ class ItemService {
     const componentIds = Array.from(uniqueComponentIds);
     const placeholders = componentIds.map(() => '?').join(',');
     const candidateComponents = await db.query(
-      `SELECT id, status, type
+      `SELECT id, status, type, kit_fulfillment_mode, is_manufacturable, sku, name
          FROM items
         WHERE institution_id = ?
           AND id IN (${placeholders})`,
@@ -71,11 +122,34 @@ class ItemService {
       throw new Error(`Inactive component items: ${inactiveIds.join(', ')}`);
     }
     const unsupportedTypeIds = candidateComponents
-      .filter((row) => ['service', 'composite'].includes(String(row.type || '').toLowerCase()))
+      .filter((row) => String(row.type || '').toLowerCase() === 'service')
       .map((row) => String(row.id));
     if (unsupportedTypeIds.length > 0) {
-      throw new Error(`Unsupported component item types for IDs: ${unsupportedTypeIds.join(', ')}`);
+      throw new Error(`Service items cannot be BOM components: ${unsupportedTypeIds.join(', ')}`);
     }
+
+    const nonManufacturable = candidateComponents
+      .filter((row) => !this._normalizeUsageFlag(row.is_manufacturable, true))
+      .map((row) => row.sku || row.name || row.id);
+    if (nonManufacturable.length > 0) {
+      throw new Error(
+        `These items cannot be used as BOM components (manufacturing usage disabled): ${nonManufacturable.join(', ')}`
+      );
+    }
+
+    const explodeSubAssemblyIds = candidateComponents
+      .filter((row) => (
+        String(row.type || '').toLowerCase() === 'composite'
+        && String(row.kit_fulfillment_mode || 'prebuilt').toLowerCase() === 'explode_on_ship'
+      ))
+      .map((row) => String(row.id));
+    if (explodeSubAssemblyIds.length > 0) {
+      throw new Error(
+        'Explode-on-ship BOM items cannot be used as sub-assemblies. Switch the sub-assembly to Pre-built, or add its raw components directly.'
+      );
+    }
+
+    await this._assertNoCompositeComponentCycle(institutionId, compositeItemId, componentIds);
 
     await db.query(
       'DELETE FROM composite_components WHERE institution_id = ? AND composite_item_id = ?',
@@ -99,6 +173,94 @@ class ItemService {
     }
 
     return normalizedComponents.length;
+  }
+
+  async _assertItemNotUsedAsBomComponent(institutionId, itemId) {
+    const rows = await db.query(
+      `SELECT i.sku, i.name
+         FROM composite_components cc
+         JOIN items i ON i.id = cc.composite_item_id AND i.institution_id = cc.institution_id
+        WHERE cc.institution_id = ? AND cc.component_item_id = ?
+        LIMIT 8`,
+      [institutionId, itemId]
+    );
+    if (rows.length > 0) {
+      const labels = rows.map((row) => row.sku || row.name).filter(Boolean).join(', ');
+      throw new Error(
+        `Cannot disable manufacturing usage: this item is already used in other BOMs (${labels})`
+      );
+    }
+  }
+
+  _validateCompositeItemBusinessRules(itemData = {}) {
+    const mode = String(itemData.kitFulfillmentMode || 'prebuilt').toLowerCase();
+    const isExplode = mode === 'explode_on_ship';
+    const openingStock = Number(itemData.openingStock) || 0;
+    const minStock = Number(itemData.minStockLevel) || 0;
+    const maxStock = Number(itemData.maxStockLevel) || 0;
+
+    if (!String(itemData.unit || '').trim()) {
+      throw new Error('Unit is required');
+    }
+
+    if (isExplode) {
+      if (openingStock > 0) {
+        throw new Error('Explode-on-ship BOM items cannot have opening finished goods stock');
+      }
+      if (itemData.isBatchTracked || itemData.isSerialized || itemData.hasExpiry) {
+        throw new Error(
+          'Batch, serial, and expiry tracking apply to finished goods stock — not explode-on-ship items'
+        );
+      }
+      if (minStock > 0 || maxStock > 0 || itemData.defaultBinId) {
+        throw new Error('Explode-on-ship items do not track finished goods inventory levels');
+      }
+    }
+
+    if (!isExplode && openingStock > 0 && !itemData.warehouseId) {
+      throw new Error('Warehouse is required when opening stock is greater than zero');
+    }
+
+    if (
+      !isExplode
+      && openingStock > 0
+      && itemData.hasExpiry
+      && !String(itemData.openingExpiryDate || '').trim()
+    ) {
+      throw new Error('Opening expiry date is required when expiry tracking is enabled and opening stock is set');
+    }
+
+    if (minStock > 0 && maxStock > 0 && minStock > maxStock) {
+      throw new Error('Min stock level cannot be greater than max stock level');
+    }
+
+    const sellingPrice = Number(itemData.sellingPrice);
+    const mrp = Number(itemData.mrp);
+    if (
+      this._normalizeUsageFlag(itemData.isSellable, true)
+      && Number.isFinite(mrp)
+      && mrp > 0
+      && Number.isFinite(sellingPrice)
+      && sellingPrice > mrp
+    ) {
+      throw new Error('Selling price cannot be greater than MRP');
+    }
+  }
+
+  async _validateCompositeFulfillmentChange(institutionId, itemId, nextKitMode) {
+    if (String(nextKitMode || 'prebuilt').toLowerCase() !== 'explode_on_ship') return;
+    const rows = await db.query(
+      `SELECT COALESCE(SUM(quantity_on_hand), 0) AS qty
+         FROM inventory_projections
+        WHERE institution_id = ? AND item_id = ?`,
+      [institutionId, itemId]
+    );
+    const onHand = Number(rows[0]?.qty) || 0;
+    if (onHand > 0) {
+      throw new Error(
+        `Cannot switch to explode-on-ship while ${onHand} finished unit(s) are on hand. Clear or adjust stock first.`
+      );
+    }
   }
 
   _normalizeVariantRows(rows = []) {
@@ -432,6 +594,8 @@ class ItemService {
       openingExpiryDate,
       openingBatchRuleId,
       isSellable = true,
+      isPurchasable = true,
+      isManufacturable = true,
     } = itemData;
 
     if (String(type).toLowerCase() === 'composite' && !options.allowComposite) {
@@ -442,6 +606,10 @@ class ItemService {
     const validationErrors = await itemFieldService.validateCustomFields(institutionId, type, customFields);
     if (validationErrors.length > 0) {
       throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
+    }
+
+    if (String(type).toLowerCase() === 'composite') {
+      this._validateCompositeItemBusinessRules(itemData);
     }
 
     // Provide clear business error instead of raw DB duplicate key message.
@@ -471,7 +639,13 @@ class ItemService {
 
     const normalizedIsSellable = String(type).toLowerCase() === 'service'
       ? true
-      : (isSellable === false || isSellable === 0 || isSellable === '0' ? false : true);
+      : this._normalizeUsageFlag(isSellable, true);
+    const normalizedIsPurchasable = String(type).toLowerCase() === 'service'
+      ? true
+      : this._normalizeUsageFlag(isPurchasable, true);
+    const normalizedIsManufacturable = String(type).toLowerCase() === 'service'
+      ? false
+      : this._normalizeUsageFlag(isManufacturable, true);
 
     await db.query(
       `INSERT INTO items 
@@ -480,14 +654,14 @@ class ItemService {
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, item_group_id, purchase_account, sales_account,
-        opening_stock, opening_value, as_of_date, status, is_sellable) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+        opening_stock, opening_value, as_of_date, status, is_sellable, is_purchasable, is_manufacturable) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
       [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, normalizedKitMode, category || null, unit, barcode || null, normalizedBatchNumber, hsnCode || null,
        JSON.stringify(customFields), defaultBinId || null, valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
        shelfLifeDays || null, storageConditions || null, resolvedItemGroup?.itemGroupName || null, resolvedItemGroup?.itemGroupId || null, purchaseAccount || null, salesAccount || null,
-       openingStock, openingValue, asOfDate || null, normalizedIsSellable ? 1 : 0]
+       openingStock, openingValue, asOfDate || null, normalizedIsSellable ? 1 : 0, normalizedIsPurchasable ? 1 : 0, normalizedIsManufacturable ? 1 : 0]
     );
 
     if (type === 'variant') {
@@ -664,6 +838,8 @@ class ItemService {
       hasExpiry,
       shelfLifeDays,
       isSellable,
+      isPurchasable,
+      isManufacturable,
     } = updateData;
 
     const updateFields = [];
@@ -686,6 +862,38 @@ class ItemService {
       || updateData.components !== undefined;
     if (touchesComposite && !options.allowComposite) {
       throw new Error('Composite/BOM items must be managed in Production');
+    }
+
+    const [currentItemRow] = await db.query(
+      `SELECT type, kit_fulfillment_mode, unit, min_stock_level, max_stock_level,
+              is_batch_tracked, is_serialized, has_expiry, is_sellable, selling_price, mrp
+         FROM items WHERE institution_id = ? AND id = ? LIMIT 1`,
+      [institutionId, itemId]
+    );
+
+    if (touchesComposite) {
+      const mergedComposite = {
+        kitFulfillmentMode: kitFulfillmentMode !== undefined
+          ? kitFulfillmentMode
+          : currentItemRow?.kit_fulfillment_mode,
+        unit: unit !== undefined ? unit : currentItemRow?.unit,
+        openingStock: openingStock !== undefined ? openingStock : 0,
+        warehouseId: warehouseId !== undefined ? warehouseId : undefined,
+        defaultBinId: defaultBinId !== undefined ? defaultBinId : undefined,
+        minStockLevel: minStockLevel !== undefined ? minStockLevel : currentItemRow?.min_stock_level,
+        maxStockLevel: maxStockLevel !== undefined ? maxStockLevel : currentItemRow?.max_stock_level,
+        isBatchTracked: isBatchTracked !== undefined ? isBatchTracked : Boolean(currentItemRow?.is_batch_tracked),
+        isSerialized: isSerialized !== undefined ? isSerialized : Boolean(currentItemRow?.is_serialized),
+        hasExpiry: hasExpiry !== undefined ? hasExpiry : Boolean(currentItemRow?.has_expiry),
+        openingExpiryDate: updateData.openingExpiryDate,
+        isSellable: isSellable !== undefined ? isSellable : currentItemRow?.is_sellable,
+        sellingPrice: sellingPrice !== undefined ? sellingPrice : currentItemRow?.selling_price,
+        mrp: mrp !== undefined ? mrp : currentItemRow?.mrp,
+      };
+      this._validateCompositeItemBusinessRules(mergedComposite);
+      if (kitFulfillmentMode !== undefined) {
+        await this._validateCompositeFulfillmentChange(institutionId, itemId, kitFulfillmentMode);
+      }
     }
 
     if (sku !== undefined) {
@@ -851,9 +1059,28 @@ class ItemService {
       const nextTypeForSellable = type !== undefined ? type : oldItem?.type;
       const normalizedIsSellable = String(nextTypeForSellable || '').toLowerCase() === 'service'
         ? true
-        : (isSellable === false || isSellable === 0 || isSellable === '0' ? false : true);
+        : this._normalizeUsageFlag(isSellable, true);
       updateFields.push('is_sellable = ?');
       updateValues.push(normalizedIsSellable ? 1 : 0);
+    }
+    if (isPurchasable !== undefined) {
+      const nextTypeForPurchasable = type !== undefined ? type : oldItem?.type;
+      const normalizedIsPurchasable = String(nextTypeForPurchasable || '').toLowerCase() === 'service'
+        ? true
+        : this._normalizeUsageFlag(isPurchasable, true);
+      updateFields.push('is_purchasable = ?');
+      updateValues.push(normalizedIsPurchasable ? 1 : 0);
+    }
+    if (isManufacturable !== undefined) {
+      const nextTypeForManufacturable = type !== undefined ? type : oldItem?.type;
+      const normalizedIsManufacturable = String(nextTypeForManufacturable || '').toLowerCase() === 'service'
+        ? false
+        : this._normalizeUsageFlag(isManufacturable, true);
+      if (!normalizedIsManufacturable) {
+        await this._assertItemNotUsedAsBomComponent(institutionId, itemId);
+      }
+      updateFields.push('is_manufacturable = ?');
+      updateValues.push(normalizedIsManufacturable ? 1 : 0);
     }
 
     if (updateFields.length === 0) {
@@ -1358,6 +1585,14 @@ class ItemService {
 
     if (filters.productionOnly === true || filters.productionOnly === 'true' || filters.productionOnly === '1') {
       where += ' AND COALESCE(i.is_sellable, 1) = 0';
+    }
+
+    if (filters.purchasableOnly === true || filters.purchasableOnly === 'true' || filters.purchasableOnly === '1') {
+      where += ' AND COALESCE(i.is_purchasable, 1) = 1';
+    }
+
+    if (filters.manufacturableOnly === true || filters.manufacturableOnly === 'true' || filters.manufacturableOnly === '1') {
+      where += ' AND COALESCE(i.is_manufacturable, 1) = 1';
     }
 
     return { where, params };

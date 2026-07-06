@@ -63,11 +63,17 @@ const formatComponentTypeLabel = (type) => {
 
 const isBomComponentItem = (itemRow, excludeItemId) => {
   const type = String(itemRow?.type || 'simple').toLowerCase();
+  const manufacturable = itemRow?.is_manufacturable !== 0 && itemRow?.is_manufacturable !== false;
   return itemRow?.id !== excludeItemId
     && itemRow?.status === 'active'
-    && type !== 'composite'
-    && type !== 'service';
+    && type !== 'service'
+    && manufacturable;
 };
+
+const isExplodeOnShipComposite = (itemRow) => (
+  String(itemRow?.type || '').toLowerCase() === 'composite'
+  && String(itemRow?.kit_fulfillment_mode || itemRow?.kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship'
+);
 
 /**
  * Bill of materials editor for composite / finished product items.
@@ -150,7 +156,7 @@ export default function CompositeBomSection({
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             <li>
               <AntText strong>Component item</AntText>
-              {' — '}Pick an active inventory item (simple, variant, or custom type). Composite and service items cannot be components.
+              {' — '}Pick an active inventory item (simple, variant, custom type, or another pre-built BOM sub-assembly). Service items cannot be components.
             </li>
             <li style={{ marginTop: 6 }}>
               <AntText strong>Qty per 1 unit</AntText>
@@ -169,7 +175,7 @@ export default function CompositeBomSection({
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             <li>
               <AntText strong>Component item</AntText>
-              {' — '}Pick an active inventory item (simple, variant, or custom type). Composite and service items cannot be components.
+              {' — '}Pick an active inventory item (simple, variant, custom type, or another pre-built BOM sub-assembly). Service items cannot be components.
             </li>
             <li style={{ marginTop: 6 }}>
               <AntText strong>Qty per 1 unit</AntText>
@@ -200,7 +206,10 @@ export default function CompositeBomSection({
                 .filter(Boolean)
             );
             const rowOptions = selectableItems.filter(
-              (itemRow) => !selectedElsewhere.has(String(itemRow.id)) || String(row.itemId) === String(itemRow.id)
+              (itemRow) => (
+                (!selectedElsewhere.has(String(itemRow.id)) || String(row.itemId) === String(itemRow.id))
+                && !isExplodeOnShipComposite(itemRow)
+              )
             );
             const duplicateRow = row.itemId && components.some(
               (c, i) => i !== idx && String(c.itemId) === String(row.itemId)
@@ -277,6 +286,11 @@ export default function CompositeBomSection({
                         </Select.Option>
                       ))}
                     </Select>
+                    {selectedItem && isExplodeOnShipComposite(selectedItem) ? (
+                      <AntText type="danger" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                        Explode-on-ship BOM items cannot be sub-assemblies. Switch that item to Pre-built or add its raw components directly.
+                      </AntText>
+                    ) : null}
                     {duplicateRow ? (
                       <AntText type="danger" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
                         Same component already on another row — use one row and increase qty, or remove this line.
@@ -307,6 +321,11 @@ export default function CompositeBomSection({
                         <span style={{ ...metaChipStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca' }}>
                           <strong>Line cost:</strong> {formatPrice(lineCost, currency, 'USD')}
                         </span>
+                        {String(selectedItem.type || '').toLowerCase() === 'composite' ? (
+                          <span style={{ ...metaChipStyle, background: '#f3e8ff', borderColor: '#ddd6fe', color: '#6d28d9' }}>
+                            <strong>Sub-assembly</strong>
+                          </span>
+                        ) : null}
                       </div>
                     ) : null}
                   </Col>

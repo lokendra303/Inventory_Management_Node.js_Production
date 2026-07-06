@@ -48,6 +48,7 @@ export function CategoryField({
   canViewCategories = true,
   canManageCategories = false,
   onRefresh,
+  tooltip,
 }) {
   const handleAdd = async () => {
     const raw = window.prompt('Enter new category:');
@@ -89,14 +90,14 @@ export function CategoryField({
 
   if (!canViewCategories) {
     return (
-      <Form.Item name="category" label="Category">
+      <Form.Item name="category" label="Category" tooltip={tooltip}>
         <Input placeholder="Enter category name" />
       </Form.Item>
     );
   }
 
   return (
-    <Form.Item name="category" label="Category">
+    <Form.Item name="category" label="Category" tooltip={tooltip}>
       <Select
         allowClear
         showSearch
@@ -128,7 +129,7 @@ export function CategoryField({
   );
 }
 
-export function UnitField({ form, units = [], onRefresh }) {
+export function UnitField({ form, units = [], onRefresh, label = 'Unit', requiredMessage = 'Unit is required' }) {
   const handleAdd = async () => {
     const raw = window.prompt('Enter new unit:');
     const name = String(raw || '').trim();
@@ -161,7 +162,7 @@ export function UnitField({ form, units = [], onRefresh }) {
   };
 
   return (
-    <Form.Item name="unit" label="Unit" rules={[{ required: true, message: 'Unit is required' }]}>
+    <Form.Item name="unit" label={label} rules={[{ required: true, message: requiredMessage }]}>
       <Select
         showSearch
         allowClear

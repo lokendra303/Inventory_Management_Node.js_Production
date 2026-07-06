@@ -90,6 +90,8 @@ const updateItemSchema = Joi.object({
   minStockLevel: Joi.number().min(0).optional(),
   maxStockLevel: Joi.number().min(0).optional(),
   isSellable: Joi.boolean().optional(),
+  isPurchasable: Joi.boolean().optional(),
+  isManufacturable: Joi.boolean().optional(),
 }).unknown(true);
 
 const bomComponentSchema = Joi.object({
@@ -120,6 +122,9 @@ const createBomItemSchema = Joi.object({
   isBatchTracked: Joi.boolean().optional(),
   hasExpiry: Joi.boolean().optional(),
   shelfLifeDays: Joi.number().min(0).allow(null).optional(),
+  isSellable: Joi.boolean().optional(),
+  isPurchasable: Joi.boolean().optional(),
+  isManufacturable: Joi.boolean().optional(),
   warehouseId: Joi.string().uuid().allow(null, '').optional(),
   openingStock: Joi.number().min(0).allow(null).optional(),
   openingBatchNumber: Joi.string().max(100).allow('', null).optional(),
@@ -151,6 +156,9 @@ const updateBomItemSchema = Joi.object({
   isBatchTracked: Joi.boolean().optional(),
   hasExpiry: Joi.boolean().optional(),
   shelfLifeDays: Joi.number().min(0).allow(null).optional(),
+  isSellable: Joi.boolean().optional(),
+  isPurchasable: Joi.boolean().optional(),
+  isManufacturable: Joi.boolean().optional(),
 }).unknown(true);
 
 // Warehouse schemas

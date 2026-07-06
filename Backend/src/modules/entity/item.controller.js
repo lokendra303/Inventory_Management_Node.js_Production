@@ -127,6 +127,8 @@ class ItemController {
           : (req.query.type ? [] : ['composite']),
         sellableOnly: req.query.sellableOnly,
         productionOnly: req.query.productionOnly,
+        purchasableOnly: req.query.purchasableOnly,
+        manufacturableOnly: req.query.manufacturableOnly,
       };
       
       const { items, total } = await itemService.getItems(req.institutionId, filters, limit, offset);
