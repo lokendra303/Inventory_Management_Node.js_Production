@@ -8,8 +8,8 @@ export const usePermissions = () => {
   const { user } = useAuth();
   
   const hasPermission = (permission) => {
-    if (!user?.permissions) return false;
     if (user?.role === 'admin' || user?.role === 'super_admin') return true;
+    if (!user?.permissions) return false;
     return user.permissions.all || user.permissions[permission];
   };
 

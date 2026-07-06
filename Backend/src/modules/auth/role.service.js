@@ -2,6 +2,9 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../../database/connection');
 const logger = require('../../utils/logger');
 const { ROLE_PERMISSIONS } = require('../../constants/permissions');
+const authService = require('./auth.service');
+
+const SYSTEM_ROLE_IDS = ['admin', 'manager', 'user'];
 
 class RoleService {
   async createRole(institutionId, name, permissions) {
@@ -76,12 +79,32 @@ class RoleService {
       [institutionId]
     );
 
-    // Parse permissions for all roles
-    return roles.map(role => ({
+    const parsed = roles.map(role => ({
       ...role,
       permissions: typeof role.permissions === 'string' ? JSON.parse(role.permissions) : role.permissions,
-      isSystem: ['admin', 'manager', 'user'].includes(role.id)
+      isSystem: SYSTEM_ROLE_IDS.includes(role.id) || SYSTEM_ROLE_IDS.includes(role.name)
     }));
+
+    const existingKeys = new Set();
+    parsed.forEach((role) => {
+      existingKeys.add(role.id);
+      existingKeys.add(role.name);
+    });
+
+    for (const systemRoleId of SYSTEM_ROLE_IDS) {
+      if (!existingKeys.has(systemRoleId)) {
+        parsed.push({
+          id: systemRoleId,
+          name: systemRoleId,
+          permissions: ROLE_PERMISSIONS[systemRoleId] || {},
+          status: 'active',
+          created_at: null,
+          isSystem: true
+        });
+      }
+    }
+
+    return parsed.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   }
 
   async updateRole(institutionId, roleId, name, permissions) {
@@ -94,6 +117,12 @@ class RoleService {
       throw new Error('Cannot update admin role');
     }
 
+    const existingRole = await db.query(
+      'SELECT name FROM roles WHERE id = ? AND institution_id = ?',
+      [roleId, institutionId]
+    );
+    const previousName = existingRole[0]?.name;
+
     // Ensure system roles exist in database first
     if (['manager', 'user'].includes(roleId)) {
       const existing = await db.query(
@@ -102,29 +131,45 @@ class RoleService {
       );
       
       if (existing.length === 0) {
-        // Create system role first
-        const defaultPermissions = ROLE_PERMISSIONS[roleId] || {};
-        
         await db.query(
           'INSERT INTO roles (id, institution_id, name, permissions, status, created_at) VALUES (?, ?, ?, ?, \'active\', NOW())',
-          [roleId, institutionId, name, JSON.stringify(defaultPermissions)]
+          [roleId, institutionId, name, JSON.stringify(permissions)]
         );
         
-        logger.info('System role created and updated', { roleId, institutionId, name });
-        return;
+        logger.info('System role created', { roleId, institutionId, name });
+      } else {
+        const result = await db.query(
+          'UPDATE roles SET name = ?, permissions = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?',
+          [name, JSON.stringify(permissions), roleId, institutionId]
+        );
+
+        if (result.affectedRows === 0) {
+          throw new Error('Role not found');
+        }
+
+        logger.info('Role updated', { roleId, institutionId, name });
       }
+    } else {
+      const result = await db.query(
+        'UPDATE roles SET name = ?, permissions = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?',
+        [name, JSON.stringify(permissions), roleId, institutionId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error('Role not found');
+      }
+
+      logger.info('Role updated', { roleId, institutionId, name });
     }
 
-    const result = await db.query(
-      'UPDATE roles SET name = ?, permissions = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?',
-      [name, JSON.stringify(permissions), roleId, institutionId]
-    );
-
-    if (result.affectedRows === 0) {
-      throw new Error('Role not found');
+    if (previousName && previousName !== name) {
+      await db.query(
+        'UPDATE institution_users SET role = ? WHERE institution_id = ? AND role = ?',
+        [name, institutionId, previousName]
+      );
     }
 
-    logger.info('Role updated', { roleId, institutionId, name });
+    await authService.clearUserPermissionSnapshotsForRole(institutionId, name);
   }
 
   async toggleRoleStatus(institutionId, roleId) {

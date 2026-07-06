@@ -67,7 +67,17 @@ export const AuthProvider = ({ children }) => {
           const secsLeft = Math.ceil((response.data.sessionExpiresAt - Date.now()) / 1000);
           setSessionSecondsLeft(Math.max(0, secsLeft));
         }
-        setUser(prev => prev ? { ...prev, token: newToken } : prev);
+        setUser(prev => {
+          if (!prev) return prev;
+          const next = { ...prev, token: newToken };
+          if (response.data.permissions) {
+            next.permissions = response.data.permissions;
+          }
+          if (response.data.role) {
+            next.role = response.data.role;
+          }
+          return next;
+        });
       } else if (!response.success && response.code === 'SESSION_EXPIRED') {
         handleSessionExpired();
       }

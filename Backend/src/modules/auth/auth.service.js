@@ -87,44 +87,103 @@ class AuthService {
     return [];
   }
 
+  _hasGrantPermissions(permissions) {
+    const parsed = this._parsePermissions(permissions);
+    return Object.keys(parsed).some((key) => parsed[key] === true);
+  }
+
+  _extractDenyOverrides(permissions) {
+    const parsed = this._parsePermissions(permissions);
+    const denies = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value === false) denies[key] = false;
+    }
+    return denies;
+  }
+
+  async _loadRolePermissions(institutionId, roleName) {
+    if (!institutionId || !roleName) return {};
+
+    try {
+      const roleRows = await db.query(
+        `SELECT permissions
+           FROM roles
+          WHERE institution_id = ?
+            AND (name = ? OR id = ?)
+            AND status = 'active'
+          LIMIT 1`,
+        [institutionId, roleName, roleName]
+      );
+      if (roleRows.length > 0) {
+        const rolePermissions = this._parsePermissions(roleRows[0].permissions);
+        if (Object.keys(rolePermissions).length > 0) {
+          return rolePermissions;
+        }
+      }
+    } catch (error) {
+      logger.warn('Could not resolve role-based permissions', {
+        institutionId,
+        role: roleName,
+        error: error.message
+      });
+    }
+
+    return ROLE_PERMISSIONS[roleName] || {};
+  }
+
+  async resolveEffectivePermissions(user) {
+    return this._resolveEffectivePermissions(user);
+  }
+
   async _resolveEffectivePermissions(user) {
     if (!user) return {};
     if (user.role === 'admin' || user.role === 'super_admin') {
       return { all: true };
     }
 
-    const directPermissions = this._parsePermissions(user.permissions);
-    if (Object.keys(directPermissions).length > 0) {
-      return directPermissions;
+    const basePermissions = await this._loadRolePermissions(user.institution_id, user.role);
+    const storedPermissions = this._parsePermissions(user.permissions);
+
+    if (Object.keys(storedPermissions).length === 0) {
+      return basePermissions;
     }
 
-    // Fallback to custom role permissions table when user-level permissions are empty.
-    if (user.institution_id && user.role) {
-      try {
-        const roleRows = await db.query(
-          `SELECT permissions
-             FROM roles
-            WHERE institution_id = ? AND name = ? AND status = 'active'
-            LIMIT 1`,
-          [user.institution_id, user.role]
-        );
-        if (roleRows.length > 0) {
-          const rolePermissions = this._parsePermissions(roleRows[0].permissions);
-          if (Object.keys(rolePermissions).length > 0) {
-            return rolePermissions;
-          }
-        }
-      } catch (error) {
-        logger.warn('Could not resolve role-based permissions', {
+    if (this._hasGrantPermissions(storedPermissions)) {
+      const denyOverrides = this._extractDenyOverrides(storedPermissions);
+      db.query(
+        'UPDATE institution_users SET permissions = ?, updated_at = NOW() WHERE id = ?',
+        [JSON.stringify(denyOverrides), user.id]
+      ).catch((error) => {
+        logger.warn('Failed to migrate legacy user permissions', {
           userId: user.id,
-          institutionId: user.institution_id,
-          role: user.role,
           error: error.message
         });
-      }
+      });
+      return { ...basePermissions, ...denyOverrides };
     }
 
-    return ROLE_PERMISSIONS[user.role] || {};
+    // User-level permissions are overrides on top of the role (e.g. warehouse denials).
+    return { ...basePermissions, ...storedPermissions };
+  }
+
+  async clearUserPermissionSnapshotsForRole(institutionId, roleName) {
+    if (!institutionId || !roleName) return;
+
+    const users = await db.query(
+      'SELECT id, permissions FROM institution_users WHERE institution_id = ? AND role = ?',
+      [institutionId, roleName]
+    );
+
+    for (const user of users) {
+      const stored = this._parsePermissions(user.permissions);
+      if (!this._hasGrantPermissions(stored)) continue;
+
+      const denyOverrides = this._extractDenyOverrides(stored);
+      await db.query(
+        'UPDATE institution_users SET permissions = ?, updated_at = NOW() WHERE id = ?',
+        [JSON.stringify(denyOverrides), user.id]
+      );
+    }
   }
 
   // Create new institution (replaces createinstitution)
@@ -598,10 +657,9 @@ class AuthService {
 
     const userId = uuidv4();
     const passwordHash = await bcrypt.hash(password, 12);
-    
-    // Merge default role permissions with custom permissions
-    const defaultPermissions = ROLE_PERMISSIONS[role] || {};
-    const finalPermissions = { ...defaultPermissions, ...permissions };
+
+    // Store only per-user overrides; effective permissions are resolved from the role at login.
+    const finalPermissions = this._extractDenyOverrides(permissions);
 
     await db.query(
       `INSERT INTO institution_users (id, institution_id, email, mobile, password_hash, first_name, last_name, 
@@ -634,8 +692,10 @@ class AuthService {
       throw new Error('Cannot modify super admin permissions');
     }
     
+    const storedPermissions = this._extractDenyOverrides(permissions);
+
     let query = 'UPDATE institution_users SET permissions = ?, warehouse_access = ?';
-    let params = [JSON.stringify(permissions), JSON.stringify(warehouseAccess)];
+    let params = [JSON.stringify(storedPermissions), JSON.stringify(warehouseAccess)];
     
     if (role) {
       query += ', role = ?';

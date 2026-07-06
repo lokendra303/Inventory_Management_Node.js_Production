@@ -463,8 +463,8 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
   const { user }  = useAuth();
 
   const hasPermission    = (p) => {
+    if (user?.role === 'admin' || user?.role === 'super_admin') return true;
     if (!user?.permissions) return false;
-    if (user.role === 'admin' || user.role === 'super_admin') return true;
     return user.permissions.all || user.permissions[p];
   };
   const hasAnyPermission = (...ps) => ps.some(p => hasPermission(p));

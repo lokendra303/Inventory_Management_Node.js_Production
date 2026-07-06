@@ -127,8 +127,8 @@ const Users = () => {
 
   const defaultTabKey = location.pathname === '/roles' ? 'roles' : 'users';
   const hasPermission = (permission) => {
-    if (!currentUser?.permissions) return false;
     if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') return true;
+    if (!currentUser?.permissions) return false;
     return currentUser.permissions.all || currentUser.permissions[permission];
   };
   const canManageUsers = hasPermission('user_management');
@@ -291,14 +291,6 @@ const Users = () => {
   const handleUpdatePermissions = async (values) => {
     try {
       const permissions = {};
-      if (values.role === 'admin') {
-        permissions.all = true;
-      } else {
-        // Set specific permissions based on role
-        const rolePermissions = roles.find(r => r.name === values.role)?.permissions || {};
-        Object.assign(permissions, rolePermissions);
-      }
-
       const accessType = values.warehouseAccessType || 'normal';
       const warehouseAccess = accessType === 'specific' ? (values.warehouseAccess || []) : [];
 
@@ -311,24 +303,13 @@ const Users = () => {
         WAREHOUSE_PERMISSION_KEYS.forEach((key) => {
           permissions[key] = false;
         });
-        if (permissions.all === true && values.role !== 'admin') {
-          delete permissions.all;
-        }
       }
-
-      console.log('Updating user:', editingUser.id);
-      console.log('New role:', values.role);
-      console.log('Permissions:', permissions);
-      console.log('Warehouse access type:', accessType);
-      console.log('Warehouse access:', warehouseAccess);
 
       const response = await apiService.put(`/users/${editingUser.id}/permissions`, {
         permissions,
         warehouseAccess,
         role: values.role
       });
-      
-      console.log('Update response:', response);
       
       if (response.success) {
         message.success('User permissions updated successfully');
@@ -633,7 +614,7 @@ const Users = () => {
                 }
               ]}
               dataSource={roles} 
-              rowKey="name"
+              rowKey="id"
             />
           </Card>
         </TabPane>
