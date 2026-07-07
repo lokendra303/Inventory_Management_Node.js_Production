@@ -85,6 +85,7 @@ export default function CompositeBomSection({
   catalogItems = [],
   excludeItemId,
   kitFulfillmentMode = 'prebuilt',
+  warehouseId = null,
 }) {
   const screens = Grid.useBreakpoint();
   const { currency } = useCurrency();
@@ -332,7 +333,8 @@ export default function CompositeBomSection({
                           <strong>Unit cost:</strong> {formatPrice(unitCost, currency, 'USD')}
                         </span>
                         <span style={metaChipStyle}>
-                          <strong>Available:</strong> {availableStock == null ? '—' : Number(availableStock).toFixed(4)}
+                          <strong>Available{warehouseId ? ' (WH)' : ' (active WH)'}:</strong>{' '}
+                          {availableStock == null ? '—' : Number(availableStock).toFixed(4)}
                         </span>
                         <span style={{ ...metaChipStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca' }}>
                           <strong>Line cost:</strong> {formatPrice(lineCost, currency, 'USD')}

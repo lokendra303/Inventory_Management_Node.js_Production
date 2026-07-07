@@ -64,6 +64,7 @@ const defaultFormValues = (units = []) => ({
   isPurchasable: false,
   isManufacturable: true,
   unit: pickDefaultUnit(units),
+  openingStockMode: 'physical',
   bomAdditionalCharges: [],
 });
 
@@ -114,6 +115,7 @@ export default function BomItemForm({
   const canManageCategories = user?.permissions?.category_management || user?.permissions?.all;
   const canViewCategories = user?.permissions?.category_view || user?.permissions?.all;
   const [form] = Form.useForm();
+  const watchedWarehouseId = Form.useWatch('warehouseId', form);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
@@ -289,18 +291,21 @@ export default function BomItemForm({
     return undefined;
   }, [open, resetCreateForm]);
 
+  const fetchCatalogItems = useCallback(async (warehouseId) => {
+    const params = { status: 'active', limit: 5000, includeVariants: '1' };
+    if (warehouseId) params.warehouseId = warehouseId;
+    const itemsRes = await apiService.get('/items', { params });
+    setCatalogItems(itemsRes.success ? itemsRes.data : []);
+  }, []);
+
   useEffect(() => {
     if (!open) return undefined;
 
     let cancelled = false;
     const loadLookups = async () => {
       try {
-        const [itemsRes, master] = await Promise.all([
-          apiService.get('/items', { params: { status: 'active', limit: 5000, includeVariants: '1' } }),
-          loadMasterData(),
-        ]);
+        const master = await loadMasterData();
         if (cancelled) return;
-        setCatalogItems(itemsRes.success ? itemsRes.data : []);
 
         if (!itemId && !resumeDraftId && !draftRestored) {
           form.setFieldsValue({ unit: pickDefaultUnit(master.units) });
@@ -315,6 +320,18 @@ export default function BomItemForm({
       cancelled = true;
     };
   }, [open, itemId, resumeDraftId, draftRestored, form, loadMasterData]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    let cancelled = false;
+    fetchCatalogItems(watchedWarehouseId).catch(() => {
+      if (!cancelled) message.error('Failed to load component catalog');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, watchedWarehouseId, fetchCatalogItems]);
 
   useEffect(() => {
     if (!open || !itemId) return undefined;

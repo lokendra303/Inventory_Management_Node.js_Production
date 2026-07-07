@@ -35,11 +35,12 @@ export function resolveCatalogItemCost(item = {}) {
 
 export function resolveCatalogItemAvailableStock(item = {}) {
   const candidates = [
-    item?.current_stock,
-    item?.current_stock?.quantity_available,
-    item?.currentStock?.quantityAvailable,
     item?.quantity_available,
     item?.quantityAvailable,
+    item?.current_stock?.quantity_available,
+    item?.currentStock?.quantityAvailable,
+    item?.current_stock,
+    item?.currentStock,
     item?.stock_available,
     item?.stockAvailable,
   ];

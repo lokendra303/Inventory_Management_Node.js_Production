@@ -1,3 +1,5 @@
+import { resolveCatalogItemAvailableStock } from './bomCostHelpers';
+
 const isExplodeFulfillment = (mode) => (
   String(mode || 'prebuilt').toLowerCase() === 'explode_on_ship'
 );
@@ -110,6 +112,31 @@ export function validateBomBusinessRules({
       ok: false,
       message: 'Expiry date is required when expiry tracking is on and opening stock is set',
     };
+  }
+
+  if (!isEditing && !isExplode && tracksInventory && openingStock > 0) {
+    const assembleFromComponents = String(values.openingStockMode || 'physical').toLowerCase() === 'assemble';
+    if (assembleFromComponents) {
+      const rows = Array.isArray(components) ? components : [];
+      const shortfall = rows.find((row) => {
+        const qtyRequired = Number(row?.quantityRequired) || 0;
+        if (!row?.itemId || qtyRequired <= 0) return false;
+        const item = catalogItems.find((c) => String(c.id) === String(row.itemId));
+        const available = resolveCatalogItemAvailableStock(item);
+        const needed = openingStock * qtyRequired;
+        return available < needed;
+      });
+      if (shortfall) {
+        const item = catalogItems.find((c) => String(c.id) === String(shortfall.itemId));
+        const label = item?.sku || item?.name || 'component';
+        const needed = openingStock * (Number(shortfall.quantityRequired) || 0);
+        const available = resolveCatalogItemAvailableStock(item);
+        return {
+          ok: false,
+          message: `Insufficient "${label}" stock for opening assembly: need ${needed}, only ${available} on hand`,
+        };
+      }
+    }
   }
 
   if (values.isSellable !== false) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import {
   Card,
   Form,
@@ -120,6 +120,8 @@ export default function KitAssembly() {
   const [historyFilter, setHistoryFilter] = useState('all');
   const [viewOperation, setViewOperation] = useState(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [quantityStockAlert, setQuantityStockAlert] = useState(null);
+  const lastQuantityWarnAtRef = useRef(0);
 
   const [form] = Form.useForm();
 
@@ -139,6 +141,76 @@ export default function KitAssembly() {
   const estimatedUnitCost = Number(availability?.estimatedUnitCost) || 0;
   const qty = Number(watchedQuantity) || 0;
   const estimatedTotalCost = estimatedUnitCost * qty;
+
+  const maxOperationQuantity = useMemo(() => {
+    if (operationType === 'assemble') {
+      if (!availability) return null;
+      return Number(availability.buildableFromComponents) || 0;
+    }
+    const previewAvail = Number(disassemblyPreview?.kitAvailable);
+    if (Number.isFinite(previewAvail)) return previewAvail;
+    if (!availability) return null;
+    return Number(availability.kitAvailable) || 0;
+  }, [operationType, availability, disassemblyPreview]);
+
+  const isQuantityOverLimit = maxOperationQuantity != null
+    && qty > 0
+    && qty > maxOperationQuantity;
+
+  const showQuantityStockAlert = Boolean(quantityStockAlert) || isQuantityOverLimit;
+  const alertRequestedQty = quantityStockAlert?.requested ?? qty;
+  const alertAvailableQty = quantityStockAlert?.available ?? maxOperationQuantity;
+
+  const selectedWarehouseName = useMemo(
+    () => warehouses.find((w) => w.id === watchedWarehouseId)?.name || 'selected warehouse',
+    [warehouses, watchedWarehouseId]
+  );
+
+  const warnQuantityOverLimit = useCallback((requestedQty) => {
+    if (maxOperationQuantity == null) return;
+    const now = Date.now();
+    if (now - lastQuantityWarnAtRef.current < 800) return;
+    lastQuantityWarnAtRef.current = now;
+    setQuantityStockAlert({ requested: requestedQty, available: maxOperationQuantity });
+    const unitLabel = maxOperationQuantity !== 1 ? 's' : '';
+    if (operationType === 'assemble') {
+      message.warning(
+        `Only ${maxOperationQuantity} unit${unitLabel} can be built from available parts at ${selectedWarehouseName}.`
+      );
+    } else {
+      message.warning(
+        `Only ${maxOperationQuantity} finished unit${unitLabel} available at ${selectedWarehouseName}.`
+      );
+    }
+  }, [maxOperationQuantity, operationType, selectedWarehouseName]);
+
+  const normalizeOperationQuantity = useCallback((value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return value;
+    if (maxOperationQuantity == null) {
+      setQuantityStockAlert(null);
+      return n;
+    }
+    if (n > maxOperationQuantity) {
+      warnQuantityOverLimit(n);
+      return maxOperationQuantity;
+    }
+    setQuantityStockAlert(null);
+    return n;
+  }, [maxOperationQuantity, warnQuantityOverLimit]);
+
+  useEffect(() => {
+    setQuantityStockAlert(null);
+  }, [watchedCompositeId, watchedWarehouseId, operationType, maxOperationQuantity]);
+
+  useEffect(() => {
+    if (maxOperationQuantity == null) return undefined;
+    const currentQty = form.getFieldValue('quantity');
+    if (currentQty != null && currentQty !== '') {
+      form.validateFields(['quantity']).catch(() => {});
+    }
+    return undefined;
+  }, [maxOperationQuantity, form]);
 
   const fetchLookups = async () => {
     try {
@@ -376,7 +448,7 @@ export default function KitAssembly() {
   const componentColumns = [
     { title: 'Component', dataIndex: 'name', key: 'name', render: (t, r) => `${t || '—'} (${r.sku || ''})` },
     { title: 'Per unit', dataIndex: 'quantityRequiredPerKit', key: 'qty' },
-    { title: 'Available', dataIndex: 'available', key: 'avail' },
+    { title: 'Available (WH)', dataIndex: 'available', key: 'avail' },
     {
       title: 'Avg cost',
       dataIndex: 'averageCost',
@@ -701,10 +773,84 @@ export default function KitAssembly() {
             <Form.Item
               name="quantity"
               label={operationType === 'assemble' ? 'Quantity to build' : 'Quantity to break down'}
-              rules={[{ required: true, type: 'number', min: 0.0001 }]}
+              dependencies={['compositeItemId', 'warehouseId']}
+              validateStatus={showQuantityStockAlert ? 'error' : undefined}
+              normalize={normalizeOperationQuantity}
+              rules={[
+                { required: true, type: 'number', min: 0.0001, message: 'Enter a quantity greater than zero' },
+                {
+                  validator: (_, value) => {
+                    const n = Number(value);
+                    if (!Number.isFinite(n) || n <= 0) return Promise.resolve();
+                    if (maxOperationQuantity == null) return Promise.resolve();
+                    if (n > maxOperationQuantity) {
+                      if (operationType === 'assemble') {
+                        return Promise.reject(
+                          new Error(`Cannot build more than ${maxOperationQuantity} — insufficient component stock`)
+                        );
+                      }
+                      return Promise.reject(
+                        new Error(`Cannot break down more than ${maxOperationQuantity} — insufficient finished goods stock`)
+                      );
+                    }
+                    return Promise.resolve();
+                  },
+                },
+              ]}
             >
-              <InputNumber min={0.0001} style={{ width: '100%' }} />
+              <InputNumber
+                min={0.0001}
+                style={{ width: '100%' }}
+              />
             </Form.Item>
+
+            {watchedCompositeId && watchedWarehouseId && maxOperationQuantity != null ? (
+              <>
+                {showQuantityStockAlert ? (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: '#fff2f0',
+                      border: '1px solid #ffccc7',
+                      borderRadius: 4,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 13, color: '#cf1322', fontWeight: 600 }}>
+                      {operationType === 'assemble' ? (
+                        <>
+                          ⚠️ Insufficient component stock — only <strong>{alertAvailableQty}</strong> unit
+                          {alertAvailableQty !== 1 ? 's' : ''} buildable from parts at <strong>{selectedWarehouseName}</strong>, but <strong>{alertRequestedQty}</strong> requested.
+                        </>
+                      ) : (
+                        <>
+                          ⚠️ Insufficient finished goods — only <strong>{alertAvailableQty}</strong> unit
+                          {alertAvailableQty !== 1 ? 's' : ''} available at <strong>{selectedWarehouseName}</strong>, but <strong>{alertRequestedQty}</strong> requested.
+                        </>
+                      )}
+                    </span>
+                  </div>
+                ) : null}
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#e6f7ff',
+                    border: '1px solid #91d5ff',
+                    borderRadius: 4,
+                    marginBottom: 16,
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: '#0050b3' }}>
+                    ℹ️ <strong>{selectedKitItem?.name || 'Finished product'}</strong>
+                    {' '}at <strong>{selectedWarehouseName}</strong>:
+                    <strong style={{ color: maxOperationQuantity > 0 ? '#52c41a' : '#ff4d4f', marginLeft: 4 }}>
+                      {maxOperationQuantity}{' '}
+                      {operationType === 'assemble' ? 'buildable from parts' : 'finished goods available'}
+                    </strong>
+                  </span>
+                </div>
+              </>
+            ) : null}
 
             {operationType === 'assemble' ? (
               <>

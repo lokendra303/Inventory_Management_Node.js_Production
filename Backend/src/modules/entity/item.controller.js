@@ -129,6 +129,7 @@ class ItemController {
         productionOnly: req.query.productionOnly,
         purchasableOnly: req.query.purchasableOnly,
         manufacturableOnly: req.query.manufacturableOnly,
+        warehouseId: req.query.warehouseId || null,
       };
       
       const { items, total } = await itemService.getItems(req.institutionId, filters, limit, offset);

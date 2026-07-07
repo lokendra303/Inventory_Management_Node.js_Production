@@ -273,6 +273,9 @@ export function buildBomSubmitPayload(values = {}, extras = {}) {
       ? values.openingExpiryDate.format('YYYY-MM-DD')
       : optionalText(values.openingExpiryDate);
     payload.openingBatchRuleId = values.openingBatchRuleId || undefined;
+    payload.openingStockMode = String(values.openingStockMode || 'physical').toLowerCase() === 'assemble'
+      ? 'assemble'
+      : 'physical';
   }
 
   Object.keys(payload).forEach((key) => {

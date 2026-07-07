@@ -131,6 +131,7 @@ const createBomItemSchema = Joi.object({
   openingManufactureDate: Joi.string().max(30).allow('', null).optional(),
   openingExpiryDate: Joi.string().max(30).allow('', null).optional(),
   openingBatchRuleId: Joi.string().uuid().allow(null, '').optional(),
+  openingStockMode: Joi.string().valid('physical', 'assemble').default('physical').optional(),
 }).unknown(true);
 
 const updateBomItemSchema = Joi.object({

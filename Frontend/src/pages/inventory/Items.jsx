@@ -1432,7 +1432,7 @@ const Items = () => {
     { title: 'Item Group', dataIndex: 'item_group_name', key: 'item_group_name', render: v => v ? <Tag color="purple" style={{ borderRadius: 20 }}>{v}</Tag> : '-' },
     { title: 'Unit', dataIndex: 'unit', key: 'unit', render: v => v || '-' },
     {
-      title: 'On Hand',
+      title: 'On Hand (active WH)',
       dataIndex: 'current_stock',
       key: 'current_stock',
       render: (val, record) => {

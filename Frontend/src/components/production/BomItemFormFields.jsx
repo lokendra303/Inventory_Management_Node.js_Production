@@ -6,6 +6,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Radio,
   Row,
   Select,
   Space,
@@ -45,6 +46,7 @@ const clearInventoryFields = (form) => {
     trackInventory: false,
     openingStock: undefined,
     openingValue: undefined,
+    openingStockMode: 'physical',
     warehouseId: undefined,
     defaultBinId: undefined,
     minStockLevel: undefined,
@@ -93,6 +95,7 @@ export default function BomItemFormFields({
   const watchedIsPurchasable = Form.useWatch('isPurchasable', form) !== false;
   const watchedIsManufacturable = Form.useWatch('isManufacturable', form) !== false;
   const watchedHasExpiry = Form.useWatch('hasExpiry', form) === true;
+  const watchedWarehouseId = Form.useWatch('warehouseId', form);
 
   const clearSalesFields = () => {
     form.setFieldsValue({
@@ -428,6 +431,7 @@ export default function BomItemFormFields({
           catalogItems={catalogItems}
           excludeItemId={itemId}
           kitFulfillmentMode={kitFulfillmentMode}
+          warehouseId={watchedWarehouseId}
         />
         <BomCostSummary
           form={form}
@@ -704,6 +708,48 @@ export default function BomItemFormFields({
                       </Form.Item>
                     </Col>
                   </Row>
+                  <Form.Item noStyle shouldUpdate={(prev, cur) => (
+                    prev.openingStock !== cur.openingStock
+                    || prev.openingStockMode !== cur.openingStockMode
+                  )}>
+                    {() => {
+                      const opening = Number(form.getFieldValue('openingStock')) || 0;
+                      if (opening <= 0) return null;
+                      const mode = String(form.getFieldValue('openingStockMode') || 'physical').toLowerCase();
+                      return (
+                        <Row gutter={16} style={{ marginBottom: 16 }}>
+                          <Col xs={24}>
+                            <Form.Item
+                              name="openingStockMode"
+                              label="Opening stock source"
+                              initialValue="physical"
+                            >
+                              <Radio.Group>
+                                <Space direction="vertical" size={4}>
+                                  <Radio value="physical">
+                                    Already on hand — record physical finished goods (components unchanged)
+                                  </Radio>
+                                  <Radio value="assemble">
+                                    Assemble from components — deduct BOM parts from stock
+                                  </Radio>
+                                </Space>
+                              </Radio.Group>
+                            </Form.Item>
+                            <Alert
+                              type={mode === 'assemble' ? 'warning' : 'info'}
+                              showIcon
+                              message={
+                                mode === 'assemble'
+                                  ? `Creating with ${opening} unit(s) will consume components per BOM qty (e.g. 1 per unit → ${opening} each).`
+                                  : `Creating with ${opening} unit(s) adds finished goods only. Component on-hand quantities will not change.`
+                              }
+                              style={{ marginBottom: 8 }}
+                            />
+                          </Col>
+                        </Row>
+                      );
+                    }}
+                  </Form.Item>
                   <Row gutter={16}>
                     <Col xs={24} sm={12}>
                       <Form.Item noStyle shouldUpdate={(prev, cur) => prev.warehouseId !== cur.warehouseId}>

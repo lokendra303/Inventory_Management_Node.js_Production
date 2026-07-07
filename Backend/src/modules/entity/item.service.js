@@ -221,6 +221,13 @@ class ItemService {
       throw new Error('Warehouse is required when opening stock is greater than zero');
     }
 
+    if (!isExplode && openingStock > 0) {
+      const components = Array.isArray(itemData.components) ? itemData.components : [];
+      if (components.length === 0) {
+        throw new Error('At least one BOM component is required when opening stock is greater than zero');
+      }
+    }
+
     if (
       !isExplode
       && openingStock > 0
@@ -593,6 +600,7 @@ class ItemService {
       openingManufactureDate,
       openingExpiryDate,
       openingBatchRuleId,
+      openingStockMode = 'physical',
       isSellable = true,
       isPurchasable = true,
       isManufacturable = true,
@@ -719,73 +727,104 @@ class ItemService {
       const openingUnitCost = normalizedOpeningStock > 0 && normalizedOpeningValue > 0
         ? (normalizedOpeningValue / normalizedOpeningStock)
         : normalizedCostPrice;
+      const isComposite = String(type).toLowerCase() === 'composite';
+      const isPrebuiltComposite = isComposite && normalizedKitMode !== 'explode_on_ship';
+      const assembleFromComponents = isPrebuiltComposite
+        && String(openingStockMode || 'physical').toLowerCase() === 'assemble';
 
-      await inventoryService.receiveStock(
-        institutionId,
-        {
+      if (assembleFromComponents) {
+        const compositeInventoryService = require('../inventory/compositeInventory.service');
+        await compositeInventoryService.assembleKit(
+          institutionId,
+          {
+            compositeItemId: itemId,
+            warehouseId,
+            quantity: normalizedOpeningStock,
+            notes: 'Opening stock assembly',
+            outputBatchNumber: openingBatchNumber,
+            outputManufactureDate: openingManufactureDate,
+            outputExpiryDate: openingExpiryDate,
+            batchRuleId: openingBatchRuleId,
+          },
+          userId
+        );
+        await db.query(
+          'UPDATE items SET is_batch_tracked = 1, updated_at = NOW() WHERE institution_id = ? AND id = ?',
+          [institutionId, itemId]
+        );
+        logger.info('Opening stock assembled from BOM components', {
+          institutionId,
           itemId,
           warehouseId,
           quantity: normalizedOpeningStock,
-          unitCost: openingUnitCost,
-          poId: `OPENING-${itemId}`,
-          poLineId: `${itemId}-OPENING`,
-          grnNumber: `OPENING-${Date.now()}`
-        },
-        userId
-      );
+        });
+      } else {
+        await inventoryService.receiveStock(
+          institutionId,
+          {
+            itemId,
+            warehouseId,
+            quantity: normalizedOpeningStock,
+            unitCost: openingUnitCost,
+            poId: `OPENING-${itemId}`,
+            poLineId: `${itemId}-OPENING`,
+            grnNumber: `OPENING-${Date.now()}`
+          },
+          userId
+        );
 
-      const isComposite = String(type).toLowerCase() === 'composite';
-      const needsOpeningBatch = Boolean(isBatchTracked) || isComposite;
-      if (needsOpeningBatch) {
-        try {
-          const batchResult = await this._receiveOpeningStockBatch(
-            institutionId,
-            {
-              itemId,
-              warehouseId,
-              quantity: normalizedOpeningStock,
-              unitCost: openingUnitCost,
-              isBatchTracked: isBatchTracked || isComposite,
-              type,
-              openingBatchNumber,
-              openingManufactureDate,
-              openingExpiryDate,
-              openingBatchRuleId,
-            },
-            userId
-          );
-          if (batchResult?.batchNumber) {
-            logger.info('Opening stock batch created', {
-              institutionId,
-              itemId,
-              batchNumber: batchResult.batchNumber,
-              quantity: normalizedOpeningStock,
-            });
-          }
-        } catch (batchErr) {
+        const needsOpeningBatch = Boolean(isBatchTracked) || isComposite;
+        if (needsOpeningBatch) {
           try {
-            await inventoryService.adjustStock(
+            const batchResult = await this._receiveOpeningStockBatch(
               institutionId,
               {
                 itemId,
                 warehouseId,
-                quantityChange: normalizedOpeningStock,
-                adjustmentType: 'decrease',
-                reason: 'OPENING_BATCH_ROLLBACK',
-                lossType: 'MANUAL',
+                quantity: normalizedOpeningStock,
+                unitCost: openingUnitCost,
+                isBatchTracked: isBatchTracked || isComposite,
+                type,
+                openingBatchNumber,
+                openingManufactureDate,
+                openingExpiryDate,
+                openingBatchRuleId,
               },
               userId
             );
-          } catch (rollbackErr) {
-            logger.error('Opening stock rollback failed after batch error', {
-              institutionId,
-              itemId,
-              error: rollbackErr.message,
-            });
+            if (batchResult?.batchNumber) {
+              logger.info('Opening stock batch created', {
+                institutionId,
+                itemId,
+                batchNumber: batchResult.batchNumber,
+                quantity: normalizedOpeningStock,
+              });
+            }
+          } catch (batchErr) {
+            try {
+              await inventoryService.adjustStock(
+                institutionId,
+                {
+                  itemId,
+                  warehouseId,
+                  quantityChange: normalizedOpeningStock,
+                  adjustmentType: 'decrease',
+                  reason: 'OPENING_BATCH_ROLLBACK',
+                  lossType: 'MANUAL',
+                },
+                userId
+              );
+            } catch (rollbackErr) {
+              logger.error('Opening stock rollback failed after batch error', {
+                institutionId,
+                itemId,
+                error: rollbackErr.message,
+              });
+            }
+            throw new Error(
+              batchErr.message || 'Failed to create opening stock batch. Run batch_generator_rules migrations.'
+            );
           }
-          throw new Error(
-            batchErr.message || 'Failed to create opening stock batch. Run batch_generator_rules migrations.'
-          );
         }
       }
     } else if (openingStock > 0 && !warehouseId) {
@@ -1202,24 +1241,34 @@ class ItemService {
   }
 
   async getItem(institutionId, itemId) {
+    const { joinSql: stockJoin, stockParams } = this._buildActiveWarehouseStockJoin(institutionId, {});
     const items = await db.query(
       `SELECT i.*, 
-       COALESCE(SUM(ip.quantity_on_hand), 0) as current_stock,
+       COALESCE(stock.quantity_on_hand, 0) as current_stock,
+       COALESCE(stock.quantity_available, 0) as quantity_available,
        b.name as brand_name,
        m.name as manufacturer_name,
        u.name as unit_name,
        ig.id as item_group_ref_id,
        COALESCE(ig.name, i.item_group) as item_group_name,
-       GROUP_CONCAT(DISTINCT ip.warehouse_id) as warehouse_ids
+       (
+         SELECT GROUP_CONCAT(DISTINCT ip.warehouse_id)
+         FROM inventory_projections ip
+         INNER JOIN warehouses w
+           ON w.id = ip.warehouse_id
+          AND w.institution_id = ip.institution_id
+          AND w.status = 'active'
+         WHERE ip.institution_id = i.institution_id AND ip.item_id = i.id
+       ) as warehouse_ids
        FROM items i
-       LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
+       ${stockJoin}
        LEFT JOIN brands b ON i.brand = b.id
        LEFT JOIN manufacturers m ON i.manufacturer = m.id
        LEFT JOIN units u ON i.unit = u.id
        LEFT JOIN item_groups ig ON ig.id = i.item_group_id AND ig.institution_id = i.institution_id
        WHERE i.institution_id = ? AND i.id = ?
        GROUP BY i.id`,
-      [institutionId, itemId]
+      [...stockParams, institutionId, itemId]
     );
 
     if (items.length === 0) {
@@ -1598,11 +1647,37 @@ class ItemService {
     return { where, params };
   }
 
+  _buildActiveWarehouseStockJoin(institutionId, filters = {}) {
+    const warehouseId = filters.warehouseId ? String(filters.warehouseId).trim() : null;
+    let stockSubquery = `
+      SELECT ip.item_id, ip.institution_id,
+             COALESCE(SUM(ip.quantity_on_hand), 0) AS quantity_on_hand,
+             COALESCE(SUM(ip.quantity_available), 0) AS quantity_available
+      FROM inventory_projections ip
+      INNER JOIN warehouses w
+        ON w.id = ip.warehouse_id
+       AND w.institution_id = ip.institution_id
+       AND w.status = 'active'
+      WHERE ip.institution_id = ?`;
+    const stockParams = [institutionId];
+    if (warehouseId) {
+      stockSubquery += ' AND ip.warehouse_id = ?';
+      stockParams.push(warehouseId);
+    }
+    stockSubquery += `
+      GROUP BY ip.item_id, ip.institution_id`;
+    const joinSql = `
+      LEFT JOIN (${stockSubquery}) stock
+        ON stock.item_id = i.id AND stock.institution_id = i.institution_id`;
+    return { joinSql, stockParams };
+  }
+
   async getItems(institutionId, filters = {}, limit = null, offset = 0) {
     const { where, params } = this._buildItemsWhereClause(institutionId, filters);
+    const { joinSql: stockJoin, stockParams } = this._buildActiveWarehouseStockJoin(institutionId, filters);
     const joins = `
                  FROM items i
-                 LEFT JOIN inventory_projections ip ON i.id = ip.item_id AND ip.institution_id = i.institution_id
+                 ${stockJoin}
                  LEFT JOIN brands b ON i.brand = b.id
                  LEFT JOIN manufacturers m ON i.manufacturer = m.id
                  LEFT JOIN units u ON i.unit = u.id
@@ -1610,12 +1685,13 @@ class ItemService {
 
     const countRows = await db.query(
       `SELECT COUNT(DISTINCT i.id) AS total ${joins} ${where}`,
-      params
+      [...stockParams, ...params]
     );
     const total = Number(countRows[0]?.total || 0);
 
     let query = `SELECT i.*, 
-                 COALESCE(SUM(ip.quantity_on_hand), 0) as current_stock,
+                 COALESCE(stock.quantity_on_hand, 0) as current_stock,
+                 COALESCE(stock.quantity_available, 0) as quantity_available,
                  b.name as brand_name,
                  m.name as manufacturer_name,
                  u.name as unit_name,
@@ -1632,7 +1708,7 @@ class ItemService {
       query += ` LIMIT ${safeLimit} OFFSET ${safeOffset}`;
     }
 
-    const items = await db.query(query, params);
+    const items = await db.query(query, [...stockParams, ...params]);
 
     const safeParseObj = (val) => {
       if (!val) return {};
