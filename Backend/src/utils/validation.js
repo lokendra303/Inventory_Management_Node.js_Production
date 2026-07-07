@@ -475,6 +475,7 @@ const createSalesInvoiceSchema = Joi.object({
 
 // Third-party invoice (no inventory impact, manual lines)
 const createThirdPartyInvoiceSchema = Joi.object({
+  invoiceType: Joi.string().valid('sales', 'purchase').default('sales'),
   invoiceNumber: Joi.string().max(100).allow('', null).optional(),
   partyType: Joi.string().valid('customer', 'vendor', 'other').default('other'),
   partyId: Joi.string().uuid().optional().allow(null, ''),
@@ -487,6 +488,16 @@ const createThirdPartyInvoiceSchema = Joi.object({
     billingAddress: Joi.object().optional(),
     shippingAddress: Joi.object().optional(),
     partyAddressSelection: Joi.object().optional(),
+    bankDetails: Joi.object({
+      bankName: Joi.string().allow('', null).optional(),
+      accountHolder: Joi.string().allow('', null).optional(),
+      accountNumber: Joi.string().allow('', null).optional(),
+      ifscCode: Joi.string().allow('', null).optional(),
+      branchName: Joi.string().allow('', null).optional(),
+      accountType: Joi.string().allow('', null).optional(),
+      swiftCode: Joi.string().allow('', null).optional(),
+      iban: Joi.string().allow('', null).optional(),
+    }).optional(),
   }).optional(),
   invoiceDate: Joi.alternatives().try(
     Joi.date(),

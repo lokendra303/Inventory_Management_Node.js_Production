@@ -59,7 +59,77 @@ function lineNetAmount(line) {
   return roundMoney(taxable + taxAmount);
 }
 
-const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
+function partyDisplayName(party) {
+  return party?.display_name || party?.company_name || party?.name || party?.displayText || '';
+}
+
+function normalizePartyId(id) {
+  if (id == null || id === '') return null;
+  return String(id).trim().toLowerCase();
+}
+
+function matchPartyId(rawId, catalog = []) {
+  if (!rawId) return null;
+  const norm = normalizePartyId(rawId);
+  const found = catalog.find((p) => normalizePartyId(p.id) === norm);
+  return found?.id ?? rawId;
+}
+
+function resolvePartyMode(invoice, loadedType) {
+  if (loadedType === 'purchase') {
+    return invoice.party_type === 'vendor' || invoice.party_id ? 'vendor' : 'manual';
+  }
+  return invoice.party_type === 'customer' || invoice.party_id ? 'customer' : 'manual';
+}
+
+function hasAddressData(addr = {}) {
+  return Boolean(addr.line1 || addr.line2 || addr.city || addr.state || addr.postalCode || addr.country);
+}
+
+function hasBankDetails(bank) {
+  if (!bank || typeof bank !== 'object') return false;
+  return Boolean(
+    bank.bankName || bank.bank_name
+    || bank.accountNumber || bank.account_number
+    || bank.ifscCode || bank.ifsc_code
+  );
+}
+
+function VendorBankDetailsCard({ bankDetails }) {
+  if (!hasBankDetails(bankDetails)) return null;
+  const bank = bankDetails;
+  const rows = [
+    ['Account holder', bank.accountHolder || bank.account_holder_name],
+    ['Bank name', bank.bankName || bank.bank_name],
+    ['Account number', bank.accountNumber || bank.account_number],
+    ['Branch', bank.branchName || bank.branch_name],
+    ['IFSC', bank.ifscCode || bank.ifsc_code],
+    ['Account type', bank.accountType || bank.account_type],
+    ['SWIFT', bank.swiftCode || bank.swift_code],
+    ['IBAN', bank.iban],
+  ].filter(([, value]) => value);
+
+  return (
+    <Card size="small" style={{ marginBottom: 12, background: '#f6ffed', borderColor: '#b7eb8f' }}>
+      <Text strong style={{ display: 'block', marginBottom: 8 }}>Vendor bank details</Text>
+      {rows.map(([label, value]) => (
+        <div key={label} style={{ fontSize: 12, marginBottom: 4 }}>
+          <Text type="secondary">{label}: </Text>
+          <Text>{value}</Text>
+        </div>
+      ))}
+      <Text type="secondary" style={{ fontSize: 11 }}>
+        Shown on purchase invoice PDF footer (same as regular PI).
+      </Text>
+    </Card>
+  );
+}
+
+const ThirdPartyInvoiceForm = ({ type = 'sales', invoiceId = null, onSave }) => {
+  const isPurchase = type === 'purchase';
+  const docMetaType = isPurchase ? 'purchaseInvoice' : 'salesInvoice';
+  const partyCatalogMode = isPurchase ? 'vendor' : 'customer';
+  const invoicePrefix = isPurchase ? 'PI' : 'SI';
   const { baseCurrency: institutionCurrency } = useCurrency();
   const [form] = Form.useForm();
   const {
@@ -74,11 +144,16 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(Boolean(invoiceId));
   const [customers, setCustomers] = useState([]);
+  const [vendors, setVendors] = useState([]);
   const [taxRates, setTaxRates] = useState([]);
   const [companyGstin, setCompanyGstin] = useState('');
-  const [partyMode, setPartyMode] = useState('manual');
+  const [partyMode, setPartyMode] = useState(
+    () => (isPurchase ? 'vendor' : (invoiceId ? 'customer' : 'manual'))
+  );
   const [selectedParty, setSelectedParty] = useState(null);
+  const [vendorBankDetails, setVendorBankDetails] = useState(null);
   const [shipSameAsBill, setShipSameAsBill] = useState(true);
+  const [companyShipSameAsBill, setCompanyShipSameAsBill] = useState(true);
   const [invoiceLines, setInvoiceLines] = useState([
     { key: 1, taxRate: 18, discountRate: 0, unit: 'Nos' },
   ]);
@@ -107,8 +182,25 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
   const loadCustomers = async () => {
     try {
       const res = await apiService.get('/third-party-invoices/customers/list');
-      if (res.success) setCustomers(res.data || []);
+      if (res.success) {
+        const list = res.data || [];
+        setCustomers(list);
+        return list;
+      }
     } catch { /* non-blocking */ }
+    return [];
+  };
+
+  const loadVendors = async () => {
+    try {
+      const res = await apiService.get('/third-party-invoices/vendors/list');
+      if (res.success) {
+        const list = res.data || [];
+        setVendors(list);
+        return list;
+      }
+    } catch { /* non-blocking */ }
+    return [];
   };
 
   const loadTaxRates = async () => {
@@ -128,34 +220,83 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
     } catch { /* non-blocking */ }
   };
 
-  const handleCustomerSelect = async (customerId) => {
-    const customer = customers.find((c) => c.id === customerId);
-    if (!customer) return;
+  const applyPartyDetails = (data) => {
+    if (!data) return;
+    setSelectedParty(data);
+    if (isPurchase && hasBankDetails(data.bankDetails)) {
+      setVendorBankDetails(data.bankDetails);
+    }
+    const bill = addressFromPartyRecord(data.billingAddress);
+    const ship = addressFromPartyRecord(data.shippingAddress);
+    const same = JSON.stringify(bill) === JSON.stringify(ship);
+    setShipSameAsBill(same || !ship.line1);
     form.setFieldsValue({
-      partyId: customer.id,
-      partyName: customer.display_name || customer.company_name,
-      partyGstin: customer.gstin || '',
-      partyType: 'customer',
+      partyName: data.name || data.companyName || form.getFieldValue('partyName'),
+      partyGstin: data.taxInfo?.gstin || form.getFieldValue('partyGstin') || '',
+      billingAddress: bill,
+      shippingAddress: ship.line1 ? ship : bill,
+      billingAddressId: data.billingAddress?.id || null,
+      shippingAddressId: data.shippingAddress?.id || null,
     });
+  };
+
+  const loadPartyDetails = async (partyId, { preserveAddresses = false, savedBank = null, fallbackParty = null } = {}) => {
+    const endpoint = isPurchase
+      ? `/third-party-invoices/vendors/${partyId}/details`
+      : `/third-party-invoices/customers/${partyId}/details`;
     try {
-      const res = await apiService.get(`/third-party-invoices/customers/${customerId}/details`);
+      const res = await apiService.get(endpoint);
       if (res.success && res.data) {
         setSelectedParty(res.data);
-        const bill = addressFromPartyRecord(res.data.billingAddress);
-        const ship = addressFromPartyRecord(res.data.shippingAddress);
-        const same = JSON.stringify(bill) === JSON.stringify(ship);
-        setShipSameAsBill(same || !ship.line1);
-        form.setFieldsValue({
-          billingAddress: bill,
-          shippingAddress: ship,
-          billingAddressId: res.data.billingAddress?.id || null,
-          shippingAddressId: res.data.shippingAddress?.id || null,
-        });
-        if (res.data.taxInfo?.gstin) {
-          form.setFieldsValue({ partyGstin: res.data.taxInfo.gstin });
+        if (isPurchase) {
+          setVendorBankDetails(
+            hasBankDetails(res.data.bankDetails) ? res.data.bankDetails : (savedBank || null)
+          );
         }
+        if (!preserveAddresses) {
+          applyPartyDetails(res.data);
+        }
+      } else if (fallbackParty) {
+        setSelectedParty(fallbackParty);
+        if (isPurchase && hasBankDetails(fallbackParty.bankDetails)) {
+          setVendorBankDetails(fallbackParty.bankDetails);
+        }
+        message.warning('Could not load party details — showing saved invoice data');
+      } else {
+        message.warning('Could not load party details');
       }
-    } catch { /* optional */ }
+    } catch {
+      if (fallbackParty) {
+        setSelectedParty(fallbackParty);
+        if (isPurchase && hasBankDetails(fallbackParty.bankDetails)) {
+          setVendorBankDetails(fallbackParty.bankDetails);
+        }
+      } else {
+        message.error(`Failed to load ${isPurchase ? 'vendor' : 'customer'} details`);
+      }
+    }
+  };
+
+  const handleCustomerSelect = async (customerId) => {
+    const customer = customers.find((c) => c.id === customerId);
+    form.setFieldsValue({
+      partyId: customerId,
+      partyName: partyDisplayName(customer),
+      partyGstin: customer?.gstin || '',
+      partyType: 'customer',
+    });
+    await loadPartyDetails(customerId);
+  };
+
+  const handleVendorSelect = async (vendorId) => {
+    const vendor = vendors.find((v) => v.id === vendorId);
+    form.setFieldsValue({
+      partyId: vendorId,
+      partyName: partyDisplayName(vendor),
+      partyGstin: vendor?.gstin || '',
+      partyType: 'vendor',
+    });
+    await loadPartyDetails(vendorId);
   };
 
   const applySavedBillingAddress = (key) => {
@@ -197,6 +338,14 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
     }
   };
 
+  const handleCompanyShipSameAsBill = (checked) => {
+    setCompanyShipSameAsBill(checked);
+    if (checked) {
+      const bill = form.getFieldValue('companyBillingAddress') || EMPTY_INVOICE_ADDRESS;
+      form.setFieldsValue({ companyShippingAddress: { ...bill } });
+    }
+  };
+
   const addLine = () => {
     const newKey = Math.max(...invoiceLines.map((l) => l.key), 0) + 1;
     setInvoiceLines([...invoiceLines, { key: newKey, taxRate: 18, discountRate: 0, unit: 'Nos' }]);
@@ -219,9 +368,15 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
 
   const handleSave = async () => {
     try {
-      if (shipSameAsBill) {
+      const shipSame = shipSameAsBill;
+      const companyShipSame = companyShipSameAsBill;
+      if (shipSame) {
         const bill = form.getFieldValue('billingAddress') || EMPTY_INVOICE_ADDRESS;
         form.setFieldsValue({ shippingAddress: { ...bill } });
+      }
+      if (companyShipSame) {
+        const bill = form.getFieldValue('companyBillingAddress') || EMPTY_INVOICE_ADDRESS;
+        form.setFieldsValue({ companyShippingAddress: { ...bill } });
       }
       const values = await form.validateFields();
       const rateErr = getExchangeRateValidationError(
@@ -239,11 +394,16 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
         return;
       }
 
-      const partyAddresses = buildPartyAddressesPayload(values, shipSameAsBill);
+      const partyAddresses = buildPartyAddressesPayload(
+        { ...values, companyShipSameAsBill: companyShipSame },
+        shipSame,
+        isPurchase ? vendorBankDetails : null
+      );
 
       const payload = {
+        invoiceType: type,
         invoiceNumber: values.invoiceNumber || undefined,
-        partyType: values.partyType || (partyMode === 'customer' ? 'customer' : 'other'),
+        partyType: values.partyType || (partyMode === partyCatalogMode ? partyCatalogMode : 'other'),
         partyId: values.partyId || null,
         partyName: values.partyName,
         partyGstin: values.partyGstin || null,
@@ -254,7 +414,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
         exchangeRate: values.exchangeRate,
         reference: values.reference || undefined,
         notes: values.notes || undefined,
-        documentMeta: formatDocumentMetaForApi(values.documentMeta),
+        documentMeta: formatDocumentMetaForApi(values.documentMeta, dayjs, docMetaType),
         lines: validLines.map((l) => ({
           description: l.description.trim(),
           hsnCode: l.hsnCode || null,
@@ -272,7 +432,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
       const method = invoiceId ? 'put' : 'post';
       const response = await apiService[method](url, payload);
       if (response.success) {
-        message.success(`Third-party invoice ${invoiceId ? 'updated' : 'created'} successfully`);
+        message.success(`Third-party ${invoicePrefix} invoice ${invoiceId ? 'updated' : 'created'} successfully`);
         onSave?.(response.data);
       } else {
         message.error(response.error || 'Failed to save invoice');
@@ -293,15 +453,35 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
     if (!invoiceId) return;
     try {
       setInitializing(true);
-      setLoading(true);
       const res = await apiService.get(`/third-party-invoices/${invoiceId}`);
       if (!res.success) {
         message.error(res.error || 'Failed to load invoice');
         return;
       }
       const { invoice, lines } = res.data;
-      const mode = invoice.party_id ? 'customer' : 'manual';
-      setPartyMode(mode);
+      const loadedType = invoice.invoice_type === 'purchase' ? 'purchase' : 'sales';
+      const loadedDocMetaType = loadedType === 'purchase' ? 'purchaseInvoice' : 'salesInvoice';
+      setPartyMode(resolvePartyMode(invoice, loadedType));
+
+      let catalog = loadedType === 'purchase'
+        ? await loadVendors()
+        : await loadCustomers();
+
+      if (invoice.party_id && invoice.party_name) {
+        const norm = normalizePartyId(invoice.party_id);
+        if (!catalog.some((p) => normalizePartyId(p.id) === norm)) {
+          const savedEntry = {
+            id: invoice.party_id,
+            display_name: invoice.party_name,
+            company_name: invoice.party_name,
+            gstin: invoice.party_gstin,
+          };
+          catalog = [...catalog, savedEntry];
+          if (loadedType === 'purchase') setVendors(catalog);
+          else setCustomers(catalog);
+        }
+      }
+
       const er = parseFloat(invoice.exchange_rate);
       const partyAddr = invoice.partyAddresses || {};
       const bill = addressFromPartyRecord(
@@ -313,35 +493,67 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
       if (!bill.line1 && invoice.party_address) {
         bill.line1 = invoice.party_address;
       }
+      const hasSavedBill = hasAddressData(bill);
+      const hasSavedShip = hasAddressData(ship);
+      const companyBill = addressFromPartyRecord(
+        partyAddr.companyBillingAddress || partyAddr.companyAddressSelection?.billingAddress
+      );
+      const companyShip = addressFromPartyRecord(
+        partyAddr.companyShippingAddress || partyAddr.companyAddressSelection?.shippingAddress
+      );
+      const companySame = JSON.stringify(companyBill) === JSON.stringify(companyShip);
+      setCompanyShipSameAsBill(companySame || !hasAddressData(companyShip));
       const same = JSON.stringify(bill) === JSON.stringify(ship);
-      setShipSameAsBill(same || !ship.line1);
+      setShipSameAsBill(same || !hasSavedShip);
+      if (loadedType === 'purchase' && hasBankDetails(partyAddr.bankDetails)) {
+        setVendorBankDetails(partyAddr.bankDetails);
+      }
+
+      const partyId = matchPartyId(invoice.party_id, catalog);
 
       form.setFieldsValue({
         invoiceNumber: invoice.invoice_number,
-        partyType: invoice.party_type,
-        partyId: invoice.party_id,
+        partyType: invoice.party_type || (loadedType === 'purchase' ? 'vendor' : 'customer'),
+        partyId,
         partyName: invoice.party_name,
         partyGstin: invoice.party_gstin,
         billingAddress: bill,
-        shippingAddress: ship.line1 ? ship : bill,
+        shippingAddress: hasSavedShip ? ship : (ship.line1 ? ship : bill),
         billingAddressId: partyAddr.partyAddressSelection?.billingAddressId || null,
         shippingAddressId: partyAddr.partyAddressSelection?.shippingAddressId || null,
+        companyBillingAddress: companyBill,
+        companyShippingAddress: hasAddressData(companyShip) ? companyShip : (companyShip.line1 ? companyShip : companyBill),
         invoiceDate: invoice.invoice_date ? dayjs(invoice.invoice_date) : null,
         dueDate: invoice.due_date ? dayjs(invoice.due_date) : null,
         currency: invoice.currency || institutionCurrency,
         exchangeRate: Number.isFinite(er) && er > 0 ? er : 1,
         reference: invoice.reference,
         notes: invoice.notes,
-        documentMeta: documentMetaToFormValues(invoice.documentMeta, dayjs, 'salesInvoice'),
+        documentMeta: documentMetaToFormValues(invoice.documentMeta, dayjs, loadedDocMetaType),
       });
-      if (invoice.party_id) {
-        try {
-          const partyRes = await apiService.get(
-            `/third-party-invoices/customers/${invoice.party_id}/details`
-          );
-          if (partyRes.success) setSelectedParty(partyRes.data);
-        } catch { /* optional */ }
+
+      if (partyId) {
+        await loadPartyDetails(partyId, {
+          preserveAddresses: hasSavedBill || hasSavedShip,
+          savedBank: partyAddr.bankDetails || null,
+          fallbackParty: {
+            name: invoice.party_name,
+            contact: {},
+            billingAddress: bill,
+            billingAddresses: hasSavedBill ? [{ ...bill, id: 'saved' }] : [],
+            bankDetails: partyAddr.bankDetails || null,
+          },
+        });
+      } else if (loadedType === 'purchase') {
+        setSelectedParty({
+          name: invoice.party_name,
+          contact: {},
+          billingAddress: bill,
+          billingAddresses: bill.line1 ? [{ ...bill, id: 'saved' }] : [],
+          bankDetails: partyAddr.bankDetails || null,
+        });
       }
+
       if (lines?.length) {
         setInvoiceLines(lines.map((l, i) => ({
           key: i + 1,
@@ -357,29 +569,32 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
     } catch {
       message.error('Failed to load invoice');
     } finally {
-      setLoading(false);
       setInitializing(false);
     }
-  }, [invoiceId, form, institutionCurrency]);
+  }, [invoiceId, form, institutionCurrency, isPurchase]);
 
   useEffect(() => {
-    loadCustomers();
     loadTaxRates();
     loadCompanyGstin();
-  }, []);
+    if (!invoiceId) {
+      loadCustomers();
+      loadVendors();
+    }
+  }, [invoiceId]);
 
   useEffect(() => {
     if (!invoiceId) return;
-    setInitializing(true);
     loadInvoice();
   }, [invoiceId, loadInvoice]);
 
   useEffect(() => {
     if (invoiceId) return;
     setInitializing(false);
-    setPartyMode('manual');
+    setPartyMode(isPurchase ? 'vendor' : 'manual');
     setSelectedParty(null);
+    setVendorBankDetails(null);
     setShipSameAsBill(true);
+    setCompanyShipSameAsBill(true);
     setInvoiceLines([{ key: 1, taxRate: 18, discountRate: 0, unit: 'Nos' }]);
     const today = dayjs();
     form.setFieldsValue({
@@ -387,15 +602,17 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
       dueDate: today.add(30, 'day'),
       currency: institutionCurrency,
       exchangeRate: 1,
-      partyType: 'other',
+      partyType: isPurchase ? 'vendor' : 'other',
       partyId: null,
       partyName: undefined,
       partyGstin: undefined,
       billingAddress: { ...EMPTY_INVOICE_ADDRESS },
       shippingAddress: { ...EMPTY_INVOICE_ADDRESS },
-      documentMeta: emptyDocumentMetaForm('salesInvoice'),
+      companyBillingAddress: { ...EMPTY_INVOICE_ADDRESS },
+      companyShippingAddress: { ...EMPTY_INVOICE_ADDRESS },
+      documentMeta: emptyDocumentMetaForm(docMetaType),
     });
-  }, [invoiceId, institutionCurrency, form]);
+  }, [invoiceId, institutionCurrency, form, docMetaType, isPurchase]);
 
   const sym = getCurrencySymbol(invoiceCurrency);
 
@@ -458,7 +675,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
       ),
     },
     {
-      title: 'Rate',
+      title: isPurchase ? 'Unit Cost' : 'Rate',
       width: 100,
       render: (_, record) => (
         <InputNumber
@@ -521,19 +738,16 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
     },
   ];
 
-  if (initializing) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <Spin size="large" tip="Loading invoice..." />
-      </div>
-    );
-  }
-
   return (
+    <Spin spinning={initializing} tip="Loading invoice...">
     <Form form={form} layout="vertical" preserve={false}>
       <Row gutter={16}>
         <Col xs={24} md={12}>
-          <Card size="small" title="Party (Bill To / Ship To)" style={{ marginBottom: 16 }}>
+          <Card
+            size="small"
+            title={isPurchase ? 'Supplier (Bill from)' : 'Party (Bill To / Ship To)'}
+            style={{ marginBottom: 16 }}
+          >
             <Form.Item label="Party source">
               <Radio.Group
                 value={partyMode}
@@ -542,20 +756,23 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
                   if (e.target.value === 'manual') {
                     form.setFieldsValue({ partyId: null, partyType: 'other' });
                     setSelectedParty(null);
+                    setVendorBankDetails(null);
                   }
                 }}
               >
                 <Radio.Button value="manual">Manual entry</Radio.Button>
-                <Radio.Button value="customer">From customer</Radio.Button>
+                <Radio.Button value={partyCatalogMode}>
+                  From {isPurchase ? 'vendor' : 'customer'}
+                </Radio.Button>
               </Radio.Group>
             </Form.Item>
 
-            {partyMode === 'customer' && (
+            {partyMode === 'customer' && !isPurchase && (
               <Form.Item name="partyId" label="Customer" rules={[{ required: true }]}>
                 <Select
                   showSearch
                   placeholder="Select customer"
-                  onChange={handleCustomerSelect}
+                  onSelect={handleCustomerSelect}
                   filterOption={filterSelectOption}
                   optionLabelProp="label"
                 >
@@ -563,9 +780,9 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
                     <Option
                       key={c.id}
                       value={c.id}
-                      label={c.display_name || c.company_name}
+                      label={partyDisplayName(c)}
                     >
-                      {c.display_name || c.company_name}
+                      {partyDisplayName(c)}
                       {c.gstin ? ` · ${c.gstin}` : ''}
                     </Option>
                   ))}
@@ -573,8 +790,35 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
               </Form.Item>
             )}
 
-            <Form.Item name="partyName" label="Party name" rules={[{ required: true, message: 'Required' }]}>
-              <Input placeholder="Company / person name" />
+            {partyMode === 'vendor' && isPurchase && (
+              <Form.Item name="partyId" label="Vendor" rules={[{ required: true }]}>
+                <Select
+                  showSearch
+                  placeholder="Select vendor"
+                  onSelect={handleVendorSelect}
+                  filterOption={filterSelectOption}
+                  optionLabelProp="label"
+                >
+                  {vendors.map((v) => (
+                    <Option
+                      key={v.id}
+                      value={v.id}
+                      label={partyDisplayName(v)}
+                    >
+                      {partyDisplayName(v)}
+                      {v.gstin ? ` · ${v.gstin}` : ''}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            )}
+
+            <Form.Item
+              name="partyName"
+              label={isPurchase ? 'Supplier name' : 'Party name'}
+              rules={[{ required: true, message: 'Required' }]}
+            >
+              <Input placeholder={isPurchase ? 'Vendor / supplier name' : 'Company / person name'} />
             </Form.Item>
             <Row gutter={12}>
               <Col span={12}>
@@ -605,14 +849,9 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
               </Card>
             )}
 
-            <InvoicePartyAddressFields
-              form={form}
-              selectedParty={selectedParty}
-              shipSameAsBill={shipSameAsBill}
-              onShipSameAsBillChange={handleShipSameAsBill}
-              onBillingAddressPick={applySavedBillingAddress}
-              onShippingAddressPick={applySavedShippingAddress}
-            />
+            {isPurchase && (
+              <VendorBankDetailsCard bankDetails={vendorBankDetails || selectedParty?.bankDetails} />
+            )}
           </Card>
         </Col>
 
@@ -621,7 +860,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
             <Row gutter={12}>
               <Col span={12}>
                 <Form.Item name="invoiceNumber" label="Invoice #">
-                  <Input placeholder="Auto: TPI000001" />
+                  <Input placeholder={`Auto: ${invoicePrefix}000001`} />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -655,8 +894,11 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
                 />
               </Col>
               <Col span={12}>
-                <Form.Item name="reference" label="Reference">
-                  <Input placeholder="PO / order ref" />
+                <Form.Item
+                  name="reference"
+                  label={isPurchase ? 'Supplier invoice ref' : 'Reference'}
+                >
+                  <Input placeholder={isPurchase ? 'Vendor bill / challan no.' : 'PO / order ref'} />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -668,6 +910,72 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
           </Card>
         </Col>
       </Row>
+
+      {isPurchase ? (
+        <>
+          <Card
+            size="small"
+            title="Bill From (Vendor)"
+            style={{ marginBottom: 16 }}
+          >
+            <InvoicePartyAddressFields
+              form={form}
+              selectedParty={selectedParty}
+              shipSameAsBill={shipSameAsBill}
+              onShipSameAsBillChange={handleShipSameAsBill}
+              onBillingAddressPick={applySavedBillingAddress}
+              onShippingAddressPick={applySavedShippingAddress}
+              billingTitle="Bill From (Vendor)"
+              shippingTitle="Ship To"
+              showShipping={false}
+              sameAsBillLabel="Same as Bill To"
+              savedBillingLabel="Saved vendor address"
+              savedShippingLabel="Saved ship-to address"
+            />
+          </Card>
+          <Card
+            size="small"
+            title="Bill To / Ship To (Your company)"
+            style={{ marginBottom: 16 }}
+          >
+            <InvoicePartyAddressFields
+              form={form}
+              selectedParty={null}
+              shipSameAsBill={companyShipSameAsBill}
+              onShipSameAsBillChange={handleCompanyShipSameAsBill}
+              billingTitle="Bill To (Your company)"
+              shippingTitle="Ship To (Warehouse / branch)"
+              showShipping
+              sameAsBillLabel="Same as Bill To"
+              billingPrefix="companyBillingAddress"
+              shippingPrefix="companyShippingAddress"
+            />
+            <Form.Item name="companyBillingAddressId" hidden><Input /></Form.Item>
+            <Form.Item name="companyShippingAddressId" hidden><Input /></Form.Item>
+          </Card>
+        </>
+      ) : (
+        <Card
+          size="small"
+          title="Billing & shipping address"
+          style={{ marginBottom: 16 }}
+        >
+          <InvoicePartyAddressFields
+            form={form}
+            selectedParty={selectedParty}
+            shipSameAsBill={shipSameAsBill}
+            onShipSameAsBillChange={handleShipSameAsBill}
+            onBillingAddressPick={applySavedBillingAddress}
+            onShippingAddressPick={applySavedShippingAddress}
+            billingTitle="Bill To"
+            shippingTitle="Ship To"
+            showShipping
+            sameAsBillLabel="Same as Bill To"
+            savedBillingLabel="Saved billing address"
+            savedShippingLabel="Saved shipping address"
+          />
+        </Card>
+      )}
 
       <Card
         size="small"
@@ -705,7 +1013,7 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
 
       <Row gutter={16} style={{ marginTop: 16 }}>
         <Col xs={24} md={14}>
-          <DocumentMetaFields form={form} docType="salesInvoice" />
+          <DocumentMetaFields form={form} docType={docMetaType} />
         </Col>
         <Col xs={24} md={10}>
           <DocumentTotalsSummary
@@ -747,10 +1055,11 @@ const ThirdPartyInvoiceForm = ({ invoiceId = null, onSave }) => {
           onClick={handleSave}
           size="large"
         >
-          {invoiceId ? 'Update Invoice' : 'Create Third-Party Invoice'}
+          {invoiceId ? `Update ${invoicePrefix} Invoice` : `Create ${invoicePrefix} Invoice`}
         </Button>
       </div>
     </Form>
+    </Spin>
   );
 };
 

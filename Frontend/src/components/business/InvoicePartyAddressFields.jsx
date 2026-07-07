@@ -60,6 +60,7 @@ function AddressFields({ prefix, disabled = false }) {
 
 /**
  * Bill-to / ship-to fields aligned with sales invoice PDF layout.
+ * Purchase invoices: supplier (bill from) + ship to (vendor shipping / delivery).
  */
 export default function InvoicePartyAddressFields({
   form,
@@ -68,6 +69,14 @@ export default function InvoicePartyAddressFields({
   onShipSameAsBillChange,
   onBillingAddressPick,
   onShippingAddressPick,
+  billingTitle = 'Bill To',
+  shippingTitle = 'Ship To',
+  showShipping = true,
+  sameAsBillLabel = 'Same as Bill To',
+  savedBillingLabel = 'Saved billing address',
+  savedShippingLabel = 'Saved shipping address',
+  billingPrefix = 'billingAddress',
+  shippingPrefix = 'shippingAddress',
 }) {
   const billingOptions = selectedParty?.billingAddresses?.length
     ? selectedParty.billingAddresses
@@ -83,11 +92,11 @@ export default function InvoicePartyAddressFields({
 
   return (
     <>
-      {selectedParty && (billingOptions.length > 0 || shippingOptions.length > 0) && (
+      {selectedParty && (billingOptions.length > 0 || (showShipping && shippingOptions.length > 0)) && (
         <Row gutter={12} style={{ marginBottom: 8 }}>
           {billingOptions.length > 0 && (
-            <Col span={12}>
-              <Form.Item label="Saved billing address">
+            <Col span={showShipping && shippingOptions.length > 0 ? 12 : 24}>
+              <Form.Item label={savedBillingLabel}>
                 <Select
                   allowClear
                   placeholder="Pick billing address"
@@ -99,9 +108,9 @@ export default function InvoicePartyAddressFields({
               </Form.Item>
             </Col>
           )}
-          {shippingOptions.length > 0 && (
+          {showShipping && shippingOptions.length > 0 && (
             <Col span={12}>
-              <Form.Item label="Saved shipping address">
+              <Form.Item label={savedShippingLabel}>
                 <Select
                   allowClear
                   placeholder="Pick shipping address"
@@ -116,21 +125,25 @@ export default function InvoicePartyAddressFields({
         </Row>
       )}
 
-      <Text strong style={{ display: 'block', marginBottom: 8 }}>Bill To</Text>
-      <AddressFields prefix="billingAddress" />
+      <Text strong style={{ display: 'block', marginBottom: 8 }}>{billingTitle}</Text>
+      <AddressFields prefix={billingPrefix} />
 
-      <Divider style={{ margin: '12px 0' }} />
+      {showShipping && (
+        <>
+          <Divider style={{ margin: '12px 0' }} />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text strong>Ship To</Text>
-        <Checkbox
-          checked={shipSameAsBill}
-          onChange={(e) => onShipSameAsBillChange?.(e.target.checked)}
-        >
-          Same as Bill To
-        </Checkbox>
-      </div>
-      <AddressFields prefix="shippingAddress" disabled={shipSameAsBill} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text strong>{shippingTitle}</Text>
+            <Checkbox
+              checked={shipSameAsBill}
+              onChange={(e) => onShipSameAsBillChange?.(e.target.checked)}
+            >
+              {sameAsBillLabel}
+            </Checkbox>
+          </div>
+          <AddressFields prefix={shippingPrefix} disabled={shipSameAsBill} />
+        </>
+      )}
     </>
   );
 }
@@ -147,13 +160,13 @@ export function addressFromPartyRecord(addr = {}) {
   };
 }
 
-export function buildPartyAddressesPayload(values, shipSameAsBill) {
+export function buildPartyAddressesPayload(values, shipSameAsBill, bankDetails = null) {
   const billing = values.billingAddress || EMPTY_INVOICE_ADDRESS;
   const shipping = shipSameAsBill
     ? { ...billing }
     : (values.shippingAddress || EMPTY_INVOICE_ADDRESS);
 
-  return {
+  const payload = {
     partyAddressSelection: {
       billingAddressId: values.billingAddressId || null,
       shippingAddressId: values.shippingAddressId || null,
@@ -163,4 +176,24 @@ export function buildPartyAddressesPayload(values, shipSameAsBill) {
     billingAddress: billing,
     shippingAddress: shipping,
   };
+  if (bankDetails && typeof bankDetails === 'object') {
+    payload.bankDetails = bankDetails;
+  }
+
+  const companyBilling = values.companyBillingAddress || EMPTY_INVOICE_ADDRESS;
+  const companyShipping = values.companyShipSameAsBill
+    ? { ...companyBilling }
+    : (values.companyShippingAddress || EMPTY_INVOICE_ADDRESS);
+  const hasCompanyBilling = Object.values(companyBilling).some(Boolean);
+  const hasCompanyShipping = Object.values(companyShipping).some(Boolean);
+  if (hasCompanyBilling || hasCompanyShipping) {
+    payload.companyAddressSelection = {
+      billingAddress: companyBilling,
+      shippingAddress: companyShipping,
+    };
+    payload.companyBillingAddress = companyBilling;
+    payload.companyShippingAddress = companyShipping;
+  }
+
+  return payload;
 }

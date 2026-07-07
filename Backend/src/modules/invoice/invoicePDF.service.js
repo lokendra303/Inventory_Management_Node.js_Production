@@ -32,6 +32,24 @@ const { loadPdfFooterAssets } = require('../../utils/pdfFooterAssets');
 const { drawProformaInvoice } = require('./invoicePdfProforma');
 
 class InvoicePDFService {
+  _drawComputerGeneratedNote(doc) {
+    if (!doc) return;
+    doc
+      .fontSize(8)
+      .font('Helvetica')
+      .fillColor('#555555')
+      .text(
+        'This is a computer-generated invoice and does not require a signature.',
+        50,
+        810,
+        {
+          width: 495,
+          align: 'center',
+        }
+      );
+    doc.fillColor('#000000');
+  }
+
   _firstRow(result) {
     if (result == null) return null;
     if (Array.isArray(result)) return result[0] || null;
@@ -655,6 +673,86 @@ class InvoicePDFService {
     };
   }
 
+  _mapInstitutionAddress(addr = {}) {
+    if (!addr || typeof addr !== 'object') return null;
+    const line1 = (addr.address_line1 || addr.address || '').trim();
+    const line2 = (addr.address_line2 || '').trim();
+    const city = (addr.city || '').trim();
+    const state = (addr.state || '').trim();
+    const country = (addr.country || '').trim();
+    const postalCode = (addr.postal_code || '').trim();
+    if (!line1 && !line2 && !city && !state && !country && !postalCode) return null;
+    return {
+      attention: (addr.label || '').trim(),
+      line1,
+      line2,
+      city,
+      state,
+      country,
+      postalCode,
+    };
+  }
+
+  _buildPurchaseCompanyParty(companySettings, standardInvoice) {
+    const manualParty = standardInvoice?.purchaseCompanyParty || {};
+    const companyName =
+      manualParty?.name ||
+      manualParty?.companyName ||
+      companySettings?.company_name ||
+      standardInvoice?.header?.companyName ||
+      'Company';
+    const gstin =
+      companySettings?.tax_id ||
+      standardInvoice?.header?.taxInfo?.taxId ||
+      '';
+    const pan =
+      companySettings?.pan ||
+      standardInvoice?.header?.taxInfo?.pan ||
+      '';
+
+    const addressRows = Array.isArray(companySettings?.addresses)
+      ? companySettings.addresses
+      : [];
+    const defaultRow = addressRows.find((a) => Number(a?.is_default) === 1) || addressRows[0] || null;
+    const shippingRow =
+      addressRows.find((a) => a && a !== defaultRow && /ship|warehouse|godown|branch/i.test(String(a.label || ''))) ||
+      addressRows.find((a) => a && a !== defaultRow) ||
+      defaultRow;
+
+    const fallbackHeaderAddress = standardInvoice?.header?.address || {};
+    const fallbackAddress = {
+      attention: '',
+      line1: (fallbackHeaderAddress.line1 || '').trim(),
+      line2: '',
+      city: (fallbackHeaderAddress.city || '').trim(),
+      state: (fallbackHeaderAddress.state || '').trim(),
+      country: (fallbackHeaderAddress.country || '').trim(),
+      postalCode: (fallbackHeaderAddress.postalCode || '').trim(),
+    };
+
+    const billingAddress =
+      manualParty?.billingAddress
+      || this._mapInstitutionAddress(defaultRow)
+      || fallbackAddress;
+    const shippingAddress =
+      manualParty?.shippingAddress
+      || this._mapInstitutionAddress(shippingRow)
+      || billingAddress;
+
+    return {
+      type: 'company',
+      name: companyName,
+      companyName,
+      billingAddress,
+      shippingAddress,
+      taxInfo: { gstin: manualParty?.taxInfo?.gstin || gstin, pan: manualParty?.taxInfo?.pan || pan },
+      contact: {
+        phone: manualParty?.contact?.phone || companySettings?.phone || standardInvoice?.header?.contact?.phone || '',
+        email: manualParty?.contact?.email || companySettings?.email || standardInvoice?.header?.contact?.email || '',
+      },
+    };
+  }
+
   _tailSection(doc, y, standardInvoice, companySettings, stampBuffer, signatureBuffer, pageNumber, tailOpts = {}) {
     let yn = drawTotalsBlock(doc, y, standardInvoice, tailOpts);
     doc.fontSize(9).font('Helvetica').text(`Page ${pageNumber}`, 500, 780);
@@ -690,6 +788,7 @@ class InvoicePDFService {
         isSales,
         leftX: 50,
         totalWidth: 495,
+        purchaseCompanyParty: standardInvoice.purchaseCompanyParty || null,
       }) + 12;
 
     const { y: y2, pageNumber } = drawInvoiceLineItems(doc, y, standardInvoice, {
@@ -873,6 +972,7 @@ class InvoicePDFService {
     drawProformaInvoice(doc, {
       ...ctx,
       companyStrings: this._resolveCompanyStrings(standardInvoice, companySettings),
+      purchaseCompanyParty: standardInvoice.purchaseCompanyParty || null,
     });
   }
 
@@ -921,6 +1021,12 @@ class InvoicePDFService {
       try {
         companySettings = await this.loadCompanyProfileForPdf(institutionId);
         this._applyCompanyProfileToStandardInvoice(standardInvoice, companySettings);
+        if (!this._isSalesInvoice(standardInvoice)) {
+          standardInvoice.purchaseCompanyParty = this._buildPurchaseCompanyParty(
+            companySettings,
+            standardInvoice
+          );
+        }
       } catch (err) {
         logger.warn('Could not load company settings for PDF', { institutionId, error: err.message });
       }
@@ -932,18 +1038,22 @@ class InvoicePDFService {
         customerName: standardInvoice.partyDetails?.name,
       });
       this._ensureSalesShippingAddress(standardInvoice.partyDetails);
-    } else if (!this._isSalesInvoice(standardInvoice) && institutionId && standardInvoice.partyDetails?.id) {
-      try {
-        standardInvoice.partyDetails = await this._loadPartyDetailsForDocument(
-          institutionId,
-          {
-            vendorId: standardInvoice.partyDetails.id,
-            vendorName: standardInvoice.partyDetails?.name,
-          },
-          'purchase'
-        );
-      } catch (err) {
-        logger.warn('Could not refresh vendor party for PI PDF', { error: err.message });
+    } else if (!this._isSalesInvoice(standardInvoice)) {
+      this._ensureSalesShippingAddress(standardInvoice.partyDetails);
+      if (institutionId && standardInvoice.partyDetails?.id) {
+        try {
+          standardInvoice.partyDetails = await this._loadPartyDetailsForDocument(
+            institutionId,
+            {
+              vendorId: standardInvoice.partyDetails.id,
+              vendorName: standardInvoice.partyDetails?.name,
+            },
+            'purchase'
+          );
+          this._ensureSalesShippingAddress(standardInvoice.partyDetails);
+        } catch (err) {
+          logger.warn('Could not refresh vendor party for PI PDF', { error: err.message });
+        }
       }
     }
 
@@ -993,6 +1103,7 @@ class InvoicePDFService {
         } else {
           this._renderClassic(doc, ctx);
         }
+        this._drawComputerGeneratedNote(doc);
         doc.end();
       } catch (error) {
         logger.error('PDF generation error:', error);

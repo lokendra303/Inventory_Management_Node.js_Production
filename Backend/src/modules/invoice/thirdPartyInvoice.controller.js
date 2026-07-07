@@ -9,7 +9,7 @@ const {
 const invoiceTemplateService = require('./invoiceTemplate.service');
 const invoicePDFService = require('./invoicePDF.service');
 const { v4: uuidv4 } = require('uuid');
-const { serializeDocumentMeta, parseDocumentMeta } = require('../../utils/documentMeta');
+const { serializeDocumentMeta, parseDocumentMeta, normalizeDocumentMeta } = require('../../utils/documentMeta');
 const {
   parsePartyAddresses,
   serializePartyAddresses,
@@ -18,7 +18,9 @@ const {
 } = require('../../utils/partyAddresses');
 const InvoiceService = require('./invoice.service');
 
-function nextInvoiceNumber(lastNumber) {
+function nextInvoiceNumber(lastNumber, invoiceType = 'sales') {
+  const defaultPrefix = invoiceType === 'purchase' ? 'PI' : 'SI';
+  const defaultNumber = `${defaultPrefix}000001`;
   if (lastNumber) {
     const str = String(lastNumber);
     const match = str.match(/(\d+)(\D*)$/);
@@ -32,7 +34,82 @@ function nextInvoiceNumber(lastNumber) {
     }
     return `${str}-1`;
   }
-  return 'TPI000001';
+  return defaultNumber;
+}
+
+function normalizeInvoiceType(value) {
+  return String(value || 'sales').toLowerCase() === 'purchase' ? 'purchase' : 'sales';
+}
+
+function documentMetaProfileForType(invoiceType) {
+  return normalizeInvoiceType(invoiceType) === 'purchase' ? 'purchaseInvoice' : 'salesInvoice';
+}
+
+function parseThirdPartyDocumentMeta(raw, invoiceType) {
+  const profile = documentMetaProfileForType(invoiceType);
+  if (raw == null || raw === '') return normalizeDocumentMeta(null, profile);
+  if (typeof raw === 'object') return normalizeDocumentMeta(raw, profile);
+  try {
+    return normalizeDocumentMeta(JSON.parse(raw), profile);
+  } catch {
+    return normalizeDocumentMeta(null, profile);
+  }
+}
+
+function buildThirdPartyPdfInvoiceData(invoice, lines, partyAddressesParsed) {
+  const invoiceType = normalizeInvoiceType(invoice.invoice_type);
+  const isPurchase = invoiceType === 'purchase';
+  const partyPayload = buildInvoicePartyPayload(invoice, partyAddressesParsed);
+  const documentMeta = parseThirdPartyDocumentMeta(invoice.document_meta, invoiceType);
+  if (partyAddressesParsed?.partyAddressSelection) {
+    documentMeta.partyAddressSelection = partyAddressesParsed.partyAddressSelection;
+  }
+
+  const mappedLines = (lines || []).map((line) => {
+    const base = {
+      itemName: line.description,
+      description: line.description,
+      unit: line.unit,
+      quantity: line.quantity,
+      taxRate: line.tax_rate,
+      discountRate: line.discount_rate,
+      hsnCode: line.hsn_code,
+    };
+    if (isPurchase) {
+      return { ...base, unitCost: line.unit_price };
+    }
+    return { ...base, unitPrice: line.unit_price };
+  });
+
+  if (isPurchase) {
+    return {
+      ...partyPayload,
+      vendorName: partyPayload.vendorName || invoice.party_name,
+      vendorId: null,
+      customerId: null,
+      customerName: undefined,
+      documentMeta,
+      companyBillingAddress:
+        partyAddressesParsed?.companyBillingAddress
+        || partyAddressesParsed?.companyAddressSelection?.billingAddress
+        || null,
+      companyShippingAddress:
+        partyAddressesParsed?.companyShippingAddress
+        || partyAddressesParsed?.companyAddressSelection?.shippingAddress
+        || null,
+      lines: mappedLines,
+    };
+  }
+
+  return {
+    ...partyPayload,
+    customerName: partyPayload.customerName || invoice.party_name,
+    customerId: null,
+    vendorId: null,
+    vendorName: undefined,
+    documentMeta,
+    lines: mappedLines,
+  };
 }
 
 function lineCalculations(line) {
@@ -48,6 +125,37 @@ function lineCalculations(line) {
 }
 
 class ThirdPartyInvoiceController {
+  async getVendorsList(req, res) {
+    try {
+      const { institutionId } = req;
+      const rows = await db.query(
+        `SELECT id, vendor_code, display_name, company_name, gstin, email,
+                COALESCE(work_phone, mobile_phone) AS phone
+         FROM vendors
+         WHERE institution_id = ? AND status = 'active'
+         ORDER BY display_name ASC
+         LIMIT 500`,
+        [institutionId]
+      );
+      res.json({ success: true, data: rows || [] });
+    } catch (error) {
+      logger.error('Error fetching vendors for third-party invoice:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch vendors' });
+    }
+  }
+
+  async getVendorDetailsForInvoice(req, res) {
+    try {
+      const { institutionId } = req;
+      const { vendorId } = req.params;
+      const vendorDetails = await invoiceTemplateService.getVendorDetails(institutionId, vendorId);
+      res.json({ success: true, data: vendorDetails });
+    } catch (error) {
+      logger.error('Error fetching vendor details for third-party invoice:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch vendor details' });
+    }
+  }
+
   async getCustomersList(req, res) {
     try {
       const { institutionId } = req;
@@ -109,22 +217,26 @@ class ThirdPartyInvoiceController {
         grandTotal: rawTotals.grandTotal ?? rawTotals.totalAmount ?? 0,
       };
 
+      const invoiceType = normalizeInvoiceType(invoiceData.invoiceType ?? invoiceData.invoice_type);
+
       const result = await db.transaction(async (connection) => {
         const invoiceId = uuidv4();
         const [lastRows] = await connection.execute(
-          'SELECT invoice_number FROM third_party_invoices WHERE institution_id = ? ORDER BY created_at DESC LIMIT 1',
-          [institutionId]
+          `SELECT invoice_number FROM third_party_invoices
+           WHERE institution_id = ? AND invoice_type = ?
+           ORDER BY created_at DESC LIMIT 1`,
+          [institutionId, invoiceType]
         );
         const lastRow = Array.isArray(lastRows) ? lastRows[0] : lastRows;
         const invoiceNumber = (invoiceData.invoiceNumber && String(invoiceData.invoiceNumber).trim())
-          || nextInvoiceNumber(lastRow?.invoice_number);
+          || nextInvoiceNumber(lastRow?.invoice_number, invoiceType);
 
         const today = new Date().toISOString().split('T')[0];
         const invoiceDate = normalizeDateInput(invoiceData.invoiceDate, today);
         const dueDate = normalizeDateInput(invoiceData.dueDate, null);
         const documentMetaJson = serializeDocumentMeta(
           invoiceData.documentMeta ?? invoiceData.document_meta,
-          'salesInvoice'
+          documentMetaProfileForType(invoiceType)
         );
         const partyAddressesJson = serializePartyAddresses(
           invoiceData.partyAddresses ?? invoiceData.party_addresses
@@ -135,13 +247,13 @@ class ThirdPartyInvoiceController {
 
         await connection.execute(`
           INSERT INTO third_party_invoices (
-            id, institution_id, invoice_number, party_type, party_id, party_name,
+            id, institution_id, invoice_number, invoice_type, party_type, party_id, party_name,
             party_gstin, party_address, party_addresses, invoice_date, due_date, currency, exchange_rate,
             subtotal, tax_amount, discount_amount, total_amount, status,
             reference, notes, document_meta, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-          invoiceId, institutionId, invoiceNumber,
+          invoiceId, institutionId, invoiceNumber, invoiceType,
           invoiceData.partyType || 'other',
           invoiceData.partyId || null,
           invoiceData.partyName.trim(),
@@ -202,11 +314,15 @@ class ThirdPartyInvoiceController {
   async getThirdPartyInvoices(req, res) {
     try {
       const { institutionId } = req;
-      const { status, dateFrom, dateTo, page = 1, limit = 50 } = req.query;
+      const { status, dateFrom, dateTo, invoiceType, page = 1, limit = 50 } = req.query;
 
       let whereClause = 'WHERE tpi.institution_id = ?';
       const params = [institutionId];
 
+      if (invoiceType) {
+        whereClause += ' AND tpi.invoice_type = ?';
+        params.push(normalizeInvoiceType(invoiceType));
+      }
       if (status) { whereClause += ' AND tpi.status = ?'; params.push(status); }
       if (dateFrom) { whereClause += ' AND tpi.invoice_date >= ?'; params.push(dateFrom); }
       if (dateTo) { whereClause += ' AND tpi.invoice_date <= ?'; params.push(dateTo); }
@@ -216,7 +332,7 @@ class ThirdPartyInvoiceController {
       const offset = (pageInt - 1) * limitInt;
 
       const invoices = await db.query(`
-        SELECT tpi.id, tpi.invoice_number, tpi.party_type, tpi.party_id, tpi.party_name,
+        SELECT tpi.id, tpi.invoice_number, tpi.invoice_type, tpi.party_type, tpi.party_id, tpi.party_name,
                tpi.party_gstin, tpi.invoice_date, tpi.due_date, tpi.currency,
                tpi.subtotal, tpi.tax_amount, tpi.discount_amount, tpi.total_amount,
                COALESCE(tpi.status, 'draft') AS status, tpi.created_at
@@ -317,13 +433,15 @@ class ThirdPartyInvoiceController {
         grandTotal: rawTotals.grandTotal ?? rawTotals.totalAmount ?? 0,
       };
 
+      const invoiceType = normalizeInvoiceType(invoiceData.invoiceType ?? invoiceData.invoice_type);
+
       await db.transaction(async (connection) => {
         const today = new Date().toISOString().split('T')[0];
         const invoiceDate = normalizeDateInput(invoiceData.invoiceDate, today);
         const dueDate = normalizeDateInput(invoiceData.dueDate, null);
         const documentMetaJson = serializeDocumentMeta(
           invoiceData.documentMeta ?? invoiceData.document_meta,
-          'salesInvoice'
+          documentMetaProfileForType(invoiceType)
         );
         const partyAddressesJson = serializePartyAddresses(
           invoiceData.partyAddresses ?? invoiceData.party_addresses
@@ -341,6 +459,7 @@ class ThirdPartyInvoiceController {
         await connection.execute(`
           UPDATE third_party_invoices SET
             invoice_number = COALESCE(?, invoice_number),
+            invoice_type = ?,
             party_type = ?, party_id = ?, party_name = ?, party_gstin = ?, party_address = ?, party_addresses = ?,
             invoice_date = ?, due_date = ?, currency = ?, exchange_rate = ?,
             subtotal = ?, tax_amount = ?, discount_amount = ?, total_amount = ?,
@@ -348,6 +467,7 @@ class ThirdPartyInvoiceController {
           WHERE id = ? AND institution_id = ?
         `, [
           newInvoiceNumber,
+          invoiceType,
           invoiceData.partyType || 'other',
           invoiceData.partyId || null,
           invoiceData.partyName?.trim(),
@@ -469,33 +589,36 @@ class ThirdPartyInvoiceController {
       );
 
       const partyAddressesParsed = parsePartyAddresses(invoice.party_addresses);
-      const documentMeta = parseDocumentMeta(invoice.document_meta);
-      if (partyAddressesParsed?.partyAddressSelection) {
-        documentMeta.partyAddressSelection = partyAddressesParsed.partyAddressSelection;
-      }
-      const invoiceData = {
-        ...buildInvoicePartyPayload(invoice, partyAddressesParsed),
-        // Third-party invoices snapshot their own bill-to/ship-to in party_addresses
-        // and are edited independently of the customer master. Force the manual-party
-        // path so the PDF renders the saved snapshot instead of re-deriving addresses
-        // from the linked customer record.
-        customerId: null,
-        documentMeta,
-        lines: lines.map((line) => ({
-          itemName: line.description,
-          description: line.description,
-          unit: line.unit,
-          quantity: line.quantity,
-          unitPrice: line.unit_price,
-          taxRate: line.tax_rate,
-          discountRate: line.discount_rate,
-          hsnCode: line.hsn_code,
-        })),
-      };
+      const invoiceType = normalizeInvoiceType(invoice.invoice_type);
+      const pdfDocType = invoiceType === 'purchase' ? 'purchase' : 'sales';
+      const invoiceData = buildThirdPartyPdfInvoiceData(invoice, lines, partyAddressesParsed);
 
       const standardInvoice = await invoiceTemplateService.generateStandardInvoice(
-        institutionId, invoiceData, 'sales'
+        institutionId, invoiceData, pdfDocType
       );
+      if (pdfDocType === 'purchase') {
+        const companyBill =
+          partyAddressesParsed?.companyBillingAddress
+          || partyAddressesParsed?.companyAddressSelection?.billingAddress
+          || null;
+        const companyShip =
+          partyAddressesParsed?.companyShippingAddress
+          || partyAddressesParsed?.companyAddressSelection?.shippingAddress
+          || null;
+        if (companyBill || companyShip) {
+          standardInvoice.purchaseCompanyParty = {
+            type: 'company',
+            name: standardInvoice?.header?.companyName || 'Company',
+            companyName: standardInvoice?.header?.companyName || 'Company',
+            billingAddress: companyBill || companyShip || {},
+            shippingAddress: companyShip || companyBill || {},
+            taxInfo: {
+              gstin: standardInvoice?.header?.taxInfo?.taxId || '',
+              pan: standardInvoice?.header?.taxInfo?.pan || '',
+            },
+          };
+        }
+      }
 
       const { queryFlag, sendInvoicePdfBuffer } = require('./invoicePdfResponse.helper');
       const wantsPdf = queryFlag(download) || queryFlag(req.query.inline);
@@ -505,7 +628,7 @@ class ThirdPartyInvoiceController {
           standardInvoice,
           institutionId,
           invoiceNumber: invoice.invoice_number,
-          type: 'sales',
+          type: pdfDocType,
           attachment: queryFlag(download),
         });
       }
@@ -513,7 +636,7 @@ class ThirdPartyInvoiceController {
       const fileInfo = await invoicePDFService.saveInvoicePDF(
         standardInvoice,
         invoice.invoice_number,
-        'sales',
+        pdfDocType,
         institutionId
       );
       res.json({ success: true, data: fileInfo });

@@ -836,6 +836,8 @@ function drawProformaInvoice(doc, ctx) {
   const currency = standardInvoice.details?.currency || 'INR';
   const cs = ctx.companyStrings || {};
   const party = standardInvoice.partyDetails || {};
+  const purchaseCompanyParty = ctx.purchaseCompanyParty || standardInvoice.purchaseCompanyParty || null;
+  const purchaseShipParty = purchaseCompanyParty || party;
   const lineItems = standardInvoice.lineItems || [];
   const totals = standardInvoice.totals || {};
 
@@ -847,6 +849,7 @@ function drawProformaInvoice(doc, ctx) {
   );
   const partyGst = party.taxInfo?.gstin || '';
   const partyState = gstStateFromGstin(partyGst, party.billingAddress?.state);
+  const shipStateForParty = gstStateFromGstin(partyGst, party.shippingAddress?.state);
 
   let y = PROFORMA_TOP_Y;
 
@@ -883,7 +886,6 @@ function drawProformaInvoice(doc, ctx) {
   const sellerDetailsLeft = LEFT + (logoBuffer ? sellerLogoColW : 8);
   const sellerDetailsW = LEFT + sellerW - 8 - sellerDetailsLeft;
 
-  const shipStateForParty = isSales ? gstStateFromGstin(partyGst, party.shippingAddress?.state) : {};
   const billExtraForParty = isSales && partyState.name ? [`Place of Supply: ${partyState.name}`] : [];
 
   /** Proforma: short party blocks — no 56pt floor (see measureTallyPartyColumnHeight minPanelH). */
@@ -933,10 +935,38 @@ function drawProformaInvoice(doc, ctx) {
       sellerW,
       partyMinH
     );
-    sellerStackMinH += sectionGap + vendorFromH;
+    billH = measureTallyPartyColumnHeight(
+      doc,
+      purchaseCompanyParty || party,
+      'billing',
+      purchaseCompanyParty?.taxInfo?.gstin || '',
+      gstStateFromGstin(
+        purchaseCompanyParty?.taxInfo?.gstin || '',
+        purchaseCompanyParty?.billingAddress?.state
+      ),
+      [],
+      sellerW,
+      partyMinH
+    );
+    shipH = measureTallyPartyColumnHeight(
+      doc,
+      purchaseShipParty,
+      'shipping',
+      purchaseShipParty?.taxInfo?.gstin || '',
+      gstStateFromGstin(
+        purchaseShipParty?.taxInfo?.gstin || '',
+        purchaseShipParty?.shippingAddress?.state
+      ),
+      [],
+      metaW,
+      partyMinH
+    );
+    sellerStackMinH += sectionGap + vendorFromH + sectionGap + billH;
   }
 
-  const topH = Math.max(metaGridH, sellerStackMinH + 4);
+  const topH = isSales
+    ? Math.max(metaGridH, sellerStackMinH + 4)
+    : Math.max(metaGridH + (shipH > 0 ? shipH + 4 : 0), sellerStackMinH + 4);
 
   box(doc, LEFT, y, sellerW, topH);
   box(doc, metaX, y, metaW, topH);
@@ -1029,10 +1059,55 @@ function drawProformaInvoice(doc, ctx) {
         partyState,
         []
       );
+      sy += vendorFromH;
     }
+    if (sy + 4 <= y + topH) {
+      strokeHLine(doc, LEFT, LEFT + sellerW, sy);
+      sy += 4;
+    }
+    if (sy + billH <= y + topH) {
+      drawTallyPartyColumn(
+        doc,
+        LEFT,
+        sy,
+        sellerW,
+        Math.min(billH, y + topH - sy),
+        'Bill To',
+        purchaseCompanyParty || party,
+        'billing',
+        purchaseCompanyParty?.taxInfo?.gstin || '',
+        gstStateFromGstin(
+          purchaseCompanyParty?.taxInfo?.gstin || '',
+          purchaseCompanyParty?.billingAddress?.state
+        ),
+        []
+      );
+      sy += billH;
+    }
+    // Ship To is rendered in the right panel under meta rows for PI.
   }
 
   drawTallyMetaGrid(doc, metaX, y, metaW, metaGridRows, metaGridOptions);
+  if (!isSales && shipH > 0 && metaGridH + 4 < topH) {
+    const shipStartY = y + metaGridH + 4;
+    strokeHLine(doc, metaX, metaX + metaW, shipStartY);
+    drawTallyPartyColumn(
+      doc,
+      metaX,
+      shipStartY,
+      metaW,
+      Math.max(24, topH - (shipStartY - y)),
+      'Ship To',
+      purchaseShipParty,
+      'shipping',
+      purchaseShipParty?.taxInfo?.gstin || '',
+      gstStateFromGstin(
+        purchaseShipParty?.taxInfo?.gstin || '',
+        purchaseShipParty?.shippingAddress?.state
+      ),
+      []
+    );
+  }
   y += topH;
 
   const itemColRoles = proformaColRoles();
@@ -1345,10 +1420,6 @@ function drawProformaInvoice(doc, ctx) {
     });
 
   y += footerH + 4;
-  doc.fontSize(size.disclaimer).fillColor('#555555').text('This is a Computer Generated Invoice', LEFT, y, {
-    width: WIDTH,
-    align: 'center',
-  });
   doc.fillColor('#000000');
 }
 

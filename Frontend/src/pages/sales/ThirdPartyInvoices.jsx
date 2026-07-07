@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Card, Button, Table, Tag, message, Modal, Input, Select, Tooltip, Alert, Popconfirm,
+  Card, Button, Table, Tag, message, Modal, Input, Select, Tooltip, Alert, Popconfirm, Tabs,
 } from 'antd';
 import {
   FileTextOutlined, PlusOutlined, EyeOutlined, FilePdfOutlined,
@@ -21,10 +21,16 @@ const STATUS_CONFIG = {
   cancelled: { color: 'error',   label: 'Cancelled' },
 };
 
+const INVOICE_TYPE_TABS = [
+  { key: 'sales', label: 'Sales Invoice (SI)', shortLabel: 'SI' },
+  { key: 'purchase', label: 'Purchase Invoice (PI)', shortLabel: 'PI' },
+];
+
 const ThirdPartyInvoices = () => {
   const { formatCurrency } = useCurrency();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
+  const [invoiceType, setInvoiceType] = useState('sales');
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -34,6 +40,7 @@ const ThirdPartyInvoices = () => {
   const [viewInvoiceId, setViewInvoiceId] = useState(null);
   const [viewInvoiceNumber, setViewInvoiceNumber] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
+  const [editingInvoiceType, setEditingInvoiceType] = useState('sales');
   const [modalMode, setModalMode] = useState('create');
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState(null);
@@ -42,7 +49,7 @@ const ThirdPartyInvoices = () => {
     try {
       setLoading(true);
       const response = await apiService.get('/third-party-invoices', {
-        params: { page, limit: pageSize },
+        params: { page, limit: pageSize, invoiceType },
       });
       if (response.success) {
         setInvoices(response.data?.invoices || []);
@@ -55,9 +62,15 @@ const ThirdPartyInvoices = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, invoiceType]);
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
+
+  useEffect(() => {
+    setPage(1);
+    setSelectedInvoiceId(null);
+    setModalVisible(false);
+  }, [invoiceType]);
 
   const handleDownloadPDF = async (invoiceId, invoiceNumber) => {
     try {
@@ -70,7 +83,7 @@ const ThirdPartyInvoices = () => {
       const url = window.URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `TPI_${invoiceNumber}.pdf`);
+      link.setAttribute('download', `${invoiceType === 'purchase' ? 'PI' : 'SI'}_${invoiceNumber}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -157,6 +170,8 @@ const ThirdPartyInvoices = () => {
     return textMatch && statusMatch;
   });
 
+  const typeTab = INVOICE_TYPE_TABS.find((t) => t.key === invoiceType) || INVOICE_TYPE_TABS[0];
+
   const columns = [
     {
       title: 'Invoice #',
@@ -209,6 +224,7 @@ const ThirdPartyInvoices = () => {
                   icon={<EditOutlined />}
                   onClick={() => {
                     setSelectedInvoiceId(record.id);
+                    setEditingInvoiceType(record.invoice_type === 'purchase' ? 'purchase' : 'sales');
                     setModalMode('edit');
                     setModalVisible(true);
                   }}
@@ -289,7 +305,16 @@ const ThirdPartyInvoices = () => {
           showIcon
           style={{ marginBottom: 16 }}
           message="Third-party invoices"
-          description="Create GST-compliant invoices with full calculation automation. These documents use your standard invoice PDF format but do not affect inventory, stock movements, or accounting."
+          description="Create GST-compliant sales (SI) or purchase (PI) invoices with full calculation automation. These documents use your standard invoice PDF format but do not affect inventory, stock movements, or accounting."
+        />
+        <Tabs
+          activeKey={invoiceType}
+          onChange={setInvoiceType}
+          style={{ marginBottom: 16 }}
+          items={INVOICE_TYPE_TABS.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+          }))}
         />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
           <Input
@@ -326,7 +351,7 @@ const ThirdPartyInvoices = () => {
             }}
             style={{ background: '#11998e', borderColor: '#11998e' }}
           >
-            New Third-Party Invoice
+            New {typeTab.shortLabel} Invoice
           </Button>
         </div>
       </div>
@@ -352,7 +377,9 @@ const ThirdPartyInvoices = () => {
       </Card>
 
       <Modal
-        title={modalMode === 'edit' ? 'Edit Third-Party Invoice' : 'Create Third-Party Invoice'}
+        title={modalMode === 'edit'
+          ? `Edit Third-Party ${typeTab.shortLabel} Invoice`
+          : `Create Third-Party ${typeTab.shortLabel} Invoice`}
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
         footer={null}
@@ -360,7 +387,10 @@ const ThirdPartyInvoices = () => {
         destroyOnClose
       >
         <ThirdPartyInvoiceForm
-          key={modalMode === 'edit' ? `edit-${selectedInvoiceId}` : 'create'}
+          key={modalMode === 'edit'
+            ? `edit-${selectedInvoiceId}-${editingInvoiceType}`
+            : `create-${invoiceType}`}
+          type={modalMode === 'edit' ? editingInvoiceType : invoiceType}
           invoiceId={modalMode === 'edit' ? selectedInvoiceId : null}
           onSave={() => {
             setModalVisible(false);
@@ -374,7 +404,7 @@ const ThirdPartyInvoices = () => {
         onClose={() => { setViewInvoiceId(null); setViewInvoiceNumber(''); }}
         invoiceId={viewInvoiceId}
         apiBase="/third-party-invoices"
-        title={viewInvoiceNumber ? `TPI ${viewInvoiceNumber}` : 'Third-Party Invoice'}
+        title={viewInvoiceNumber ? `${typeTab.shortLabel} ${viewInvoiceNumber}` : `Third-Party ${typeTab.shortLabel}`}
       />
     </div>
   );
@@ -387,7 +417,7 @@ function TitleRow() {
       <div>
         <h2 style={{ margin: 0, fontSize: 22 }}>Third-Party Invoices</h2>
         <p style={{ margin: 0, color: '#888', fontSize: 13 }}>
-          Manual invoices · GST automation · No inventory impact
+          Manual SI / PI · GST automation · No inventory impact
         </p>
       </div>
     </div>

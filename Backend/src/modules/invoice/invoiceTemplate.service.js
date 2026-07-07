@@ -4,6 +4,7 @@ const customerService = require('../entity/customer.service');
 const logger = require('../../utils/logger');
 const { normalizeInvoiceUnit } = require('../../utils/invoiceUnit');
 const { applyDocumentMetaToInvoiceDetails } = require('../../utils/documentMeta');
+const { normalizeBankDetails } = require('../../utils/partyAddresses');
 
 class InvoiceTemplateService {
   normalizeAddressRecord(addr = {}) {
@@ -180,6 +181,17 @@ class InvoiceTemplateService {
    */
   async getPartyDetails(institutionId, invoiceData, type) {
     try {
+      const hasSavedAddresses = (addr) => {
+        if (!addr || typeof addr !== 'object') return false;
+        return Boolean(addr.line1 || addr.line2 || addr.city || addr.state || addr.country || addr.postalCode);
+      };
+      if (
+        hasSavedAddresses(invoiceData.billingAddress)
+        || hasSavedAddresses(invoiceData.shippingAddress)
+      ) {
+        return this.getManualPartyDetails(invoiceData, type);
+      }
+
       const meta = invoiceData.documentMeta ?? invoiceData.document_meta ?? {};
       const selected = meta.partyAddressSelection || {};
       if (type === 'purchase' && invoiceData.vendorId) {
@@ -607,6 +619,7 @@ class InvoiceTemplateService {
       taxInfo: {
         gstin: invoiceData.partyGstin || invoiceData.gstin || '',
       },
+      bankDetails: normalizeBankDetails(invoiceData.bankDetails) || null,
     };
   }
 

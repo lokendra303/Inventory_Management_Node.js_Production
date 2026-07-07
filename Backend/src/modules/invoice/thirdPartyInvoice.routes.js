@@ -15,6 +15,16 @@ router.get('/customers/list',
   thirdPartyInvoiceController.getCustomersList
 );
 
+router.get('/vendors/:vendorId/details',
+  requirePermission('invoice_view'),
+  thirdPartyInvoiceController.getVendorDetailsForInvoice
+);
+
+router.get('/vendors/list',
+  requirePermission('invoice_view'),
+  thirdPartyInvoiceController.getVendorsList
+);
+
 router.get('/',
   requirePermission('invoice_view'),
   thirdPartyInvoiceController.getThirdPartyInvoices

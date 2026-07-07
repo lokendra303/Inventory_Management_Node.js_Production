@@ -486,6 +486,7 @@ function drawClassicPartyMetaBand(doc, y, standardInvoice, party = {}, options =
   const partyW = WIDTH - metaW;
   const metaX = LEFT + partyW;
   const isSales = options.isSales !== false && (standardInvoice.details?.type || standardInvoice.metadata?.type) !== 'purchase';
+  const purchaseCompanyParty = options.purchaseCompanyParty || standardInvoice?.purchaseCompanyParty || null;
 
   const rows = buildTallyMetaGridRows(standardInvoice, party);
   const metaH = measureMetaGridHeight(doc, rows, metaW);
@@ -496,7 +497,9 @@ function drawClassicPartyMetaBand(doc, y, standardInvoice, party = {}, options =
     const billH = measureClassicPartyPanelMinHeight(doc, party, 'billing', [], partyW);
     partyMinH = shipH + billH;
   } else {
-    partyMinH = measureClassicPartyPanelMinHeight(doc, party, 'billing', [], partyW);
+    const vendorH = measureClassicPartyPanelMinHeight(doc, party, 'billing', [], partyW);
+    const shipH = measureClassicPartyPanelMinHeight(doc, party, 'shipping', [], partyW);
+    partyMinH = vendorH + shipH;
   }
 
   const blockH = Math.max(metaH, partyMinH, 112);
@@ -521,7 +524,20 @@ function drawClassicPartyMetaBand(doc, y, standardInvoice, party = {}, options =
       party.billingAddress?.state ? [`Place of Supply: ${party.billingAddress.state}`] : []
     );
   } else {
-    drawClassicPartyPanel(doc, LEFT, y, partyW, blockH, 'Supplier (Bill from)', party, 'billing');
+    const vendorH = Math.floor(blockH / 2);
+    const shipPanelH = blockH - vendorH;
+    strokeHLine(doc, LEFT, LEFT + partyW, y + vendorH);
+    drawClassicPartyPanel(doc, LEFT, y, partyW, vendorH, 'Supplier (Bill from)', party, 'billing');
+    drawClassicPartyPanel(
+      doc,
+      LEFT,
+      y + vendorH,
+      partyW,
+      shipPanelH,
+      'Ship to',
+      purchaseCompanyParty || party,
+      purchaseCompanyParty ? 'shipping' : 'shipping'
+    );
   }
 
   drawTallyMetaGrid(doc, metaX, y, metaW, rows);
