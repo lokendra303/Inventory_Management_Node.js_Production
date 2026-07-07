@@ -5,6 +5,7 @@ import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
 import {
   getCatalogItemById,
+  resolveCatalogItemAvailableStock,
   resolveCatalogItemCost,
   resolveCatalogItemSize,
   resolveCatalogItemUnit,
@@ -218,6 +219,7 @@ export default function CompositeBomSection({
             const qty = Number(row.quantityRequired) || 0;
             const unitCost = selectedItem ? resolveCatalogItemCost(selectedItem) : 0;
             const lineCost = qty * unitCost;
+            const availableStock = selectedItem ? resolveCatalogItemAvailableStock(selectedItem) : null;
             const metaChipStyle = {
               display: 'inline-flex',
               alignItems: 'center',
@@ -248,7 +250,14 @@ export default function CompositeBomSection({
                     </div>
                     <Select
                       showSearch
-                      optionFilterProp="children"
+                      optionFilterProp="searchLabel"
+                      filterOption={(input, option) => {
+                        const query = String(input || '').trim().toLowerCase();
+                        if (!query) return true;
+                        const searchLabel = String(option?.searchLabel || '').toLowerCase();
+                        const valueLabel = String(option?.value || '').toLowerCase();
+                        return searchLabel.includes(query) || valueLabel.includes(query);
+                      }}
                       value={row.itemId || undefined}
                       placeholder="Select item — part of this BOM"
                       popupMatchSelectWidth={false}
@@ -258,7 +267,11 @@ export default function CompositeBomSection({
                       status={duplicateRow ? 'error' : (!row.itemId ? 'warning' : undefined)}
                     >
                       {rowOptions.map((itemRow) => (
-                        <Select.Option key={itemRow.id} value={itemRow.id}>
+                        <Select.Option
+                          key={itemRow.id}
+                          value={itemRow.id}
+                          searchLabel={`${itemRow.sku || ''} ${itemRow.name || ''}`}
+                        >
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                             <span>
                               <span style={{ fontWeight: 600 }}>{itemRow.sku}</span>
@@ -317,6 +330,9 @@ export default function CompositeBomSection({
                         </span>
                         <span style={metaChipStyle}>
                           <strong>Unit cost:</strong> {formatPrice(unitCost, currency, 'USD')}
+                        </span>
+                        <span style={metaChipStyle}>
+                          <strong>Available:</strong> {availableStock == null ? '—' : Number(availableStock).toFixed(4)}
                         </span>
                         <span style={{ ...metaChipStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca' }}>
                           <strong>Line cost:</strong> {formatPrice(lineCost, currency, 'USD')}
@@ -418,6 +434,29 @@ export default function CompositeBomSection({
               </div>
             );
           })}
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: '1px dashed #e2e8f0',
+              display: 'flex',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <Button
+              type="primary"
+              onClick={addRow}
+              style={{
+                fontWeight: 600,
+                background: '#4f46e5',
+                borderColor: '#4338ca',
+                color: '#fff',
+                boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
+              }}
+            >
+              + Add component
+            </Button>
+          </div>
         </div>
       )}
     </div>

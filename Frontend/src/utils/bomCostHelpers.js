@@ -33,6 +33,23 @@ export function resolveCatalogItemCost(item = {}) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+export function resolveCatalogItemAvailableStock(item = {}) {
+  const candidates = [
+    item?.current_stock,
+    item?.current_stock?.quantity_available,
+    item?.currentStock?.quantityAvailable,
+    item?.quantity_available,
+    item?.quantityAvailable,
+    item?.stock_available,
+    item?.stockAvailable,
+  ];
+  for (const value of candidates) {
+    const num = Number(value);
+    if (Number.isFinite(num)) return num;
+  }
+  return null;
+}
+
 export function getCatalogItemById(catalogItems = [], itemId) {
   if (!itemId) return null;
   return catalogItems.find((row) => String(row.id) === String(itemId)) || null;
