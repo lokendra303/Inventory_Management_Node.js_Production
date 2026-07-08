@@ -89,6 +89,45 @@ function drawMetaParagraphCell(doc, x, y, w, h, label, value) {
   }
 }
 
+function measureMetaStackedCellHeight(doc, w, label, value) {
+  const cellPad = pad.cell;
+  const innerW = w - cellPad * 2;
+  const labelText = String(label || '').trim();
+  const valueText = metaValueText(value);
+  doc.fontSize(size.metaLabel).font(FONT_BOLD);
+  let h = META_INLINE_TOP_PAD + doc.heightOfString(`${labelText}:`, { width: innerW, lineGap: 0.2 }) + 2;
+  if (valueText) {
+    doc.fontSize(size.metaValue).font(FONT);
+    const valueH = doc.heightOfString(valueText, { width: innerW, lineGap: 0.25 });
+    h += Math.min(valueH, META_CELL_MAX_BODY_H);
+  }
+  h += META_INLINE_BOTTOM_PAD;
+  return Math.max(META_INLINE_MIN_H, h);
+}
+
+function drawMetaStackedCell(doc, x, y, w, h, label, value) {
+  const cellPad = pad.cell;
+  const innerW = w - cellPad * 2;
+  const tyStart = y + META_INLINE_TOP_PAD;
+  const maxY = y + h - META_INLINE_BOTTOM_PAD;
+  const labelText = String(label || '').trim();
+  const valueText = metaValueText(value);
+
+  doc.fontSize(size.metaLabel).font(FONT_BOLD).fillColor('#1a1a1a');
+  doc.text(`${labelText}:`, x + cellPad, tyStart, { width: innerW, lineGap: 0.2 });
+  let ty = tyStart + doc.heightOfString(`${labelText}:`, { width: innerW, lineGap: 0.2 }) + 2;
+
+  if (valueText && ty < maxY) {
+    doc.fontSize(size.metaValue).font(FONT).fillColor('#000000');
+    doc.text(valueText, x + cellPad, ty, {
+      width: innerW,
+      lineGap: 0.25,
+      height: Math.max(4, maxY - ty),
+      ellipsis: true,
+    });
+  }
+}
+
 /** @deprecated alias */
 function measureMetaInlineCellHeight(doc, w, label, value) {
   return measureMetaParagraphCellHeight(doc, w, label, value);
@@ -109,8 +148,10 @@ function metaRowLayoutOptions(options, cellCount) {
   return { ...options, inline: metaRowUsesInlineLayout(options, cellCount) };
 }
 
-function measureMetaStackedCellHeight(doc, w, label, value) {
-  return measureMetaParagraphCellHeight(doc, w, label, value);
+function measureMetaCellHeight(doc, w, label, value, stacked = false) {
+  return stacked
+    ? measureMetaStackedCellHeight(doc, w, label, value)
+    : measureMetaParagraphCellHeight(doc, w, label, value);
 }
 
 function measureMetaRowHeight(doc, cells, colWidths, options = {}) {
@@ -118,7 +159,7 @@ function measureMetaRowHeight(doc, cells, colWidths, options = {}) {
     let maxH = META_INLINE_MIN_H;
     cells.forEach((cell, i) => {
       const cw = colWidths[i] || colWidths[0];
-      const h = measureMetaInlineCellHeight(doc, cw, cell.label, cell.value);
+      const h = measureMetaCellHeight(doc, cw, cell.label, cell.value, cell.stacked);
       if (h > maxH) maxH = h;
     });
     return maxH;
@@ -127,20 +168,77 @@ function measureMetaRowHeight(doc, cells, colWidths, options = {}) {
   let maxH = row.metaMin;
   cells.forEach((cell, i) => {
     const cw = colWidths[i] || colWidths[0];
-    const h = measureMetaStackedCellHeight(doc, cw, cell.label, cell.value);
+    const h = measureMetaCellHeight(doc, cw, cell.label, cell.value, cell.stacked);
     if (h > maxH) maxH = h;
   });
   return maxH;
 }
 
 function drawMetaLabeledCell(doc, x, y, w, h, label, value, options = {}) {
-  drawMetaParagraphCell(doc, x, y, w, h, label, value);
+  if (options.stacked) {
+    drawMetaStackedCell(doc, x, y, w, h, label, value);
+  } else {
+    drawMetaParagraphCell(doc, x, y, w, h, label, value);
+  }
 }
 
 /**
  * Build Tally-style meta rows from standardInvoice (after documentMeta applied to details).
  */
+function isProformaDocument(standardInvoice) {
+  const kind = standardInvoice?.details?.documentKind || standardInvoice?.metadata?.documentKind;
+  return kind === 'proforma';
+}
+
+function buildProformaMetaGridRows(standardInvoice, party = {}) {
+  const details = standardInvoice?.details || {};
+  const invDate = formatTallyDate(details.invoiceDate);
+  const refDate = formatTallyDate(details.referenceDate);
+  const refLine = [details.reference, refDate].filter(Boolean).join(' / ');
+  const buyersOrder =
+    details.buyersOrderNo || details.soNumber || details.poNumber || '';
+  const buyersOrderDate = formatTallyDate(details.buyersOrderDate);
+  const buyersOrderLine = [buyersOrder, buyersOrderDate].filter(Boolean).join(' / ');
+  const destination =
+    details.destination ||
+    party.shippingAddress?.city ||
+    party.billingAddress?.city ||
+    '';
+  const termsDelivery = metaValueText(details.deliveryTerms);
+  const validUntil = formatTallyDate(details.validUntil);
+  const validityDays = details.validityDays ? `${details.validityDays} days` : '';
+
+  return [
+    {
+      cells: [
+        { label: 'Proforma No.', value: details.invoiceNumber, stacked: true },
+        { label: 'Dated', value: invDate },
+      ],
+    },
+    {
+      cells: [
+        { label: 'Valid Upto', value: validUntil },
+        { label: 'Validity', value: validityDays },
+      ],
+    },
+    { cells: [{ label: 'Mode/Terms of Payment', value: details.paymentTerms || '' }] },
+    { cells: [{ label: 'PO. No. & Date', value: refLine }] },
+    { cells: [{ label: 'Other References', value: details.otherReferences || details.grnNumber || '' }] },
+    { cells: [{ label: "Buyer's Order No.", value: buyersOrderLine }] },
+    {
+      cells: [
+        { label: 'Destination', value: destination },
+        { label: 'Terms of Delivery', value: termsDelivery },
+      ],
+    },
+  ];
+}
+
 function buildTallyMetaGridRows(standardInvoice, party = {}) {
+  if (isProformaDocument(standardInvoice)) {
+    return buildProformaMetaGridRows(standardInvoice, party);
+  }
+
   const details = standardInvoice?.details || {};
   const invDate = formatTallyDate(details.invoiceDate);
   const refDate = formatTallyDate(details.referenceDate);
@@ -159,7 +257,7 @@ function buildTallyMetaGridRows(standardInvoice, party = {}) {
   return [
     {
       cells: [
-        { label: 'Invoice No.', value: details.invoiceNumber },
+        { label: 'Invoice No.', value: details.invoiceNumber, stacked: true },
         { label: 'Dated', value: invDate },
       ],
     },
@@ -568,22 +666,26 @@ function drawTallyMetaGrid(doc, x, y, totalWidth, rows, options = {}) {
     box(doc, x, metaY, totalWidth, rowH);
 
     if (spanFull) {
+      const cell = rowDef.cells[0];
       drawMetaLabeledCell(
         doc,
         x,
         metaY,
         totalWidth,
         rowH,
-        rowDef.cells[0].label,
-        rowDef.cells[0].value,
-        rowOpts
+        cell.label,
+        cell.value,
+        { ...rowOpts, stacked: cell.stacked }
       );
     } else {
       let mx = x;
       rowDef.cells.forEach((cell, i) => {
         const cw = colWidthsTwo[i];
         if (i > 0) strokeVLine(doc, mx, metaY, metaY + rowH);
-        drawMetaLabeledCell(doc, mx, metaY, cw, rowH, cell.label, cell.value, rowOpts);
+        drawMetaLabeledCell(doc, mx, metaY, cw, rowH, cell.label, cell.value, {
+          ...rowOpts,
+          stacked: cell.stacked,
+        });
         mx += cw;
       });
     }

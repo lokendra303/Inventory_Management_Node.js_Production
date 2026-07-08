@@ -20,10 +20,36 @@ const FIELD = {
   billOfLadingLrRrNo: { key: 'billOfLadingLrRrNo', span: 12 },
   destination: { key: 'destination', span: 12 },
   deliveryTerms: { key: 'deliveryTerms', span: 24, textarea: true },
+  validityDays: {
+    key: 'validityDays',
+    span: 12,
+    select: true,
+    options: [
+      { value: '15', label: '15 days' },
+      { value: '30', label: '30 days' },
+      { value: '45', label: '45 days' },
+      { value: '60', label: '60 days' },
+      { value: '90', label: '90 days' },
+    ],
+  },
 };
 
 /** @type {Record<string, { panelLabel: string, fields: Array<object> }>} */
 export const DOCUMENT_META_PROFILES = {
+  proformaInvoice: {
+    panelLabel: 'Proforma / quotation details (optional)',
+    fields: [
+      { ...FIELD.validityDays, label: 'Validity period' },
+      { ...FIELD.paymentTerms, label: 'Mode/Terms of Payment' },
+      { ...FIELD.referenceNo, label: 'Reference No.' },
+      { ...FIELD.referenceDate, label: 'Reference Date' },
+      { ...FIELD.otherReferences, label: 'Other References' },
+      { ...FIELD.buyersOrderNo, label: "Buyer's Order No." },
+      { ...FIELD.buyersOrderDate, label: "Buyer's Order Date" },
+      { ...FIELD.destination, label: 'Destination' },
+      { ...FIELD.deliveryTerms, label: 'Terms of Delivery' },
+    ],
+  },
   salesInvoice: {
     panelLabel: 'Invoice / dispatch details (optional)',
     fields: [
@@ -112,8 +138,9 @@ export function getProfileFieldKeys(docType) {
 
 export const emptyDocumentMetaForm = (docType = 'salesInvoice') => {
   const keys = getProfileFieldKeys(docType);
+  const defaults = docType === 'proformaInvoice' ? { validityDays: '30' } : {};
   return keys.reduce((acc, k) => {
-    acc[k] = '';
+    acc[k] = defaults[k] ?? '';
     return acc;
   }, {});
 };

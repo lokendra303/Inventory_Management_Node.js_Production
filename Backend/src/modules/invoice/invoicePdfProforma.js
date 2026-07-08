@@ -251,6 +251,9 @@ const PROFORMA_FOOTER_COL_MAX = { decl: 300, bank: 260, sign: 150 };
 const PROFORMA_DECLARATION_TEXT =
   'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.';
 
+const PROFORMA_THIRD_PARTY_DISCLAIMER =
+  'This is a Proforma Invoice and is not a Tax Invoice. It is issued for quotation/order confirmation/advance payment purposes only.';
+
 /** A4 page height (pt). */
 const PAGE_H = 841.89;
 const PAGE_BOTTOM = PAGE_H - T.MARGIN - 8;
@@ -277,9 +280,9 @@ function measureProformaTotalsSummaryHeight(totals) {
   return rows * 12 + 3 + 3 + 2;
 }
 
-function buildProformaFooterContext(isSales, companyName, bankRows) {
+function buildProformaFooterContext(isSales, companyName, bankRows, isProformaDoc = false) {
   return {
-    declText: PROFORMA_DECLARATION_TEXT,
+    declText: isProformaDoc ? PROFORMA_THIRD_PARTY_DISCLAIMER : PROFORMA_DECLARATION_TEXT,
     sealLabel: isSales ? "Customer's Seal and Signature" : "Vendor's Seal and Signature",
     bankTitle: isSales ? "Company's Bank Details:" : "Vendor's Bank Details:",
     bankRows: bankRows || [],
@@ -400,8 +403,8 @@ function measureProformaFooterBoxHeight(doc, ctx, colWidths) {
   return Math.max(PROFORMA_FOOTER_MIN_H, declH, bankH, signH);
 }
 
-function measureProformaFooterLayout(doc, isSales, companyName, bankRows) {
-  const ctx = buildProformaFooterContext(isSales, companyName, bankRows);
+function measureProformaFooterLayout(doc, isSales, companyName, bankRows, isProformaDoc = false) {
+  const ctx = buildProformaFooterContext(isSales, companyName, bankRows, isProformaDoc);
   const colWidths = computeProformaFooterColWidths(doc, ctx);
   const footerH = measureProformaFooterBoxHeight(doc, ctx, colWidths);
   return { ctx, colWidths, footerH };
@@ -749,7 +752,7 @@ function buildProformaLineCells(item, idx, currency) {
 }
 
 /** Right-aligned subtotal / discount / tax summary before amount in words. */
-function drawProformaTotalsSummary(doc, y, totals, currency) {
+function drawProformaTotalsSummary(doc, y, totals, currency, isProformaDoc = false) {
   const subtotal = Number(totals.subtotal) || 0;
   const discount = Number(totals.totalDiscountAmount) || 0;
   const taxable = Number(totals.totalTaxableAmount) || Math.max(0, subtotal - discount);
@@ -762,9 +765,9 @@ function drawProformaTotalsSummary(doc, y, totals, currency) {
     summaryRows.push(['Taxable Amount', taxable]);
   }
   if (tax > 0.005) {
-    summaryRows.push(['Add: IGST', tax]);
+    summaryRows.push([isProformaDoc ? 'Add: IGST (Estimated)' : 'Add: IGST', tax]);
   }
-  summaryRows.push(['Grand Total', grand]);
+  summaryRows.push([isProformaDoc ? 'Estimated Total' : 'Grand Total', grand]);
 
   const rightPad = 8;
   const colGap = 5;
@@ -781,7 +784,7 @@ function drawProformaTotalsSummary(doc, y, totals, currency) {
 
   let ry = y + padTop;
   summaryRows.forEach(([label, amount]) => {
-    const isGrand = label === 'Grand Total';
+    const isGrand = label === 'Grand Total' || label === 'Estimated Total';
     doc.fontSize(isGrand ? size.body : size.tableBody).font(isGrand ? FONT_BOLD : FONT).fillColor('#000000');
     doc.text(label, labelX, ry, { width: labelW, align: 'right' });
     doc.text(pdfAmount(amount, currency), valueX, ry, { width: valueW, align: 'right' });
@@ -832,7 +835,9 @@ function measureProformaSellerCompanyBlock(doc, cs, sellerGst, sellerState, deta
  */
 function drawProformaInvoice(doc, ctx) {
   const { standardInvoice, companySettings, logoBuffer, signatureBuffer } = ctx;
-  const isSales = (standardInvoice.details?.type || standardInvoice.metadata?.type) === 'sales';
+  const docKind = standardInvoice.details?.documentKind || standardInvoice.metadata?.documentKind;
+  const isProforma = docKind === 'proforma';
+  const isSales = isProforma || (standardInvoice.details?.type || standardInvoice.metadata?.type) === 'sales';
   const currency = standardInvoice.details?.currency || 'INR';
   const cs = ctx.companyStrings || {};
   const party = standardInvoice.partyDetails || {};
@@ -841,7 +846,8 @@ function drawProformaInvoice(doc, ctx) {
   const lineItems = standardInvoice.lineItems || [];
   const totals = standardInvoice.totals || {};
 
-  const docTitle = isSales ? 'TAX INVOICE' : 'PURCHASE INVOICE';
+  const docTitle = isProforma ? 'PROFORMA INVOICE' : (isSales ? 'TAX INVOICE' : 'PURCHASE INVOICE');
+  const docSubtitle = isProforma ? '' : '(ORIGINAL FOR RECIPIENT)';
   const sellerGst = cs.taxId || standardInvoice.header?.taxInfo?.taxId || '';
   const sellerState = gstStateFromGstin(
     sellerGst,
@@ -858,10 +864,12 @@ function drawProformaInvoice(doc, ctx) {
     width: WIDTH,
     align: 'center',
   });
-  doc.fontSize(size.titleSub).font(FONT).fillColor('#444444').text('(ORIGINAL FOR RECIPIENT)', LEFT, titleRowY + 2, {
-    width: WIDTH - 4,
-    align: 'right',
-  });
+  if (docSubtitle) {
+    doc.fontSize(size.titleSub).font(FONT).fillColor('#444444').text(docSubtitle, LEFT, titleRowY + 2, {
+      width: WIDTH - 4,
+      align: 'right',
+    });
+  }
   y = titleRowY + PROFORMA_TITLE_BAND_H;
 
   const metaW = Math.round(WIDTH * 0.44);
@@ -1243,7 +1251,7 @@ function drawProformaInvoice(doc, ctx) {
   bodyContentHAdj = bodyRows.reduce((s, r) => s + (r._height || itemRowH), 0);
   y = drawProformaItemTable(doc, LEFT, y, itemCols, headerRows, bodyRows, footerRows, itemRowH, blankHFinal);
 
-  y = drawProformaTotalsSummary(doc, y, totals, currency);
+  y = drawProformaTotalsSummary(doc, y, totals, currency, isProforma);
 
   const amountWords = (totals.amountInWords || '').trim();
   const amountWordsH = measureProformaAmountWordsRowHeight(doc, amountWords, currency);
@@ -1346,7 +1354,7 @@ function drawProformaInvoice(doc, ctx) {
   let taxTy = y + PROFORMA_WORDS_PAD_H;
   doc.fontSize(size.wordsLabel).font(FONT_BOLD).fillColor('#1a1a1a');
   const taxLabelH = doc.heightOfString('Tax Amount (in words)', { width: labelW, lineGap: 0.15 });
-  doc.text('Tax Amount (in words)', LEFT + 5, taxTy, { width: labelW, lineGap: 0.15 });
+  doc.text(isProforma ? 'Estimated Tax Amount (in words)' : 'Tax Amount (in words)', LEFT + 5, taxTy, { width: labelW, lineGap: 0.15 });
   taxTy += taxLabelH + PROFORMA_WORDS_GAP;
   doc.fontSize(size.wordsBody).font(FONT).fillColor('#000000');
   doc.text(taxValueText, LEFT + 5, taxTy, {
@@ -1362,7 +1370,8 @@ function drawProformaInvoice(doc, ctx) {
     doc,
     isSales,
     cs.companyName,
-    bankRows
+    bankRows,
+    isProforma
   );
   const footPad = PROFORMA_FOOTER_PAD;
 

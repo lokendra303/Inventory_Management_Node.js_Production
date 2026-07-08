@@ -476,7 +476,7 @@ const createSalesInvoiceSchema = Joi.object({
 
 // Third-party invoice (no inventory impact, manual lines)
 const createThirdPartyInvoiceSchema = Joi.object({
-  invoiceType: Joi.string().valid('sales', 'purchase').default('sales'),
+  invoiceType: Joi.string().valid('sales', 'purchase', 'proforma').default('sales'),
   invoiceNumber: Joi.string().max(100).allow('', null).optional(),
   partyType: Joi.string().valid('customer', 'vendor', 'other').default('other'),
   partyId: Joi.string().uuid().optional().allow(null, ''),

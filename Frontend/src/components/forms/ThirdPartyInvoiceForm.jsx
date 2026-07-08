@@ -127,9 +127,12 @@ function VendorBankDetailsCard({ bankDetails }) {
 
 const ThirdPartyInvoiceForm = ({ type = 'sales', invoiceId = null, onSave }) => {
   const isPurchase = type === 'purchase';
-  const docMetaType = isPurchase ? 'purchaseInvoice' : 'salesInvoice';
+  const isProforma = type === 'proforma';
+  const docMetaType = isPurchase ? 'purchaseInvoice' : isProforma ? 'proformaInvoice' : 'salesInvoice';
   const partyCatalogMode = isPurchase ? 'vendor' : 'customer';
-  const invoicePrefix = isPurchase ? 'PI' : 'SI';
+  const invoicePrefix = isPurchase ? 'PI' : isProforma ? 'PF' : 'SI';
+  const invoiceNumberLabel = isProforma ? 'Proforma No.' : 'Invoice #';
+  const invoiceNumberPlaceholder = isProforma ? 'Auto (e.g. KB/PI/00013)' : `Auto: ${invoicePrefix}000001`;
   const { baseCurrency: institutionCurrency } = useCurrency();
   const [form] = Form.useForm();
   const {
@@ -459,8 +462,16 @@ const ThirdPartyInvoiceForm = ({ type = 'sales', invoiceId = null, onSave }) => 
         return;
       }
       const { invoice, lines } = res.data;
-      const loadedType = invoice.invoice_type === 'purchase' ? 'purchase' : 'sales';
-      const loadedDocMetaType = loadedType === 'purchase' ? 'purchaseInvoice' : 'salesInvoice';
+      const loadedType = invoice.invoice_type === 'purchase'
+        ? 'purchase'
+        : invoice.invoice_type === 'proforma'
+          ? 'proforma'
+          : 'sales';
+      const loadedDocMetaType = loadedType === 'purchase'
+        ? 'purchaseInvoice'
+        : loadedType === 'proforma'
+          ? 'proformaInvoice'
+          : 'salesInvoice';
       setPartyMode(resolvePartyMode(invoice, loadedType));
 
       let catalog = loadedType === 'purchase'
@@ -856,11 +867,11 @@ const ThirdPartyInvoiceForm = ({ type = 'sales', invoiceId = null, onSave }) => 
         </Col>
 
         <Col xs={24} md={12}>
-          <Card size="small" title="Invoice Details" style={{ marginBottom: 16 }}>
+          <Card size="small" title={isProforma ? 'Proforma Details' : 'Invoice Details'} style={{ marginBottom: 16 }}>
             <Row gutter={12}>
               <Col span={12}>
-                <Form.Item name="invoiceNumber" label="Invoice #">
-                  <Input placeholder={`Auto: ${invoicePrefix}000001`} />
+                <Form.Item name="invoiceNumber" label={invoiceNumberLabel}>
+                  <Input placeholder={invoiceNumberPlaceholder} />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -1013,7 +1024,7 @@ const ThirdPartyInvoiceForm = ({ type = 'sales', invoiceId = null, onSave }) => 
 
       <Row gutter={16} style={{ marginTop: 16 }}>
         <Col xs={24} md={14}>
-          <DocumentMetaFields form={form} docType={docMetaType} />
+          <DocumentMetaFields form={form} docType={docMetaType} defaultActive={isProforma} />
         </Col>
         <Col xs={24} md={10}>
           <DocumentTotalsSummary
@@ -1027,7 +1038,11 @@ const ThirdPartyInvoiceForm = ({ type = 'sales', invoiceId = null, onSave }) => 
             getTaxRate={(l) => Number(l?.taxRate) || 0}
           />
           {gstBreakdown && (
-            <Card size="small" style={{ marginTop: 12 }} title={<><ThunderboltOutlined /> GST Summary</>}>
+            <Card
+              size="small"
+              style={{ marginTop: 12 }}
+              title={<><ThunderboltOutlined /> GST Summary{isProforma ? ' (Estimated)' : ''}</>}
+            >
               {gstBreakdown.type === 'intra' ? (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -1055,7 +1070,7 @@ const ThirdPartyInvoiceForm = ({ type = 'sales', invoiceId = null, onSave }) => 
           onClick={handleSave}
           size="large"
         >
-          {invoiceId ? `Update ${invoicePrefix} Invoice` : `Create ${invoicePrefix} Invoice`}
+          {invoiceId ? `Update ${isProforma ? 'Proforma' : invoicePrefix} Invoice` : `Create ${isProforma ? 'Proforma' : invoicePrefix} Invoice`}
         </Button>
       </div>
     </Form>

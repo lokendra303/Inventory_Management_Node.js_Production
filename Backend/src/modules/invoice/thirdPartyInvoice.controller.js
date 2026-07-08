@@ -19,7 +19,7 @@ const {
 const InvoiceService = require('./invoice.service');
 
 function nextInvoiceNumber(lastNumber, invoiceType = 'sales') {
-  const defaultPrefix = invoiceType === 'purchase' ? 'PI' : 'SI';
+  const defaultPrefix = invoiceType === 'purchase' ? 'PI' : invoiceType === 'proforma' ? 'PF' : 'SI';
   const defaultNumber = `${defaultPrefix}000001`;
   if (lastNumber) {
     const str = String(lastNumber);
@@ -38,11 +38,17 @@ function nextInvoiceNumber(lastNumber, invoiceType = 'sales') {
 }
 
 function normalizeInvoiceType(value) {
-  return String(value || 'sales').toLowerCase() === 'purchase' ? 'purchase' : 'sales';
+  const v = String(value || 'sales').toLowerCase();
+  if (v === 'purchase') return 'purchase';
+  if (v === 'proforma') return 'proforma';
+  return 'sales';
 }
 
 function documentMetaProfileForType(invoiceType) {
-  return normalizeInvoiceType(invoiceType) === 'purchase' ? 'purchaseInvoice' : 'salesInvoice';
+  const t = normalizeInvoiceType(invoiceType);
+  if (t === 'purchase') return 'purchaseInvoice';
+  if (t === 'proforma') return 'proformaInvoice';
+  return 'salesInvoice';
 }
 
 function parseThirdPartyDocumentMeta(raw, invoiceType) {
@@ -59,6 +65,7 @@ function parseThirdPartyDocumentMeta(raw, invoiceType) {
 function buildThirdPartyPdfInvoiceData(invoice, lines, partyAddressesParsed) {
   const invoiceType = normalizeInvoiceType(invoice.invoice_type);
   const isPurchase = invoiceType === 'purchase';
+  const isProforma = invoiceType === 'proforma';
   const partyPayload = buildInvoicePartyPayload(invoice, partyAddressesParsed);
   const documentMeta = parseThirdPartyDocumentMeta(invoice.document_meta, invoiceType);
   if (partyAddressesParsed?.partyAddressSelection) {
@@ -108,6 +115,7 @@ function buildThirdPartyPdfInvoiceData(invoice, lines, partyAddressesParsed) {
     vendorId: null,
     vendorName: undefined,
     documentMeta,
+    documentKind: isProforma ? 'proforma' : undefined,
     lines: mappedLines,
   };
 }
@@ -590,12 +598,17 @@ class ThirdPartyInvoiceController {
 
       const partyAddressesParsed = parsePartyAddresses(invoice.party_addresses);
       const invoiceType = normalizeInvoiceType(invoice.invoice_type);
+      const isProforma = invoiceType === 'proforma';
       const pdfDocType = invoiceType === 'purchase' ? 'purchase' : 'sales';
       const invoiceData = buildThirdPartyPdfInvoiceData(invoice, lines, partyAddressesParsed);
 
       const standardInvoice = await invoiceTemplateService.generateStandardInvoice(
         institutionId, invoiceData, pdfDocType
       );
+      if (isProforma) {
+        standardInvoice.details = { ...standardInvoice.details, documentKind: 'proforma' };
+        standardInvoice.metadata = { ...standardInvoice.metadata, documentKind: 'proforma' };
+      }
       if (pdfDocType === 'purchase') {
         const companyBill =
           partyAddressesParsed?.companyBillingAddress
@@ -628,16 +641,18 @@ class ThirdPartyInvoiceController {
           standardInvoice,
           institutionId,
           invoiceNumber: invoice.invoice_number,
-          type: pdfDocType,
+          type: isProforma ? 'proforma' : pdfDocType,
           attachment: queryFlag(download),
+          pdfOptions: isProforma ? { template: 'proforma' } : undefined,
         });
       }
 
       const fileInfo = await invoicePDFService.saveInvoicePDF(
         standardInvoice,
         invoice.invoice_number,
-        pdfDocType,
-        institutionId
+        isProforma ? 'proforma' : pdfDocType,
+        institutionId,
+        isProforma ? { template: 'proforma' } : undefined
       );
       res.json({ success: true, data: fileInfo });
     } catch (error) {

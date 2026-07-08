@@ -7,11 +7,15 @@ function queryFlag(val) {
 /**
  * Generate and stream invoice PDF using institution company settings (invoice_pdf_template).
  * @param {import('express').Response} res
- * @param {{ standardInvoice: object, institutionId: string, invoiceNumber: string, type: 'sales'|'purchase', attachment: boolean }} opts
+ * @param {{ standardInvoice: object, institutionId: string, invoiceNumber: string, type: 'sales'|'purchase'|'proforma', attachment: boolean, pdfOptions?: object }} opts
  */
 async function sendInvoicePdfBuffer(res, opts) {
-  const { standardInvoice, institutionId, invoiceNumber, type, attachment } = opts;
-  const pdfBuffer = await invoicePDFService.generatePDFBuffer(standardInvoice, institutionId);
+  const { standardInvoice, institutionId, invoiceNumber, type, attachment, pdfOptions } = opts;
+  const pdfBuffer = await invoicePDFService.generatePDFBuffer(
+    standardInvoice,
+    institutionId,
+    pdfOptions || {}
+  );
 
   if (!pdfBuffer || pdfBuffer.length === 0) {
     throw new Error('Generated PDF buffer is empty');

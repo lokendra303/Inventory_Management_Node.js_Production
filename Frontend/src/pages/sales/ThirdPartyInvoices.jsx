@@ -24,6 +24,7 @@ const STATUS_CONFIG = {
 const INVOICE_TYPE_TABS = [
   { key: 'sales', label: 'Sales Invoice (SI)', shortLabel: 'SI' },
   { key: 'purchase', label: 'Purchase Invoice (PI)', shortLabel: 'PI' },
+  { key: 'proforma', label: 'Proforma Invoice (PF)', shortLabel: 'PF' },
 ];
 
 const ThirdPartyInvoices = () => {
@@ -83,7 +84,7 @@ const ThirdPartyInvoices = () => {
       const url = window.URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${invoiceType === 'purchase' ? 'PI' : 'SI'}_${invoiceNumber}.pdf`);
+      link.setAttribute('download', `${invoiceType === 'purchase' ? 'PI' : invoiceType === 'proforma' ? 'PF' : 'SI'}_${invoiceNumber}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -224,7 +225,13 @@ const ThirdPartyInvoices = () => {
                   icon={<EditOutlined />}
                   onClick={() => {
                     setSelectedInvoiceId(record.id);
-                    setEditingInvoiceType(record.invoice_type === 'purchase' ? 'purchase' : 'sales');
+                    setEditingInvoiceType(
+                      record.invoice_type === 'purchase'
+                        ? 'purchase'
+                        : record.invoice_type === 'proforma'
+                          ? 'proforma'
+                          : 'sales'
+                    );
                     setModalMode('edit');
                     setModalVisible(true);
                   }}
@@ -305,7 +312,7 @@ const ThirdPartyInvoices = () => {
           showIcon
           style={{ marginBottom: 16 }}
           message="Third-party invoices"
-          description="Create GST-compliant sales (SI) or purchase (PI) invoices with full calculation automation. These documents use your standard invoice PDF format but do not affect inventory, stock movements, or accounting."
+          description="Create GST-compliant sales (SI), purchase (PI), or proforma (PF) invoices. Proforma uses the same GST grid layout as tax invoices but shows PROFORMA INVOICE, Proforma Invoice No., validity period, estimated tax, and a legal disclaimer — without dispatch fields (e-Way Bill, vehicle, LR/RR). No inventory or accounting impact."
         />
         <Tabs
           activeKey={invoiceType}
@@ -351,7 +358,7 @@ const ThirdPartyInvoices = () => {
             }}
             style={{ background: '#11998e', borderColor: '#11998e' }}
           >
-            New {typeTab.shortLabel} Invoice
+            New {typeTab.shortLabel === 'PF' ? 'Proforma' : typeTab.shortLabel} Invoice
           </Button>
         </div>
       </div>
@@ -378,8 +385,8 @@ const ThirdPartyInvoices = () => {
 
       <Modal
         title={modalMode === 'edit'
-          ? `Edit Third-Party ${typeTab.shortLabel} Invoice`
-          : `Create Third-Party ${typeTab.shortLabel} Invoice`}
+          ? `Edit Third-Party ${typeTab.shortLabel === 'PF' ? 'Proforma' : typeTab.shortLabel} Invoice`
+          : `Create Third-Party ${typeTab.shortLabel === 'PF' ? 'Proforma' : typeTab.shortLabel} Invoice`}
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
         footer={null}
@@ -417,7 +424,7 @@ function TitleRow() {
       <div>
         <h2 style={{ margin: 0, fontSize: 22 }}>Third-Party Invoices</h2>
         <p style={{ margin: 0, color: '#888', fontSize: 13 }}>
-          Manual SI / PI · GST automation · No inventory impact
+          Manual SI / PI / PF · GST automation · No inventory impact
         </p>
       </div>
     </div>

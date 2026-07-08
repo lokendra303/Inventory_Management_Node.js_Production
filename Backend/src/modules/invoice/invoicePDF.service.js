@@ -1113,12 +1113,12 @@ class InvoicePDFService {
   }
 
   generateFilename(invoiceNumber, type = 'purchase') {
-    const prefix = type === 'purchase' ? 'PI' : 'SI';
+    const prefix = type === 'purchase' ? 'PI' : type === 'proforma' ? 'PF' : 'SI';
     const timestamp = new Date().toISOString().split('T')[0];
     return prefix + '_' + invoiceNumber + '_' + timestamp + '.pdf';
   }
 
-  async saveInvoicePDF(standardInvoice, invoiceNumber, type = 'purchase', institutionId = null) {
+  async saveInvoicePDF(standardInvoice, invoiceNumber, type = 'purchase', institutionId = null, options = {}) {
     try {
       const filename = this.generateFilename(invoiceNumber, type);
       const outputDir = path.join(__dirname, '../../temp/invoices');
@@ -1127,7 +1127,7 @@ class InvoicePDFService {
         fs.mkdirSync(outputDir, { recursive: true });
       }
 
-      const buffer = await this.generatePDFBuffer(standardInvoice, institutionId);
+      const buffer = await this.generatePDFBuffer(standardInvoice, institutionId, options);
       const outputPath = path.join(outputDir, filename);
       fs.writeFileSync(outputPath, buffer);
 

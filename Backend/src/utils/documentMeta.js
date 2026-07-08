@@ -20,11 +20,32 @@ const META_KEYS = [
   'billOfLadingLrRrNo',
   'destination',
   'deliveryTerms',
+  'validityDays',
 ];
+
+function computeValidUntil(invoiceDate, validityDays) {
+  const days = parseInt(validityDays, 10);
+  if (!days || days < 1 || !invoiceDate) return '';
+  const dt = new Date(invoiceDate);
+  if (Number.isNaN(dt.getTime())) return '';
+  dt.setDate(dt.getDate() + days);
+  return dt.toISOString().split('T')[0];
+}
 
 /** Keys persisted per document type (others stripped on save). */
 const PROFILE_KEYS = {
-  salesInvoice: META_KEYS,
+  salesInvoice: META_KEYS.filter((k) => k !== 'validityDays'),
+  proformaInvoice: [
+    'paymentTerms',
+    'referenceNo',
+    'referenceDate',
+    'otherReferences',
+    'buyersOrderNo',
+    'buyersOrderDate',
+    'destination',
+    'deliveryTerms',
+    'validityDays',
+  ],
   purchaseInvoice: [
     'paymentTerms',
     'referenceNo',
@@ -112,13 +133,23 @@ function serializeDocumentMeta(input, docType) {
 /**
  * Map stored meta + invoice details into standardInvoice.details for PDF templates.
  */
-function applyDocumentMetaToInvoiceDetails(details, meta, context = {}) {
+function resolveDocumentMetaProfile(context = {}) {
   const invoiceType = context.invoiceType || context.type || 'sales';
-  const m = normalizeDocumentMeta(meta, invoiceType === 'purchase' ? 'purchaseInvoice' : 'salesInvoice');
+  if (invoiceType === 'purchase') return 'purchaseInvoice';
+  if (invoiceType === 'proforma' || context.documentKind === 'proforma') return 'proformaInvoice';
+  return 'salesInvoice';
+}
+
+function applyDocumentMetaToInvoiceDetails(details, meta, context = {}) {
+  const profile = resolveDocumentMetaProfile(context);
+  const m = normalizeDocumentMeta(meta, profile);
   const d = { ...(details || {}) };
+  const validUntil = computeValidUntil(d.invoiceDate || context.invoiceDate, m.validityDays);
 
   return {
     ...d,
+    validityDays: m.validityDays || '',
+    validUntil,
     ewayBill: m.ewayBillNo || d.ewayBill || '',
     ewayBillDate: m.ewayBillDate || d.ewayBillDate || '',
     deliveryNote: m.deliveryNote || d.deliveryNote || '',
@@ -156,4 +187,6 @@ module.exports = {
   parseDocumentMeta,
   serializeDocumentMeta,
   applyDocumentMetaToInvoiceDetails,
+  resolveDocumentMetaProfile,
+  computeValidUntil,
 };

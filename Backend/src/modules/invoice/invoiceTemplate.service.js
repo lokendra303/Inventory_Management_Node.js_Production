@@ -164,11 +164,16 @@ class InvoiceTemplateService {
       reference: invoiceData.reference || '',
       poNumber: invoiceData.poNumber || '',
       grnNumber: invoiceData.grnNumber || '',
-      paymentTerms: invoiceData.paymentTerms || 'Net 30',
+      paymentTerms: invoiceData.paymentTerms || '',
     };
+    if (invoiceData.documentKind) {
+      base.documentKind = invoiceData.documentKind;
+    }
     const meta = invoiceData.documentMeta ?? invoiceData.document_meta;
+    const metaInvoiceType = invoiceData.documentKind === 'proforma' ? 'proforma' : type;
     return applyDocumentMetaToInvoiceDetails(base, meta, {
-      invoiceType: type,
+      invoiceType: metaInvoiceType,
+      documentKind: invoiceData.documentKind,
       soNumber: invoiceData.soNumber,
       poNumber: invoiceData.poNumber,
       invoiceDate: base.invoiceDate,

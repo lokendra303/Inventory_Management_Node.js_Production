@@ -1,5 +1,5 @@
 import React from 'react';
-import { Col, Collapse, DatePicker, Form, Input, Row } from 'antd';
+import { Col, Collapse, DatePicker, Form, Input, Row, Select } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import { getDocumentMetaProfile } from '../../constants/documentMetaFields';
 
@@ -7,7 +7,7 @@ const { TextArea } = Input;
 
 /**
  * Optional document fields (nested under form name "documentMeta").
- * @param {string} docType - salesInvoice | purchaseInvoice | salesOrder | purchaseOrder
+ * @param {string} docType - salesInvoice | purchaseInvoice | proformaInvoice | salesOrder | purchaseOrder
  */
 const DocumentMetaFields = ({
   docType = 'salesInvoice',
@@ -31,6 +31,12 @@ const DocumentMetaFields = ({
               <TextArea rows={2} placeholder="Optional" allowClear />
             ) : f.date ? (
               <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" allowClear />
+            ) : f.select ? (
+              <Select
+                allowClear
+                placeholder="Select"
+                options={f.options || []}
+              />
             ) : (
               <Input placeholder="Optional" allowClear />
             )}
