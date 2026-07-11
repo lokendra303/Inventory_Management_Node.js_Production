@@ -50,6 +50,7 @@ import {
   PaymentReceived,
   SalesReturns,
   CreditNotes,
+  ProformaInvoices,
   PurchasesReceives,
   PurchasesBills,
   PurchasesPaymentMade,
@@ -208,6 +209,7 @@ function AppContent() {
               <Route path="/sales/payments-received" element={<PaymentReceived />} />
               <Route path="/sales/returns" element={<SalesReturns />} />
               <Route path="/sales/credit-notes" element={<CreditNotes />} />
+              <Route path="/sales/proforma-invoices" element={<ProformaInvoices />} />
               <Route path="/purchases/receives" element={<PurchasesReceives />} />
               <Route path="/purchases/bills" element={<PurchasesBills />} />
               <Route path="/purchases/payments-made" element={<PurchasesPaymentMade />} />

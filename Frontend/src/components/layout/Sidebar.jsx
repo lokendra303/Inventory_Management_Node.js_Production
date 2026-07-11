@@ -516,6 +516,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
         hasAnyPermission('customer_view','customer_management') && { key: '/sales/customers',         label: 'Customers' },
         hasAnyPermission('sales_view','sales_management')       && { key: '/sales-orders',            label: 'Sales Orders' },
         hasAnyPermission('sales_view','sales_management')       && { key: '/sales-invoices',          label: 'Sales Invoices' },
+        hasAnyPermission('sales_view','sales_management')       && { key: '/sales/proforma-invoices', label: 'PI Proforma Invoice' },
         hasAnyPermission('sales_view','sales_management')       && { key: '/sales/delivery-challans', label: 'Delivery Challans' },
         hasAnyPermission('sales_view','sales_management')       && { key: '/sales/payments-received', label: 'Payments Received' },
         hasAnyPermission('sales_view','sales_management')       && { key: '/sales/returns',           label: 'Sales Returns' },
