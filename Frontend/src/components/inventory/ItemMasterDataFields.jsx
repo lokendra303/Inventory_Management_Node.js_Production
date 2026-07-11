@@ -137,14 +137,16 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
 
     try {
       const response = await apiService.post('/units', { name, symbol: name });
-      if (response?.success) {
-        const refreshed = await onRefresh?.();
-        const created = refreshed?.units?.find((u) => u.name === name);
-        if (created?.id) form?.setFieldsValue?.({ unit: created.id });
+      const createdId = response?.id || response?.data?.id;
+      if (createdId) {
+        form?.setFieldsValue?.({ unit: createdId });
+        await onRefresh?.();
         message.success('Unit added');
+        return;
       }
-    } catch {
-      message.error('Failed to add unit');
+      message.error(response?.error || 'Failed to add unit');
+    } catch (e) {
+      message.error(e?.response?.data?.error || e?.userMessage || 'Failed to add unit');
     }
   };
 
@@ -205,14 +207,16 @@ export function BrandField({ form, brandOptions = [], onRefresh }) {
 
     try {
       const response = await apiService.post('/brands', { name });
-      if (response?.success) {
-        const refreshed = await onRefresh?.();
-        const created = refreshed?.brands?.find((b) => b.name === name);
-        if (created?.id) form?.setFieldsValue?.({ brand: created.id });
+      const createdId = response?.id || response?.data?.id;
+      if (createdId) {
+        form?.setFieldsValue?.({ brand: createdId });
+        await onRefresh?.();
         message.success('Brand added');
+        return;
       }
-    } catch {
-      message.error('Failed to add brand');
+      message.error(response?.error || 'Failed to add brand');
+    } catch (e) {
+      message.error(e?.response?.data?.error || e?.userMessage || 'Failed to add brand');
     }
   };
 
@@ -268,14 +272,16 @@ export function ManufacturerField({ form, manufacturerOptions = [], onRefresh })
 
     try {
       const response = await apiService.post('/manufacturers', { name });
-      if (response?.success) {
-        const refreshed = await onRefresh?.();
-        const created = refreshed?.manufacturers?.find((m) => m.name === name);
-        if (created?.id) form?.setFieldsValue?.({ manufacturer: created.id });
+      const createdId = response?.id || response?.data?.id;
+      if (createdId) {
+        form?.setFieldsValue?.({ manufacturer: createdId });
+        await onRefresh?.();
         message.success('Manufacturer added');
+        return;
       }
-    } catch {
-      message.error('Failed to add manufacturer');
+      message.error(response?.error || 'Failed to add manufacturer');
+    } catch (e) {
+      message.error(e?.response?.data?.error || e?.userMessage || 'Failed to add manufacturer');
     }
   };
 

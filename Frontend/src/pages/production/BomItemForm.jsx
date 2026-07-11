@@ -26,6 +26,8 @@ import { validateBomBusinessRules } from '../../utils/bomFormValidation';
 
 const AUTO_DRAFT_MS = 45000;
 
+const asApiList = (res) => (Array.isArray(res) ? res : (res?.data || []));
+
 const normalizeComponents = (rows = []) => {
   if (!Array.isArray(rows)) return [];
   return rows
@@ -172,18 +174,18 @@ export default function BomItemForm({
       apiService.get('/items/variant-library'),
     ]);
 
-    const unitRows = unitsRes.success ? unitsRes.data : [];
-    const brandRows = brandsRes.success ? brandsRes.data : [];
-    const manufacturerRows = mfgRes.success ? mfgRes.data : [];
-    const categoryRows = catRes.success ? catRes.data : [];
+    const unitRows = asApiList(unitsRes);
+    const brandRows = asApiList(brandsRes);
+    const manufacturerRows = asApiList(mfgRes);
+    const categoryRows = asApiList(catRes);
 
     setUnits(unitRows);
-    setWarehouses((whRes.success ? whRes.data : []).filter((w) => w.status === 'active'));
+    setWarehouses(asApiList(whRes).filter((w) => w.status === 'active'));
     setCategories(categoryRows);
-    setItemGroups(groupsRes.success ? groupsRes.data : []);
+    setItemGroups(asApiList(groupsRes));
     setBrandOptions(brandRows);
     setManufacturerOptions(manufacturerRows);
-    setTaxRateOptions(taxRes.success ? taxRes.data : []);
+    setTaxRateOptions(asApiList(taxRes));
     setFieldConfigs(Array.isArray(compositeFieldConfigs) ? compositeFieldConfigs : []);
     const library = variantLibraryRes?.success
       ? (variantLibraryRes.data || [])
