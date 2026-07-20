@@ -1,44 +1,69 @@
-import React from 'react';
-import { Button, Form, Input, Select, message } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Button, Form, Input, Modal, Select, Space, message } from 'antd';
+import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { filterSelectOption } from '../../utils/selectFilter';
 
-const deleteChipStyle = {
-  marginLeft: 8,
+const actionChipBase = {
+  marginLeft: 6,
   width: 18,
   height: 18,
   borderRadius: '50%',
-  backgroundColor: '#ff4d4f',
   color: 'white',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   cursor: 'pointer',
-  fontSize: 12,
+  fontSize: 10,
   fontWeight: 'bold',
+  flexShrink: 0,
 };
 
-function DeleteChip({ onClick }) {
+function ActionChip({ onClick, title, bg, hoverBg, children }) {
   return (
     <span
       role="button"
       tabIndex={0}
+      title={title}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.(e);
       }}
-      style={deleteChipStyle}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick?.(e);
+        }
+      }}
+      style={{ ...actionChipBase, backgroundColor: bg }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = '#d9363e';
+        e.currentTarget.style.backgroundColor = hoverBg;
         e.currentTarget.style.transform = 'scale(1.1)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = '#ff4d4f';
+        e.currentTarget.style.backgroundColor = bg;
         e.currentTarget.style.transform = 'scale(1)';
       }}
     >
-      ×
+      {children}
     </span>
+  );
+}
+
+function DeleteChip({ onClick }) {
+  return (
+    <ActionChip onClick={onClick} title="Delete" bg="#ff4d4f" hoverBg="#d9363e">
+      ×
+    </ActionChip>
+  );
+}
+
+function EditChip({ onClick }) {
+  return (
+    <ActionChip onClick={onClick} title="Rename" bg="#1677ff" hoverBg="#0958d9">
+      <EditOutlined style={{ fontSize: 10 }} />
+    </ActionChip>
   );
 }
 
@@ -130,74 +155,240 @@ export function CategoryField({
 }
 
 export function UnitField({ form, units = [], onRefresh, label = 'Unit', requiredMessage = 'Unit is required' }) {
-  const handleAdd = async () => {
-    const raw = window.prompt('Enter new unit:');
-    const name = String(raw || '').trim();
-    if (!name || units.some((u) => String(u.name || '').toLowerCase() === name.toLowerCase())) return;
+  const [localUnits, setLocalUnits] = useState(() => (Array.isArray(units) ? units : []));
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingUnit, setEditingUnit] = useState(null);
+  const [unitName, setUnitName] = useState('');
+  const [savingUnit, setSavingUnit] = useState(false);
+  const [loadingUnits, setLoadingUnits] = useState(false);
 
-    try {
-      const response = await apiService.post('/units', { name, symbol: name });
-      const createdId = response?.id || response?.data?.id;
-      if (createdId) {
-        form?.setFieldsValue?.({ unit: createdId });
-        await onRefresh?.();
-        message.success('Unit added');
-        return;
+  useEffect(() => {
+    if (Array.isArray(units) && units.length > 0) {
+      setLocalUnits(units);
+    }
+  }, [units]);
+
+  useEffect(() => {
+    if (Array.isArray(units) && units.length > 0) return undefined;
+    if (localUnits.length > 0) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      setLoadingUnits(true);
+      try {
+        const res = await apiService.get('/units');
+        const rows = Array.isArray(res) ? res : (res?.data || []);
+        if (!cancelled && Array.isArray(rows)) setLocalUnits(rows);
+      } catch {
+        // parent refresh / retry can recover
+      } finally {
+        if (!cancelled) setLoadingUnits(false);
       }
-      message.error(response?.error || 'Failed to add unit');
+    })();
+
+    return () => { cancelled = true; };
+  }, [units, localUnits.length]);
+
+  const unitLabel = (unit) => {
+    const name = unit?.name || '';
+    const symbol = unit?.symbol && String(unit.symbol).trim().toLowerCase() !== String(name).trim().toLowerCase()
+      ? ` (${unit.symbol})`
+      : '';
+    return `${name}${symbol}`;
+  };
+
+  const selectOptions = (Array.isArray(localUnits) ? localUnits : [])
+    .filter((unit) => unit?.id)
+    .map((unit) => ({
+      value: unit.id,
+      label: unitLabel(unit),
+      unit,
+    }));
+
+  const openCreate = () => {
+    setEditingUnit(null);
+    setUnitName('');
+    setEditorOpen(true);
+  };
+
+  const openEdit = (unit, e) => {
+    e?.domEvent?.stopPropagation?.();
+    e?.stopPropagation?.();
+    setEditingUnit(unit);
+    setUnitName(unit?.name || '');
+    setEditorOpen(true);
+  };
+
+  const closeEditor = () => {
+    setEditorOpen(false);
+    setEditingUnit(null);
+    setUnitName('');
+  };
+
+  const handleSave = async () => {
+    const name = String(unitName || '').trim();
+    if (!name) {
+      message.warning('Enter a unit name');
+      return;
+    }
+    const duplicate = localUnits.some((u) => (
+      String(u.name || '').toLowerCase() === name.toLowerCase()
+      && (!editingUnit || u.id !== editingUnit.id)
+    ));
+    if (duplicate) {
+      message.warning(`Unit '${name}' already exists`);
+      return;
+    }
+
+    setSavingUnit(true);
+    try {
+      const symbol = name.slice(0, 20);
+      if (editingUnit?.id) {
+        const response = await apiService.put(`/units/${editingUnit.id}`, {
+          name,
+          symbol,
+          type: editingUnit.type || 'other',
+          status: editingUnit.status || 'active',
+          conversion_factor: editingUnit.conversion_factor ?? 1,
+          base_unit_id: editingUnit.base_unit_id ?? null,
+        });
+        const updated = response?.id ? response : response?.data;
+        const row = {
+          ...editingUnit,
+          ...(updated || {}),
+          id: editingUnit.id,
+          name: updated?.name || name,
+          symbol: updated?.symbol || symbol,
+        };
+        setLocalUnits((prev) => prev.map((u) => (u.id === editingUnit.id ? row : u)));
+        message.success('Unit updated');
+      } else {
+        const response = await apiService.post('/units', { name, symbol, type: 'other' });
+        const created = response?.id ? response : response?.data;
+        const createdId = created?.id;
+        if (!createdId) {
+          message.error(response?.error || 'Failed to add unit');
+          return;
+        }
+        const createdRow = {
+          id: createdId,
+          name: created.name || name,
+          symbol: created.symbol || symbol,
+          type: created.type || 'other',
+          status: created.status || 'active',
+        };
+        setLocalUnits((prev) => {
+          if (prev.some((u) => u.id === createdId)) return prev;
+          return [...prev, createdRow];
+        });
+        form?.setFieldsValue?.({ unit: createdId });
+        message.success('Unit added');
+      }
+      closeEditor();
+      try {
+        await onRefresh?.();
+      } catch {
+        // local list already updated
+      }
     } catch (e) {
-      message.error(e?.response?.data?.error || e?.userMessage || 'Failed to add unit');
+      message.error(
+        e?.response?.data?.error
+        || e?.userMessage
+        || (editingUnit ? 'Failed to update unit' : 'Failed to add unit')
+      );
+    } finally {
+      setSavingUnit(false);
     }
   };
 
-  const handleDelete = async (unit) => {
+  const handleDelete = async (unit, e) => {
+    e?.domEvent?.stopPropagation?.();
+    e?.stopPropagation?.();
     try {
       await apiService.delete(`/units/${unit.id}`);
-      await onRefresh?.();
+      setLocalUnits((prev) => prev.filter((u) => u.id !== unit.id));
       if (form?.getFieldValue?.('unit') === unit.id) {
         form.setFieldsValue({ unit: undefined });
       }
       message.success(`Unit '${unit.name}' deleted`);
+      try {
+        await onRefresh?.();
+      } catch {
+        // ignore
+      }
     } catch {
       message.error('Failed to delete unit');
     }
   };
 
   return (
-    <Form.Item name="unit" label={label} rules={[{ required: true, message: requiredMessage }]}>
-      <Select
-        showSearch
-        allowClear
-        placeholder="Select unit"
-        filterOption={filterSelectOption}
-        dropdownRender={(menu) => (
-          <div>
-            {menu}
-            <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
-              <Button type="link" size="small" onClick={handleAdd}>
-                + Add Unit
-              </Button>
-            </div>
-          </div>
-        )}
+    <>
+      <Form.Item label={label} required style={{ marginBottom: 0 }}>
+        <Space.Compact style={{ width: '100%' }}>
+          <Form.Item
+            name="unit"
+            noStyle
+            rules={[{ required: true, message: requiredMessage }]}
+          >
+            <Select
+              showSearch
+              allowClear
+              loading={loadingUnits}
+              placeholder={selectOptions.length ? 'Select unit' : 'No units yet — click Add'}
+              optionFilterProp="label"
+              filterOption={filterSelectOption}
+              options={selectOptions}
+              optionRender={(option) => (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{option.label}</span>
+                  {option.data?.unit && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      <EditChip onClick={(ev) => openEdit(option.data.unit, ev)} />
+                      <DeleteChip onClick={(ev) => handleDelete(option.data.unit, ev)} />
+                    </span>
+                  )}
+                </div>
+              )}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openCreate}
+            title="Add unit"
+          >
+            Add
+          </Button>
+        </Space.Compact>
+      </Form.Item>
+
+      <Modal
+        title={editingUnit ? 'Rename unit' : 'Add unit'}
+        open={editorOpen}
+        onCancel={closeEditor}
+        onOk={handleSave}
+        confirmLoading={savingUnit}
+        okText={editingUnit ? 'Save' : 'Add unit'}
+        destroyOnClose
+        zIndex={1200}
       >
-        {units.map((unit) => (
-          <Select.Option key={unit.id} value={unit.id}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>
-                {unit.name}
-                {unit.symbol && String(unit.symbol).trim().toLowerCase() !== String(unit.name || '').trim().toLowerCase()
-                  ? ` (${unit.symbol})`
-                  : ''}
-              </span>
-              <DeleteChip onClick={() => handleDelete(unit)} />
-            </div>
-          </Select.Option>
-        ))}
-      </Select>
-    </Form.Item>
+        <Input
+          autoFocus
+          placeholder="e.g. Box, Carton, Kg"
+          value={unitName}
+          onChange={(e) => setUnitName(e.target.value)}
+          onPressEnter={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+        />
+      </Modal>
+    </>
   );
 }
+
+
 
 export function BrandField({ form, brandOptions = [], onRefresh }) {
   const handleAdd = async () => {

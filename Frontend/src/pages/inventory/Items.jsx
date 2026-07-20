@@ -19,6 +19,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
 import { filterSelectOption } from '../../utils/selectFilter';
+import { UnitField } from '../../components/inventory/ItemMasterDataFields';
 import {
   assessImportRowIssues,
   buildExistingItemsMatchIndex,
@@ -8060,92 +8061,13 @@ const viewItem = (item) => {
                     </Form.Item>
                   </Col>
                   <Col xs={24} sm={8}>
-                    <Form.Item name="unit" label="Unit" initialValue="pcs">
-                      <Select 
-                      placeholder="Select unit"
-                      allowClear
-                      dropdownRender={(menu) => (
-                        <div>
-                          {menu}
-                          <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
-                            <Button 
-                              type="link" 
-                              size="small"
-                              onClick={async () => {
-                                const newOption = prompt('Enter new unit:');
-                                if (newOption && !unitOptions.find(u => u.name === newOption)) {
-                                  try {
-                                    const response = await apiService.post('/units', { name: newOption, symbol: newOption });
-                                    if (response) {
-                                      await fetchDropdownOptions();
-                                      message.success('Unit added successfully');
-                                    }
-                                  } catch (error) {
-                                    message.error('Failed to add unit');
-                                  }
-                                }
-                              }}
-                            >
-                              + Add Unit
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    >
-                      {unitOptions.map(unit => (
-                        <Select.Option key={unit.id} value={unit.id}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>
-                              {unit.name}
-                              {unit.symbol && String(unit.symbol).trim().toLowerCase() !== String(unit.name || '').trim().toLowerCase()
-                                ? ` (${unit.symbol})`
-                                : ''}
-                            </span>
-                            <span
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  await apiService.delete(`/units/${unit.id}`);
-                                  setUnitOptions(prev => prev.filter(u => u.id !== unit.id));
-                                  if (form.getFieldValue('unit') === unit.id) {
-                                    form.setFieldsValue({ unit: undefined });
-                                  }
-                                  message.success(`Unit '${unit.name}' deleted`);
-                                } catch (error) {
-                                  message.error(error?.response?.data?.error || 'Failed to delete unit');
-                                }
-                              }}
-                              style={{ 
-                                marginLeft: 8,
-                                width: '18px',
-                                height: '18px',
-                                borderRadius: '50%',
-                                backgroundColor: '#ff4d4f',
-                                color: 'white',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                                fontSize: '12px',
-                                fontWeight: 'bold',
-                                transition: 'all 0.2s'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.target.style.backgroundColor = '#d9363e';
-                                e.target.style.transform = 'scale(1.1)';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.target.style.backgroundColor = '#ff4d4f';
-                                e.target.style.transform = 'scale(1)';
-                              }}
-                            >
-                              ×
-                            </span>
-                          </div>
-                        </Select.Option>
-                      ))}
-                    </Select>
-                    </Form.Item>
+                    <UnitField
+                      form={form}
+                      units={unitOptions}
+                      onRefresh={fetchDropdownOptions}
+                      label="Unit"
+                      requiredMessage="Unit is required"
+                    />
                   </Col>
                 </Row>
                 <Row gutter={16}>

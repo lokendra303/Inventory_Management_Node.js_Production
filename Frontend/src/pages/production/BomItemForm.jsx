@@ -44,11 +44,11 @@ const normalizeComponents = (rows = []) => {
 };
 
 const pickDefaultUnit = (units = []) => {
-  if (!units.length) return 'pcs';
+  if (!units.length) return undefined;
   const pcs = units.find((u) => String(u.name || '').toLowerCase() === 'pcs'
     || String(u.symbol || '').toLowerCase() === 'pcs');
   const row = pcs || units[0];
-  return row.id || row.name || 'pcs';
+  return row.id || row.name || undefined;
 };
 
 const defaultFormValues = (units = []) => ({
@@ -152,17 +152,7 @@ export default function BomItemForm({
   onCancelRef.current = onCancel;
 
   const loadMasterData = useCallback(async () => {
-    const [
-      unitsRes,
-      whRes,
-      catRes,
-      groupsRes,
-      brandsRes,
-      mfgRes,
-      taxRes,
-      compositeFieldConfigs,
-      variantLibraryRes,
-    ] = await Promise.all([
+    const settled = await Promise.allSettled([
       apiService.get('/units'),
       apiService.get('/warehouses'),
       apiService.get('/categories'),
@@ -174,18 +164,22 @@ export default function BomItemForm({
       apiService.get('/items/variant-library'),
     ]);
 
-    const unitRows = asApiList(unitsRes);
-    const brandRows = asApiList(brandsRes);
-    const manufacturerRows = asApiList(mfgRes);
-    const categoryRows = asApiList(catRes);
+    const valueOf = (i) => (settled[i].status === 'fulfilled' ? settled[i].value : null);
+
+    const unitRows = asApiList(valueOf(0));
+    const brandRows = asApiList(valueOf(4));
+    const manufacturerRows = asApiList(valueOf(5));
+    const categoryRows = asApiList(valueOf(2));
+    const compositeFieldConfigs = valueOf(7);
+    const variantLibraryRes = valueOf(8);
 
     setUnits(unitRows);
-    setWarehouses(asApiList(whRes).filter((w) => w.status === 'active'));
+    setWarehouses(asApiList(valueOf(1)).filter((w) => w.status === 'active'));
     setCategories(categoryRows);
-    setItemGroups(asApiList(groupsRes));
+    setItemGroups(asApiList(valueOf(3)));
     setBrandOptions(brandRows);
     setManufacturerOptions(manufacturerRows);
-    setTaxRateOptions(asApiList(taxRes));
+    setTaxRateOptions(asApiList(valueOf(6)));
     setFieldConfigs(Array.isArray(compositeFieldConfigs) ? compositeFieldConfigs : []);
     const library = variantLibraryRes?.success
       ? (variantLibraryRes.data || [])

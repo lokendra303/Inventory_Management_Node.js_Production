@@ -6,7 +6,7 @@ class UnitsController {
     try {
       const { name, symbol, type, base_unit_id, conversion_factor } = req.body;
       const institution_id = req.user.institutionId;
-      const normalizedType = type ?? null;
+      const normalizedType = type || 'other';
       const normalizedBaseUnitId = base_unit_id ?? null;
       const normalizedConversionFactor = conversion_factor ?? 1;
 
@@ -15,11 +15,13 @@ class UnitsController {
       }
 
       const id = uuidv4();
+      const safeName = String(name).trim();
+      const safeSymbol = String(symbol).trim().slice(0, 20);
       
       await database.query(`
         INSERT INTO units (id, institution_id, name, symbol, type, base_unit_id, conversion_factor) 
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [id, institution_id, name, symbol, normalizedType, normalizedBaseUnitId, normalizedConversionFactor]);
+      `, [id, institution_id, safeName, safeSymbol, normalizedType, normalizedBaseUnitId, normalizedConversionFactor]);
 
       const unit = await database.query('SELECT * FROM units WHERE id = ?', [id]);
       res.status(201).json(unit[0]);
@@ -82,24 +84,39 @@ class UnitsController {
       const { id } = req.params;
       const institution_id = req.user.institutionId;
       const { name, symbol, type, base_unit_id, conversion_factor, status } = req.body;
-      const normalizedType = type ?? null;
-      const normalizedBaseUnitId = base_unit_id ?? null;
-      const normalizedConversionFactor = conversion_factor ?? 1;
-      const normalizedStatus = status ?? 'active';
 
-      const result = await database.query(`
+      if (!name || !symbol) {
+        return res.status(400).json({ error: 'Name and symbol are required' });
+      }
+
+      const existing = await database.query(
+        'SELECT * FROM units WHERE id = ? AND institution_id = ?',
+        [id, institution_id]
+      );
+      if (!existing.length) {
+        return res.status(404).json({ error: 'Unit not found' });
+      }
+
+      const current = existing[0];
+      const safeName = String(name).trim();
+      const safeSymbol = String(symbol).trim().slice(0, 20);
+      const normalizedType = type || current.type || 'other';
+      const normalizedBaseUnitId = base_unit_id !== undefined ? (base_unit_id ?? null) : current.base_unit_id;
+      const normalizedConversionFactor = conversion_factor ?? current.conversion_factor ?? 1;
+      const normalizedStatus = status || current.status || 'active';
+
+      await database.query(`
         UPDATE units SET name = ?, symbol = ?, type = ?, base_unit_id = ?, 
                conversion_factor = ?, status = ?
         WHERE id = ? AND institution_id = ?
-      `, [name, symbol, normalizedType, normalizedBaseUnitId, normalizedConversionFactor, normalizedStatus, id, institution_id]);
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: 'Unit not found' });
-      }
+      `, [safeName, safeSymbol, normalizedType, normalizedBaseUnitId, normalizedConversionFactor, normalizedStatus, id, institution_id]);
 
       const unit = await database.query('SELECT * FROM units WHERE id = ?', [id]);
       res.json(unit[0]);
     } catch (error) {
+      if (error.code === 'ER_DUP_ENTRY') {
+        return res.status(400).json({ error: 'Unit name or symbol already exists' });
+      }
       res.status(500).json({ error: error.message });
     }
   }
