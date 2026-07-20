@@ -14,13 +14,14 @@ export default function BomCostSummary({
   form,
   components = [],
   catalogItems = [],
+  units = [],
 }) {
   const { currency } = useCurrency();
   const additionalCharges = Form.useWatch('bomAdditionalCharges', form) || [];
 
   const { componentsSubtotal, additionalTotal, expectedCost } = useMemo(
-    () => calculateBomExpectedCost(components, catalogItems, additionalCharges),
-    [components, catalogItems, additionalCharges]
+    () => calculateBomExpectedCost(components, catalogItems, additionalCharges, units),
+    [components, catalogItems, additionalCharges, units]
   );
 
   const currentCostPrice = Form.useWatch('costPrice', form);

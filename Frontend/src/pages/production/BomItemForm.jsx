@@ -35,11 +35,13 @@ const normalizeComponents = (rows = []) => {
       itemId: String(row?.itemId || row?.component_item_id || '').trim(),
       quantityRequired: Number(row?.quantityRequired ?? row?.quantity_required),
       consumptionTiming: String(row?.consumptionTiming || row?.consumption_timing || 'shipment').toLowerCase(),
+      consumptionUnitId: row?.consumptionUnitId || row?.consumption_unit_id || null,
     }))
     .filter((row) => row.itemId && Number.isFinite(row.quantityRequired) && row.quantityRequired > 0)
     .map((row) => ({
       ...row,
       consumptionTiming: ['order', 'shipment'].includes(row.consumptionTiming) ? row.consumptionTiming : 'shipment',
+      consumptionUnitId: row.consumptionUnitId ? String(row.consumptionUnitId).trim() || null : null,
     }));
 };
 
@@ -227,7 +229,7 @@ export default function BomItemForm({
     form.resetFields();
     form.setFieldsValue(defaultFormValues(unitsRef.current));
     setImageUrl('');
-    setComponents([{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }]);
+    setComponents([{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null }]);
     setKitFulfillmentMode('prebuilt');
     setActiveDraftId(null);
     setDraftBanner(null);
@@ -381,8 +383,9 @@ export default function BomItemForm({
             itemId: c.component_item_id || c.itemId,
             quantityRequired: Number(c.quantity_required ?? c.quantityRequired ?? 1),
             consumptionTiming: c.consumption_timing || c.consumptionTiming || 'shipment',
+            consumptionUnitId: c.consumption_unit_id || c.consumptionUnitId || null,
           }))
-          : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }]);
+          : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null }]);
         if (whId) await fetchBinsForWarehouse(whId);
       } catch (err) {
         if (!cancelled) {
@@ -643,6 +646,10 @@ export default function BomItemForm({
             onWarehouseChange={fetchBinsForWarehouse}
             variantLibrary={variantLibrary}
             onRefreshVariantLibrary={refreshMasterData}
+            onUnitCreated={(unit) => {
+              if (!unit?.id) return;
+              setUnits((prev) => (prev.some((u) => u.id === unit.id) ? prev : [...prev, unit]));
+            }}
           />
         </Form>
       </Spin>

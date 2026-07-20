@@ -61,6 +61,7 @@ import {
   KitAssembly,
   BomItems,
   BatchRulesPage,
+  UomConversionRulesPage,
   SkuRulesPage,
   BatchTracking,
   PurchaseReturns,
@@ -109,6 +110,7 @@ const ProtectedInventoryAdjustments = withPermission('inventory_adjust')(Invento
 const ProtectedKitAssembly = withPermission('production_management')(KitAssembly);
 const ProtectedBomItems = withPermission('production_view')(BomItems);
 const ProtectedBatchRulesPage = withPermission('production_management')(BatchRulesPage);
+const ProtectedUomConversionRulesPage = withPermission('production_management')(UomConversionRulesPage);
 const ProtectedInventoryShipments = withPermission('inventory_ship')(Shipments);
 const ProtectedPutaways = withPermission('inventory_receive')(Putaways);
 const ProtectedMoveOrders = withPermission('inventory_transfer')(MoveOrders);
@@ -192,6 +194,7 @@ function AppContent() {
               <Route path="/inventory/kit-assembly" element={<Navigate to="/production/kit-assembly" replace />} />
               <Route path="/production/bom-items" element={<ProtectedBomItems />} />
               <Route path="/production/batch-rules" element={<ProtectedBatchRulesPage />} />
+              <Route path="/production/uom-rules" element={<ProtectedUomConversionRulesPage />} />
               <Route path="/production/kit-assembly" element={<ProtectedKitAssembly />} />
               <Route path="/inventory/shipments" element={<ProtectedInventoryShipments />} />
               <Route path="/inventory/putaways" element={<ProtectedPutaways />} />

@@ -1,8 +1,11 @@
-import React from 'react';
-import { Button, Col, Grid, InputNumber, Row, Select, Tooltip, Typography } from 'antd';
-import { DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import {
+  Button, Col, Form, Grid, Input, InputNumber, Modal, Row, Select, Space, Tooltip, Typography, message,
+} from 'antd';
+import { DeleteOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
+import apiService from '../../services/apiService';
 import {
   getCatalogItemById,
   resolveCatalogItemAvailableStock,
@@ -10,6 +13,14 @@ import {
   resolveCatalogItemSize,
   resolveCatalogItemUnit,
 } from '../../utils/bomCostHelpers';
+import {
+  convertQuantity,
+  listCompatibleUnits,
+  resolveItemStockUnitId,
+  resolveToBase,
+  unitDisplayLabel,
+} from '../../utils/unitConversion';
+import { formatNumber } from '../../utils/numberFormat';
 
 const { Text: AntText } = Typography;
 
@@ -86,15 +97,25 @@ export default function CompositeBomSection({
   excludeItemId,
   kitFulfillmentMode = 'prebuilt',
   warehouseId = null,
+  units = [],
+  onUnitCreated,
 }) {
   const screens = Grid.useBreakpoint();
   const { currency } = useCurrency();
   const isExplodeOnShip = String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship';
 
+  const [uomEditorOpen, setUomEditorOpen] = useState(false);
+  const [uomEditorRowIdx, setUomEditorRowIdx] = useState(null);
+  const [uomName, setUomName] = useState('');
+  const [uomSymbol, setUomSymbol] = useState('');
+  const [uomBaseUnitId, setUomBaseUnitId] = useState(null);
+  const [uomFactor, setUomFactor] = useState(1);
+  const [savingUom, setSavingUom] = useState(false);
+
   const addRow = () => {
     onComponentsChange((prev) => [
       ...prev,
-      { itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' },
+      { itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null },
     ]);
   };
 
@@ -107,6 +128,101 @@ export default function CompositeBomSection({
   };
 
   const selectableItems = catalogItems.filter((itemRow) => isBomComponentItem(itemRow, excludeItemId));
+
+  const handleComponentChange = (idx, itemId) => {
+    const selectedItem = getCatalogItemById(catalogItems, itemId);
+    const stockUnitId = resolveItemStockUnitId(selectedItem, units);
+    updateRow(idx, {
+      itemId,
+      consumptionUnitId: stockUnitId || null,
+    });
+  };
+
+  const closeUomEditor = () => {
+    setUomEditorOpen(false);
+    setUomEditorRowIdx(null);
+    setUomName('');
+    setUomSymbol('');
+    setUomBaseUnitId(null);
+    setUomFactor(1);
+  };
+
+  const openUomEditor = (idx, stockUnitId) => {
+    const stockUnit = (units || []).find((u) => String(u.id) === String(stockUnitId));
+    const resolved = stockUnit ? resolveToBase(stockUnit, units) : null;
+    const defaultBaseId = resolved?.baseId || stockUnitId || null;
+    setUomEditorRowIdx(idx);
+    setUomName('');
+    setUomSymbol('');
+    setUomBaseUnitId(defaultBaseId);
+    setUomFactor(1);
+    setUomEditorOpen(true);
+  };
+
+  const handleSaveCustomUom = async () => {
+    const name = String(uomName || '').trim();
+    if (!name) {
+      message.warning('Enter a unit name');
+      return;
+    }
+    const duplicate = (units || []).some(
+      (u) => String(u.name || '').toLowerCase() === name.toLowerCase()
+    );
+    if (duplicate) {
+      message.warning(`Unit '${name}' already exists`);
+      return;
+    }
+    if (uomBaseUnitId && (!(Number(uomFactor) > 0))) {
+      message.warning('Conversion factor must be greater than 0');
+      return;
+    }
+
+    setSavingUom(true);
+    try {
+      const symbol = String(uomSymbol || '').trim() || name.slice(0, 20);
+      const factor = uomBaseUnitId ? Number(uomFactor) : 1;
+      const response = await apiService.post('/units', {
+        name,
+        symbol,
+        type: 'other',
+        status: 'active',
+        base_unit_id: uomBaseUnitId || null,
+        conversion_factor: factor,
+      });
+      const created = response?.id ? response : response?.data;
+      if (!created?.id) {
+        message.error(response?.error || 'Failed to add unit');
+        return;
+      }
+      const createdRow = {
+        id: created.id,
+        name: created.name || name,
+        symbol: created.symbol || symbol,
+        type: created.type || 'other',
+        status: created.status || 'active',
+        base_unit_id: created.base_unit_id ?? (uomBaseUnitId || null),
+        conversion_factor: created.conversion_factor ?? factor,
+      };
+      await onUnitCreated?.(createdRow);
+      if (uomEditorRowIdx != null) {
+        updateRow(uomEditorRowIdx, { consumptionUnitId: createdRow.id });
+      }
+      message.success(`Unit '${createdRow.name}' added`);
+      closeUomEditor();
+    } catch (e) {
+      message.error(e?.response?.data?.error || e?.userMessage || 'Failed to add unit');
+    } finally {
+      setSavingUom(false);
+    }
+  };
+
+  const uomBaseOptions = (units || [])
+    .filter((u) => u?.id)
+    .map((u) => ({
+      value: u.id,
+      label: unitDisplayLabel(u),
+    }));
+  const uomBaseLabel = uomBaseOptions.find((o) => o.value === uomBaseUnitId)?.label || 'base unit';
 
   return (
     <div style={PANEL_STYLE}>
@@ -218,9 +334,22 @@ export default function CompositeBomSection({
             );
             const selectedItem = getCatalogItemById(catalogItems, row.itemId);
             const qty = Number(row.quantityRequired) || 0;
+            const stockUnitId = resolveItemStockUnitId(selectedItem, units);
+            const consumptionUnitId = row.consumptionUnitId || stockUnitId || null;
+            const compatibleUnits = listCompatibleUnits(stockUnitId, units);
+            const stockQty = (stockUnitId && consumptionUnitId)
+              ? (convertQuantity(qty, consumptionUnitId, stockUnitId, units) ?? qty)
+              : qty;
             const unitCost = selectedItem ? resolveCatalogItemCost(selectedItem) : 0;
-            const lineCost = qty * unitCost;
+            const lineCost = stockQty * unitCost;
             const availableStock = selectedItem ? resolveCatalogItemAvailableStock(selectedItem) : null;
+            const consumptionUnit = units.find((u) => String(u.id) === String(consumptionUnitId));
+            const stockUnit = units.find((u) => String(u.id) === String(stockUnitId));
+            const showConversionHint = selectedItem
+              && consumptionUnitId
+              && stockUnitId
+              && String(consumptionUnitId) !== String(stockUnitId)
+              && Number.isFinite(stockQty);
             const metaChipStyle = {
               display: 'inline-flex',
               alignItems: 'center',
@@ -242,7 +371,7 @@ export default function CompositeBomSection({
                 }}
               >
                 <Row gutter={16} align="top">
-                  <Col xs={24} sm={11} style={{ flex: '1 1 0', minWidth: 0 }}>
+                  <Col xs={24} sm={isExplodeOnShip ? 8 : 9} style={{ flex: '1 1 0', minWidth: 0 }}>
                     <div style={BOM_FIELD_LABEL_STYLE}>
                       Component item
                       <Tooltip title="Search by SKU or name. Type is shown for each option.">
@@ -264,7 +393,7 @@ export default function CompositeBomSection({
                       popupMatchSelectWidth={false}
                       style={{ width: '100%', display: 'block' }}
                       size="middle"
-                      onChange={(value) => updateRow(idx, { itemId: value })}
+                      onChange={(value) => handleComponentChange(idx, value)}
                       status={duplicateRow ? 'error' : (!row.itemId ? 'warning' : undefined)}
                     >
                       {rowOptions.map((itemRow) => (
@@ -334,7 +463,7 @@ export default function CompositeBomSection({
                         </span>
                         <span style={metaChipStyle}>
                           <strong>Available{warehouseId ? ' (WH)' : ' (active WH)'}:</strong>{' '}
-                          {availableStock == null ? '—' : Number(availableStock).toFixed(4)}
+                          {availableStock == null ? '—' : formatNumber(availableStock, 4)}
                         </span>
                         <span style={{ ...metaChipStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca' }}>
                           <strong>Line cost:</strong> {formatPrice(lineCost, currency, 'USD')}
@@ -347,22 +476,71 @@ export default function CompositeBomSection({
                       </div>
                     ) : null}
                   </Col>
-                  <Col xs={12} sm={isExplodeOnShip ? 6 : 11}>
+                  <Col xs={12} sm={isExplodeOnShip ? 4 : 5}>
                     <div style={BOM_FIELD_LABEL_STYLE}>
                       Qty per 1 unit
-                      <Tooltip title="Whole-number or fractional quantities allowed (e.g. 0.5 kg per unit).">
+                      <Tooltip title="Enter quantity in the UOM you select (e.g. 50 g). Stock is deducted in the component’s stock unit after conversion.">
                         <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
                       </Tooltip>
                     </div>
                     <InputNumber
                       min={0.0001}
-                      step={0.0001}
+                      step={1}
                       style={{ width: '100%' }}
                       size="middle"
                       value={row.quantityRequired}
-                      placeholder="e.g. 1"
+                      placeholder="e.g. 50"
+                      formatter={(value) => {
+                        if (value === '' || value === undefined || value === null) return '';
+                        const n = Number(value);
+                        return Number.isFinite(n) ? formatNumber(n, 4) : String(value);
+                      }}
+                      parser={(value) => String(value ?? '').replace(/[^\d.-]/g, '')}
                       onChange={(value) => updateRow(idx, { quantityRequired: value })}
                     />
+                    {showConversionHint ? (
+                      <AntText type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                        {formatNumber(qty, 4)} {unitDisplayLabel(consumptionUnit) || 'UOM'}
+                        {' ≈ '}
+                        {formatNumber(stockQty, 4)} {unitDisplayLabel(stockUnit) || resolveCatalogItemUnit(selectedItem)} stock
+                      </AntText>
+                    ) : null}
+                  </Col>
+                  <Col xs={12} sm={isExplodeOnShip ? 4 : 5}>
+                    <div style={BOM_FIELD_LABEL_STYLE}>
+                      UOM
+                      <Tooltip title="Consumption unit for this BOM line. Add a custom UOM linked to the same measurement family (e.g. Sachet → Grams, Box → Pieces).">
+                        <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
+                      </Tooltip>
+                    </div>
+                    <Space.Compact style={{ width: '100%' }}>
+                      <Select
+                        showSearch
+                        optionFilterProp="label"
+                        disabled={!row.itemId}
+                        value={consumptionUnitId || undefined}
+                        placeholder={row.itemId ? 'Select UOM' : 'Pick component first'}
+                        style={{ width: '100%' }}
+                        size="middle"
+                        options={(compatibleUnits.length ? compatibleUnits : units)
+                          .filter((u) => u?.id)
+                          .map((u) => ({
+                            value: u.id,
+                            label: unitDisplayLabel(u),
+                          }))}
+                        onChange={(value) => updateRow(idx, { consumptionUnitId: value })}
+                      />
+                      <Tooltip title="Add custom UOM">
+                        <Button
+                          type="primary"
+                          size="middle"
+                          icon={<PlusOutlined />}
+                          disabled={!row.itemId}
+                          onClick={() => openUomEditor(idx, stockUnitId)}
+                          aria-label="Add custom UOM"
+                        />
+                      </Tooltip>
+                    </Space.Compact>
                   </Col>
                   {isExplodeOnShip ? (
                     <Col xs={12} sm={5}>
@@ -461,6 +639,81 @@ export default function CompositeBomSection({
           </div>
         </div>
       )}
+
+      <Modal
+        title="Add custom UOM"
+        open={uomEditorOpen}
+        onCancel={closeUomEditor}
+        onOk={handleSaveCustomUom}
+        confirmLoading={savingUom}
+        okText="Add UOM"
+        destroyOnClose
+        zIndex={1200}
+      >
+        <Form layout="vertical">
+          <Form.Item label="Unit name" required style={{ marginBottom: 12 }}>
+            <Input
+              autoFocus
+              placeholder="e.g. Sachet, Pack of 250g, Box of 12"
+              value={uomName}
+              onChange={(e) => setUomName(e.target.value)}
+              onPressEnter={(e) => {
+                e.preventDefault();
+                handleSaveCustomUom();
+              }}
+            />
+          </Form.Item>
+          <Form.Item label="Symbol (optional)" style={{ marginBottom: 12 }}>
+            <Input
+              placeholder="e.g. sachet, pkt, box"
+              value={uomSymbol}
+              onChange={(e) => setUomSymbol(e.target.value)}
+              maxLength={20}
+            />
+          </Form.Item>
+          <Form.Item
+            label="Base unit"
+            tooltip="Link to the measurement this UOM converts from. Example: Sachet → Grams, factor 50 means 1 Sachet = 50 g."
+            required
+            style={{ marginBottom: 12 }}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="Select base unit (g, kg, ml, pcs…)"
+              value={uomBaseUnitId || undefined}
+              options={uomBaseOptions}
+              onChange={(value) => {
+                setUomBaseUnitId(value || null);
+                if (!value) setUomFactor(1);
+              }}
+            />
+          </Form.Item>
+          <Form.Item
+            label="Conversion factor"
+            tooltip="How many base units equal 1 of this new UOM. Example: 1 kg = 1000 g → factor 1000."
+            style={{ marginBottom: 0 }}
+          >
+            <InputNumber
+              min={0.000001}
+              step={1}
+              style={{ width: '100%' }}
+              disabled={!uomBaseUnitId}
+              value={uomFactor}
+              onChange={(value) => setUomFactor(value)}
+            />
+          </Form.Item>
+          {uomBaseUnitId ? (
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+              1 {uomName || 'new UOM'} = {Number(uomFactor) || '?'} {uomBaseLabel}
+            </AntText>
+          ) : (
+            <AntText type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+              Pick a base unit in the same family as the component stock unit so BOM conversion works.
+            </AntText>
+          )}
+        </Form>
+      </Modal>
     </div>
   );
 }

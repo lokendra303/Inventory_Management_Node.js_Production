@@ -87,6 +87,7 @@ export default function BomItemFormFields({
   onWarehouseChange,
   variantLibrary = [],
   onRefreshVariantLibrary,
+  onUnitCreated,
 }) {
   const isExplodeMode = String(kitFulfillmentMode || 'prebuilt').toLowerCase() === 'explode_on_ship';
   const watchedTrackInventoryRaw = Form.useWatch('trackInventory', form) === true;
@@ -432,11 +433,14 @@ export default function BomItemFormFields({
           excludeItemId={itemId}
           kitFulfillmentMode={kitFulfillmentMode}
           warehouseId={watchedWarehouseId}
+          units={units}
+          onUnitCreated={onUnitCreated}
         />
         <BomCostSummary
           form={form}
           components={components}
           catalogItems={catalogItems}
+          units={units}
         />
       </div>
 

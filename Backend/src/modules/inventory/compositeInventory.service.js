@@ -5,6 +5,10 @@ const itemService = require('../entity/item.service');
 const batchSerialService = require('./batchSerial.service');
 const logger = require('../../utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const {
+  convertBomLineToStockQty,
+  loadInstitutionUnits,
+} = require('../../utils/bomUnitConversion');
 
 const FULFILLMENT_PREBUILT = 'prebuilt';
 const FULFILLMENT_EXPLODE = 'explode_on_ship';
@@ -17,6 +21,17 @@ class CompositeInventoryService {
   normalizeFulfillmentMode(mode) {
     const m = String(mode || FULFILLMENT_PREBUILT).toLowerCase();
     return m === FULFILLMENT_EXPLODE ? FULFILLMENT_EXPLODE : FULFILLMENT_PREBUILT;
+  }
+
+  async _stockQtyPerKit(institutionId, component, units = null) {
+    const { quantityInStockUnit, stockUnitId, consumptionUnitId, converted } =
+      await convertBomLineToStockQty(institutionId, {
+        quantityRequired: component.quantity_required ?? component.quantityRequired,
+        consumptionUnitId: component.consumption_unit_id || component.consumptionUnitId,
+        componentItemId: component.component_item_id || component.componentItemId,
+        units,
+      });
+    return { quantityInStockUnit, stockUnitId, consumptionUnitId, converted };
   }
 
   async getItemRow(institutionId, itemId) {
@@ -36,6 +51,7 @@ class CompositeInventoryService {
     const components = await itemService.getCompositeComponents(institutionId, compositeItemId);
     if (!components.length) return 0;
 
+    const units = await loadInstitutionUnits(institutionId);
     let minAvailableStock = Infinity;
     for (const component of components) {
       const tracking = await batchSerialService.getItemTracking(
@@ -57,7 +73,7 @@ class CompositeInventoryService {
         );
         availableQuantity = componentStock ? Number(componentStock.quantity_available) : 0;
       }
-      const req = Number(component.quantity_required);
+      const { quantityInStockUnit: req } = await this._stockQtyPerKit(institutionId, component, units);
       const possibleCompositeQuantity = req > 0 ? Math.floor(availableQuantity / req) : 0;
       minAvailableStock = Math.min(minAvailableStock, possibleCompositeQuantity);
     }
@@ -147,6 +163,7 @@ class CompositeInventoryService {
     const kitAvailable = kitProj ? Number(kitProj.quantity_available) : 0;
 
     const componentDetails = [];
+    const units = await loadInstitutionUnits(institutionId);
     for (const c of components) {
       const p = await projectionService.getInventoryProjection(
         institutionId,
@@ -166,13 +183,23 @@ class CompositeInventoryService {
         );
         avail = Math.min(avail, batchAvail);
       }
-      const req = Number(c.quantity_required);
+      const bomQty = Number(c.quantity_required);
+      const {
+        quantityInStockUnit: req,
+        stockUnitId,
+        consumptionUnitId,
+      } = await this._stockQtyPerKit(institutionId, c, units);
       componentDetails.push({
         componentItemId: c.component_item_id,
         sku: c.sku,
         name: c.component_name,
         unit: c.unit,
-        quantityRequiredPerKit: req,
+        stockUnit: c.unit,
+        stockUnitId,
+        consumptionUnit: c.consumptionUnit || c.consumption_unit_name || c.unit,
+        consumptionUnitId: consumptionUnitId || c.consumption_unit_id || stockUnitId,
+        quantityRequiredPerKit: bomQty,
+        quantityRequiredInStockUnit: req,
         consumptionTiming: c.consumption_timing || 'shipment',
         available: avail,
         averageCost: p ? Number(p.average_cost) : 0,
@@ -183,7 +210,7 @@ class CompositeInventoryService {
     }
 
     const estimatedUnitCost = componentDetails.reduce(
-      (sum, row) => sum + (Number(row.quantityRequiredPerKit) || 0) * (Number(row.averageCost) || 0),
+      (sum, row) => sum + (Number(row.quantityRequiredInStockUnit) || 0) * (Number(row.averageCost) || 0),
       0
     );
 
@@ -245,8 +272,10 @@ class CompositeInventoryService {
 
     const components = await itemService.getCompositeComponents(institutionId, compositeItemId);
     const componentPreview = [];
+    const units = await loadInstitutionUnits(institutionId);
     for (const c of components) {
-      const lineQty = qty * Number(c.quantity_required);
+      const { quantityInStockUnit } = await this._stockQtyPerKit(institutionId, c, units);
+      const lineQty = qty * quantityInStockUnit;
       const compTracking = await batchSerialService.getItemTracking(
         institutionId,
         c.component_item_id
@@ -256,7 +285,10 @@ class CompositeInventoryService {
         sku: c.sku,
         name: c.component_name,
         quantityPerKit: Number(c.quantity_required),
+        quantityRequiredInStockUnit: quantityInStockUnit,
         quantityReturned: lineQty,
+        consumptionUnit: c.consumptionUnit || c.unit,
+        stockUnit: c.unit,
         willCreateBatch: compTracking.isBatchTracked,
       });
     }
@@ -320,8 +352,10 @@ class CompositeInventoryService {
     const batchOps = { componentAllocations: [], outputBatch: null };
 
     try {
+      const units = await loadInstitutionUnits(institutionId);
       for (const c of components) {
-        const lineQty = qty * Number(c.quantity_required);
+        const { quantityInStockUnit } = await this._stockQtyPerKit(institutionId, c, units);
+        const lineQty = qty * quantityInStockUnit;
         const proj = await projectionService.getInventoryProjection(
           institutionId,
           c.component_item_id,
@@ -368,7 +402,8 @@ class CompositeInventoryService {
       );
 
       for (const c of components) {
-        const lineQty = qty * Number(c.quantity_required);
+        const { quantityInStockUnit } = await this._stockQtyPerKit(institutionId, c, units);
+        const lineQty = qty * quantityInStockUnit;
         const customAlloc = componentBatchAllocations[c.component_item_id]
           || componentBatchAllocations[String(c.component_item_id)];
         const { allocations } = await batchSerialService.consumeForKitAssembly(
@@ -551,8 +586,10 @@ class CompositeInventoryService {
       );
 
       const componentUnitCosts = {};
+      const units = await loadInstitutionUnits(institutionId);
       for (const c of components) {
-        const lineQty = qty * Number(c.quantity_required);
+        const { quantityInStockUnit } = await this._stockQtyPerKit(institutionId, c, units);
+        const lineQty = qty * quantityInStockUnit;
         const proj = await projectionService.getInventoryProjection(
           institutionId,
           c.component_item_id,
@@ -617,7 +654,8 @@ class CompositeInventoryService {
           userId
         );
         for (const c of components) {
-          const lineQty = qty * Number(c.quantity_required);
+          const { quantityInStockUnit } = await this._stockQtyPerKit(institutionId, c);
+          const lineQty = qty * quantityInStockUnit;
           await inventoryService.adjustStock(
             institutionId,
             {
@@ -688,10 +726,12 @@ class CompositeInventoryService {
     }
 
     const components = await itemService.getCompositeComponents(institutionId, itemId);
+    const units = await loadInstitutionUnits(institutionId);
     let reservedAny = false;
     for (const c of components) {
       if (String(c.consumption_timing || 'shipment').toLowerCase() !== 'order') continue;
-      const compQty = quantity * Number(c.quantity_required);
+      const { quantityInStockUnit } = await this._stockQtyPerKit(institutionId, c, units);
+      const compQty = quantity * quantityInStockUnit;
       await inventoryService.reserveStock(
         institutionId,
         {
@@ -756,8 +796,10 @@ class CompositeInventoryService {
     }
 
     const components = await itemService.getCompositeComponents(institutionId, itemId);
+    const units = await loadInstitutionUnits(institutionId);
     for (const c of components) {
-      const compQty = quantity * Number(c.quantity_required);
+      const { quantityInStockUnit } = await this._stockQtyPerKit(institutionId, c, units);
+      const compQty = quantity * quantityInStockUnit;
       const compLineId = componentSoLineId(soLineId, c.component_item_id);
       const timing = String(c.consumption_timing || 'shipment').toLowerCase();
       const shipPayload = {
@@ -832,9 +874,11 @@ class CompositeInventoryService {
     }
 
     const components = await itemService.getCompositeComponents(institutionId, itemId);
+    const units = await loadInstitutionUnits(institutionId);
     for (const c of components) {
       if (String(c.consumption_timing || 'shipment').toLowerCase() !== 'order') continue;
-      const compQty = quantity * Number(c.quantity_required);
+      const { quantityInStockUnit } = await this._stockQtyPerKit(institutionId, c, units);
+      const compQty = quantity * quantityInStockUnit;
       await inventoryService.releaseReservedStock(
         institutionId,
         {

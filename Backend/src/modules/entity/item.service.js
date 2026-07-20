@@ -18,12 +18,16 @@ class ItemService {
       .map((component) => ({
         itemId: String(component?.itemId || component?.componentItemId || '').trim(),
         quantityRequired: Number(component?.quantityRequired),
-        consumptionTiming: String(component?.consumptionTiming || 'shipment').trim().toLowerCase()
+        consumptionTiming: String(component?.consumptionTiming || 'shipment').trim().toLowerCase(),
+        consumptionUnitId: component?.consumptionUnitId || component?.consumption_unit_id || null,
       }))
       .filter((component) => component.itemId && Number.isFinite(component.quantityRequired) && component.quantityRequired > 0)
       .map((component) => ({
         ...component,
-        consumptionTiming: ['order', 'shipment'].includes(component.consumptionTiming) ? component.consumptionTiming : 'shipment'
+        consumptionTiming: ['order', 'shipment'].includes(component.consumptionTiming) ? component.consumptionTiming : 'shipment',
+        consumptionUnitId: component.consumptionUnitId
+          ? String(component.consumptionUnitId).trim() || null
+          : null,
       }));
   }
 
@@ -151,6 +155,22 @@ class ItemService {
 
     await this._assertNoCompositeComponentCycle(institutionId, compositeItemId, componentIds);
 
+    // Validate consumption UOMs are convertible to each component's stock unit
+    const {
+      convertBomLineToStockQty,
+      loadInstitutionUnits,
+    } = require('../../utils/bomUnitConversion');
+    const institutionUnits = await loadInstitutionUnits(institutionId);
+    for (const component of normalizedComponents) {
+      if (!component.consumptionUnitId) continue;
+      await convertBomLineToStockQty(institutionId, {
+        quantityRequired: component.quantityRequired,
+        consumptionUnitId: component.consumptionUnitId,
+        componentItemId: component.itemId,
+        units: institutionUnits,
+      });
+    }
+
     await db.query(
       'DELETE FROM composite_components WHERE institution_id = ? AND composite_item_id = ?',
       [institutionId, compositeItemId]
@@ -159,14 +179,15 @@ class ItemService {
     for (const component of normalizedComponents) {
       await db.query(
         `INSERT INTO composite_components
-         (id, institution_id, composite_item_id, component_item_id, quantity_required, consumption_timing)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         (id, institution_id, composite_item_id, component_item_id, quantity_required, consumption_unit_id, consumption_timing)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           uuidv4(),
           institutionId,
           compositeItemId,
           component.itemId,
           component.quantityRequired,
+          component.consumptionUnitId || null,
           component.consumptionTiming
         ]
       );
@@ -1839,7 +1860,7 @@ class ItemService {
         manufactureDate: openingManufactureDate,
         expiryDate: openingExpiryDate,
         batchRuleId: openingBatchRuleId,
-        openingRefId: `OPEN-${itemId}`,
+        openingRefId: itemId,
         forceBatch: isComposite,
       },
       userId
@@ -1862,10 +1883,14 @@ class ItemService {
               i.name AS component_name,
               i.unit AS unit_id,
               i.custom_fields,
-              u.name AS unit_name
+              u.name AS unit_name,
+              u.symbol AS unit_symbol,
+              cu.name AS consumption_unit_name,
+              cu.symbol AS consumption_unit_symbol
          FROM composite_components cc
          JOIN items i ON cc.component_item_id = i.id
          LEFT JOIN units u ON i.unit = u.id
+         LEFT JOIN units cu ON cu.id = cc.consumption_unit_id
         WHERE cc.institution_id = ? AND cc.composite_item_id = ?`,
       [institutionId, compositeItemId]
     );
@@ -1875,6 +1900,10 @@ class ItemService {
       return {
         ...rest,
         unit: row.unit_name || row.unit_id || null,
+        consumptionUnitId: row.consumption_unit_id || null,
+        consumptionUnit: row.consumption_unit_name
+          || row.consumption_unit_symbol
+          || null,
         component_size: this._extractComponentSize(customFields),
       };
     });
@@ -1888,6 +1917,8 @@ class ItemService {
     }
 
     const projectionService = require('../../projections/inventoryProjections');
+    const { convertBomLineToStockQty, loadInstitutionUnits } = require('../../utils/bomUnitConversion');
+    const units = await loadInstitutionUnits(institutionId);
     let minAvailableStock = Infinity;
 
     for (const component of components) {
@@ -1897,8 +1928,15 @@ class ItemService {
         warehouseId
       );
 
-      const availableQuantity = componentStock ? componentStock.quantity_available : 0;
-      const possibleCompositeQuantity = Math.floor(availableQuantity / component.quantity_required);
+      const availableQuantity = componentStock ? Number(componentStock.quantity_available) : 0;
+      const { quantityInStockUnit } = await convertBomLineToStockQty(institutionId, {
+        quantityRequired: component.quantity_required,
+        consumptionUnitId: component.consumption_unit_id,
+        componentItemId: component.component_item_id,
+        units,
+      });
+      const req = Number(quantityInStockUnit);
+      const possibleCompositeQuantity = req > 0 ? Math.floor(availableQuantity / req) : 0;
       
       minAvailableStock = Math.min(minAvailableStock, possibleCompositeQuantity);
     }

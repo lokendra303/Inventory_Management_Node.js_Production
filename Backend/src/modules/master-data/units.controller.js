@@ -1,5 +1,9 @@
 const { v4: uuidv4 } = require('uuid');
 const database = require('../../database/connection');
+const {
+  getStandardCatalog,
+  applyStandardConversions,
+} = require('../../utils/standardUnitConversions');
 
 class UnitsController {
   async create(req, res) {
@@ -17,9 +21,9 @@ class UnitsController {
       const id = uuidv4();
       const safeName = String(name).trim();
       const safeSymbol = String(symbol).trim().slice(0, 20);
-      
+
       await database.query(`
-        INSERT INTO units (id, institution_id, name, symbol, type, base_unit_id, conversion_factor) 
+        INSERT INTO units (id, institution_id, name, symbol, type, base_unit_id, conversion_factor)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [id, institution_id, safeName, safeSymbol, normalizedType, normalizedBaseUnitId, normalizedConversionFactor]);
 
@@ -55,6 +59,33 @@ class UnitsController {
       res.json(units);
     } catch (error) {
       console.error('Error in getAll units:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async getStandardConversions(req, res) {
+    try {
+      res.json({
+        catalogVersion: 'si-common-2026.07',
+        source: 'SI / NIST-style standard factors',
+        families: getStandardCatalog(),
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async applyStandards(req, res) {
+    try {
+      const institution_id = req.user.institutionId;
+      const createMissing = req.body?.createMissing !== false;
+      const updateExisting = req.body?.updateExisting === true;
+      const result = await applyStandardConversions(database, institution_id, {
+        createMissing,
+        updateExisting,
+      });
+      res.json(result);
+    } catch (error) {
       res.status(500).json({ error: error.message });
     }
   }
@@ -106,7 +137,7 @@ class UnitsController {
       const normalizedStatus = status || current.status || 'active';
 
       await database.query(`
-        UPDATE units SET name = ?, symbol = ?, type = ?, base_unit_id = ?, 
+        UPDATE units SET name = ?, symbol = ?, type = ?, base_unit_id = ?,
                conversion_factor = ?, status = ?
         WHERE id = ? AND institution_id = ?
       `, [safeName, safeSymbol, normalizedType, normalizedBaseUnitId, normalizedConversionFactor, normalizedStatus, id, institution_id]);

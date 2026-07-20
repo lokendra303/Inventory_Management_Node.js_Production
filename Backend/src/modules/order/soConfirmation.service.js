@@ -59,8 +59,19 @@ class SOConfirmationService {
               institutionId,
               line.item_id
             );
+            const {
+              convertBomLineToStockQty,
+              loadInstitutionUnits,
+            } = require('../../utils/bomUnitConversion');
+            const units = await loadInstitutionUnits(institutionId);
             for (const c of components) {
-              const compQty = requiredQty * Number(c.quantity_required);
+              const { quantityInStockUnit } = await convertBomLineToStockQty(institutionId, {
+                quantityRequired: c.quantity_required,
+                consumptionUnitId: c.consumption_unit_id,
+                componentItemId: c.component_item_id,
+                units,
+              });
+              const compQty = requiredQty * quantityInStockUnit;
               const stock = await inventoryService.getCurrentStock(
                 institutionId,
                 c.component_item_id,

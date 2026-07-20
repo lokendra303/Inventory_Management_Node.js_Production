@@ -83,7 +83,7 @@ export function restoreBomDraftToForm(draftData = {}, form, setters = {}) {
 
   const comps = Array.isArray(draftComponents) && draftComponents.length
     ? draftComponents
-    : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment' }];
+    : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null }];
 
   if (setters.setComponents) {
     setters.setComponents(comps);

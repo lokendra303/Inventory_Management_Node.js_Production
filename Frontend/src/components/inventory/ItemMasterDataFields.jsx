@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Form, Input, Modal, Select, Space, message } from 'antd';
+import { Button, Form, Input, InputNumber, Modal, Select, Space, Typography, message } from 'antd';
 import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import apiService from '../../services/apiService';
 import { filterSelectOption } from '../../utils/selectFilter';
+
+const { Text } = Typography;
 
 const actionChipBase = {
   marginLeft: 6,
@@ -159,6 +161,8 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState(null);
   const [unitName, setUnitName] = useState('');
+  const [baseUnitId, setBaseUnitId] = useState(null);
+  const [conversionFactor, setConversionFactor] = useState(1);
   const [savingUnit, setSavingUnit] = useState(false);
   const [loadingUnits, setLoadingUnits] = useState(false);
 
@@ -205,9 +209,18 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
       unit,
     }));
 
+  const baseUnitOptions = (Array.isArray(localUnits) ? localUnits : [])
+    .filter((unit) => unit?.id && (!editingUnit || unit.id !== editingUnit.id))
+    .map((unit) => ({
+      value: unit.id,
+      label: unitLabel(unit),
+    }));
+
   const openCreate = () => {
     setEditingUnit(null);
     setUnitName('');
+    setBaseUnitId(null);
+    setConversionFactor(1);
     setEditorOpen(true);
   };
 
@@ -216,6 +229,8 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
     e?.stopPropagation?.();
     setEditingUnit(unit);
     setUnitName(unit?.name || '');
+    setBaseUnitId(unit?.base_unit_id || null);
+    setConversionFactor(Number(unit?.conversion_factor) > 0 ? Number(unit.conversion_factor) : 1);
     setEditorOpen(true);
   };
 
@@ -223,6 +238,8 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
     setEditorOpen(false);
     setEditingUnit(null);
     setUnitName('');
+    setBaseUnitId(null);
+    setConversionFactor(1);
   };
 
   const handleSave = async () => {
@@ -239,19 +256,25 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
       message.warning(`Unit '${name}' already exists`);
       return;
     }
+    if (baseUnitId && (!(Number(conversionFactor) > 0))) {
+      message.warning('Conversion factor must be greater than 0');
+      return;
+    }
 
     setSavingUnit(true);
     try {
       const symbol = name.slice(0, 20);
+      const factor = baseUnitId ? Number(conversionFactor) : 1;
+      const payload = {
+        name,
+        symbol,
+        type: editingUnit?.type || 'other',
+        status: editingUnit?.status || 'active',
+        base_unit_id: baseUnitId || null,
+        conversion_factor: factor,
+      };
       if (editingUnit?.id) {
-        const response = await apiService.put(`/units/${editingUnit.id}`, {
-          name,
-          symbol,
-          type: editingUnit.type || 'other',
-          status: editingUnit.status || 'active',
-          conversion_factor: editingUnit.conversion_factor ?? 1,
-          base_unit_id: editingUnit.base_unit_id ?? null,
-        });
+        const response = await apiService.put(`/units/${editingUnit.id}`, payload);
         const updated = response?.id ? response : response?.data;
         const row = {
           ...editingUnit,
@@ -259,11 +282,13 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
           id: editingUnit.id,
           name: updated?.name || name,
           symbol: updated?.symbol || symbol,
+          base_unit_id: updated?.base_unit_id ?? (baseUnitId || null),
+          conversion_factor: updated?.conversion_factor ?? factor,
         };
         setLocalUnits((prev) => prev.map((u) => (u.id === editingUnit.id ? row : u)));
         message.success('Unit updated');
       } else {
-        const response = await apiService.post('/units', { name, symbol, type: 'other' });
+        const response = await apiService.post('/units', payload);
         const created = response?.id ? response : response?.data;
         const createdId = created?.id;
         if (!createdId) {
@@ -276,6 +301,8 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
           symbol: created.symbol || symbol,
           type: created.type || 'other',
           status: created.status || 'active',
+          base_unit_id: created.base_unit_id ?? (baseUnitId || null),
+          conversion_factor: created.conversion_factor ?? factor,
         };
         setLocalUnits((prev) => {
           if (prev.some((u) => u.id === createdId)) return prev;
@@ -364,7 +391,7 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
       </Form.Item>
 
       <Modal
-        title={editingUnit ? 'Rename unit' : 'Add unit'}
+        title={editingUnit ? 'Edit unit' : 'Add unit'}
         open={editorOpen}
         onCancel={closeEditor}
         onOk={handleSave}
@@ -373,16 +400,62 @@ export function UnitField({ form, units = [], onRefresh, label = 'Unit', require
         destroyOnClose
         zIndex={1200}
       >
-        <Input
-          autoFocus
-          placeholder="e.g. Box, Carton, Kg"
-          value={unitName}
-          onChange={(e) => setUnitName(e.target.value)}
-          onPressEnter={(e) => {
-            e.preventDefault();
-            handleSave();
-          }}
-        />
+        <Form layout="vertical">
+          <Form.Item label="Unit name" required style={{ marginBottom: 12 }}>
+            <Input
+              autoFocus
+              placeholder="e.g. Kilograms, Grams, Liters"
+              value={unitName}
+              onChange={(e) => setUnitName(e.target.value)}
+              onPressEnter={(e) => {
+                e.preventDefault();
+                handleSave();
+              }}
+            />
+          </Form.Item>
+          <Form.Item
+            label="Base unit (optional)"
+            tooltip="Link this unit for BOM conversion. Example: Kilograms → base Grams, factor 1000."
+            style={{ marginBottom: 12 }}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="None — this unit is a base"
+              value={baseUnitId || undefined}
+              options={baseUnitOptions}
+              onChange={(value) => {
+                setBaseUnitId(value || null);
+                if (!value) setConversionFactor(1);
+              }}
+            />
+          </Form.Item>
+          <Form.Item
+            label="Conversion factor"
+            tooltip="How many base units equal 1 of this unit. Example: 1 kg = 1000 g → factor 1000."
+            style={{ marginBottom: 0 }}
+          >
+            <InputNumber
+              min={0.000001}
+              step={1}
+              style={{ width: '100%' }}
+              disabled={!baseUnitId}
+              value={conversionFactor}
+              onChange={(value) => setConversionFactor(value)}
+            />
+          </Form.Item>
+          {baseUnitId ? (
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+              1 {unitName || 'unit'} = {Number(conversionFactor) || '?'}{' '}
+              {baseUnitOptions.find((o) => o.value === baseUnitId)?.label || 'base unit'}
+            </Text>
+          ) : (
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+              Leave base empty for stock base units (e.g. Grams, Millilitres, Pieces).
+            </Text>
+          )}
+        </Form>
       </Modal>
     </>
   );

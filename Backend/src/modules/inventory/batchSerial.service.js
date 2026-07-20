@@ -1439,7 +1439,7 @@ class BatchSerialService {
       {
         movementType: 'receive',
         referenceType: 'opening_stock',
-        referenceId: openingRefId || `OPEN-${itemId}`,
+        referenceId: openingRefId || itemId,
         itemId,
         warehouseId,
         batchId,
@@ -1519,11 +1519,19 @@ class BatchSerialService {
     }
 
     const componentBatches = [];
+    const { convertBomLineToStockQty, loadInstitutionUnits } = require('../../utils/bomUnitConversion');
+    const units = await loadInstitutionUnits(institutionId);
     for (const c of components) {
       const compTracking = await this.getItemTracking(institutionId, c.component_item_id);
       if (!compTracking.isBatchTracked) continue;
 
-      const lineQty = qty * Number(c.quantity_required);
+      const { quantityInStockUnit } = await convertBomLineToStockQty(institutionId, {
+        quantityRequired: c.quantity_required,
+        consumptionUnitId: c.consumption_unit_id,
+        componentItemId: c.component_item_id,
+        units,
+      });
+      const lineQty = qty * quantityInStockUnit;
       const batchNumber = await this.generateKitDisassemblyComponentBatchNumber(
         institutionId, c.component_item_id, connection, { warehouseId, consume: true }
       );

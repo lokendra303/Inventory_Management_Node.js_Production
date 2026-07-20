@@ -1,3 +1,8 @@
+import {
+  convertQuantity,
+  resolveItemStockUnitId,
+} from './unitConversion';
+
 const looksLikeUuid = (value) => (
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
 );
@@ -56,14 +61,19 @@ export function getCatalogItemById(catalogItems = [], itemId) {
   return catalogItems.find((row) => String(row.id) === String(itemId)) || null;
 }
 
-export function calculateBomComponentLines(components = [], catalogItems = []) {
+export function calculateBomComponentLines(components = [], catalogItems = [], units = []) {
   return (components || [])
     .filter((row) => row?.itemId)
     .map((row) => {
       const item = getCatalogItemById(catalogItems, row.itemId);
       const qty = Number(row.quantityRequired) || 0;
+      const stockUnitId = resolveItemStockUnitId(item, units);
+      const consumptionUnitId = row.consumptionUnitId || stockUnitId;
+      const stockQty = (stockUnitId && consumptionUnitId)
+        ? (convertQuantity(qty, consumptionUnitId, stockUnitId, units) ?? qty)
+        : qty;
       const unitCost = item ? resolveCatalogItemCost(item) : 0;
-      const lineCost = qty * unitCost;
+      const lineCost = stockQty * unitCost;
       return {
         itemId: row.itemId,
         sku: item?.sku || '—',
@@ -72,14 +82,15 @@ export function calculateBomComponentLines(components = [], catalogItems = []) {
         size: item ? resolveCatalogItemSize(item) : '—',
         unit: item ? resolveCatalogItemUnit(item) : '—',
         quantityRequired: qty,
+        quantityRequiredInStockUnit: stockQty,
         unitCost,
         lineCost,
       };
     });
 }
 
-export function calculateBomComponentsSubtotal(components = [], catalogItems = []) {
-  return calculateBomComponentLines(components, catalogItems)
+export function calculateBomComponentsSubtotal(components = [], catalogItems = [], units = []) {
+  return calculateBomComponentLines(components, catalogItems, units)
     .reduce((sum, line) => sum + line.lineCost, 0);
 }
 
@@ -90,8 +101,8 @@ export function calculateBomAdditionalTotal(charges = []) {
   }, 0);
 }
 
-export function calculateBomExpectedCost(components = [], catalogItems = [], additionalCharges = []) {
-  const componentsSubtotal = calculateBomComponentsSubtotal(components, catalogItems);
+export function calculateBomExpectedCost(components = [], catalogItems = [], additionalCharges = [], units = []) {
+  const componentsSubtotal = calculateBomComponentsSubtotal(components, catalogItems, units);
   const additionalTotal = calculateBomAdditionalTotal(additionalCharges);
   return {
     componentsSubtotal,

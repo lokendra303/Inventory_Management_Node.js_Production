@@ -447,7 +447,32 @@ export default function KitAssembly() {
 
   const componentColumns = [
     { title: 'Component', dataIndex: 'name', key: 'name', render: (t, r) => `${t || '—'} (${r.sku || ''})` },
-    { title: 'Per unit', dataIndex: 'quantityRequiredPerKit', key: 'qty' },
+    {
+      title: 'Per unit',
+      key: 'qty',
+      render: (_, r) => {
+        const stockQty = r.quantityRequiredInStockUnit ?? r.quantityRequiredPerKit;
+        const stockUnit = r.stockUnit || '';
+        const consQty = r.quantityRequiredPerKit;
+        const consUnit = r.consumptionUnit || '';
+        if (
+          consUnit
+          && stockUnit
+          && String(consUnit) !== String(stockUnit)
+          && Number(consQty) !== Number(stockQty)
+        ) {
+          return (
+            <span>
+              {consQty} {consUnit}
+              <Text type="secondary" style={{ display: 'block', fontSize: 11 }}>
+                ≈ {stockQty} {stockUnit} stock
+              </Text>
+            </span>
+          );
+        }
+        return `${stockQty ?? '—'}${stockUnit ? ` ${stockUnit}` : ''}`;
+      },
+    },
     { title: 'Available (WH)', dataIndex: 'available', key: 'avail' },
     {
       title: 'Avg cost',
@@ -649,7 +674,32 @@ export default function KitAssembly() {
             dataSource={disassemblyPreview.componentPreview || []}
             columns={[
               { title: 'Component', dataIndex: 'name', render: (t, r) => `${t} (${r.sku})` },
-              { title: 'Per unit', dataIndex: 'quantityPerKit' },
+              {
+                title: 'Per unit',
+                key: 'quantityPerKit',
+                render: (_, r) => {
+                  const stockQty = r.quantityRequiredInStockUnit ?? r.quantityPerKit;
+                  const stockUnit = r.stockUnit || '';
+                  const consQty = r.quantityPerKit;
+                  const consUnit = r.consumptionUnit || '';
+                  if (
+                    consUnit
+                    && stockUnit
+                    && String(consUnit) !== String(stockUnit)
+                    && Number(consQty) !== Number(stockQty)
+                  ) {
+                    return (
+                      <span>
+                        {consQty} {consUnit}
+                        <Text type="secondary" style={{ display: 'block', fontSize: 11 }}>
+                          ≈ {stockQty} {stockUnit} stock
+                        </Text>
+                      </span>
+                    );
+                  }
+                  return `${stockQty ?? '—'}${stockUnit ? ` ${stockUnit}` : ''}`;
+                },
+              },
               { title: 'Returned', dataIndex: 'quantityReturned' },
               {
                 title: 'Batch',

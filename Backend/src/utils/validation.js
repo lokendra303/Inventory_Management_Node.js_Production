@@ -98,6 +98,7 @@ const bomComponentSchema = Joi.object({
   itemId: Joi.string().uuid().required(),
   quantityRequired: Joi.number().positive().required(),
   consumptionTiming: Joi.string().valid('order', 'shipment').default('shipment'),
+  consumptionUnitId: Joi.string().uuid().allow(null, '').optional(),
 }).unknown(true);
 
 const createBomItemSchema = Joi.object({

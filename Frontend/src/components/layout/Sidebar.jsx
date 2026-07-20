@@ -491,6 +491,7 @@ const Sidebar = ({ collapsed, isMobile, onClose }) => {
       children: [
         hasPermission('production_view') && { key: '/production/bom-items', label: 'BOM Items' },
         hasPermission('production_management') && { key: '/production/batch-rules', label: 'Batch coding rules' },
+        hasPermission('production_management') && { key: '/production/uom-rules', label: 'UOM conversion rules' },
         hasPermission('production_management') && { key: '/production/kit-assembly', label: 'Manufacturing' },
       ].filter(Boolean),
     },
