@@ -49,6 +49,24 @@ export const DERIVED_SOURCE_OPTIONS = Object.keys(DERIVED_TOKEN_BY_SOURCE).map((
 
 export const DEFAULT_DERIVED_CFG = { len: 10, mode: 'abbr' };
 
+export const SEPARATOR_CUSTOM = '__custom__';
+export const PREDEFINED_SEPARATORS = new Set(['-', '_', '']);
+
+export const resolveSeparatorFromForm = (values = {}) => {
+  if (values.separator === SEPARATOR_CUSTOM) {
+    return String(values.separatorCustom ?? '').slice(0, 3);
+  }
+  return values.separator === '' ? '' : (values.separator || '-');
+};
+
+export const mapSeparatorToForm = (separator) => {
+  const stored = separator ?? '-';
+  if (PREDEFINED_SEPARATORS.has(stored)) {
+    return { separator: stored, separatorCustom: '' };
+  }
+  return { separator: SEPARATOR_CUSTOM, separatorCustom: stored };
+};
+
 export const buildDefaultDerivedConfig = () => Object.fromEntries(
   Object.keys(DERIVED_TOKEN_BY_SOURCE).map((src) => [src, { ...DEFAULT_DERIVED_CFG }])
 );
@@ -88,11 +106,13 @@ export const buildPayloadFromFormValues = (values = {}) => {
     ...values,
     isDefault: values.scope === 'default' ? !!values.isDefault : false,
     counterStart: Math.max(1, Number(values.counterStart || 1)),
+    separator: resolveSeparatorFromForm(values),
   };
 
   if (values.prefixMode === 'derived') {
     payload.prefixMode = 'static';
     payload.prefixSource = null;
+    const sep = resolveSeparatorFromForm(values);
     payload.prefixStatic = sourceList
       .map((s) => {
         const token = DERIVED_TOKEN_BY_SOURCE[s];
@@ -103,13 +123,14 @@ export const buildPayloadFromFormValues = (values = {}) => {
         return `{${token}|${len}|${mode}}`;
       })
       .filter(Boolean)
-      .join(values.separator === '' ? '' : (values.separator || '-'));
+      .join(sep === '' ? '' : sep);
   } else {
     payload.prefixSource = null;
   }
 
   delete payload.prefixSources;
   delete payload.prefixSourceConfig;
+  delete payload.separatorCustom;
   if (payload.scope !== 'category') payload.scopeValue = null;
   return payload;
 };
@@ -133,7 +154,7 @@ export const mapRuleToFormValues = (rule = {}) => {
     prefixSources: effectiveSources,
     prefixSourceConfig: { ...buildDefaultDerivedConfig(), ...(parsedDerived?.config || {}) },
     prefixLength: rule.prefix_length,
-    separator: rule.separator,
+    ...mapSeparatorToForm(rule.separator),
     useDate: !!rule.use_date,
     dateFormat: rule.date_format,
     useCounter: !!rule.use_counter,
@@ -284,7 +305,7 @@ export const previewCodeFromFormValues = (formValues = {}, sampleCtx = {}, count
     prefixStatic: formValues.prefixStatic,
     prefixSource: formValues.prefixSource,
     prefixLength: formValues.prefixLength,
-    separator: formValues.separator,
+    separator: resolveSeparatorFromForm(formValues),
     useDate: formValues.useDate,
     dateFormat: formValues.dateFormat,
     useCounter: formValues.useCounter,
@@ -306,5 +327,6 @@ export const previewCodeFromFormValues = (formValues = {}, sampleCtx = {}, count
     datePart(rule),
     counterPart(rule, counter),
   ].filter(Boolean);
-  return parts.join(rule.separator === '' ? '' : (rule.separator || '-'));
+  const sep = rule.separator === '' ? '' : (rule.separator || '-');
+  return parts.join(sep);
 };

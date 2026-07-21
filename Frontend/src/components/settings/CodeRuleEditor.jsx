@@ -7,6 +7,7 @@ import {
   DERIVED_SOURCE_OPTIONS,
   DERIVED_SOURCE_LABELS,
   DEFAULT_DERIVED_CFG,
+  SEPARATOR_CUSTOM,
   preserveSelectionOrder,
   previewCodeFromFormValues,
   ADVANCED_TOKEN_HELP,
@@ -243,7 +244,22 @@ export default function CodeRuleEditor({
           <Select.Option value="-">Dash (-)</Select.Option>
           <Select.Option value="_">Underscore (_)</Select.Option>
           <Select.Option value="">None</Select.Option>
+          <Select.Option value={SEPARATOR_CUSTOM}>Custom…</Select.Option>
         </Select>
+      </Form.Item>
+
+      <Form.Item noStyle shouldUpdate={(p, c) => p.separator !== c.separator}>
+        {({ getFieldValue }) => getFieldValue('separator') === SEPARATOR_CUSTOM && (
+          <Form.Item
+            name="separatorCustom"
+            label="Custom separator"
+            rules={[{ required: true, message: 'Enter a custom separator (max 3 characters)' }]}
+            extra="Up to 3 characters, e.g. . / :"
+            style={{ marginBottom: 10 }}
+          >
+            <Input maxLength={3} placeholder="e.g. ." onChange={refreshPreview} />
+          </Form.Item>
+        )}
       </Form.Item>
 
       <Divider style={{ margin: '10px 0 14px', fontSize: 12 }} orientation="left">Date segment (optional)</Divider>
