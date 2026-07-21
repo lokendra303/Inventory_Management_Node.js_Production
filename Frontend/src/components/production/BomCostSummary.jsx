@@ -7,6 +7,7 @@ import {
   BOM_CHARGE_PRESETS,
   calculateBomExpectedCost,
 } from '../../utils/bomCostHelpers';
+import { openingValueWithPurchaseTax } from '../../utils/purchaseCostHelpers';
 
 const { Text } = Typography;
 
@@ -33,7 +34,11 @@ export default function BomCostSummary({
     const openingStock = Number(form.getFieldValue('openingStock')) || 0;
     if (openingStock > 0) {
       form.setFieldsValue({
-        openingValue: Math.round(openingStock * expectedCost * 100) / 100,
+        openingValue: openingValueWithPurchaseTax(
+          openingStock,
+          expectedCost,
+          form.getFieldValue('purchaseTaxRate')
+        ),
       });
     }
   };

@@ -40,6 +40,11 @@ import SkuGeneratorField from '../inventory/SkuGeneratorField';
 import OpeningBatchFields from './OpeningBatchFields';
 import { filterSelectOption } from '../../utils/selectFilter';
 import { sectionStyle, sectionHeader, sectionIconStyle } from './bomItemFormStyles';
+import {
+  openingValueWithPurchaseTax,
+  unitCostIncludingTax,
+} from '../../utils/purchaseCostHelpers';
+import { cleanNumberInputProps, formatNumber } from '../../utils/numberFormat';
 
 const clearInventoryFields = (form) => {
   form.setFieldsValue({
@@ -97,6 +102,19 @@ export default function BomItemFormFields({
   const watchedIsManufacturable = Form.useWatch('isManufacturable', form) !== false;
   const watchedHasExpiry = Form.useWatch('hasExpiry', form) === true;
   const watchedWarehouseId = Form.useWatch('warehouseId', form);
+  const watchedCostPrice = Form.useWatch('costPrice', form);
+  const watchedPurchaseTaxRate = Form.useWatch('purchaseTaxRate', form);
+  const purchaseUnitCostInclTax = unitCostIncludingTax(watchedCostPrice, watchedPurchaseTaxRate);
+
+  const recalcOpeningValueFromForm = () => {
+    const openingStock = form.getFieldValue('openingStock');
+    const costPrice = form.getFieldValue('costPrice');
+    const purchaseTaxRate = form.getFieldValue('purchaseTaxRate');
+    const value = openingValueWithPurchaseTax(openingStock, costPrice, purchaseTaxRate);
+    if (value > 0) {
+      form.setFieldsValue({ openingValue: value });
+    }
+  };
 
   const clearSalesFields = () => {
     form.setFieldsValue({
@@ -532,18 +550,20 @@ export default function BomItemFormFields({
               name="costPrice"
               label="Cost price (per unit)"
               tooltip="Standard / manufacturing cost. Use “Apply to cost price” in the BOM summary above, or enter manually."
+              extra={
+                purchaseUnitCostInclTax > 0 && Number(watchedPurchaseTaxRate) > 0 ? (
+                  <span style={{ fontSize: 12 }}>
+                    Incl. {formatNumber(watchedPurchaseTaxRate, 2)}% purchase tax: {formatNumber(purchaseUnitCostInclTax, 4)} per unit
+                  </span>
+                ) : null
+              }
             >
               <InputNumber
                 min={0}
                 step={0.01}
-                precision={2}
                 style={{ width: '100%' }}
-                onChange={(value) => {
-                  const openingStock = form.getFieldValue('openingStock');
-                  if (openingStock > 0 && value > 0) {
-                    form.setFieldsValue({ openingValue: Math.round(openingStock * value * 100) / 100 });
-                  }
-                }}
+                {...cleanNumberInputProps(4)}
+                onChange={() => recalcOpeningValueFromForm()}
               />
             </Form.Item>
           </Col>
@@ -566,7 +586,30 @@ export default function BomItemFormFields({
               </Col>
               <Col xs={24} sm={8}>
                 <Form.Item name="purchaseTaxRate" label="Purchase tax rate (%)">
-                  <InputNumber min={0} max={100} step={0.01} style={{ width: '100%' }} />
+                  {taxRateOptions.length > 0 ? (
+                    <Select
+                      allowClear
+                      placeholder="Select tax rate"
+                      showSearch
+                      optionFilterProp="children"
+                      onChange={() => recalcOpeningValueFromForm()}
+                    >
+                      {taxRateOptions.map((t) => (
+                        <Select.Option key={t.id} value={parseFloat(t.rate)}>
+                          {t.name} ({parseFloat(t.rate).toFixed(2)}%)
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <InputNumber
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      style={{ width: '100%' }}
+                      {...cleanNumberInputProps(2)}
+                      onChange={() => recalcOpeningValueFromForm()}
+                    />
+                  )}
                 </Form.Item>
               </Col>
             </Row>
@@ -666,19 +709,16 @@ export default function BomItemFormFields({
                       <Form.Item name="openingStock" label="Opening stock">
                         <InputNumber
                           min={0}
+                          step={1}
                           style={{ width: '100%' }}
-                          onChange={(value) => {
-                            const costPrice = form.getFieldValue('costPrice');
-                            if (value > 0 && costPrice > 0) {
-                              form.setFieldsValue({ openingValue: Math.round(value * costPrice * 100) / 100 });
-                            }
-                          }}
+                          {...cleanNumberInputProps(4)}
+                          onChange={() => recalcOpeningValueFromForm()}
                         />
                       </Form.Item>
                     </Col>
                     <Col xs={24} sm={8}>
-                      <Form.Item name="openingValue" label="Opening value (auto)">
-                        <InputNumber disabled min={0} step={0.01} precision={2} style={{ width: '100%' }} />
+                      <Form.Item name="openingValue" label="Opening value (auto, incl. tax)">
+                        <InputNumber disabled min={0} step={0.01} style={{ width: '100%' }} {...cleanNumberInputProps(4)} />
                       </Form.Item>
                     </Col>
                     <Col xs={24} sm={8}>

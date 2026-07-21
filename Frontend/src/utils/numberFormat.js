@@ -14,6 +14,26 @@ export const formatNumber = (value, decimals = 2) => {
   return parseFloat(num.toFixed(decimals)).toString();
 };
 
+/** Ant Design InputNumber formatter — hides trailing zeros (58 not 58.00). */
+export function formatNumberInput(value, decimals = 4) {
+  if (value === '' || value === undefined || value === null) return '';
+  const n = Number(value);
+  return Number.isFinite(n) ? formatNumber(n, decimals) : String(value);
+}
+
+/** Ant Design InputNumber parser — digits and decimal only. */
+export function parseNumberInput(value) {
+  return String(value ?? '').replace(/[^\d.-]/g, '');
+}
+
+/** Shared props for clean numeric inputs without forced .00 padding. */
+export function cleanNumberInputProps(decimals = 2) {
+  return {
+    formatter: (value) => formatNumberInput(value, decimals),
+    parser: parseNumberInput,
+  };
+}
+
 // Format quantity (typically whole numbers)
 export const formatQuantity = (value) => {
   if (value === null || value === undefined || value === '') return '0';

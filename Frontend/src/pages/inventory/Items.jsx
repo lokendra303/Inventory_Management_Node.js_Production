@@ -21,6 +21,12 @@ import dayjs from 'dayjs';
 import { filterSelectOption } from '../../utils/selectFilter';
 import { UnitField } from '../../components/inventory/ItemMasterDataFields';
 import {
+  mergePurchaseCustomFields,
+  openingValueWithPurchaseTax,
+  unitCostIncludingTax,
+} from '../../utils/purchaseCostHelpers';
+import { cleanNumberInputProps, formatNumber, formatQuantity } from '../../utils/numberFormat';
+import {
   assessImportRowIssues,
   buildExistingItemsMatchIndex,
   buildImportDuplicateGroups,
@@ -2018,19 +2024,33 @@ const Items = () => {
     return parsed.valid && parsed.value ? dayjs(parsed.value) : undefined;
   };
 
+  const recalcOpeningValueFromForm = useCallback(() => {
+    const openingStock = form.getFieldValue('openingStock');
+    const costPrice = form.getFieldValue('costPrice');
+    const purchaseTaxRate = form.getFieldValue('purchaseTaxRate');
+    const value = openingValueWithPurchaseTax(openingStock, costPrice, purchaseTaxRate);
+    if (value > 0) {
+      form.setFieldsValue({ openingValue: value });
+    }
+  }, [form]);
+
   const createWarehouseBatchFromItemForm = async (itemId, values) => {
     const batchNum = values.batchNumber?.trim().toUpperCase();
     const warehouseId = values.warehouseId;
     const qty = Number(values.openingStock) || 0;
     if (!batchNum || !warehouseId || !(qty > 0)) return { skipped: true };
 
+    const unitCostInclTax = values.costPrice != null && values.costPrice !== ''
+      ? unitCostIncludingTax(values.costPrice, values.purchaseTaxRate)
+      : 0;
+
     await apiService.createBatch({
       itemId,
       warehouseId,
       batchNumber: batchNum,
       quantityReceived: qty,
-      unitCost: values.costPrice != null && values.costPrice !== ''
-        ? convertPrice(values.costPrice, priceCurrency, 'USD')
+      unitCost: unitCostInclTax > 0
+        ? convertPrice(unitCostInclTax, priceCurrency, 'USD')
         : 0,
       manufactureDate: formatItemFormBatchDate(values.batchManufactureDate),
       expiryDate: formatItemFormBatchDate(values.batchExpiryDate),
@@ -2096,7 +2116,7 @@ const Items = () => {
         image: imageUrl,
         type: itemType,
         category: values.category,
-        customFields: {
+        customFields: mergePurchaseCustomFields({
           ...(existingCustomFields || {}),
           variantAttributes: normalizedVariantAttributes,
           variantMatrix: normalizedVariantMatrix,
@@ -2106,7 +2126,7 @@ const Items = () => {
             size: normalizeOptionalTextArray(values.sizeCode),
             packType: normalizeOptionalTextArray(values.packType)
           }
-        },
+        }, values),
         unit: values.unit,
         warehouseId: isVariantType ? defaultVariantWarehouseId : values.warehouseId,
         costPrice: values.costPrice != null && values.costPrice !== '' ? convertPrice(values.costPrice, priceCurrency, 'USD') : 0,
@@ -2389,9 +2409,13 @@ const Items = () => {
       openingValue: currentValues.openingValue != null ? convertPrice(currentValues.openingValue, currentCurrency, nextCurrency) : currentValues.openingValue,
     };
 
-    // Prefer recomputing opening value from stock x cost after conversion.
+    // Prefer recomputing opening value from stock x cost (incl. purchase tax) after conversion.
     if (currentValues.openingStock > 0 && converted.costPrice > 0) {
-      converted.openingValue = Math.round((currentValues.openingStock * converted.costPrice) * 100) / 100;
+      converted.openingValue = openingValueWithPurchaseTax(
+        currentValues.openingStock,
+        converted.costPrice,
+        form.getFieldValue('purchaseTaxRate')
+      );
     }
 
     form.setFieldsValue(converted);
@@ -2676,6 +2700,12 @@ const viewItem = (item) => {
       hasExpiry: Boolean(fullItem.has_expiry),
       shelfLifeDays: fullItem.shelf_life_days || null,
       isSellable: fullItem.is_sellable !== 0 && fullItem.is_sellable !== false,
+      purchaseTaxRate: normalizeTaxRateForForm(fullItem.custom_fields?.purchaseTaxRate),
+      purchaseAccount: fullItem.custom_fields?.purchaseAccount || 'cogs',
+      purchaseDescription: fullItem.custom_fields?.purchaseDescription || undefined,
+      preferredVendor: fullItem.custom_fields?.preferredVendor || undefined,
+      salesDescription: fullItem.custom_fields?.salesDescription || undefined,
+      salesAccount: fullItem.custom_fields?.salesAccount || undefined,
     });
     fetchBinsForWarehouse(finalWarehouseId);
     setModalVisible(true);
@@ -2892,6 +2922,10 @@ const viewItem = (item) => {
   const watchedTrackInventory = Form.useWatch('trackInventory', form) === true;
   const watchedHasExpiry = Form.useWatch('hasExpiry', form) === true;
   const watchedIsSellable = Form.useWatch('isSellable', form) !== false;
+  const watchedCostPrice = Form.useWatch('costPrice', form);
+  const watchedPurchaseTaxRate = Form.useWatch('purchaseTaxRate', form);
+  const watchedOpeningStock = Form.useWatch('openingStock', form);
+  const purchaseUnitCostInclTax = unitCostIncludingTax(watchedCostPrice, watchedPurchaseTaxRate);
   const showSalesFields = watchedItemType === 'service' || watchedIsSellable;
   const isVariantItem = watchedItemType === 'variant';
 
@@ -3278,6 +3312,12 @@ const viewItem = (item) => {
       isbn: normalizeOptionalText(fullItem.isbn),
       mpn: normalizeOptionalText(fullItem.mpn),
       isSellable: fullItem.is_sellable !== 0 && fullItem.is_sellable !== false,
+      purchaseTaxRate: normalizeTaxRateForForm(fullItem.custom_fields?.purchaseTaxRate),
+      purchaseAccount: fullItem.custom_fields?.purchaseAccount || 'cogs',
+      purchaseDescription: fullItem.custom_fields?.purchaseDescription || undefined,
+      preferredVendor: fullItem.custom_fields?.preferredVendor || undefined,
+      salesDescription: fullItem.custom_fields?.salesDescription || undefined,
+      salesAccount: fullItem.custom_fields?.salesAccount || undefined,
     };
 
     const duplicateComparablePayload = buildComparableItemPayload({
@@ -8594,23 +8634,25 @@ const viewItem = (item) => {
           )}
           <Row gutter={16}>
             <Col xs={24} sm={8}>
-              <Form.Item name="costPrice" label={`${isVariantItem ? 'Default Cost Price' : 'Cost Price'} (per unit, ${priceCurrency})`} rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
+              <Form.Item
+                name="costPrice"
+                label={`${isVariantItem ? 'Default Cost Price' : 'Cost Price'} (per unit, ${priceCurrency})`}
+                rules={[{ type: 'number', message: 'Please enter a valid number' }]}
+                extra={
+                  purchaseUnitCostInclTax > 0 && Number(watchedPurchaseTaxRate) > 0 ? (
+                    <span style={{ fontSize: 12 }}>
+                      Incl. {formatNumber(watchedPurchaseTaxRate, 2)}% tax: {formatPrice(purchaseUnitCostInclTax, priceCurrency, priceCurrency)} per unit
+                    </span>
+                  ) : null
+                }
+              >
                 <InputNumber 
                   min={0} 
-                  step={0.01} 
-                  precision={2}
+                  step={0.01}
                   style={{ width: '100%' }} 
                   placeholder="Enter cost price"
-                  parser={value => value.replace(/[^0-9.]/g, '')}
-                  onChange={(value) => {
-                    // Auto-calculate opening value if opening stock exists
-                    const openingStock = form.getFieldValue('openingStock');
-                    if (openingStock > 0 && value > 0) {
-                      const calculatedValue = openingStock * value;
-                      // Round to 2 decimal places to avoid floating point issues
-                      form.setFieldsValue({ openingValue: Math.round(calculatedValue * 100) / 100 });
-                    }
-                  }}
+                  {...cleanNumberInputProps(4)}
+                  onChange={() => recalcOpeningValueFromForm()}
                 />
               </Form.Item>
             </Col>
@@ -8624,15 +8666,31 @@ const viewItem = (item) => {
             </Col>
             <Col xs={24} sm={8}>
               <Form.Item name="purchaseTaxRate" label="Tax Rate (%)" rules={[{ type: 'number', message: 'Please enter a valid number' }]}>
-                <InputNumber 
-                  min={0} 
-                  max={100} 
-                  step={0.01} 
-                  precision={2}
-                  style={{ width: '100%' }} 
-                  placeholder="Enter tax rate"
-                  parser={value => value.replace(/[^0-9.]/g, '')}
-                />
+                {taxRateOptions.length > 0 ? (
+                  <Select
+                    allowClear
+                    placeholder="Select tax rate"
+                    showSearch
+                    optionFilterProp="children"
+                    onChange={() => recalcOpeningValueFromForm()}
+                  >
+                    {taxRateOptions.map((t) => (
+                      <Select.Option key={t.id} value={parseFloat(t.rate)}>
+                        {t.name} ({parseFloat(t.rate).toFixed(2)}%)
+                      </Select.Option>
+                    ))}
+                  </Select>
+                ) : (
+                  <InputNumber 
+                    min={0} 
+                    max={100} 
+                    step={0.01}
+                    style={{ width: '100%' }} 
+                    placeholder="Enter tax rate"
+                    {...cleanNumberInputProps(2)}
+                    onChange={() => recalcOpeningValueFromForm()}
+                  />
+                )}
               </Form.Item>
             </Col>
           </Row>
@@ -8742,35 +8800,39 @@ const viewItem = (item) => {
           {!isVariantItem && (
           <Row gutter={16}>
             <Col xs={24} sm={8}>
-              <Form.Item name="openingStock" label="Opening Stock">
+              <Form.Item
+                name="openingStock"
+                label="Opening Stock"
+                extra={
+                  Number(watchedOpeningStock) > 0 && purchaseUnitCostInclTax > 0 && Number(watchedPurchaseTaxRate) > 0 ? (
+                    <span style={{ fontSize: 12 }}>
+                      {formatQuantity(watchedOpeningStock)} × {formatPrice(purchaseUnitCostInclTax, priceCurrency, priceCurrency)} incl. tax
+                    </span>
+                  ) : null
+                }
+              >
                 <InputNumber 
                   min={0} 
                   style={{ width: '100%' }} 
                   placeholder="Enter opening stock"
-                  parser={value => value.replace(/[^0-9.]/g, '')}
-                  onChange={(value) => {
-                    // Auto-calculate opening value
-                    const costPrice = form.getFieldValue('costPrice');
-                    if (value > 0 && costPrice > 0) {
-                      const calculatedValue = value * costPrice;
-                      form.setFieldsValue({ openingValue: Math.round(calculatedValue * 100) / 100 });
-                    }
-                  }}
+                  step={1}
+                  {...cleanNumberInputProps(4)}
+                  onChange={() => recalcOpeningValueFromForm()}
                 />
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>
               <Form.Item 
                 name="openingValue" 
-                label="Opening Value (Auto-calculated)"
+                label="Opening Value (auto, incl. purchase tax)"
               >
                 <InputNumber 
                   disabled
                   min={0} 
                   step={0.01}
-                  precision={2}
                   style={{ width: '100%' }} 
                   placeholder="Auto-calculated"
+                  {...cleanNumberInputProps(4)}
                 />
               </Form.Item>
             </Col>
