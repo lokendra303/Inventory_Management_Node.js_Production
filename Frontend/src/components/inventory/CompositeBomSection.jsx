@@ -29,6 +29,7 @@ import {
   resolveItemPackSpec,
   suggestBomLineForPackItem,
 } from '../../utils/packSizeHelpers';
+import { BOM_COLORS, primaryButtonStyle } from '../production/bomItemFormStyles';
 
 const { Text: AntText } = Typography;
 
@@ -52,6 +53,12 @@ const PANEL_STYLE = {
   borderRadius: 12,
   background: '#fff',
   overflow: 'hidden',
+};
+
+const PANEL_STYLE_BOM = {
+  ...PANEL_STYLE,
+  border: `1px solid ${BOM_COLORS.border}`,
+  boxShadow: '0 1px 4px rgba(15, 118, 110, 0.06)',
 };
 
 const CONSUMPTION_OPTIONS = [
@@ -107,6 +114,7 @@ export default function CompositeBomSection({
   warehouseId = null,
   units = [],
   onUnitCreated,
+  accentTheme = 'default',
 }) {
   const screens = Grid.useBreakpoint();
   const { currency } = useCurrency();
@@ -235,19 +243,59 @@ export default function CompositeBomSection({
     }));
   const uomBaseLabel = uomBaseOptions.find((o) => o.value === uomBaseUnitId)?.label || 'base unit';
 
+  const isBomTheme = accentTheme === 'bom';
+  const panelStyle = isBomTheme ? PANEL_STYLE_BOM : PANEL_STYLE;
+  const addComponentBtnStyle = isBomTheme
+    ? { fontWeight: 700, ...primaryButtonStyle }
+    : {
+      fontWeight: 600,
+      background: '#4f46e5',
+      borderColor: '#4338ca',
+      color: '#fff',
+      boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
+    };
+  const typeBadgeStyle = isBomTheme
+    ? {
+      fontSize: 10,
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      color: BOM_COLORS.accentDeep,
+      background: BOM_COLORS.accentSoft,
+      borderRadius: 999,
+      padding: '1px 8px',
+      flexShrink: 0,
+    }
+    : {
+      fontSize: 10,
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      color: '#6366f1',
+      background: '#eef2ff',
+      borderRadius: 999,
+      padding: '1px 8px',
+      flexShrink: 0,
+    };
+  const lineCostChipExtra = isBomTheme
+    ? { background: BOM_COLORS.accentSoft, borderColor: BOM_COLORS.accentMuted, color: BOM_COLORS.accentDeep }
+    : { background: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca' };
+  const subAssemblyChipExtra = isBomTheme
+    ? { background: '#ecfeff', borderColor: '#a5f3fc', color: '#0e7490' }
+    : { background: '#f3e8ff', borderColor: '#ddd6fe', color: '#6d28d9' };
+
   return (
-    <div style={PANEL_STYLE}>
+    <div style={panelStyle}>
       <div
         style={{
           padding: '10px 12px',
-          borderBottom: '1px solid #f0f0f0',
+          borderBottom: `1px solid ${isBomTheme ? BOM_COLORS.border : '#f0f0f0'}`,
           fontWeight: 600,
-          color: '#1e293b',
+          color: isBomTheme ? BOM_COLORS.charcoal : '#1e293b',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           gap: 12,
           flexWrap: 'wrap',
+          background: isBomTheme ? 'linear-gradient(90deg, #f0fdfa 0%, #fff 40%)' : undefined,
         }}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -259,13 +307,7 @@ export default function CompositeBomSection({
         <Button
           type="primary"
           onClick={addRow}
-          style={{
-            fontWeight: 600,
-            background: '#4f46e5',
-            borderColor: '#4338ca',
-            color: '#fff',
-            boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
-          }}
+          style={addComponentBtnStyle}
         >
           + Add component
         </Button>
@@ -273,8 +315,10 @@ export default function CompositeBomSection({
       <div
         style={{
           padding: '12px 14px',
-          borderBottom: '1px solid #f0f0f0',
-          background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+          borderBottom: `1px solid ${isBomTheme ? BOM_COLORS.border : '#f0f0f0'}`,
+          background: isBomTheme
+            ? 'linear-gradient(180deg, #f0fdfa 0%, #f8fafc 100%)'
+            : 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
           fontSize: 12,
           color: '#475569',
           lineHeight: 1.65,
@@ -473,18 +517,7 @@ export default function CompositeBomSection({
                                 <span style={{ color: '#94a3b8' }}>{` · ${resolveCatalogItemSize(itemRow)}`}</span>
                               ) : null}
                             </span>
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                textTransform: 'uppercase',
-                                color: '#6366f1',
-                                background: '#eef2ff',
-                                borderRadius: 999,
-                                padding: '1px 8px',
-                                flexShrink: 0,
-                              }}
-                            >
+                            <span style={typeBadgeStyle}>
                               {formatComponentTypeLabel(itemRow.type)}
                             </span>
                           </div>
@@ -566,11 +599,11 @@ export default function CompositeBomSection({
                             ) : null}
                           </span>
                         )}
-                        <span style={{ ...metaChipStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca' }}>
+                        <span style={{ ...metaChipStyle, ...lineCostChipExtra }}>
                           <strong>Line cost:</strong> {formatPrice(lineCost, currency, 'USD')}
                         </span>
                         {String(selectedItem.type || '').toLowerCase() === 'composite' ? (
-                          <span style={{ ...metaChipStyle, background: '#f3e8ff', borderColor: '#ddd6fe', color: '#6d28d9' }}>
+                          <span style={{ ...metaChipStyle, ...subAssemblyChipExtra }}>
                             <strong>Sub-assembly</strong>
                           </span>
                         ) : null}
@@ -835,13 +868,7 @@ export default function CompositeBomSection({
             <Button
               type="primary"
               onClick={addRow}
-              style={{
-                fontWeight: 600,
-                background: '#4f46e5',
-                borderColor: '#4338ca',
-                color: '#fff',
-                boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
-              }}
+              style={addComponentBtnStyle}
             >
               + Add component
             </Button>

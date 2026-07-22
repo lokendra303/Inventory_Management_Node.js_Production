@@ -38,28 +38,34 @@ import {
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 import { useAuth } from '../../hooks/useAuth.jsx';
+import {
+  BOM_COLORS,
+  BOM_GRADIENT,
+  BOM_GRADIENT_SOFT,
+  primaryButtonStyle,
+} from '../../components/production/bomItemFormStyles';
 
 const BomItemForm = lazy(() => import('./BomItemForm'));
 const ItemDetailsModal = lazy(() => import('../../components/inventory/ItemDetailsModal.jsx'));
 
 const { Text } = Typography;
 
-const PAGE_BG = '#f0f2f5';
-const GRADIENT = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-const GRADIENT_SOFT = 'linear-gradient(135deg, #667eea22, #764ba222)';
+const PAGE_BG = BOM_COLORS.pageBg;
+const GRADIENT = BOM_GRADIENT;
+const GRADIENT_SOFT = BOM_GRADIENT_SOFT;
 
 const pillFilter = (active, color, bg, border) => ({
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
-  padding: '5px 14px',
-  borderRadius: 20,
+  padding: '6px 14px',
+  borderRadius: 8,
   cursor: 'pointer',
   fontSize: 13,
   fontWeight: 600,
-  border: `1.5px solid ${active ? border : '#e8e8ef'}`,
+  border: `1.5px solid ${active ? border : BOM_COLORS.border}`,
   background: active ? bg : '#fff',
-  color: active ? color : '#8c8c8c',
+  color: active ? color : BOM_COLORS.slate,
   transition: 'all 0.15s ease',
   userSelect: 'none',
 });
@@ -72,13 +78,13 @@ const fulfillmentBadge = (mode) => {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        padding: '4px 12px',
-        borderRadius: 20,
+        padding: '4px 11px',
+        borderRadius: 8,
         fontSize: 12,
         fontWeight: 600,
-        background: isExplode ? 'linear-gradient(135deg, #f3e8ff, #ede9fe)' : 'linear-gradient(135deg, #eff6ff, #dbeafe)',
-        color: isExplode ? '#7c3aed' : '#2563eb',
-        border: `1px solid ${isExplode ? '#ddd6fe' : '#bfdbfe'}`,
+        background: isExplode ? '#f5f3ff' : BOM_COLORS.accentSoft,
+        color: isExplode ? '#6d28d9' : BOM_COLORS.accentDeep,
+        border: `1px solid ${isExplode ? '#ddd6fe' : '#99f6e4'}`,
       }}
     >
       {isExplode ? <ThunderboltOutlined /> : <InboxOutlined />}
@@ -309,16 +315,16 @@ export default function BomItemsPage() {
   }, [drafts, searchText]);
 
   const statusFilters = [
-    { key: 'all', label: 'All', count: allItems.length, color: '#667eea', bg: '#f0f0ff', border: '#667eea' },
-    { key: 'active', label: 'Active', count: allItems.filter((i) => i.status === 'active').length, color: '#52c41a', bg: '#f6ffed', border: '#52c41a' },
-    { key: 'inactive', label: 'Inactive', count: allItems.filter((i) => i.status === 'inactive').length, color: '#8c8c8c', bg: '#fafafa', border: '#bfbfbf' },
+    { key: 'all', label: 'All', count: allItems.length, color: BOM_COLORS.accentDeep, bg: BOM_COLORS.accentSoft, border: BOM_COLORS.accent },
+    { key: 'active', label: 'Active', count: allItems.filter((i) => i.status === 'active').length, color: '#15803d', bg: '#f0fdf4', border: '#86efac' },
+    { key: 'inactive', label: 'Inactive', count: allItems.filter((i) => i.status === 'inactive').length, color: BOM_COLORS.slate, bg: '#f8fafc', border: '#cbd5e1' },
     ...(canManage ? [{
       key: 'drafts',
       label: 'Drafts',
       count: drafts.length,
-      color: '#fa8c16',
-      bg: '#fff7e6',
-      border: '#fa8c16',
+      color: '#b45309',
+      bg: '#fffbeb',
+      border: '#fcd34d',
     }] : []),
   ];
 
@@ -412,7 +418,7 @@ export default function BomItemsPage() {
             style={{
               borderRadius: 8,
               fontWeight: 600,
-              background: GRADIENT,
+              background: BOM_COLORS.accent,
               border: 'none',
             }}
           >
@@ -443,7 +449,7 @@ export default function BomItemsPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#764ba2',
+              color: BOM_COLORS.accentDeep,
               fontSize: 18,
               flexShrink: 0,
             }}
@@ -451,7 +457,7 @@ export default function BomItemsPage() {
             <BuildOutlined />
           </div>
           <div>
-            <div style={{ fontWeight: 700, color: '#1a1a2e', fontSize: 14 }}>{record.name}</div>
+            <div style={{ fontWeight: 700, color: BOM_COLORS.charcoal, fontSize: 14 }}>{record.name}</div>
             <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>{record.sku}</Text>
           </div>
         </div>
@@ -507,7 +513,7 @@ export default function BomItemsPage() {
               size="small"
               icon={<EyeOutlined />}
               onClick={() => openItemDetails(record)}
-              style={{ borderRadius: 8, background: '#f0f0ff', borderColor: '#667eea', color: '#667eea' }}
+              style={{ borderRadius: 8, background: BOM_COLORS.accentSoft, borderColor: BOM_COLORS.accent, color: BOM_COLORS.accentDeep }}
             />
           </Tooltip>
           {canManage ? (
@@ -519,10 +525,10 @@ export default function BomItemsPage() {
                   onClick={() => openEdit(record)}
                   style={{
                     borderRadius: 8,
-                    background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                    background: BOM_COLORS.accent,
                     border: 'none',
                     color: '#fff',
-                    boxShadow: '0 2px 8px rgba(102, 126, 234, 0.35)',
+                    boxShadow: '0 2px 8px rgba(15, 118, 110, 0.3)',
                   }}
                 />
               </Tooltip>
@@ -562,29 +568,42 @@ export default function BomItemsPage() {
 
   return (
     <div style={{ padding: 24, background: PAGE_BG, minHeight: '100vh' }}>
-      {/* Hero header */}
+      {/* Hero header — workshop / manufacturing */}
       <div
         style={{
-          background: GRADIENT,
+          background: `linear-gradient(135deg, ${BOM_COLORS.charcoal} 0%, ${BOM_COLORS.accentDeep} 55%, ${BOM_COLORS.accent} 100%)`,
           borderRadius: 16,
-          padding: '24px 28px',
+          padding: '26px 28px',
           marginBottom: 24,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: 16,
-          boxShadow: '0 8px 32px rgba(102, 126, 234, 0.35)',
+          boxShadow: '0 10px 28px rgba(15, 23, 42, 0.22)',
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '10px 14px' }}>
-            <BuildOutlined style={{ fontSize: 28, color: '#fff' }} />
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(ellipse at 90% 20%, rgba(94,234,212,0.18), transparent 50%)',
+            pointerEvents: 'none',
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative' }}>
+          <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.15)' }}>
+            <BuildOutlined style={{ fontSize: 28, color: '#5eead4' }} />
           </div>
           <div>
-            <div style={{ color: '#fff', fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>BOM Items</div>
-            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, maxWidth: 420 }}>
-              Finished products with bill of materials — manage components, fulfillment mode & opening stock
+            <div style={{ color: '#fff', fontSize: 22, fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.02em' }}>
+              Bill of Materials
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.78)', fontSize: 13, maxWidth: 460, marginTop: 4 }}>
+              Finished products and component recipes — assemble, explode on ship, and track opening stock
             </div>
           </div>
         </div>
@@ -594,18 +613,19 @@ export default function BomItemsPage() {
             size="large"
             onClick={() => openCreate()}
             style={{
+              position: 'relative',
               background: '#fff',
-              color: '#764ba2',
-              border: '2px solid rgba(255,255,255,0.6)',
+              color: BOM_COLORS.accentDeep,
+              border: 'none',
               fontWeight: 700,
               borderRadius: 10,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
               fontSize: 15,
               height: 44,
               paddingInline: 22,
             }}
           >
-            Create BOM item
+            New finished product
           </Button>
         )}
       </div>
@@ -613,24 +633,30 @@ export default function BomItemsPage() {
       {/* Stats */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {[
-          { title: 'Total products', value: stats.total, icon: <AppstoreOutlined />, color: '#667eea', bg: '#f0f0ff' },
-          { title: 'Active', value: stats.active, icon: <BlockOutlined />, color: '#52c41a', bg: '#f6ffed' },
-          { title: 'Pre-built', value: stats.prebuilt, icon: <InboxOutlined />, color: '#2563eb', bg: '#eff6ff' },
-          { title: 'Total stock', value: stats.totalStock, icon: <BuildOutlined />, color: '#fa8c16', bg: '#fff7e6' },
+          { title: 'Total recipes', value: stats.total, icon: <AppstoreOutlined />, color: BOM_COLORS.accentDeep, bg: BOM_COLORS.accentSoft },
+          { title: 'Active', value: stats.active, icon: <BlockOutlined />, color: '#15803d', bg: '#f0fdf4' },
+          { title: 'Pre-built', value: stats.prebuilt, icon: <InboxOutlined />, color: BOM_COLORS.charcoal, bg: '#e2e8f0' },
+          { title: 'Total stock', value: stats.totalStock, icon: <BuildOutlined />, color: '#b45309', bg: '#fffbeb' },
         ].map((s) => (
           <Col xs={12} sm={6} key={s.title}>
             <Card
               variant="borderless"
-              style={{ borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.07)', height: '100%' }}
-              styles={{ body: { padding: '18px 20px' } }}
+              style={{
+                borderRadius: 12,
+                boxShadow: '0 1px 4px rgba(15,23,42,0.06)',
+                height: '100%',
+                border: `1px solid ${BOM_COLORS.border}`,
+                borderLeft: `3px solid ${s.color}`,
+              }}
+              styles={{ body: { padding: '16px 18px' } }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ background: s.bg, borderRadius: 10, padding: 10, fontSize: 22, color: s.color }}>
+                <div style={{ background: s.bg, borderRadius: 10, padding: 10, fontSize: 20, color: s.color }}>
                   {s.icon}
                 </div>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', lineHeight: 1.1 }}>{s.value}</div>
-                  <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>{s.title}</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: BOM_COLORS.charcoal, lineHeight: 1.1 }}>{s.value}</div>
+                  <div style={{ fontSize: 12, color: BOM_COLORS.slate, marginTop: 2 }}>{s.title}</div>
                 </div>
               </div>
             </Card>
@@ -641,19 +667,19 @@ export default function BomItemsPage() {
       {/* Main table */}
       <Card
         variant="borderless"
-        style={{ borderRadius: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}
+        style={{ borderRadius: 14, boxShadow: '0 2px 12px rgba(15,23,42,0.06)', border: `1px solid ${BOM_COLORS.border}` }}
         styles={{ body: { padding: 0 } }}
       >
         <div
           style={{
-            padding: '18px 24px',
+            padding: '16px 22px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
             gap: 12,
-            borderBottom: '1px solid #f0f0f5',
-            background: 'linear-gradient(180deg, #fafbff 0%, #fff 100%)',
+            borderBottom: `1px solid ${BOM_COLORS.border}`,
+            background: 'linear-gradient(180deg, #f8faf9 0%, #fff 100%)',
           }}
         >
           <Space size={8} wrap>
@@ -669,9 +695,9 @@ export default function BomItemsPage() {
                 {f.label}
                 <span
                   style={{
-                    background: statusFilter === f.key ? f.color : '#d9d9d9',
+                    background: statusFilter === f.key ? f.color : '#cbd5e1',
                     color: '#fff',
-                    borderRadius: 10,
+                    borderRadius: 6,
                     padding: '0 7px',
                     fontSize: 11,
                     fontWeight: 700,
@@ -685,7 +711,7 @@ export default function BomItemsPage() {
           <Space wrap>
             <Input
               allowClear
-              prefix={<SearchOutlined style={{ color: '#bbb' }} />}
+              prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
               placeholder="Search SKU or name..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
@@ -714,7 +740,7 @@ export default function BomItemsPage() {
             showTotal: (t) => (
               isDraftView
                 ? `Showing ${t} draft${t !== 1 ? 's' : ''}`
-                : `Showing ${t} product${t !== 1 ? 's' : ''}`
+                : `Showing ${t} recipe${t !== 1 ? 's' : ''}`
             ),
             style: { padding: '12px 24px 20px', margin: 0 },
           }}
@@ -723,11 +749,11 @@ export default function BomItemsPage() {
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description={(
-                  <span style={{ color: '#8c8c8c' }}>
+                  <span style={{ color: BOM_COLORS.slate }}>
                     {isDraftView
                       ? 'No BOM drafts saved yet.'
-                      : 'No BOM items yet.'}
-                    {!isDraftView && canManage ? ' Create your first BOM product to get started.' : ''}
+                      : 'No BOM recipes yet.'}
+                    {!isDraftView && canManage ? ' Create your first finished product recipe to get started.' : ''}
                   </span>
                 )}
               >
@@ -739,12 +765,10 @@ export default function BomItemsPage() {
                     style={{
                       borderRadius: 10,
                       fontWeight: 600,
-                      background: GRADIENT,
-                      border: 'none',
-                      boxShadow: '0 4px 14px rgba(102,126,234,0.4)',
+                      ...primaryButtonStyle,
                     }}
                   >
-                    Create BOM item
+                    New finished product
                   </Button>
                 )}
               </Empty>
@@ -756,10 +780,10 @@ export default function BomItemsPage() {
       </Card>
 
       <style>{`
-        .bom-row-light td { background: #fafbff !important; }
+        .bom-row-light td { background: #f8faf9 !important; }
         .bom-row-dark td { background: #fff !important; }
         .bom-row-light:hover td,
-        .bom-row-dark:hover td { background: #f0f4ff !important; }
+        .bom-row-dark:hover td { background: #ecfdf5 !important; }
       `}</style>
 
       <Suspense fallback={null}>

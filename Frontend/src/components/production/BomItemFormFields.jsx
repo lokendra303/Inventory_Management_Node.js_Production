@@ -25,6 +25,7 @@ import {
   UploadOutlined,
   BuildOutlined,
   TagsOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import ItemVariantTagFields from '../inventory/ItemVariantTagFields';
 import CompositeBomSection from '../inventory/CompositeBomSection';
@@ -39,12 +40,33 @@ import {
 import SkuGeneratorField from '../inventory/SkuGeneratorField';
 import OpeningBatchFields from './OpeningBatchFields';
 import { filterSelectOption } from '../../utils/selectFilter';
-import { sectionStyle, sectionHeader, sectionIconStyle } from './bomItemFormStyles';
+import {
+  BOM_COLORS,
+  sectionStyle,
+  sectionStyleRecipe,
+  sectionStyleQuiet,
+  sectionHeader,
+  sectionIndexBadge,
+  sectionIndexLabel,
+  sectionIconStyle,
+  fulfillmentTileBase,
+  fulfillmentTileActive,
+} from './bomItemFormStyles';
 import {
   openingValueWithPurchaseTax,
   unitCostIncludingTax,
 } from '../../utils/purchaseCostHelpers';
 import { cleanNumberInputProps, formatNumber } from '../../utils/numberFormat';
+
+const SectionTitle = ({ index, title, extra = null }) => (
+  <div style={{ ...sectionHeader, justifyContent: 'space-between' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+      <span style={sectionIndexBadge}>{sectionIndexLabel(index)}</span>
+      <span>{title}</span>
+    </span>
+    {extra}
+  </div>
+);
 
 const clearInventoryFields = (form) => {
   form.setFieldsValue({
@@ -146,23 +168,34 @@ export default function BomItemFormFields({
 
   return (
     <>
-      {/* —— 1. Basic —— */}
+      {/* —— 1. Product identity —— */}
       <div style={sectionStyle}>
-        <div style={{ ...sectionHeader, justifyContent: 'space-between' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <span style={sectionIconStyle}><AppstoreOutlined /></span>
-            BOM item — basic information
-          </span>
-          <Tag color="purple" style={{ borderRadius: 20, margin: 0 }}>BOM / Finished good</Tag>
-        </div>
+        <SectionTitle
+          index={1}
+          title="Product identity"
+          extra={(
+            <Tag
+              style={{
+                borderRadius: 8,
+                margin: 0,
+                border: `1px solid ${BOM_COLORS.accent}`,
+                background: BOM_COLORS.accentSoft,
+                color: BOM_COLORS.accentDeep,
+                fontWeight: 600,
+              }}
+            >
+              Finished good
+            </Tag>
+          )}
+        />
         <Row gutter={16}>
           <Col xs={24} lg={16}>
             <Row gutter={16}>
               <Col xs={24} md={14}>
                 <Form.Item
                   name="name"
-                  label="BOM item name"
-                  rules={[{ required: true, message: 'BOM item name is required' }]}
+                  label="Product name"
+                  rules={[{ required: true, message: 'Product name is required' }]}
                 >
                   <Input placeholder="Finished product name" style={{ borderRadius: 8 }} />
                 </Form.Item>
@@ -172,8 +205,8 @@ export default function BomItemFormFields({
                   form={form}
                   units={units}
                   onRefresh={onRefreshMasterData}
-                  label="BOM item unit"
-                  requiredMessage="BOM item unit is required"
+                  label="Stock unit"
+                  requiredMessage="Stock unit is required"
                 />
               </Col>
             </Row>
@@ -184,7 +217,8 @@ export default function BomItemFormFields({
               warehouses={warehouses}
               skuInputDisabled={isEditing}
               canManage={canManage}
-              skuLabel="BOM item SKU"
+              skuLabel="Product SKU"
+              accentTheme="bom"
             />
             <Row gutter={16}>
               <Col xs={24} md={12}>
@@ -194,14 +228,14 @@ export default function BomItemFormFields({
                   canViewCategories={canViewCategories}
                   canManageCategories={canManageCategories}
                   onRefresh={onRefreshMasterData}
-                  tooltip="Classify this BOM item for filtering, reports, and per-category SKU rules. Options are sorted by your category order."
+                  tooltip="Classify this finished product for filtering, reports, and per-category SKU rules."
                 />
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item
                   name="itemGroupId"
                   label="Item group"
-                  tooltip="Use item groups to organize related items for reporting, filtering, and master-data consistency. Options are sorted A–Z."
+                  tooltip="Organize related finished goods for reporting and master-data consistency."
                 >
                   <Select
                     allowClear
@@ -235,7 +269,7 @@ export default function BomItemFormFields({
               </Col>
               <Col xs={24} sm={8}>
                 {isEditing ? (
-                  <Form.Item name="status" label="BOM item status">
+                  <Form.Item name="status" label="Status">
                     <Select
                       options={[
                         { value: 'active', label: 'Active' },
@@ -249,12 +283,12 @@ export default function BomItemFormFields({
             <Form.Item name="returnableItem" valuePropName="checked" style={{ marginBottom: 8 }}>
               <Checkbox>Returnable on sales / delivery</Checkbox>
             </Form.Item>
-            <Form.Item name="description" label="BOM item notes / description">
+            <Form.Item name="description" label="Notes / description">
               <Input.TextArea rows={2} placeholder="Internal notes or short product description" />
             </Form.Item>
           </Col>
           <Col xs={24} lg={8}>
-            <Form.Item label="BOM item image">
+            <Form.Item label="Product image">
               <div style={{ position: 'relative' }}>
                 <Upload
                   name="image"
@@ -312,17 +346,17 @@ export default function BomItemFormFields({
                         justifyContent: 'center',
                         width: '100%',
                         height: 200,
-                        background: 'linear-gradient(135deg, #f5f5ff 0%, #faf0ff 100%)',
-                        border: '2px dashed #c5b8f5',
+                        background: `linear-gradient(160deg, ${BOM_COLORS.accentSoft} 0%, #fff 100%)`,
+                        border: `2px dashed ${BOM_COLORS.accentMuted}`,
                         borderRadius: 10,
-                        color: '#9b8fd4',
+                        color: BOM_COLORS.accentDeep,
                         cursor: 'pointer',
                         gap: 8,
                       }}
                     >
                       <div
                         style={{
-                          background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                          background: BOM_COLORS.accent,
                           borderRadius: '50%',
                           width: 48,
                           height: 48,
@@ -333,7 +367,7 @@ export default function BomItemFormFields({
                       >
                         <UploadOutlined style={{ fontSize: 22, color: '#fff' }} />
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: '#667eea' }}>Upload image</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: BOM_COLORS.accentDeep }}>Upload image</div>
                     </div>
                   )}
                 </Upload>
@@ -365,15 +399,93 @@ export default function BomItemFormFields({
         </Row>
       </div>
 
-      {/* —— 2. Usage —— */}
+      {/* —— 2. Fulfillment —— */}
       <div style={sectionStyle}>
-        <div style={sectionHeader}>
-          <span style={sectionIconStyle}><TagsOutlined /></span>
-          How this BOM item is used
+        <SectionTitle index={2} title="Fulfillment mode" />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => handleFulfillmentModeChange('prebuilt')}
+            onKeyDown={(e) => e.key === 'Enter' && handleFulfillmentModeChange('prebuilt')}
+            style={!isExplodeMode ? fulfillmentTileActive : fulfillmentTileBase}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <InboxOutlined style={{ color: !isExplodeMode ? BOM_COLORS.accentDeep : BOM_COLORS.slate }} />
+              <span style={{ fontWeight: 700, color: BOM_COLORS.charcoal }}>Pre-built</span>
+            </div>
+            <div style={{ fontSize: 12, color: BOM_COLORS.slate, lineHeight: 1.45 }}>
+              Assemble first, then sell or stock finished goods. Parts are consumed at assembly.
+            </div>
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => handleFulfillmentModeChange('explode_on_ship')}
+            onKeyDown={(e) => e.key === 'Enter' && handleFulfillmentModeChange('explode_on_ship')}
+            style={isExplodeMode ? fulfillmentTileActive : fulfillmentTileBase}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <ThunderboltOutlined style={{ color: isExplodeMode ? BOM_COLORS.accentDeep : BOM_COLORS.slate }} />
+              <span style={{ fontWeight: 700, color: BOM_COLORS.charcoal }}>Explode on ship</span>
+            </div>
+            <div style={{ fontSize: 12, color: BOM_COLORS.slate, lineHeight: 1.45 }}>
+              Kit / phantom — deduct component parts at order or shipment. No finished-goods stock.
+            </div>
+          </div>
         </div>
-        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        <Alert
+          type={isExplodeMode ? 'warning' : 'info'}
+          showIcon
+          style={{ borderRadius: 10, borderColor: isExplodeMode ? undefined : BOM_COLORS.accentMuted }}
+          message={
+            isExplodeMode
+              ? 'Explode on ship: no finished-goods stock. Component parts leave inventory when orders are confirmed or shipped.'
+              : 'Pre-built: run Manufacturing → Assemble to consume parts and add finished goods stock.'
+          }
+        />
+      </div>
+
+      {/* —— 3. Component recipe —— */}
+      <div style={sectionStyleRecipe}>
+        <SectionTitle
+          index={3}
+          title="Component recipe"
+          extra={(
+            <Tag style={{ margin: 0, borderRadius: 8, background: '#fff', borderColor: BOM_COLORS.accent, color: BOM_COLORS.accentDeep }}>
+              Bill of materials
+            </Tag>
+          )}
+        />
+        <CompositeBomSection
+          components={components}
+          onComponentsChange={onComponentsChange}
+          catalogItems={catalogItems}
+          excludeItemId={itemId}
+          kitFulfillmentMode={kitFulfillmentMode}
+          warehouseId={watchedWarehouseId}
+          units={units}
+          onUnitCreated={onUnitCreated}
+          accentTheme="bom"
+        />
+      </div>
+
+      {/* —— 4. Cost & pricing —— */}
+      <div style={sectionStyle}>
+        <SectionTitle index={4} title="Cost & pricing" />
+        <BomCostSummary
+          form={form}
+          components={components}
+          catalogItems={catalogItems}
+          units={units}
+        />
+
+        <div style={{ marginTop: 16, marginBottom: 8, fontSize: 12, fontWeight: 700, color: BOM_COLORS.slate, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          How this product is used
+        </div>
+        <Space direction="vertical" size={10} style={{ width: '100%', marginBottom: 12 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff' }}>
+            <div style={{ display: 'inline-flex', padding: '6px 12px', background: BOM_COLORS.accentSoft, borderRadius: 8, border: `1px solid #99f6e4` }}>
               <Form.Item name="isSellable" valuePropName="checked" noStyle>
                 <Checkbox
                   style={{ fontSize: 13, color: '#595959' }}
@@ -390,7 +502,7 @@ export default function BomItemFormFields({
                 </Checkbox>
               </Form.Item>
             </div>
-            <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#fff7e6', borderRadius: 8, border: '1px solid #ffd591' }}>
+            <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fcd34d' }}>
               <Form.Item name="isPurchasable" valuePropName="checked" noStyle>
                 <Checkbox
                   style={{ fontSize: 13, color: '#595959' }}
@@ -406,77 +518,16 @@ export default function BomItemFormFields({
               type="warning"
               showIcon
               style={{ borderRadius: 10 }}
-              message="This BOM item will not appear as a component when building other BOMs."
+              message="This finished product will not appear as a component when building other BOMs."
             />
           )}
         </Space>
-      </div>
 
-      {/* —— 3. BOM (core) —— */}
-      <div style={sectionStyle}>
-        <div style={sectionHeader}>
-          <span style={sectionIconStyle}><BuildOutlined /></span>
-          Bill of materials &amp; fulfillment
-        </div>
-        <Row gutter={16} style={{ marginBottom: 12 }}>
-          <Col xs={24} md={14}>
-            <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: '#64748b' }}>
-              FULFILLMENT MODE
+        {watchedIsSellable && (
+          <>
+            <div style={{ marginTop: 8, marginBottom: 8, fontSize: 12, fontWeight: 700, color: BOM_COLORS.slate, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Sales pricing
             </div>
-            <Select
-              style={{ width: '100%' }}
-              value={kitFulfillmentMode}
-              onChange={handleFulfillmentModeChange}
-              options={[
-                { value: 'prebuilt', label: 'Pre-built — assemble first, then sell / stock finished goods' },
-                { value: 'explode_on_ship', label: 'Explode on ship — deduct parts at sale (kit / phantom)' },
-              ]}
-            />
-          </Col>
-        </Row>
-        <Alert
-          type={isExplodeMode ? 'warning' : 'info'}
-          showIcon
-          style={{ marginBottom: 12, borderRadius: 10 }}
-          message={
-            isExplodeMode
-              ? 'Explode on ship: no finished-goods stock. Component parts leave inventory when orders are confirmed or shipped.'
-              : 'Pre-built: run Manufacturing → Assemble to consume parts and add finished goods stock.'
-          }
-        />
-        <CompositeBomSection
-          components={components}
-          onComponentsChange={onComponentsChange}
-          catalogItems={catalogItems}
-          excludeItemId={itemId}
-          kitFulfillmentMode={kitFulfillmentMode}
-          warehouseId={watchedWarehouseId}
-          units={units}
-          onUnitCreated={onUnitCreated}
-        />
-        <BomCostSummary
-          form={form}
-          components={components}
-          catalogItems={catalogItems}
-          units={units}
-        />
-      </div>
-
-      <ItemTypeCustomFields
-        fieldConfigs={fieldConfigs}
-        sectionStyle={sectionStyle}
-        sectionHeader={sectionHeader}
-        sectionIconStyle={sectionIconStyle}
-        title="Custom fields"
-      />
-
-      {/* —— 4. Sales (conditional) —— */}
-      {watchedIsSellable && (
-        <div style={sectionStyle}>
-          <div style={sectionHeader}>
-            <span style={sectionIconStyle}><DollarOutlined /></span>
-            Sales pricing
-          </div>
           <Row gutter={16}>
             <Col xs={24} sm={8}>
               <Form.Item name="sellingPrice" label="Selling price (per unit)" rules={[{ type: 'number', min: 0, message: 'Must be 0 or more' }]}>
@@ -535,15 +586,21 @@ export default function BomItemFormFields({
               </Form.Item>
             </Col>
           </Row>
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
-      {/* —— 5. Cost & purchase —— */}
-      <div style={sectionStyle}>
-        <div style={sectionHeader}>
-          <span style={sectionIconStyle}><ShopOutlined /></span>
-          Unit cost {watchedIsPurchasable ? '& purchase' : ''}
-        </div>
+      <ItemTypeCustomFields
+        fieldConfigs={fieldConfigs}
+        sectionStyle={sectionStyleQuiet}
+        sectionHeader={sectionHeader}
+        sectionIconStyle={sectionIconStyle}
+        title="Custom fields"
+      />
+
+      {/* —— 5. Unit cost & purchase —— */}
+      <div style={sectionStyleQuiet}>
+        <SectionTitle index={5} title={`Unit cost${watchedIsPurchasable ? ' & purchase' : ''}`} />
         <Row gutter={16}>
           <Col xs={24} sm={8}>
             <Form.Item
@@ -622,21 +679,18 @@ export default function BomItemFormFields({
 
       {/* —— 6. Inventory (pre-built only) —— */}
       {!isExplodeMode ? (
-        <div style={sectionStyle}>
-          <div style={sectionHeader}>
-            <span style={sectionIconStyle}><InboxOutlined /></span>
-            Finished goods inventory
-          </div>
+        <div style={sectionStyleQuiet}>
+          <SectionTitle index={6} title="Finished goods inventory" />
           <div style={{ marginBottom: 16 }}>
-            <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#f5f5ff', borderRadius: 8, border: '1px solid #e0e0ff' }}>
+            <div style={{ display: 'inline-flex', padding: '6px 12px', background: BOM_COLORS.accentSoft, borderRadius: 8, border: `1px solid #99f6e4` }}>
               <Form.Item name="trackInventory" valuePropName="checked" noStyle>
                 <Checkbox style={{ fontSize: 13, color: '#595959' }}>
-                  Track finished goods stock for this BOM item
+                  Track finished goods stock for this product
                 </Checkbox>
               </Form.Item>
             </div>
             {watchedTrackInventory && (
-              <div style={{ marginTop: 12, padding: '10px 12px', background: '#f0f5ff', borderRadius: 8, border: '1px solid #adc6ff' }}>
+              <div style={{ marginTop: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: `1px solid ${BOM_COLORS.border}` }}>
                 <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Batch / serial tracking</div>
                 <Space wrap size="middle">
                   <Form.Item name="isBatchTracked" valuePropName="checked" noStyle>

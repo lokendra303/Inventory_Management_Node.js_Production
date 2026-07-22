@@ -8,6 +8,7 @@ import {
   calculateBomExpectedCost,
 } from '../../utils/bomCostHelpers';
 import { openingValueWithPurchaseTax } from '../../utils/purchaseCostHelpers';
+import { BOM_COLORS, primaryButtonStyle } from './bomItemFormStyles';
 
 const { Text } = Typography;
 
@@ -55,22 +56,24 @@ export default function BomCostSummary({
     <div
       style={{
         marginTop: 12,
-        border: '1px solid #e2e8f0',
+        border: `1px solid ${BOM_COLORS.border}`,
+        borderLeft: `4px solid ${BOM_COLORS.accent}`,
         borderRadius: 12,
-        background: 'linear-gradient(180deg, #fafbff 0%, #fff 100%)',
+        background: 'linear-gradient(180deg, #f0fdfa 0%, #fff 56px)',
         overflow: 'hidden',
+        boxShadow: '0 1px 4px rgba(15, 118, 110, 0.08)',
       }}
     >
       <div
         style={{
           padding: '12px 14px',
-          borderBottom: '1px solid #eef2ff',
+          borderBottom: `1px solid ${BOM_COLORS.border}`,
           fontWeight: 700,
-          color: '#334155',
+          color: BOM_COLORS.charcoal,
           fontSize: 13,
         }}
       >
-        Expected unit cost (from BOM)
+        Expected unit cost (from recipe)
       </div>
       <div style={{ padding: '12px 14px 14px' }}>
         <div style={{ marginBottom: 12 }}>
@@ -83,7 +86,7 @@ export default function BomCostSummary({
                 key={preset}
                 size="small"
                 onClick={() => addPresetCharge(preset)}
-                style={{ borderRadius: 999, fontSize: 12 }}
+                style={{ borderRadius: 8, fontSize: 12, borderColor: BOM_COLORS.border }}
               >
                 + {preset}
               </Button>
@@ -130,7 +133,7 @@ export default function BomCostSummary({
                   block
                   icon={<PlusOutlined />}
                   onClick={() => add({ label: '', amount: undefined })}
-                  style={{ marginBottom: 12, borderRadius: 10 }}
+                  style={{ marginBottom: 12, borderRadius: 10, borderColor: BOM_COLORS.accentMuted, color: BOM_COLORS.accentDeep }}
                 >
                   Add custom charge
                 </Button>
@@ -142,7 +145,7 @@ export default function BomCostSummary({
         <div
           style={{
             background: '#fff',
-            border: '1px solid #e8ecf4',
+            border: `1px solid ${BOM_COLORS.border}`,
             borderRadius: 10,
             padding: '12px 14px',
           }}
@@ -160,11 +163,11 @@ export default function BomCostSummary({
             style={{
               marginTop: 8,
               paddingTop: 10,
-              borderTop: '1px dashed #e2e8f0',
+              borderTop: `1px dashed ${BOM_COLORS.border}`,
             }}
           >
-            <Text strong style={{ color: '#1e293b' }}>Expected cost per unit</Text>
-            <Text strong style={{ color: '#4f46e5', fontSize: 16 }}>
+            <Text strong style={{ color: BOM_COLORS.charcoal }}>Expected cost per unit</Text>
+            <Text strong style={{ color: BOM_COLORS.accentDeep, fontSize: 16 }}>
               {formatPrice(expectedCost, currency, 'USD')}
             </Text>
           </Row>
@@ -176,8 +179,7 @@ export default function BomCostSummary({
               disabled={expectedCost <= 0 && componentsSubtotal <= 0}
               style={{
                 borderRadius: 8,
-                background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                border: 'none',
+                ...primaryButtonStyle,
               }}
             >
               Apply to cost price

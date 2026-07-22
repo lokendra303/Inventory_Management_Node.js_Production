@@ -8,7 +8,7 @@ import {
   Alert,
   Space,
 } from 'antd';
-import { EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { EditOutlined, PlusOutlined, BuildOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import BomItemFormFields from '../../components/production/BomItemFormFields';
 import { resolveMasterDataIds } from '../../components/inventory/ItemMasterDataFields';
@@ -24,6 +24,11 @@ import {
 } from '../../utils/bomDraft';
 import { validateBomBusinessRules } from '../../utils/bomFormValidation';
 import { itemIsBreakable, resolveItemPackSpec } from '../../utils/packSizeHelpers';
+import {
+  BOM_COLORS,
+  BOM_GRADIENT,
+  primaryButtonStyle,
+} from '../../components/production/bomItemFormStyles';
 
 const AUTO_DRAFT_MS = 45000;
 
@@ -563,13 +568,27 @@ export default function BomItemForm({
     <Modal
       open={open}
       title={(
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: 16 }}>
-            {isEditing ? <EditOutlined /> : <PlusOutlined />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div
+            style={{
+              background: BOM_GRADIENT,
+              borderRadius: 10,
+              padding: '8px 11px',
+              color: '#fff',
+              fontSize: 16,
+              boxShadow: '0 2px 8px rgba(15, 118, 110, 0.35)',
+            }}
+          >
+            {isEditing ? <EditOutlined /> : <BuildOutlined />}
           </div>
-          <span style={{ fontWeight: 700, fontSize: 17 }}>
-            {isEditing ? 'Edit BOM item' : 'Create BOM item'}
-          </span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 17, color: BOM_COLORS.charcoal, lineHeight: 1.2 }}>
+              {isEditing ? 'Edit BOM recipe' : 'New finished product'}
+            </div>
+            <div style={{ fontSize: 12, color: BOM_COLORS.slate, fontWeight: 500, marginTop: 2 }}>
+              {isEditing ? 'Update product identity, components, and costs' : 'Define the product, then build its component recipe'}
+            </div>
+          </div>
         </div>
       )}
       onCancel={handleCancel}
@@ -577,7 +596,23 @@ export default function BomItemForm({
       width="min(1280px, 98vw)"
       style={{ top: 12 }}
       destroyOnClose
-      styles={{ body: { background: '#fafbff', maxHeight: '88vh', overflowY: 'auto', padding: 20 } }}
+      styles={{
+        header: {
+          borderBottom: `1px solid ${BOM_COLORS.border}`,
+          padding: '14px 20px',
+          marginBottom: 0,
+        },
+        body: {
+          background: BOM_COLORS.formBg,
+          maxHeight: '88vh',
+          overflowY: 'auto',
+          padding: 20,
+        },
+        footer: {
+          borderTop: `1px solid ${BOM_COLORS.border}`,
+          background: '#fff',
+        },
+      }}
       footer={(
         <Space wrap>
           {!isEditing && canManage && (
@@ -586,7 +621,7 @@ export default function BomItemForm({
             </Button>
           )}
           {!isEditing && draftBanner && !draftRestored && (
-            <Button type="link" onClick={() => loadDraftById(draftBanner.draftId)}>
+            <Button type="link" onClick={() => loadDraftById(draftBanner.draftId)} style={{ color: BOM_COLORS.accent }}>
               Resume draft
             </Button>
           )}
@@ -600,13 +635,9 @@ export default function BomItemForm({
             type="primary"
             loading={saving}
             onClick={() => handleSubmit().catch(() => {})}
-            style={{
-              background: 'linear-gradient(135deg, #667eea, #764ba2)',
-              border: 'none',
-              fontWeight: 700,
-            }}
+            style={primaryButtonStyle}
           >
-            {isEditing ? 'Save changes' : 'Create BOM item'}
+            {isEditing ? 'Save recipe' : 'Create finished product'}
           </Button>
         </Space>
       )}
