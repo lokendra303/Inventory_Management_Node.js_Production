@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Button, Col, Form, Grid, Input, InputNumber, Modal, Row, Select, Space, Tooltip, Typography, message,
+  Button, Checkbox, Col, Form, Grid, Input, InputNumber, Modal, Row, Select, Space, Tooltip, Typography, message,
 } from 'antd';
 import { DeleteOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
@@ -21,6 +21,14 @@ import {
   unitDisplayLabel,
 } from '../../utils/unitConversion';
 import { formatNumber } from '../../utils/numberFormat';
+import {
+  bomLineToPackStockQty,
+  findUnitByPackSymbol,
+  itemIsBreakable,
+  packCountToContentQty,
+  resolveItemPackSpec,
+  suggestBomLineForPackItem,
+} from '../../utils/packSizeHelpers';
 
 const { Text: AntText } = Typography;
 
@@ -115,7 +123,7 @@ export default function CompositeBomSection({
   const addRow = () => {
     onComponentsChange((prev) => [
       ...prev,
-      { itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null },
+      { itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null, consumeFullPack: false },
     ]);
   };
 
@@ -132,9 +140,12 @@ export default function CompositeBomSection({
   const handleComponentChange = (idx, itemId) => {
     const selectedItem = getCatalogItemById(catalogItems, itemId);
     const stockUnitId = resolveItemStockUnitId(selectedItem, units);
+    const packSuggestion = suggestBomLineForPackItem(selectedItem, units);
     updateRow(idx, {
       itemId,
-      consumptionUnitId: stockUnitId || null,
+      consumptionUnitId: packSuggestion?.consumptionUnitId || stockUnitId || null,
+      quantityRequired: packSuggestion?.quantityRequired ?? 1,
+      consumeFullPack: !!packSuggestion?.consumeFullPack,
     });
   };
 
@@ -335,21 +346,72 @@ export default function CompositeBomSection({
             const selectedItem = getCatalogItemById(catalogItems, row.itemId);
             const qty = Number(row.quantityRequired) || 0;
             const stockUnitId = resolveItemStockUnitId(selectedItem, units);
-            const consumptionUnitId = row.consumptionUnitId || stockUnitId || null;
-            const compatibleUnits = listCompatibleUnits(stockUnitId, units);
-            const stockQty = (stockUnitId && consumptionUnitId)
-              ? (convertQuantity(qty, consumptionUnitId, stockUnitId, units) ?? qty)
-              : qty;
+            const packSpec = selectedItem ? resolveItemPackSpec(selectedItem, units) : null;
+            const breakable = !packSpec || itemIsBreakable(selectedItem);
+            const consumeFullPack = !!(packSpec && (!breakable || row.consumeFullPack));
+            const packContentUnit = packSpec ? findUnitByPackSymbol(packSpec, units) : null;
+            const uomFamilyUnitId = (!consumeFullPack && packContentUnit?.id)
+              ? packContentUnit.id
+              : stockUnitId;
+            const compatibleUnits = listCompatibleUnits(uomFamilyUnitId, units);
+            const consumptionUnitId = consumeFullPack
+              ? (row.consumptionUnitId || stockUnitId || null)
+              : (row.consumptionUnitId || packContentUnit?.id || stockUnitId || null);
+            const packStockQty = packSpec
+              ? bomLineToPackStockQty(qty, {
+                consumeFullPack,
+                packSpec,
+                consumptionUnitId,
+                units,
+              })
+              : null;
+            const convertedStockQty = (!packSpec && stockUnitId && consumptionUnitId
+              && String(consumptionUnitId) !== String(stockUnitId))
+              ? convertQuantity(qty, consumptionUnitId, stockUnitId, units)
+              : null;
+            const stockQty = packSpec
+              ? (packStockQty ?? qty)
+              : (convertedStockQty ?? qty);
+            const availableStock = selectedItem ? resolveCatalogItemAvailableStock(selectedItem) : null;
+            const availableContentTotal = (packSpec && availableStock != null)
+              ? packCountToContentQty(availableStock, packSpec)
+              : null;
+            const packSizeAmount = packSpec?.amount || null;
             const unitCost = selectedItem ? resolveCatalogItemCost(selectedItem) : 0;
             const lineCost = stockQty * unitCost;
-            const availableStock = selectedItem ? resolveCatalogItemAvailableStock(selectedItem) : null;
             const consumptionUnit = units.find((u) => String(u.id) === String(consumptionUnitId));
             const stockUnit = units.find((u) => String(u.id) === String(stockUnitId));
+            const contentUnitLabel = packContentUnit
+              ? unitDisplayLabel(packContentUnit)
+              : (packSpec?.unitSymbol || 'content');
+            const contentQtyUsed = (packSpec && !consumeFullPack && packStockQty != null && packSizeAmount)
+              ? packStockQty * packSizeAmount
+              : null;
+            const contentRemaining = (availableContentTotal != null && contentQtyUsed != null)
+              ? availableContentTotal - contentQtyUsed
+              : null;
+            const packsRemaining = (availableStock != null && consumeFullPack)
+              ? availableStock - stockQty
+              : null;
             const showConversionHint = selectedItem
+              && !consumeFullPack
+              && !packSpec
               && consumptionUnitId
               && stockUnitId
               && String(consumptionUnitId) !== String(stockUnitId)
-              && Number.isFinite(stockQty);
+              && convertedStockQty != null
+              && Number.isFinite(convertedStockQty);
+            const showPackHint = !!packSpec;
+            const incompatibleUom = selectedItem
+              && !consumeFullPack
+              && consumptionUnitId
+              && (
+                (packSpec && packStockQty == null)
+                || (!packSpec
+                  && stockUnitId
+                  && String(consumptionUnitId) !== String(stockUnitId)
+                  && convertedStockQty == null)
+              );
             const metaChipStyle = {
               display: 'inline-flex',
               alignItems: 'center',
@@ -461,10 +523,49 @@ export default function CompositeBomSection({
                         <span style={metaChipStyle}>
                           <strong>Unit cost:</strong> {formatPrice(unitCost, currency, 'USD')}
                         </span>
-                        <span style={metaChipStyle}>
-                          <strong>Available{warehouseId ? ' (WH)' : ' (active WH)'}:</strong>{' '}
-                          {availableStock == null ? '—' : formatNumber(availableStock, 4)}
-                        </span>
+                        {availableStock == null ? (
+                          <span style={metaChipStyle}>
+                            <strong>Available{warehouseId ? ' (WH)' : ' (active WH)'}:</strong> —
+                          </span>
+                        ) : packSpec ? (
+                          consumeFullPack ? (
+                            <>
+                              <span style={metaChipStyle}>
+                                <strong>Available{warehouseId ? ' (WH)' : ' (active WH)'}:</strong>{' '}
+                                {formatNumber(availableStock, 4)} packs
+                                <span style={{ color: '#64748b' }}>{` (${packSpec.label} each)`}</span>
+                              </span>
+                              {availableContentTotal != null ? (
+                                <span style={metaChipStyle}>
+                                  <strong>Total content:</strong>{' '}
+                                  {formatNumber(availableContentTotal, 4)} {contentUnitLabel}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <>
+                              <span style={metaChipStyle}>
+                                <strong>Available{warehouseId ? ' (WH)' : ' (active WH)'}:</strong>{' '}
+                                {availableContentTotal != null
+                                  ? `${formatNumber(availableContentTotal, 4)} ${contentUnitLabel}`
+                                  : `${formatNumber(availableStock, 4)} packs`}
+                              </span>
+                              <span style={metaChipStyle}>
+                                <strong>Packs:</strong>{' '}
+                                {formatNumber(availableStock, 4)}
+                                <span style={{ color: '#64748b' }}>{` × ${packSpec.label}`}</span>
+                              </span>
+                            </>
+                          )
+                        ) : (
+                          <span style={metaChipStyle}>
+                            <strong>Available{warehouseId ? ' (WH)' : ' (active WH)'}:</strong>{' '}
+                            {formatNumber(availableStock, 4)}
+                            {stockUnit ? (
+                              <span style={{ color: '#64748b' }}>{` ${unitDisplayLabel(stockUnit)}`}</span>
+                            ) : null}
+                          </span>
+                        )}
                         <span style={{ ...metaChipStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca' }}>
                           <strong>Line cost:</strong> {formatPrice(lineCost, currency, 'USD')}
                         </span>
@@ -473,13 +574,28 @@ export default function CompositeBomSection({
                             <strong>Sub-assembly</strong>
                           </span>
                         ) : null}
+                        {packSpec ? (
+                          <span style={{
+                            ...metaChipStyle,
+                            background: breakable ? '#ecfdf5' : '#fff7ed',
+                            borderColor: breakable ? '#a7f3d0' : '#fed7aa',
+                            color: breakable ? '#047857' : '#c2410c',
+                          }}
+                          >
+                            <strong>{breakable ? 'Breakable' : 'Not breakable'}</strong>
+                          </span>
+                        ) : null}
                       </div>
                     ) : null}
                   </Col>
                   <Col xs={12} sm={isExplodeOnShip ? 4 : 5}>
                     <div style={BOM_FIELD_LABEL_STYLE}>
                       Qty per 1 unit
-                      <Tooltip title="Enter quantity in the UOM you select (e.g. 50 g). Stock is deducted in the component’s stock unit after conversion.">
+                      <Tooltip title={consumeFullPack
+                        ? `Full pack mode: enter how many whole packs to use. Stock pack count drops by that number.`
+                        : packSpec
+                          ? `Partial mode: enter amount in ${contentUnitLabel}. Deducted from total content (packs × ${packSpec.label}), not from pack count directly.`
+                          : 'Enter quantity in the UOM you select. Stock is deducted in the component’s stock unit after conversion.'}>
                         <InfoCircleOutlined style={{ color: '#cbd5e1', fontSize: 12 }} />
                       </Tooltip>
                     </div>
@@ -489,7 +605,7 @@ export default function CompositeBomSection({
                       style={{ width: '100%' }}
                       size="middle"
                       value={row.quantityRequired}
-                      placeholder="e.g. 50"
+                      placeholder={consumeFullPack ? 'e.g. 1' : (packSpec ? 'e.g. 50' : 'e.g. 50')}
                       formatter={(value) => {
                         if (value === '' || value === undefined || value === null) return '';
                         const n = Number(value);
@@ -498,6 +614,41 @@ export default function CompositeBomSection({
                       parser={(value) => String(value ?? '').replace(/[^\d.-]/g, '')}
                       onChange={(value) => updateRow(idx, { quantityRequired: value })}
                     />
+                    {showPackHint && consumeFullPack ? (
+                      <AntText type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                        {formatNumber(qty, 4)} full pack({Number(qty) === 1 ? '' : 's'}) × {packSpec.label}
+                        {availableStock != null ? (
+                          <>
+                            {' — packs '}
+                            {formatNumber(availableStock, 4)}
+                            {' → '}
+                            {formatNumber(packsRemaining, 4)}
+                          </>
+                        ) : (
+                          <> — deducts {formatNumber(stockQty, 4)} from pack count</>
+                        )}
+                      </AntText>
+                    ) : null}
+                    {showPackHint && !consumeFullPack ? (
+                      <AntText type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                        {contentQtyUsed != null && availableContentTotal != null ? (
+                          <>
+                            {formatNumber(contentQtyUsed, 4)} {contentUnitLabel}
+                            {' from '}
+                            {formatNumber(availableContentTotal, 4)} {contentUnitLabel}
+                            {' → '}
+                            {formatNumber(contentRemaining, 4)} {contentUnitLabel} left
+                            <span style={{ color: '#94a3b8' }}>{` (${packSpec.label} per pack)`}</span>
+                          </>
+                        ) : (
+                          <>
+                            {formatNumber(qty, 4)} {unitDisplayLabel(consumptionUnit) || contentUnitLabel}
+                            {' deducted from total content'}
+                            <span style={{ color: '#94a3b8' }}>{` (${packSpec.label} per pack)`}</span>
+                          </>
+                        )}
+                      </AntText>
+                    ) : null}
                     {showConversionHint ? (
                       <AntText type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
                         {formatNumber(qty, 4)} {unitDisplayLabel(consumptionUnit) || 'UOM'}
@@ -517,17 +668,38 @@ export default function CompositeBomSection({
                       <Select
                         showSearch
                         optionFilterProp="label"
-                        disabled={!row.itemId}
+                        disabled={!row.itemId || (packSpec && !breakable)}
                         value={consumptionUnitId || undefined}
                         placeholder={row.itemId ? 'Select UOM' : 'Pick component first'}
                         style={{ width: '100%' }}
                         size="middle"
-                        options={(compatibleUnits.length ? compatibleUnits : units)
-                          .filter((u) => u?.id)
-                          .map((u) => ({
-                            value: u.id,
-                            label: unitDisplayLabel(u),
-                          }))}
+                        status={incompatibleUom ? 'warning' : undefined}
+                        labelRender={({ label, value }) => {
+                          if (label && String(label) !== String(value)) return label;
+                          const match = (units || []).find((u) => String(u.id) === String(value));
+                          return unitDisplayLabel(match) || (value ? String(value) : '');
+                        }}
+                        options={(() => {
+                          const pool = compatibleUnits.length > 1 ? compatibleUnits : units;
+                          const seen = new Set();
+                          const opts = pool
+                            .filter((u) => u?.id && !seen.has(String(u.id)) && seen.add(String(u.id)))
+                            .map((u) => ({
+                              value: u.id,
+                              label: unitDisplayLabel(u),
+                            }));
+                          // Keep current selection visible even when filtered out of compatible pool
+                          if (consumptionUnitId && !seen.has(String(consumptionUnitId))) {
+                            const orphan = (units || []).find(
+                              (u) => String(u.id) === String(consumptionUnitId)
+                            );
+                            opts.unshift({
+                              value: orphan?.id || consumptionUnitId,
+                              label: unitDisplayLabel(orphan) || 'Unknown unit',
+                            });
+                          }
+                          return opts;
+                        })()}
                         onChange={(value) => updateRow(idx, { consumptionUnitId: value })}
                       />
                       <Tooltip title="Add custom UOM">
@@ -535,12 +707,49 @@ export default function CompositeBomSection({
                           type="primary"
                           size="middle"
                           icon={<PlusOutlined />}
-                          disabled={!row.itemId}
+                          disabled={!row.itemId || (packSpec && !breakable)}
                           onClick={() => openUomEditor(idx, stockUnitId)}
                           aria-label="Add custom UOM"
                         />
                       </Tooltip>
                     </Space.Compact>
+                    {incompatibleUom ? (
+                      <AntText type="warning" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                        {packSpec
+                          ? `Selected UOM cannot convert to pack content (${packSpec.label}). Pick ${contentUnitLabel} (or compatible).`
+                          : `Selected UOM cannot convert to stock unit${stockUnit ? ` (${unitDisplayLabel(stockUnit)})` : ''}.`}
+                      </AntText>
+                    ) : null}
+                    {packSpec ? (
+                      breakable ? (
+                        <Checkbox
+                          checked={consumeFullPack}
+                          style={{ marginTop: 6, fontSize: 12 }}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            if (checked) {
+                              updateRow(idx, {
+                                consumeFullPack: true,
+                                quantityRequired: 1,
+                                consumptionUnitId: stockUnitId || row.consumptionUnitId,
+                              });
+                            } else {
+                              updateRow(idx, {
+                                consumeFullPack: false,
+                                quantityRequired: packSizeAmount || 1,
+                                consumptionUnitId: packContentUnit?.id || row.consumptionUnitId || stockUnitId,
+                              });
+                            }
+                          }}
+                        >
+                          Use full pack ({packSpec.label})
+                        </Checkbox>
+                      ) : (
+                        <AntText type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
+                          Full pack only — item is not breakable ({packSpec.label})
+                        </AntText>
+                      )
+                    ) : null}
                   </Col>
                   {isExplodeOnShip ? (
                     <Col xs={12} sm={5}>

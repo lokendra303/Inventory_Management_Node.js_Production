@@ -20,6 +20,7 @@ class ItemService {
         quantityRequired: Number(component?.quantityRequired),
         consumptionTiming: String(component?.consumptionTiming || 'shipment').trim().toLowerCase(),
         consumptionUnitId: component?.consumptionUnitId || component?.consumption_unit_id || null,
+        consumeFullPack: !!(component?.consumeFullPack || component?.consume_full_pack),
       }))
       .filter((component) => component.itemId && Number.isFinite(component.quantityRequired) && component.quantityRequired > 0)
       .map((component) => ({
@@ -28,6 +29,7 @@ class ItemService {
         consumptionUnitId: component.consumptionUnitId
           ? String(component.consumptionUnitId).trim() || null
           : null,
+        consumeFullPack: !!component.consumeFullPack,
       }));
   }
 
@@ -166,6 +168,7 @@ class ItemService {
       await convertBomLineToStockQty(institutionId, {
         quantityRequired: component.quantityRequired,
         consumptionUnitId: component.consumptionUnitId,
+        consumeFullPack: component.consumeFullPack,
         componentItemId: component.itemId,
         units: institutionUnits,
       });
@@ -179,8 +182,8 @@ class ItemService {
     for (const component of normalizedComponents) {
       await db.query(
         `INSERT INTO composite_components
-         (id, institution_id, composite_item_id, component_item_id, quantity_required, consumption_unit_id, consumption_timing)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (id, institution_id, composite_item_id, component_item_id, quantity_required, consumption_unit_id, consume_full_pack, consumption_timing)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           uuidv4(),
           institutionId,
@@ -188,6 +191,7 @@ class ItemService {
           component.itemId,
           component.quantityRequired,
           component.consumptionUnitId || null,
+          component.consumeFullPack ? 1 : 0,
           component.consumptionTiming
         ]
       );
@@ -625,6 +629,7 @@ class ItemService {
       isSellable = true,
       isPurchasable = true,
       isManufacturable = true,
+      isBreakable = true,
     } = itemData;
 
     if (String(type).toLowerCase() === 'composite' && !options.allowComposite) {
@@ -675,6 +680,9 @@ class ItemService {
     const normalizedIsManufacturable = String(type).toLowerCase() === 'service'
       ? false
       : this._normalizeUsageFlag(isManufacturable, true);
+    const normalizedIsBreakable = String(type).toLowerCase() === 'service'
+      ? false
+      : this._normalizeUsageFlag(isBreakable, true);
 
     await db.query(
       `INSERT INTO items 
@@ -683,14 +691,14 @@ class ItemService {
         tax_rate, tax_type, weight, weight_unit, dimensions, brand, manufacturer, supplier_code,
         min_stock_level, max_stock_level, is_serialized, is_batch_tracked, has_expiry, 
         shelf_life_days, storage_conditions, item_group, item_group_id, purchase_account, sales_account,
-        opening_stock, opening_value, as_of_date, status, is_sellable, is_purchasable, is_manufacturable) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+        opening_stock, opening_value, as_of_date, status, is_sellable, is_purchasable, is_manufacturable, is_breakable) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
       [itemId, institutionId, userId, normalizedSku, name, description || null, image || null, type, normalizedKitMode, category || null, unit, barcode || null, normalizedBatchNumber, hsnCode || null,
        JSON.stringify(customFields), defaultBinId || null, valuationMethod, allowNegativeStock, costPrice, sellingPrice, mrp,
        taxRate, taxType, weight, weightUnit, dimensions || null, brand || null, manufacturer || null, supplierCode || null,
        minStockLevel, maxStockLevel, isSerialized, isBatchTracked, hasExpiry,
        shelfLifeDays || null, storageConditions || null, resolvedItemGroup?.itemGroupName || null, resolvedItemGroup?.itemGroupId || null, purchaseAccount || null, salesAccount || null,
-       openingStock, openingValue, asOfDate || null, normalizedIsSellable ? 1 : 0, normalizedIsPurchasable ? 1 : 0, normalizedIsManufacturable ? 1 : 0]
+       openingStock, openingValue, asOfDate || null, normalizedIsSellable ? 1 : 0, normalizedIsPurchasable ? 1 : 0, normalizedIsManufacturable ? 1 : 0, normalizedIsBreakable ? 1 : 0]
     );
 
     if (type === 'variant') {
@@ -900,6 +908,7 @@ class ItemService {
       isSellable,
       isPurchasable,
       isManufacturable,
+      isBreakable,
     } = updateData;
 
     const updateFields = [];
@@ -1141,6 +1150,14 @@ class ItemService {
       }
       updateFields.push('is_manufacturable = ?');
       updateValues.push(normalizedIsManufacturable ? 1 : 0);
+    }
+    if (isBreakable !== undefined) {
+      const nextTypeForBreakable = type !== undefined ? type : oldItem?.type;
+      const normalizedIsBreakable = String(nextTypeForBreakable || '').toLowerCase() === 'service'
+        ? false
+        : this._normalizeUsageFlag(isBreakable, true);
+      updateFields.push('is_breakable = ?');
+      updateValues.push(normalizedIsBreakable ? 1 : 0);
     }
 
     if (updateFields.length === 0) {
@@ -1883,6 +1900,7 @@ class ItemService {
               i.name AS component_name,
               i.unit AS unit_id,
               i.custom_fields,
+              i.is_breakable,
               u.name AS unit_name,
               u.symbol AS unit_symbol,
               cu.name AS consumption_unit_name,
@@ -1904,6 +1922,8 @@ class ItemService {
         consumptionUnit: row.consumption_unit_name
           || row.consumption_unit_symbol
           || null,
+        consumeFullPack: !!row.consume_full_pack,
+        isBreakable: row.is_breakable !== 0 && row.is_breakable !== false,
         component_size: this._extractComponentSize(customFields),
       };
     });
@@ -1932,6 +1952,7 @@ class ItemService {
       const { quantityInStockUnit } = await convertBomLineToStockQty(institutionId, {
         quantityRequired: component.quantity_required,
         consumptionUnitId: component.consumption_unit_id,
+        consumeFullPack: component.consume_full_pack,
         componentItemId: component.component_item_id,
         units,
       });

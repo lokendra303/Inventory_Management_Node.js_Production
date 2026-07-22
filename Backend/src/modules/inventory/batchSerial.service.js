@@ -1528,6 +1528,7 @@ class BatchSerialService {
       const { quantityInStockUnit } = await convertBomLineToStockQty(institutionId, {
         quantityRequired: c.quantity_required,
         consumptionUnitId: c.consumption_unit_id,
+        consumeFullPack: c.consume_full_pack,
         componentItemId: c.component_item_id,
         units,
       });

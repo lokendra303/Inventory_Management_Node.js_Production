@@ -53,10 +53,21 @@ export function listCompatibleUnits(stockUnitId, units = []) {
   if (!stock) return [];
   const resolved = resolveToBase(stock, map);
   if (!resolved) return [stock];
-  return Array.from(map.values()).filter((u) => {
+  const strict = Array.from(map.values()).filter((u) => {
     const r = resolveToBase(u, map);
     return r && String(r.baseId) === String(resolved.baseId);
   });
+  if (strict.length > 1) return strict;
+
+  // Fallback: if conversion links are not fully configured, use same unit type family.
+  const stockType = String(stock.type || '').trim().toLowerCase();
+  if (stockType) {
+    const sameType = Array.from(map.values()).filter(
+      (u) => String(u?.type || '').trim().toLowerCase() === stockType
+    );
+    if (sameType.length > 1) return sameType;
+  }
+  return strict;
 }
 
 export function unitDisplayLabel(unit) {

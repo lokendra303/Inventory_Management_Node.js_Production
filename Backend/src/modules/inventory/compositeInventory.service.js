@@ -28,6 +28,7 @@ class CompositeInventoryService {
       await convertBomLineToStockQty(institutionId, {
         quantityRequired: component.quantity_required ?? component.quantityRequired,
         consumptionUnitId: component.consumption_unit_id || component.consumptionUnitId,
+        consumeFullPack: component.consume_full_pack || component.consumeFullPack,
         componentItemId: component.component_item_id || component.componentItemId,
         units,
       });

@@ -1,4 +1,6 @@
 import { resolveCatalogItemAvailableStock } from './bomCostHelpers';
+import { bomLineToPackStockQty, findUnitByPackSymbol, resolveItemPackSpec } from './packSizeHelpers';
+import { resolveItemStockUnitId } from './unitConversion';
 
 const isExplodeFulfillment = (mode) => (
   String(mode || 'prebuilt').toLowerCase() === 'explode_on_ship'
@@ -71,6 +73,7 @@ export function validateBomBusinessRules({
   catalogItems = [],
   kitFulfillmentMode = 'prebuilt',
   isEditing = false,
+  units = [],
 }) {
   const componentResult = validateBomComponents(components, catalogItems);
   if (!componentResult.ok) return componentResult;
@@ -123,17 +126,48 @@ export function validateBomBusinessRules({
         if (!row?.itemId || qtyRequired <= 0) return false;
         const item = catalogItems.find((c) => String(c.id) === String(row.itemId));
         const available = resolveCatalogItemAvailableStock(item);
-        const needed = openingStock * qtyRequired;
+        if (available == null) return false;
+        const packSpec = resolveItemPackSpec(item, units);
+        const stockUnitId = resolveItemStockUnitId(item, units);
+        const packUnit = packSpec ? findUnitByPackSymbol(packSpec, units) : null;
+        const consumeFullPack = !!(row.consumeFullPack && packSpec);
+        const consumptionUnitId = consumeFullPack
+          ? (row.consumptionUnitId || stockUnitId)
+          : (row.consumptionUnitId || packUnit?.id || stockUnitId);
+        const perKit = packSpec
+          ? (bomLineToPackStockQty(qtyRequired, {
+            consumeFullPack,
+            packSpec,
+            consumptionUnitId,
+            units,
+          }) ?? qtyRequired)
+          : qtyRequired;
+        const needed = openingStock * perKit;
         return available < needed;
       });
       if (shortfall) {
         const item = catalogItems.find((c) => String(c.id) === String(shortfall.itemId));
         const label = item?.sku || item?.name || 'component';
-        const needed = openingStock * (Number(shortfall.quantityRequired) || 0);
+        const packSpec = resolveItemPackSpec(item, units);
+        const stockUnitId = resolveItemStockUnitId(item, units);
+        const packUnit = packSpec ? findUnitByPackSymbol(packSpec, units) : null;
+        const consumeFullPack = !!(shortfall.consumeFullPack && packSpec);
+        const consumptionUnitId = consumeFullPack
+          ? (shortfall.consumptionUnitId || stockUnitId)
+          : (shortfall.consumptionUnitId || packUnit?.id || stockUnitId);
+        const perKit = packSpec
+          ? (bomLineToPackStockQty(Number(shortfall.quantityRequired) || 0, {
+            consumeFullPack,
+            packSpec,
+            consumptionUnitId,
+            units,
+          }) ?? (Number(shortfall.quantityRequired) || 0))
+          : (Number(shortfall.quantityRequired) || 0);
+        const needed = openingStock * perKit;
         const available = resolveCatalogItemAvailableStock(item);
         return {
           ok: false,
-          message: `Insufficient "${label}" stock for opening assembly: need ${needed}, only ${available} on hand`,
+          message: `Insufficient "${label}" stock for opening assembly: need ${needed} packs, only ${available} on hand`,
         };
       }
     }

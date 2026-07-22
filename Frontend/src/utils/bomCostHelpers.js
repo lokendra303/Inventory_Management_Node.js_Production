@@ -2,6 +2,14 @@ import {
   convertQuantity,
   resolveItemStockUnitId,
 } from './unitConversion';
+import {
+  bomLineToPackStockQty,
+  findUnitByPackSymbol,
+  itemIsBreakable,
+  itemUsesPackStock,
+  packCountToContentQty,
+  resolveItemPackSpec,
+} from './packSizeHelpers';
 
 const looksLikeUuid = (value) => (
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
@@ -69,9 +77,23 @@ export function calculateBomComponentLines(components = [], catalogItems = [], u
       const qty = Number(row.quantityRequired) || 0;
       const stockUnitId = resolveItemStockUnitId(item, units);
       const consumptionUnitId = row.consumptionUnitId || stockUnitId;
-      const stockQty = (stockUnitId && consumptionUnitId)
-        ? (convertQuantity(qty, consumptionUnitId, stockUnitId, units) ?? qty)
-        : qty;
+      const packSpec = itemUsesPackStock(item, units) ? resolveItemPackSpec(item, units) : null;
+      const breakable = !packSpec || itemIsBreakable(item);
+      const consumeFullPack = !!(packSpec && (!breakable || row.consumeFullPack));
+      const packUnit = packSpec ? findUnitByPackSymbol(packSpec, units) : null;
+      const effectiveConsumptionUnitId = consumeFullPack
+        ? (consumptionUnitId || stockUnitId)
+        : (consumptionUnitId || packUnit?.id || stockUnitId);
+      const stockQty = packSpec
+        ? (bomLineToPackStockQty(qty, {
+          consumeFullPack,
+          packSpec,
+          consumptionUnitId: effectiveConsumptionUnitId,
+          units,
+        }) ?? qty)
+        : ((stockUnitId && effectiveConsumptionUnitId)
+          ? (convertQuantity(qty, effectiveConsumptionUnitId, stockUnitId, units) ?? qty)
+          : qty);
       const unitCost = item ? resolveCatalogItemCost(item) : 0;
       const lineCost = stockQty * unitCost;
       return {
@@ -83,6 +105,8 @@ export function calculateBomComponentLines(components = [], catalogItems = [], u
         unit: item ? resolveCatalogItemUnit(item) : '—',
         quantityRequired: qty,
         quantityRequiredInStockUnit: stockQty,
+        consumeFullPack,
+        packSizeLabel: packSpec?.label || null,
         unitCost,
         lineCost,
       };

@@ -8,8 +8,10 @@ import {
 import apiService from '../../services/apiService';
 import { useCurrency } from '../../contexts/CurrencyContext.jsx';
 import { formatPrice } from '../../utils/currency';
+import { formatNumber } from '../../utils/numberFormat';
 import { mapSkuMetaToVariantFormFields } from '../../utils/variantLibraryHelpers';
 import { isOpeningStockReceipt, getInventoryLogReferenceDisplay } from '../../utils/inventoryReceipt';
+import { parsePackSize, packCountToContentQty } from '../../utils/packSizeHelpers';
 
 const toTitleText = (value) => String(value || '')
   .replace(/[_-]+/g, ' ')
@@ -85,6 +87,39 @@ const resolveComponentSize = (component) => {
     return pick(skuMeta.size) || pick(cf.size) || pick(cf.Size) || '—';
   }
   return component?.size || '—';
+};
+
+const contentUnitLabel = (packSpec) => {
+  if (!packSpec?.unitSymbol) return '';
+  const symbol = String(packSpec.unitSymbol).toLowerCase();
+  if (symbol === 'g') return 'g';
+  if (symbol === 'kg') return 'kg';
+  if (symbol === 'ml') return 'ml';
+  if (symbol === 'l') return 'L';
+  if (symbol === 'pcs') return 'pcs';
+  return packSpec.unitSymbol;
+};
+
+/** Stock qty is pack count; size (e.g. 7g) → total content = packs × size. */
+const formatPackStockDisplay = (packCount, packSpec) => {
+  const packs = Number(packCount);
+  if (!Number.isFinite(packs)) return null;
+  if (!packSpec) return formatNumber(packs, 4);
+  const total = packCountToContentQty(packs, packSpec);
+  const unit = contentUnitLabel(packSpec);
+  return (
+    <span>
+      {formatNumber(packs, 4)} packs
+      <span style={{ color: '#8c8c8c', fontWeight: 500 }}>
+        {` (${packSpec.label} each)`}
+      </span>
+      {total != null ? (
+        <span style={{ display: 'block', color: '#595959', fontWeight: 600, marginTop: 2 }}>
+          {`= ${formatNumber(total, 4)} ${unit} total`}
+        </span>
+      ) : null}
+    </span>
+  );
 };
 
 const normalizeBomComponents = (item) => (
@@ -166,6 +201,29 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
   const bomComponents = normalizeBomComponents(viewingItem);
   const kitFulfillmentMode = viewingItem?.kit_fulfillment_mode || viewingItem?.kitFulfillmentMode;
   const variantTags = mapSkuMetaToVariantFormFields(viewingItem?.custom_fields || {});
+  const packSizeText = variantTags.sizeCode
+    || resolveComponentSize(viewingItem)
+    || viewingItem?.size
+    || '';
+  const packSpec = parsePackSize(packSizeText === '—' ? '' : packSizeText);
+  const openingStockDisplay = packSpec && viewingItem?.opening_stock != null
+    ? formatPackStockDisplay(viewingItem.opening_stock, packSpec)
+    : (viewingItem?.opening_stock ?? 'N/A');
+  const onHandPacks = Number(
+    viewingItem?.current_stock?.quantity_on_hand
+    ?? viewingItem?.current_stock?.quantity_available
+    ?? viewingItem?.current_stock
+    ?? 0
+  );
+  const onHandTotalContent = packSpec && Number.isFinite(onHandPacks)
+    ? packCountToContentQty(onHandPacks, packSpec)
+    : null;
+  const onHandDisplay = Number.isFinite(onHandPacks)
+    ? (onHandPacks % 1 === 0 ? String(Math.floor(onHandPacks)) : formatNumber(onHandPacks, 4))
+    : '0';
+  const totalContentFromOpening = packSpec && viewingItem?.opening_stock != null
+    ? packCountToContentQty(viewingItem.opening_stock, packSpec)
+    : null;
 
   return (
     <Modal
@@ -230,15 +288,16 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
               {[
                 { label: 'Selling Price', val: viewingItem.selling_price ? formatPrice(viewingItem.selling_price, currency, 'USD') : '—' },
                 {
-                  label: 'On Hand',
-                  val: (() => {
-                    const s = viewingItem.current_stock || 0;
-                    return s % 1 === 0 ? Math.floor(s) : s.toFixed(2);
-                  })(),
+                  label: packSpec ? 'On Hand (packs)' : 'On Hand',
+                  val: onHandDisplay,
                 },
+                ...(packSpec && onHandTotalContent != null ? [{
+                  label: `Total (${contentUnitLabel(packSpec)})`,
+                  val: formatNumber(onHandTotalContent, 4),
+                }] : []),
               ].map((x) => (
-                <div key={x.label} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 16px', textAlign: 'center' }}>
-                  <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>{x.val}</div>
+                <div key={x.label} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 16px', textAlign: 'center', maxWidth: 220 }}>
+                  <div style={{ color: '#fff', fontSize: 16, fontWeight: 700, lineHeight: 1.25 }}>{x.val}</div>
                   <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11 }}>{x.label}</div>
                 </div>
               ))}
@@ -251,7 +310,12 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
                 ['Item Type', viewingItem.type ? String(viewingItem.type).replace(/_/g, ' ') : 'N/A'],
                 ['Variant / Packing', variantTags.variant || 'N/A'],
                 ['Colour', variantTags.colorCode || 'N/A'],
-                ['Size', variantTags.sizeCode || 'N/A'],
+                ['Size', packSpec
+                  ? `${packSpec.label} per pack`
+                  : (variantTags.sizeCode || 'N/A')],
+                ['Breakable', packSpec
+                  ? ((viewingItem.is_breakable === 0 || viewingItem.is_breakable === false) ? 'No — full pack only' : 'Yes — partial BOM qty allowed')
+                  : 'N/A'],
                 ['Pack Type', variantTags.packType || 'N/A'],
                 ['Cost Price', viewingItem.cost_price ? formatPrice(viewingItem.cost_price, currency, 'USD') : 'N/A'],
                 ['MRP', viewingItem.mrp ? formatPrice(viewingItem.mrp, currency, 'USD') : 'N/A'],
@@ -265,7 +329,11 @@ const ItemDetailsModal = ({ open, item, onClose }) => {
                 ['Status', <Tag color={getItemStatusTagColor(viewingItem.status)} style={{ borderRadius: 20, marginInlineEnd: 0, textTransform: 'capitalize' }}>{viewingItem.status || 'N/A'}</Tag>],
                 ['Min Stock', viewingItem.min_stock_level ?? 'N/A'],
                 ['Max Stock', viewingItem.max_stock_level ?? 'N/A'],
-                ['Opening Stock', viewingItem.opening_stock ?? 'N/A'],
+                ['Opening Stock', openingStockDisplay],
+                ...(packSpec && totalContentFromOpening != null ? [[
+                  `Total content (${contentUnitLabel(packSpec)})`,
+                  `${formatNumber(totalContentFromOpening, 4)} ${contentUnitLabel(packSpec)} (${formatNumber(viewingItem.opening_stock, 4)} × ${packSpec.label})`,
+                ]] : []),
                 ['Valuation', viewingItem.valuation_method || 'N/A'],
                 ['HSN Code', viewingItem.hsn_code || 'N/A'],
                 ['Barcode', viewingItem.barcode || 'N/A'],

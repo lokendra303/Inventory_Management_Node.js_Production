@@ -847,6 +847,7 @@ const Items = () => {
     isbn: payload.isbn,
     mpn: payload.mpn,
     isSellable: payload.isSellable,
+    isBreakable: payload.isBreakable,
     components: payload.components || []
   });
 
@@ -2158,6 +2159,7 @@ const Items = () => {
         hasExpiry: Boolean(values.hasExpiry),
         shelfLifeDays: values.shelfLifeDays || null,
         isSellable: itemIsSellable,
+        isBreakable: values.isBreakable !== false,
       };
       if (itemData.type === 'composite') {
         message.error('BOM / composite items must be created in Production.');
@@ -2700,6 +2702,7 @@ const viewItem = (item) => {
       hasExpiry: Boolean(fullItem.has_expiry),
       shelfLifeDays: fullItem.shelf_life_days || null,
       isSellable: fullItem.is_sellable !== 0 && fullItem.is_sellable !== false,
+      isBreakable: fullItem.is_breakable !== 0 && fullItem.is_breakable !== false,
       purchaseTaxRate: normalizeTaxRateForForm(fullItem.custom_fields?.purchaseTaxRate),
       purchaseAccount: fullItem.custom_fields?.purchaseAccount || 'cogs',
       purchaseDescription: fullItem.custom_fields?.purchaseDescription || undefined,
@@ -3312,6 +3315,7 @@ const viewItem = (item) => {
       isbn: normalizeOptionalText(fullItem.isbn),
       mpn: normalizeOptionalText(fullItem.mpn),
       isSellable: fullItem.is_sellable !== 0 && fullItem.is_sellable !== false,
+      isBreakable: fullItem.is_breakable !== 0 && fullItem.is_breakable !== false,
       purchaseTaxRate: normalizeTaxRateForForm(fullItem.custom_fields?.purchaseTaxRate),
       purchaseAccount: fullItem.custom_fields?.purchaseAccount || 'cogs',
       purchaseDescription: fullItem.custom_fields?.purchaseDescription || undefined,
@@ -3372,6 +3376,7 @@ const viewItem = (item) => {
       isbn: duplicateFormValues.isbn,
       mpn: duplicateFormValues.mpn,
       isSellable: duplicateFormValues.isSellable !== false,
+      isBreakable: duplicateFormValues.isBreakable !== false,
     });
     setDuplicateSourcePayload(duplicateComparablePayload);
 
@@ -3404,6 +3409,7 @@ const viewItem = (item) => {
       type: itemTypes.find(t => t.name === 'simple')?.name || itemTypes[0]?.name || 'simple',
       trackInventory: false,
       isSellable: true,
+      isBreakable: true,
       itemGroupId: null,
       purchaseAccount: 'cogs',
       purchaseTaxRate: 0,
@@ -4304,6 +4310,7 @@ const viewItem = (item) => {
       isbn: fields.willUpdate('isbn') ? fields.overlayText('isbn', normalizeOptionalText(fullItem.isbn)) : normalizeOptionalText(fullItem.isbn),
       mpn: fields.willUpdate('mpn') ? fields.overlayText('mpn', normalizeOptionalText(fullItem.mpn)) : normalizeOptionalText(fullItem.mpn),
       isSellable: fullItem.is_sellable !== 0 && fullItem.is_sellable !== false,
+      isBreakable: fullItem.is_breakable !== 0 && fullItem.is_breakable !== false,
     });
     fetchBinsForWarehouse(finalWarehouseId);
     if (importSkuRuleId) setSelectedSkuRuleId(importSkuRuleId);
@@ -7524,6 +7531,14 @@ const viewItem = (item) => {
                           </Select.Option>
                         ))}
                       </Select>
+                    </Form.Item>
+                    <Form.Item
+                      name="isBreakable"
+                      valuePropName="checked"
+                      style={{ marginTop: -8, marginBottom: 8 }}
+                      tooltip="Breakable: BOM can use part of a pack (e.g. 3g of 7g). Not breakable: BOM must use full packs only."
+                    >
+                      <Checkbox>Breakable pack (allow partial qty in BOM)</Checkbox>
                     </Form.Item>
                   </Col>
                   <Col xs={24} sm={8}>

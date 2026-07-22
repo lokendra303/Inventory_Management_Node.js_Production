@@ -23,25 +23,34 @@ import {
   serializeBomDraft,
 } from '../../utils/bomDraft';
 import { validateBomBusinessRules } from '../../utils/bomFormValidation';
+import { itemIsBreakable, resolveItemPackSpec } from '../../utils/packSizeHelpers';
 
 const AUTO_DRAFT_MS = 45000;
 
 const asApiList = (res) => (Array.isArray(res) ? res : (res?.data || []));
 
-const normalizeComponents = (rows = []) => {
+const normalizeComponents = (rows = [], catalogItems = [], units = []) => {
   if (!Array.isArray(rows)) return [];
   return rows
-    .map((row) => ({
-      itemId: String(row?.itemId || row?.component_item_id || '').trim(),
-      quantityRequired: Number(row?.quantityRequired ?? row?.quantity_required),
-      consumptionTiming: String(row?.consumptionTiming || row?.consumption_timing || 'shipment').toLowerCase(),
-      consumptionUnitId: row?.consumptionUnitId || row?.consumption_unit_id || null,
-    }))
+    .map((row) => {
+      const itemId = String(row?.itemId || row?.component_item_id || '').trim();
+      const item = catalogItems.find((c) => String(c.id) === String(itemId));
+      const packSpec = item ? resolveItemPackSpec(item, units) : null;
+      const mustFullPack = !!(packSpec && !itemIsBreakable(item));
+      return {
+        itemId,
+        quantityRequired: Number(row?.quantityRequired ?? row?.quantity_required),
+        consumptionTiming: String(row?.consumptionTiming || row?.consumption_timing || 'shipment').toLowerCase(),
+        consumptionUnitId: row?.consumptionUnitId || row?.consumption_unit_id || null,
+        consumeFullPack: mustFullPack || !!(row?.consumeFullPack || row?.consume_full_pack),
+      };
+    })
     .filter((row) => row.itemId && Number.isFinite(row.quantityRequired) && row.quantityRequired > 0)
     .map((row) => ({
       ...row,
       consumptionTiming: ['order', 'shipment'].includes(row.consumptionTiming) ? row.consumptionTiming : 'shipment',
       consumptionUnitId: row.consumptionUnitId ? String(row.consumptionUnitId).trim() || null : null,
+      consumeFullPack: !!row.consumeFullPack,
     }));
 };
 
@@ -229,7 +238,7 @@ export default function BomItemForm({
     form.resetFields();
     form.setFieldsValue(defaultFormValues(unitsRef.current));
     setImageUrl('');
-    setComponents([{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null }]);
+    setComponents([{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null, consumeFullPack: false }]);
     setKitFulfillmentMode('prebuilt');
     setActiveDraftId(null);
     setDraftBanner(null);
@@ -384,8 +393,9 @@ export default function BomItemForm({
             quantityRequired: Number(c.quantity_required ?? c.quantityRequired ?? 1),
             consumptionTiming: c.consumption_timing || c.consumptionTiming || 'shipment',
             consumptionUnitId: c.consumption_unit_id || c.consumptionUnitId || null,
+            consumeFullPack: !!(c.consume_full_pack || c.consumeFullPack),
           }))
-          : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null }]);
+          : [{ itemId: '', quantityRequired: 1, consumptionTiming: 'shipment', consumptionUnitId: null, consumeFullPack: false }]);
         if (whId) await fetchBinsForWarehouse(whId);
       } catch (err) {
         if (!cancelled) {
@@ -484,6 +494,7 @@ export default function BomItemForm({
       catalogItems,
       kitFulfillmentMode,
       isEditing,
+      units,
     });
     if (!result.ok) {
       message.error(result.message);
@@ -500,7 +511,7 @@ export default function BomItemForm({
       const openingStock = Number(values.openingStock) || 0;
 
       const payload = buildBomSubmitPayload(values, {
-        components: normalizeComponents(components),
+        components: normalizeComponents(components, catalogItems, units),
         kitFulfillmentMode,
         imageUrl,
         isEditing,
