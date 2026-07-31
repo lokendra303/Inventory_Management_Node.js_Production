@@ -8661,12 +8661,12 @@ const viewItem = (item) => {
                   ) : null
                 }
               >
-                <InputNumber 
-                  min={0} 
+                <InputNumber
+                  min={0}
                   step={0.01}
-                  style={{ width: '100%' }} 
+                  style={{ width: '100%' }}
                   placeholder="Enter cost price"
-                  {...cleanNumberInputProps(4)}
+                  parser={(value) => String(value ?? '').replace(/[^0-9.]/g, '')}
                   onChange={() => recalcOpeningValueFromForm()}
                 />
               </Form.Item>
